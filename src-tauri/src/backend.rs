@@ -26,9 +26,12 @@ const EVENT: &str = "sidecar-event";
 
 /// Client type used in the socket path.
 ///
-/// The backend scopes clients by type so an OBS browser source and a desktop app
-/// are distinguishable to it. This app is not an overlay and does not render one.
-const CLIENT_TYPE: &str = "desk";
+/// The backend's own word for this, not one invented here. Its hub registers any
+/// client type into the room's client set, so a made-up one works today and would
+/// keep working — but it is borrowing a term the server does not recognise, and a
+/// whitelist on the far side would turn that into a silent "no frames", which is
+/// the failure this whole module exists to make visible.
+const CLIENT_TYPE: &str = "room";
 
 /// How long to wait for a frame before checking whether we have been cancelled.
 ///
@@ -48,14 +51,58 @@ const ATTEMPTS: u32 = 5;
 const BACKOFF_START_SECS: u64 = 1;
 const BACKOFF_MAX_SECS: u64 = 15;
 
-/// Where the backend lives and which overlay to read.
+/// Where the backend lives and which stream to read.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct BackendConfig {
     /// Origin and optional path, as typed: `https://kit-backend.example`.
     pub base_url: String,
-    /// Which overlay's room to read. One overlay is one connected room.
-    pub overlay_id: String,
+    /// The streamer's TikTok handle, as typed.
+    ///
+    /// Not a room id. The backend keys everything by room, so one has to be
+    /// resolved — but nobody should have to read a UUID out of a dashboard to
+    /// watch a stream, and the lookup is a plain read that needs no token.
+    
+    pub username: String,
+}
+
+/// Strips a handle down to what the backend has stored.
+///
+/// The room is looked up by its `username` field, so this has to read a handle the
+/// same way whatever form it arrived in. A disagreement here is not a tidy
+/// rejection — it is a room that cannot be found and a stream that reads as
+/// missing rather than as a typo in what was typed.
+pub fn normalise_username(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let handle = match tiktok_handle_in_url(trimmed) {
+        Some(from_url) => from_url,
+        None => trimmed.trim_start_matches('@').to_string(),
+    };
+    handle
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_string()
+}
+
+/// Pulls a handle out of a TikTok URL without dragging in a regex crate.
+///
+/// Deliberately narrow: it looks for "tiktok.com/@" and takes the run up to the
+/// first path separator. Anything it does not recognise falls through to the
+/// plain strip, which is what a bare handle needs anyway.
+fn tiktok_handle_in_url(raw: &str) -> Option<String> {
+    let lower = raw.to_ascii_lowercase();
+    let marker = "tiktok.com/@";
+    let at = lower.find(marker)? + marker.len();
+    let tail = &raw[at..];
+    let end = tail
+        .find(|c: char| c == '/' || c == '?' || c == '#')
+        .unwrap_or(tail.len());
+    Some(tail[..end].to_string())
 }
 
 impl BackendConfig {
@@ -66,8 +113,8 @@ impl BackendConfig {
     pub fn describe_missing(&self) -> Option<&'static str> {
         if self.base_url.trim().is_empty() {
             Some("a backend URL")
-        } else if self.overlay_id.trim().is_empty() {
-            Some("an overlay id")
+        } else if normalise_username(&self.username).is_empty() {
+            Some("a username")
         } else {
             None
         }
@@ -99,12 +146,80 @@ impl BackendState {
     }
 }
 
-/// The socket URL for one overlay.
+/// Joins a base URL and a path, without doubling or dropping the slash.
+///
+/// Written out rather than borrowed from a URL parser because providers disagree
+/// about the trailing slash, and the common parser throws the last segment away
+/// when the base has none.
+fn endpoint(base: &str, path: &str) -> String {
+    format!("{}/{}", base.trim_end_matches('/'), path.trim_start_matches('/'))
+}
+
+/// Keeps an error to one readable line.
+///
+/// The body can be a whole HTML error page, and this is the only place it is ever
+/// shown.
+fn shorten(text: &str, fallback: &str) -> String {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return fallback.to_string();
+    }
+    if trimmed.len() <= 200 {
+        return trimmed.to_string();
+    }
+    format!("{}…", &trimmed[..200])
+}
+
+/// Starts reading a username, and reports which room it landed in.
+///
+/// One call, because the backend finds or creates the room itself. That route is
+/// exempt from the write gate for the same reason `/api/room-connect/` is: OBS
+/// cannot send a header. What it gives up in exchange is that the username now
+/// comes from the caller, so the backend guards it with a handle pattern and a cap
+/// on how many rooms it will invent — see its `find_or_create_room_for_username`.
+///
+/// Asking the user to create a room by hand would be the other option, and it was
+/// worse: it made the one thing they came here to do depend on a second tool.
+pub async fn resolve_and_start(base: &str, username: &str) -> Result<String, String> {
+    let wanted = normalise_username(username);
+    let url = endpoint(base, "api/room-connect-by-username");
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let response = client
+        .post(&url)
+        .json(&json!({ "username": wanted }))
+        .send()
+        .await
+        .map_err(|e| format!("could not reach {url}: {e}"))?;
+    if !response.status().is_success() {
+        let status = response.status().to_string();
+        let why = response.text().await.unwrap_or_default();
+        return Err(shorten(&why, &status));
+    }
+    let body = response
+        .text()
+        .await
+        .map_err(|e| format!("could not read {url}: {e}"))?;
+
+    let parsed: Value =
+        serde_json::from_str(&body).map_err(|e| format!("{url} did not answer with JSON: {e}"))?;
+
+    parsed
+        .get("room_id")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| format!("{url} did not say which room it connected: {body}"))
+}
+
+/// The socket URL for one room.
 ///
 /// The scheme follows the page: a backend reached over `https` must be reached
 /// over `wss`, and quietly downgrading would leave the key on the wire if anyone
 /// adds one later.
-pub fn socket_url(base: &str, overlay_id: &str) -> String {
+pub fn socket_url(base: &str, room_id: &str) -> String {
     let trimmed = base.trim().trim_end_matches('/');
     let scheme = if trimmed.starts_with("https://") {
         "wss://"
@@ -114,7 +229,7 @@ pub fn socket_url(base: &str, overlay_id: &str) -> String {
     let host = trimmed
         .trim_start_matches("https://")
         .trim_start_matches("http://");
-    format!("{scheme}{host}/ws/{CLIENT_TYPE}/{}", overlay_id.trim())
+    format!("{scheme}{host}/ws/{CLIENT_TYPE}/{}", room_id.trim())
 }
 
 /// Turns a backend frame into the app's own event shape, or `None` for anything
@@ -248,7 +363,18 @@ pub async fn pump(
         report(&app, format!("Backend not configured: {missing} is missing."));
         return;
     }
-    let url = socket_url(&config.base_url, &config.overlay_id);
+
+    // Resolved once, outside the retry loop: which room a username means does not
+    // change because the network blipped, and re-asking on every attempt would
+    // turn a five-second hiccup into five round trips and five error messages.
+    let room_id = match resolve_and_start(&config.base_url, &config.username).await {
+        Ok(id) => id,
+        Err(why) => {
+            report(&app, format!("Backend: {why}"));
+            return;
+        }
+    };
+    let url = socket_url(&config.base_url, &room_id);
 
     let mut delay = Duration::from_secs(BACKOFF_START_SECS);
     for attempt in 1..=ATTEMPTS {
@@ -277,7 +403,9 @@ pub async fn pump(
     // has gone quiet with no explanation is the failure people cannot act on.
     report(
         &app,
-        format!("Could not read from the backend at {url}. Switch the source back to Bridge to keep reading."),
+        format!(
+            "Could not read from the backend at {url}. Check the address under Set up, and that the backend is running."
+        ),
     );
 }
 
@@ -380,14 +508,15 @@ mod tests {
 
     #[test]
     fn the_socket_follows_the_page() {
-        assert_eq!(
-            socket_url("https://kit.example", "abc"),
-            "wss://kit.example/ws/desk/abc"
-        );
-        assert_eq!(socket_url("http://127.0.0.1:8000/", "abc"), "ws://127.0.0.1:8000/ws/desk/abc");
+        assert_eq!(socket_url("https://kit.example", "abc"), "wss://kit.example/ws/room/abc");
+        assert_eq!(socket_url("http://127.0.0.1:8000/", "abc"), "ws://127.0.0.1:8000/ws/room/abc");
         // Never silently downgrade: a backend reached over https must be reached
         // over wss, or anything later sent on this socket is in the clear.
         assert!(socket_url("https://kit.example", "abc").starts_with("wss://"));
+        // The backend's own name for a client type, not one invented here. Its hub
+        // registers whatever it is given today, so any word would work — and a
+        // whitelist on the far side would turn that into a silent "no frames".
+        assert!(socket_url("https://kit.example", "abc").contains("/ws/room/"));
     }
 
     #[test]
@@ -452,12 +581,102 @@ mod tests {
     }
 
     #[test]
+    fn a_real_status_frame_maps_as_sent() {
+        // Captured from a running backend rather than read off the source, because
+        // the thing worth pinning is what actually arrives.
+        let frame = json!({ "type": "status", "connected": false, "message": "Offline" });
+        let out = mapped(frame);
+        assert_eq!(out["type"], "status");
+        assert_eq!(out["connected"], false);
+        assert_eq!(out["message"], "Offline");
+        assert_eq!(out["platform"], "tiktok");
+    }
+
+    #[test]
+    fn the_real_config_frame_is_not_chat() {
+        // Also captured live: every new client is sent this first.
+        let frame = json!({ "type": "config", "config": {} });
+        assert!(to_app_event(&frame, NOW).is_none());
+    }
+
+    #[test]
+    fn frames_captured_from_a_live_room_map_correctly() {
+        // Captured verbatim from a running backend reading a real TikTok stream,
+        // rather than read off the source. Everything the app can see from a busy
+        // room is here, and each one is the shape the feed, the statistics and the
+        // gift alerts actually depend on.
+        let captured: Vec<Value> = vec![
+            json!({ "type": "config", "config": {} }),
+            json!({ "type": "status", "connected": true, "message": "Connected to @mybasic.indonesia" }),
+            json!({ "type": "comment", "user": "titik", "userId": "duuuduuu12", "text": "boxy cut 170/58 ukurang berapa?" }),
+            json!({ "type": "join", "user": "Ade Firmansyah", "userId": "ade.firmansyah056", "viewers": 176 }),
+            json!({ "type": "viewers", "count": 145 }),
+            json!({ "type": "follow", "user": "mata", "userId": "mataeyevision" }),
+        ];
+
+        // The first frame every new client receives. Not chat, and silently
+        // ignored rather than dropped with a warning.
+        assert!(to_app_event(&captured[0], NOW).is_none());
+
+        let status = to_app_event(&captured[1], NOW).unwrap();
+        assert_eq!(status["type"], "status");
+        assert_eq!(status["connected"], true);
+        assert_eq!(status["message"], "Connected to @mybasic.indonesia");
+
+        // Non-ASCII in the message, which is most of what a live Indonesian room
+        // is. If anything upstream escaped or re-encoded this, it shows here.
+        let comment = to_app_event(&captured[2], NOW).unwrap();
+        assert_eq!(comment["type"], "chat");
+        assert_eq!(comment["nickname"], "titik");
+        assert_eq!(comment["id"], "duuuduuu12");
+        assert_eq!(comment["text"], "boxy cut 170/58 ukurang berapa?");
+        assert_eq!(comment["timestamp"], NOW);
+        assert_eq!(comment["platform"], "tiktok");
+
+        // Joins outnumber everything else in a busy room by a wide margin — 63 in
+        // a hundred seconds here — and each one carries a real stable handle.
+        let join = to_app_event(&captured[3], NOW).unwrap();
+        assert_eq!(join["type"], "join");
+        assert_eq!(join["nickname"], "Ade Firmansyah");
+        assert_eq!(join["id"], "ade.firmansyah056");
+
+        let viewers = to_app_event(&captured[4], NOW).unwrap();
+        assert_eq!(viewers["type"], "viewers");
+        assert_eq!(viewers["count"], 145);
+
+        // Follows do arrive, which is the one the earlier note in the repo README
+        // got wrong: the broadcast list there omits it, and hiding the chip over
+        // that would have removed a filter that works.
+        let follow = to_app_event(&captured[5], NOW).unwrap();
+        assert_eq!(follow["type"], "follow");
+        assert_eq!(follow["nickname"], "mata");
+        assert_eq!(follow["id"], "mataeyevision");
+    }
+
+    #[test]
     fn an_unconfigured_source_says_what_is_missing() {
         let empty = BackendConfig::default();
         assert_eq!(empty.describe_missing(), Some("a backend URL"));
-        let no_id = BackendConfig { base_url: "https://kit.example".into(), ..Default::default() };
-        assert_eq!(no_id.describe_missing(), Some("an overlay id"));
-        let ready = BackendConfig { base_url: "https://kit.example".into(), overlay_id: "a".into() };
+        let no_user = BackendConfig { base_url: "https://kit.example".into(), ..Default::default() };
+        assert_eq!(no_user.describe_missing(), Some("a username"));
+        let ready = BackendConfig { base_url: "https://kit.example".into(), username: "a".into() };
         assert_eq!(ready.describe_missing(), None);
+    }
+
+    #[test]
+    fn a_username_is_read_the_same_way_whatever_form_it_arrives_in() {
+        // The room is found by exact username match, so a handle pasted as a link
+        // and one typed bare have to reduce to the same string.
+        assert_eq!(normalise_username("mybasic.indonesia"), "mybasic.indonesia");
+        assert_eq!(normalise_username("@mybasic.indonesia"), "mybasic.indonesia");
+        assert_eq!(normalise_username("  @mybasic.indonesia  "), "mybasic.indonesia");
+        assert_eq!(normalise_username("@@mybasic"), "mybasic");
+        assert_eq!(
+            normalise_username("https://www.tiktok.com/@mybasic.indonesia/live"),
+            "mybasic.indonesia"
+        );
+        assert_eq!(normalise_username("tiktok.com/@mybasic?lang=en"), "mybasic");
+        assert_eq!(normalise_username(""), "");
+        assert_eq!(normalise_username("   "), "");
     }
 }

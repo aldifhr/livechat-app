@@ -7,7 +7,7 @@
  * retired drops the user's selection on the next launch with nothing said about
  * it.
  *
- *   node sidecar/test-llm.mjs
+ *   node test/test-llm.mjs
  */
 
 import { spawnSync } from 'node:child_process'

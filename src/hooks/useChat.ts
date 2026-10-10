@@ -131,7 +131,7 @@ export function useChat({ collapseWindowMs, collapseThreshold }: UseChatOptions)
           logPush(event.level, event.message)
           break
         case 'ready':
-          logPush('info', 'chat bridge ready')
+          logPush('info', 'chat reader ready')
           break
         case 'chat':
           if (!inRoom) break

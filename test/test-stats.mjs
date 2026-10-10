@@ -6,7 +6,7 @@
  * after a room goes quiet, or a leaderboard ordered by gift value that buries the
  * person who has actually been talking. So the conditions are pinned here.
  *
- *   node sidecar/test-stats.mjs
+ *   node test/test-stats.mjs
  */
 
 import { spawnSync } from 'node:child_process'

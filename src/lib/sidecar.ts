@@ -1,7 +1,7 @@
 /**
- * Talks to the Rust host, which owns the chat bridge and every outbound request.
+ * Talks to the Rust host.
  *
- * Every frame the bridge produces arrives on one channel; commands are sent back
+ * Every frame the backend produces arrives on one channel; commands are sent back
  * the other way. Nothing in here reaches the network itself: the webview's content
  * security policy forbids it, and the few things that genuinely need the network —
  * the model list, opening a browser, a desktop toast — are the host's business.
@@ -83,8 +83,6 @@ export type LogLevel = 'info' | 'warn' | 'error'
 
 /** Every `#[tauri::command]` the host exposes. Must match src-tauri/src/main.rs. */
 type HostCommand =
-  | 'connect'
-  | 'disconnect'
   | 'minimize_to_tray'
   | 'set_always_on_top'
   | 'window_label'
@@ -197,15 +195,6 @@ export function detach(): void {
 }
 
 export const host = {
-  connect: async (platform: Platform, target: string) => {
-    const resolved = await resolve()
-    await resolved.invoke('connect', { platform, target })
-  },
-  /** Omit `platform` to close every room. */
-  disconnect: async (platform?: Platform) => {
-    const resolved = await resolve()
-    await resolved.invoke('disconnect', platform ? { platform } : {})
-  },
   /** Hides the window; the stream keeps being read and the tray brings it back. */
   minimizeToTray: async () => {
     const resolved = await resolve()
@@ -298,7 +287,7 @@ export const host = {
     const config = (await resolved.invoke('backend_config_get')) as Partial<BackendConfig> | null | undefined
     return {
       baseUrl: typeof config?.baseUrl === 'string' ? config.baseUrl : '',
-      overlayId: typeof config?.overlayId === 'string' ? config.overlayId : '',
+      username: typeof config?.username === 'string' ? config.username : '',
     }
   },
   backendConfigSave: async (config: BackendConfig): Promise<void> => {
@@ -317,7 +306,7 @@ export const host = {
     const resolved = await resolve()
     await resolved.invoke('backend_connect', { config })
   },
-  /** Stops the backend reader and the local bridge together, so they never both feed the feed. */
+  /** Stops reading from the backend. */
   backendDisconnect: async (): Promise<void> => {
     const resolved = await resolve()
     await resolved.invoke('backend_disconnect')

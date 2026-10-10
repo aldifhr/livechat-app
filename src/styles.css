@@ -274,14 +274,6 @@ body {
   align-self: center;
 }
 
-/* Source picker. Its own row rather than sharing the toggle row, because it decides
-   what the room row below it means. */
-.source-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
 .source-note {
   flex: 1 1 auto;
   min-width: 0;
@@ -557,6 +549,13 @@ body {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+
+/* A note under a field rather than in the dialog's intro: it is about this field
+   specifically, and the intro is where the eye goes first and reads fastest. */
+.field-note {
+  color: var(--muted);
+  font-size: 11px;
 }
 
 /* The input and its button share a line so a long key does not push the button

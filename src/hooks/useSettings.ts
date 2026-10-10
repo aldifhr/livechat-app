@@ -31,8 +31,6 @@ export interface ViewSettings {
   giftSound: boolean
   /** Raise a desktop toast when a gift arrives. */
   giftNotice: boolean
-  /** Where the chat comes from: the local bridge, or the backend. */
-  eventSource: 'bridge' | 'backend'
 }
 
 export const DEFAULT_SETTINGS: ViewSettings = {
@@ -46,10 +44,6 @@ export const DEFAULT_SETTINGS: ViewSettings = {
   overlayClickThrough: false,
   giftSound: true,
   giftNotice: true,
-  // The bridge is the default because it needs nothing: no server, no
-  // configuration, and no VPS that has to be up. The backend is the cheaper way
-  // to run the app, not the one that works out of the box.
-  eventSource: 'bridge',
 }
 
 const FONT_MIN = 0.75

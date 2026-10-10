@@ -1,9 +1,8 @@
-//! Supervision of the chat bridge.
+//! The host.
 //!
-//! The bridge is a self-contained executable produced by `bun build --compile`
-//! (see sidecar/README.md). It is the only thing that speaks TikTok's protocol.
-//! Rust's job is to own the process, keep one room open at a time, and forward
-//! its JSON lines to the webview as Tauri events.
+//! The app does not talk to TikTok itself. It reads a StreamKit backend, which
+//! does that, and re-emits what it receives as Tauri events so the webview has
+//! one vocabulary regardless of where the frames came from.
 
 // Without this the app is a console-subsystem binary, so double-clicking it
 // flashes a command prompt window behind the UI and leaves one attached for the
@@ -12,46 +11,16 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod backend;
-mod bridge;
 mod llm;
-mod sidecar;
 
 use std::sync::Arc;
-
-use sidecar::Sidecar;
 
 use tauri::{Manager, State};
 use tauri_plugin_notification::NotificationExt;
 
 pub struct AppState {
-    sidecar: Sidecar,
     /// Which backend reader loop is current, so a new Connect cancels the old one.
     backend: Arc<backend::BackendState>,
-}
-
-#[tauri::command]
-async fn connect(
-    state: State<'_, AppState>,
-    app: tauri::AppHandle,
-    platform: String,
-    target: String,
-) -> Result<(), String> {
-    // Checked here rather than trusted from the webview, because this string is
-    // written straight into a command the bridge dispatches on.
-    if platform != "tiktok" {
-        return Err(format!("unknown platform: {platform}"));
-    }
-    state
-        .sidecar
-        .connect(platform, target, &app)
-        .map_err(|e| format!("could not start the chat bridge: {e}"))
-}
-
-/// `platform` is optional: omitted closes every session, which is what the UI's
-/// single Disconnect button sends.
-#[tauri::command]
-fn disconnect(state: State<'_, AppState>, app: tauri::AppHandle, platform: Option<String>) {
-    state.sidecar.disconnect(platform, &app);
 }
 
 /// Hides the window without stopping the stream.
@@ -211,13 +180,9 @@ fn backend_connect(
 }
 
 /// Stops reading from the backend.
-///
-/// The local bridge is stopped too, so the two are never both feeding the same
-/// feed and doubling every counter on screen.
 #[tauri::command]
-fn backend_disconnect(state: State<'_, AppState>, app: tauri::AppHandle) {
+fn backend_disconnect(state: State<'_, AppState>) {
     state.backend.stop();
-    state.sidecar.disconnect(Some("tiktok".to_string()), &app);
 }
 
 /// The tray icon and its menu.
@@ -258,10 +223,10 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
                 }
             }
             "quit" => {
-                // Deliberately kills the bridge: quitting from the tray is the
-                // one path that ends the session for real.
+                // Stops the reader before exiting so the socket is closed
+                // deliberately rather than being torn down with the process.
                 if let Some(state) = app.try_state::<AppState>() {
-                    state.sidecar.shutdown();
+                    state.backend.stop();
                 }
                 app.exit(0);
             }
@@ -305,12 +270,9 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .manage(AppState {
-            sidecar: Sidecar::new(),
             backend: Arc::new(backend::BackendState::default()),
         })
         .invoke_handler(tauri::generate_handler![
-        connect,
-        disconnect,
         minimize_to_tray,
         set_always_on_top,
         window_label,
@@ -328,13 +290,6 @@ fn main() {
         backend_disconnect
     ])
         .setup(|app| {
-            // Unpacked before the window appears so the first Connect is not the
-            // thing that pays for writing 85 MB. It is a no-op after the first
-            // run — the extracted file is reused as-is.
-            if let Err(e) = bridge::prepare() {
-                eprintln!("could not unpack the chat bridge: {e}");
-            }
-
             // Closing the window hides it rather than ending the app, so a stream keeps
             // being read while the window is out of the way. The tray is where it
             // comes back from, and where quitting actually lives.
@@ -350,12 +305,10 @@ fn main() {
                         api.prevent_close();
                         let _ = hideable.hide();
                     }
-                    // The bridge is a child of this process, so it has to be told
-                    // to stop. Quitting from the tray does that too; this covers
-                    // the app being killed outright, where nothing else runs.
+                    // The app being killed outright, where nothing else gets to run.
                     tauri::WindowEvent::Destroyed => {
                         if let Some(state) = handle.try_state::<AppState>() {
-                            state.sidecar.shutdown();
+                            state.backend.stop();
                         }
                     }
                     _ => {}

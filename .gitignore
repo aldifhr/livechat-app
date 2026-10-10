@@ -4,12 +4,7 @@ src-tauri/target/
 src-tauri/gen/
 *.log
 
-# The bridge is a build artifact, not source: `npm run build:bridge` compiles it
-# from sidecar/index.mjs. Both copies are 85 MB, and the one under resources is
-# the one that would actually land in a commit — the sidecar path is easy to
-# remember, the resources path is not.
-sidecar/livechat-bridge.exe
-src-tauri/resources/livechat-bridge.exe
+# The bridge was a build artifact once; it is gone. The app reads a backend now.
 
 # Credentials are typed into the app at runtime and read from Tauri's config
 # directory, never from here. Ignored anyway so a stray file cannot be committed

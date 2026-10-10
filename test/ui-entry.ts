@@ -8,8 +8,8 @@
  * Not part of the shipped app: only the UI test imports it.
  */
 
-import App from '../../src/App'
-import Overlay from '../../src/components/Overlay'
-import { setTransport, host, attach } from '../../src/lib/sidecar'
+import App from '../src/App'
+import Overlay from '../src/components/Overlay'
+import { setTransport, host, attach } from '../src/lib/sidecar'
 
 export { App, Overlay, setTransport, host, attach }

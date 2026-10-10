@@ -1,6 +1,35 @@
 # LiveChat App
 
-Desktop app (Tauri + React) untuk TikTok live chat. Sidecar Node.js (`tiktok-live-connector`) baca websocket TikTok langsung, render di UI.
+Desktop app (Tauri + React) untukmonitor TikTok live chat.
+
+App ini **tidak bicara dengan TikTok sendiri**. Ia membaca backend di repo ini
+lewat `WS /ws/room/{id}`, lalu menerjemahkan frame-nya ke format yang sama dengan
+yang dipakai seluruh UI. Konsekuensinya: tidak ada proses TikTok di PC pengguna,
+dan installer tidak lagi membawa executable 85 MB.
+
+> **Tidak ada cadangan.** Kalau backend mati, app tidak bisa membaca chat. Itu
+> pilihan, bukan kelalaian — jalankan backend-nya.
+
+## App desktop
+
+```bash
+npm install
+npm run tauri:dev      # pengembangan
+npm run tauri:build    # installer
+```
+
+### Test
+
+```bash
+npm test                          # typecheck + 6 suite UI
+cd src-tauri && cargo test        # 19 test, termasuk mapper frame
+```
+
+### Yang perlu diisi di app
+
+`Set up…` di toolbar: alamat backend (`https://…`) dan username streamer. App
+mencari room dengan username itu lewat `GET /api/rooms`, lalu menyambungkannya
+sendiri — jadi tidak ada UUID yang perlu dibaca dari dashboard.
 
 ## Backend (StreamKit)
 

@@ -6,7 +6,7 @@
  * no WebView2, and no dependence on either platform being live — so this suite is
  * deterministic and takes milliseconds.
  *
- *   node sidecar/test/test-ui.mjs
+ *   node test/test-ui.mjs
  */
 
 import { fakeTransport, flush, installDom, loadApp } from './dom.mjs'
@@ -80,26 +80,56 @@ check('the empty prompt is shown', /No messages yet/.test($('.empty-title')?.tex
 // neither has anything to pick.
 check('no platform picker is offered', $$('.platform').length === 0)
 check('no room chips are offered', !$('.room-filters'))
+check('no source picker is offered', !$('.source-row'))
 check('one room row', $$('.room-row').length === 1)
 check('the log panel is closed', !$('.log-list'))
-// Mounting does not connect to anything. It does sync the window state once,
-// which is the only command that may be sent without being asked.
+// Mounting connects to nothing. It does read the backend settings and sync the
+// window state, and those are the only commands that may be sent unasked.
 check(
   'nothing was connected just by mounting',
-  fake.commands.every((c) => c.command !== 'connect' && c.command !== 'disconnect'),
+  fake.commands.every((c) => c.command !== 'backend_connect' && c.command !== 'backend_disconnect'),
   JSON.stringify(fake.commands),
 )
 
-console.log('connecting asks the host for the right thing')
-await type('.room-row .input', 'mpl.id.official')
-check('the value reached React state', $('.room-row .input').value === 'mpl.id.official')
-check('the button is now enabled', $('.room-row .btn-primary')?.disabled === false)
-await click('.room-row .btn-primary')
+console.log('the backend must be set up before it can be read')
+// With no backend configured there is nothing to read, and the button has to say
+// so rather than accepting a click that quietly does nothing.
+const connectButton = () => $('.room-row .btn-primary')
+check('connect is disabled with no backend', connectButton()?.disabled === true)
 check(
-  'a connect command was sent with the platform',
-  JSON.stringify(fake.lastCommand('connect')) ===
-    JSON.stringify({ command: 'connect', args: { platform: 'tiktok', target: 'mpl.id.official' } }),
-  JSON.stringify(fake.lastCommand('connect')),
+  'and the toolbar says why',
+  /No backend set up yet/.test($('.source-note')?.textContent ?? ''),
+  $('.source-note')?.textContent,
+)
+
+console.log('the backend dialog')
+await click($$('.room-row .btn').find((b) => b.textContent.trim() === 'Set up…'))
+check('it opens', Boolean($('.modal')))
+const backendInput = (placeholder) => $$('.modal .input').find((i) => i.placeholder === placeholder)
+await type(backendInput('https://kit-backend.example'), 'https://kit-backend.example')
+await type(backendInput('mybasic.indonesia'), '@mybasic.indonesia')
+await click($$('.modal .btn').find((b) => b.textContent.trim() === 'Save'))
+const stored = fake.lastCommand('backend_config_save')
+// Normalised on the way out, because the room is found by exact username match
+// and "@foo" is not the room the backend has.
+check('saves the address trimmed', stored?.args?.config?.baseUrl === 'https://kit-backend.example', JSON.stringify(stored?.args?.config))
+check('saves the handle without its @', stored?.args?.config?.username === 'mybasic.indonesia', JSON.stringify(stored?.args?.config))
+// Handed up rather than left in the dialog: the toolbar says whether a backend is
+// set up, and saving is the only thing that can change the answer.
+check('the toolbar learns it at once', /mybasic\.indonesia/.test($('.source-note')?.textContent ?? ''), $('.source-note')?.textContent)
+check('and connect becomes possible', connectButton()?.disabled === false, `disabled=${connectButton()?.disabled}`)
+
+console.log('connecting asks the host for the right thing')
+await click(connectButton())
+const asked = fake.lastCommand('backend_connect')
+check(
+  'with the address and the handle',
+  JSON.stringify(asked) ===
+    JSON.stringify({
+      command: 'backend_connect',
+      args: { config: { baseUrl: 'https://kit-backend.example', username: 'mybasic.indonesia' } },
+    }),
+  JSON.stringify(asked),
 )
 
 console.log('frames drive the feed')
@@ -221,15 +251,16 @@ await click('.room-row .btn-danger')
 await act(async () => {
   fake.emit({ platform: 'tiktok', type: 'status', connected: false, message: 'Disconnected' })
 })
-await type('.room-row .input', 'akunliverinee')
 await click('.room-row .btn-primary')
-const connects = fake.commands.filter((c) => c.command === 'connect')
-check('every connect names the one platform', connects.every((c) => c.args.platform === 'tiktok'), JSON.stringify(connects))
-check('and carried the handle', connects.at(-1)?.args.target === 'akunliverinee', JSON.stringify(connects.at(-1)))
+check(
+  'the host was asked again',
+  fake.commands.filter((c) => c.command === 'backend_connect').length === 2,
+  JSON.stringify(fake.lastCommand('backend_connect')),
+)
 
 await act(async () => {
   fake.emit({ platform: 'tiktok', type: 'status', connected: true, message: 'tt up' })
-  fake.emit({ platform: 'tiktok', type: 'room', username: 'akunliverinee', roomId: '7', title: 'a title' })
+  fake.emit({ platform: 'tiktok', type: 'room', username: 'mybasic.indonesia', roomId: '7', title: 'a title' })
   fake.emit({ platform: 'tiktok', type: 'chat', ...viewer(), text: 'from tiktok', timestamp: 1700000003000 })
 })
 check('the status updated', /tt up/.test($('.room-status')?.textContent ?? ''))
@@ -243,16 +274,16 @@ await click('.watch-btn')
 check(
   'the browser was asked for the stream',
   JSON.stringify(fake.lastCommand('open_stream')) ===
-    JSON.stringify({ command: 'open_stream', args: { url: 'https://www.tiktok.com/@akunliverinee/live' } }),
+    JSON.stringify({ command: 'open_stream', args: { url: 'https://www.tiktok.com/@mybasic.indonesia/live' } }),
   JSON.stringify(fake.lastCommand('open_stream')),
 )
 
-console.log('stopping closes the room')
+console.log('stopping closes the reader')
 await click('.room-row .btn-danger')
 check(
-  'the platform was named',
-  JSON.stringify(fake.lastCommand('disconnect')) === JSON.stringify({ command: 'disconnect', args: { platform: 'tiktok' } }),
-  JSON.stringify(fake.lastCommand('disconnect')),
+  'the host was asked to stop',
+  JSON.stringify(fake.lastCommand('backend_disconnect')) === JSON.stringify({ command: 'backend_disconnect' }),
+  JSON.stringify(fake.lastCommand('backend_disconnect')),
 )
 
 console.log('failures are shown, not swallowed')

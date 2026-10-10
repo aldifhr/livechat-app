@@ -10,8 +10,7 @@ import { useGiftNotification } from './hooks/useGiftNotification'
 import { useGiftSound } from './hooks/useGiftSound'
 import { useSettings } from './hooks/useSettings'
 import { useKindCounts, useVisibleItems, type FeedFilters } from './hooks/useVisibleItems'
-import { EMPTY_BACKEND, type BackendConfig, type EventSource } from './lib/backend'
-import { PLATFORM } from './lib/platforms'
+import { EMPTY_BACKEND, type BackendConfig } from './lib/backend'
 import { host } from './lib/sidecar'
 
 export default function App() {
@@ -111,29 +110,6 @@ export default function App() {
     setUnseen(0)
   }, [])
 
-  /**
-   * Switching source stops whatever is running before anything starts.
-   *
-   * Both readers emit on one channel, so leaving the old one going would double
-   * every row and every counter on screen while looking like a busier stream.
-   */
-  const onSourceChange = useCallback(
-    (source: EventSource) => {
-      if (source === settings.eventSource) return
-      // Fire-and-forget: switching source should not wait for the old reader to
-      // acknowledge, and the host cancels it either way. Nothing downstream has
-      // to know this promise is not awaited.
-      const leaving =
-        settings.eventSource === 'backend' ? host.backendDisconnect() : host.disconnect(PLATFORM)
-      void leaving.catch(() => {})
-      settings.set('eventSource', source)
-      clear()
-      pinned.current = true
-      setUnseen(0)
-    },
-    [settings, clear],
-  )
-
   const jumpToLatest = useCallback(() => {
     const node = listRef.current
     if (node) node.scrollTop = node.scrollHeight
@@ -156,7 +132,6 @@ export default function App() {
         onFiltersChange={onFiltersChange}
         onCollapseChange={setCollapse}
         onClear={clear}
-        onSourceChange={onSourceChange}
         onOpenLlm={() => setLlmOpen(true)}
         onOpenBackend={() => setBackendOpen(true)}
       />
@@ -204,7 +179,11 @@ export default function App() {
       </div>
 
       <LlmSettings open={llmOpen} onClose={() => setLlmOpen(false)} />
-      <BackendSettings open={backendOpen} onClose={() => setBackendOpen(false)} />
+      <BackendSettings
+        open={backendOpen}
+        onClose={() => setBackendOpen(false)}
+        onSaved={setBackend}
+      />
 
       <StatsPanel stats={stats} />
 

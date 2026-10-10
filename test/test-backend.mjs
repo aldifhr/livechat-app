@@ -5,7 +5,7 @@
  * way that looks like something else: a missing scheme reports as "could not
  * connect", and a half-filled pair reports as "it did nothing".
  *
- *   node sidecar/test-backend.mjs
+ *   node test/test-backend.mjs
  */
 
 import { spawnSync } from 'node:child_process'
@@ -63,12 +63,12 @@ check('space is trimmed', normaliseBaseUrl('  http://127.0.0.1:8000  ') === 'htt
 check('http is not upgraded here', normaliseBaseUrl('http://kit.example') === 'http://kit.example')
 
 console.log('enough to connect with')
-check('neither field', !isReady({ baseUrl: '', overlayId: '' }))
-check('only the url', !isReady({ baseUrl: 'https://kit.example', overlayId: '' }))
-check('only the overlay', !isReady({ baseUrl: '', overlayId: 'abc' }))
-check('a blank overlay is not an overlay', !isReady({ baseUrl: 'https://kit.example', overlayId: '   ' }))
-check('a slash-only url is not a url', !isReady({ baseUrl: '/', overlayId: 'abc' }))
-check('both', isReady({ baseUrl: 'https://kit.example', overlayId: 'abc' }))
+check('neither field', !isReady({ baseUrl: '', username: '' }))
+check('only the url', !isReady({ baseUrl: 'https://kit.example', username: '' }))
+check('only the handle', !isReady({ baseUrl: '', username: 'abc' }))
+check('a blank handle is not a handle', !isReady({ baseUrl: 'https://kit.example', username: '   ' }))
+check('a slash-only url is not a url', !isReady({ baseUrl: '/', username: 'abc' }))
+check('both', isReady({ baseUrl: 'https://kit.example', username: 'abc' }))
 
 console.log(failures === 0 ? '\nall passed' : `\n${failures} failed`)
 process.exit(failures === 0 ? 0 : 1)

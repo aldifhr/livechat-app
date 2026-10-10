@@ -7,7 +7,7 @@
  * per member, and a gap that is too short turns one wave into twenty overlapping
  * notes, which is worse than no sound at all.
  *
- *   node sidecar/test-sound.mjs
+ *   node test/test-sound.mjs
  */
 
 import { spawnSync } from 'node:child_process'

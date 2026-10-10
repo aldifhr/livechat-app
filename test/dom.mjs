@@ -13,9 +13,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-// This file lives one level deeper than the project's own test helpers, so the
-// project root is two up rather than one.
-const pkgRoot = fileURLToPath(new URL('../..', import.meta.url))
+// This file lives one level below the project root, in `test/`.
+const pkgRoot = fileURLToPath(new URL('..', import.meta.url))
 
 /**
  * Bundles the UI into a temp dir and returns entry URLs for it and for the
@@ -70,7 +69,7 @@ export async function loadApp() {
       minify: false,
       target: 'esnext',
       lib: {
-        entry: join(pkgRoot, 'sidecar', 'test', 'ui-entry.ts'),
+        entry: join(pkgRoot, 'test', 'ui-entry.ts'),
         formats: ['es'],
         fileName: () => 'ui.js',
       },

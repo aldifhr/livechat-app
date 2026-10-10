@@ -1,21 +1,29 @@
 import { useEffect, useState } from 'react'
 import { host } from '../lib/sidecar'
-import { EMPTY_BACKEND, isReady, normaliseBaseUrl, type BackendConfig } from '../lib/backend'
+import {
+  EMPTY_BACKEND,
+  isReady,
+  normaliseBaseUrl,
+  normaliseUsername,
+  type BackendConfig,
+} from '../lib/backend'
 
 /**
- * Where the backend lives, and which overlay to read.
+ * Where the backend lives, and which stream to read.
  *
  * Its own dialog rather than a field in the model one: this is a server address
- * and an id, not a credential, and putting it next to an API key would make the
- * two look equally important when only one of them is.
+ * and a handle, not a credential, and putting it next to an API key would make
+ * the two look equally important when only one of them is.
  */
 
 interface Props {
   open: boolean
   onClose: () => void
+  /** Called with what was saved, so the toolbar stops saying "not set up". */
+  onSaved: (config: BackendConfig) => void
 }
 
-export function BackendSettings({ open, onClose }: Props) {
+export function BackendSettings({ open, onClose, onSaved }: Props) {
   const [config, setConfig] = useState<BackendConfig>(EMPTY_BACKEND)
   const [status, setStatus] = useState('')
 
@@ -41,8 +49,15 @@ export function BackendSettings({ open, onClose }: Props) {
     setConfig((previous) => ({ ...previous, [key]: value }))
 
   async function save() {
+    const saved: BackendConfig = {
+      baseUrl: normaliseBaseUrl(config.baseUrl),
+      username: normaliseUsername(config.username),
+    }
     try {
-      await host.backendConfigSave({ ...config, baseUrl: normaliseBaseUrl(config.baseUrl) })
+      await host.backendConfigSave(saved)
+      // Handed up rather than left in this dialog: the toolbar shows whether a
+      // backend is set up, and it has no other way to learn the answer.
+      onSaved(saved)
       setStatus('Saved.')
     } catch (error: unknown) {
       setStatus(error instanceof Error ? error.message : String(error))
@@ -66,9 +81,8 @@ export function BackendSettings({ open, onClose }: Props) {
         </div>
 
         <p className="modal-hint">
-          Reading from the backend means the app no longer runs its own 85&nbsp;MB bridge. The
-          overlay has to already be connected on the server — starting one there needs a write
-          token, and this app has no way of holding one.
+          Reading from the backend means the app no longer runs its own 85&nbsp;MB bridge. Give the
+          streamer&rsquo;s handle: the backend finds or creates the room for it and starts it reading.
         </p>
 
         <label className="field">
@@ -84,15 +98,18 @@ export function BackendSettings({ open, onClose }: Props) {
         </label>
 
         <label className="field">
-          <span className="field-label">Overlay id</span>
+          <span className="field-label">Streamer</span>
           <input
             className="input"
-            placeholder="1b4fc5f7-36f0-4bab-bbf5-cb953dc4bfe9"
-            value={config.overlayId}
-            onChange={(e) => set('overlayId', e.target.value)}
+            placeholder="mybasic.indonesia"
+            value={config.username}
+            onChange={(e) => set('username', e.target.value)}
             spellCheck={false}
             autoComplete="off"
           />
+          <span className="field-note">
+            A pasted profile link works too — it is read down to the handle.
+          </span>
         </label>
 
         {status !== '' && <p className="modal-status modal-status-ok">{status}</p>}

@@ -1,8 +1,9 @@
 /**
  * Wire format shared with the Rust host.
  *
- * The sidecar is the only producer of these shapes (sidecar/index.mjs), so this
- * mirrors it rather than importing anything from Node.
+ * The backend is the only producer of these shapes, and it arrives already mapped
+ * onto them by src-tauri/src/backend.rs, so this mirrors that mapping rather than
+ * saying anything about any protocol.
  */
 
 export type FeedKind = 'chat' | 'gift' | 'like' | 'follow' | 'share' | 'join'
