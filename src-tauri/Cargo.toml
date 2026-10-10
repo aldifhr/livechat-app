@@ -35,6 +35,18 @@ tokio = { version = "1", features = ["time"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Audio crosses the command channel as a base64 string, because that channel is
+# JSON and a `Vec<u8>` would arrive as an array of numbers four times the size.
+base64 = "0.22"
+# Already in the tree through msedge-tts; pulled in directly only to name the
+# connection type its stream halves carry, which that crate keeps private.
+async-tungstenite = { version = "0.34", features = ["tokio-runtime"] }
+# Neural text-to-speech, the voice Edge's Read Aloud uses. Free, no API key, and
+# the reason the app does not sound like a 2003 screen reader: the platform voice
+# is a formant synthesiser, and this is a neural one. It sends the text to
+# Microsoft to be spoken, which is the trade — recorded here rather than buried,
+# because it is the one thing about this dependency that is not obvious.
+msedge-tts = { version = "0.4", features = ["tokio-runtime"] }
 
 [profile.release]
 opt-level = "s"

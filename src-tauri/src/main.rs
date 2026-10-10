@@ -12,6 +12,7 @@
 
 mod backend;
 mod llm;
+mod speech;
 
 use std::sync::Arc;
 
@@ -190,6 +191,37 @@ async fn pick_sound_file(app: tauri::AppHandle) -> Result<String, String> {
     Ok(chosen.to_string())
 }
 
+/// Reads a line of chat aloud with the neural voice, and returns MP3 bytes.
+///
+/// The audio comes back to the page rather than being played here: the page owns
+/// the one AudioContext every other sound goes through, and a second audio path in
+/// the host would put the voice at its own volume, on its own clock, unable to be
+/// silenced by the same control as the rest.
+///
+/// Base64 because the bytes cross as a JSON string — Tauri's command channel is
+/// not a binary one, and a `Vec<u8>` would arrive as an array of numbers, four
+/// times the size.
+#[tauri::command]
+async fn speak(text: String) -> Result<String, String> {
+    use base64::Engine as _;
+
+    let said = text.trim();
+    if said.is_empty() {
+        return Err("nothing to say".into());
+    }
+
+    // The connection is opened per utterance and dropped after. A chat line is a
+    // few hundred milliseconds of speech and the gap between messages is longer
+    // than a handshake, so holding one open would idle a socket for no gain; the
+    // cost that mattered — decoding, not connecting — is paid either way.
+    let voice = speech::Speech::connect()
+        .await
+        .map_err(|e| e.to_string())?;
+    let audio = voice.say(said).await.map_err(|e| e.to_string())?;
+
+    Ok(base64::engine::general_purpose::STANDARD.encode(audio))
+}
+
 /// The stored backend settings, or an empty one on first launch.
 #[tauri::command]
 fn backend_config_get(app: tauri::AppHandle) -> backend::BackendConfig {
@@ -316,6 +348,7 @@ fn main() {
         llm_config_save,
         llm_config_clear,
         open_stream,
+        speak,
         pick_sound_file,
         backend_config_get,
         backend_config_save,

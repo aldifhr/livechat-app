@@ -51,7 +51,7 @@ if (tsc.status !== 0) {
   process.exit(1)
 }
 
-const { GIFT_SOUND_GAP_MS, GIFT_SOUND_GAIN, giftChord, giftPitch, shouldPlayGiftSound, CHAT_SOUND_GAP_MS, CHAT_NOTE_MS, chatBlip, shouldPlayChatSound, ttsText, TTS_MAX_CHARS, CHAT_TTS_GAP_MS } = await import(
+const { GIFT_SOUND_GAP_MS, GIFT_SOUND_GAIN, giftChord, giftPitch, shouldPlayGiftSound, CHAT_SOUND_GAP_MS, CHAT_NOTE_MS, chatBlip, shouldPlayChatSound, ttsText, TTS_MAX_CHARS, CHAT_TTS_GAP_MS, giftAnnouncement } = await import(
   pathToFileURL(join(dir, 'lib', 'sound.js')).href
 )
 
@@ -121,6 +121,14 @@ check('a short message is left whole', ttsText('ana', 'x'.repeat(10), false) ===
 // Speech needs a longer gap than the blip: overlapping taps are busy, but
 // overlapping sentences are unintelligible.
 check('speech waits longer than a blip does', CHAT_TTS_GAP_MS > CHAT_SOUND_GAP_MS, String(CHAT_TTS_GAP_MS))
+
+console.log('what a gift sounds like when spoken')
+check('a gift is announced with its sender', /ana mengirim Rose/.test(giftAnnouncement('ana', 'Rose', 1, 0)), giftAnnouncement('ana', 'Rose', 1, 0))
+check('a repeat count is spoken, not repeated', /kali 3/.test(giftAnnouncement('ana', 'Rose', 3, 0)), giftAnnouncement('ana', 'Rose', 3, 0))
+check('the value is spoken as diamonds, because a bare number says nothing', /99 diamonds/.test(giftAnnouncement('ana', 'Rose', 1, 99)), giftAnnouncement('ana', 'Rose', 1, 99))
+check('a nameless sender still gets named', /Someone/.test(giftAnnouncement('', 'Rose', 1, 0)), giftAnnouncement('', 'Rose', 1, 0))
+check('a gift with no name in the catalogue still reads as a gift', /a gift/.test(giftAnnouncement('ana', '', 1, 0)), giftAnnouncement('ana', '', 1, 0))
+check('no diamonds means no diamond count', !/diamonds/.test(giftAnnouncement('ana', 'Rose', 1, 0)), giftAnnouncement('ana', 'Rose', 1, 0))
 
 console.log(failures === 0 ? '\nall passed' : `\n${failures} failed`)
 process.exit(failures === 0 ? 0 : 1)

@@ -142,3 +142,17 @@ export function ttsText(nickname: string, text: string, withName: boolean): stri
  * only when a newer message arrives.
  */
 export const CHAT_TTS_GAP_MS = 1800
+
+/**
+ * The sentence a gift is announced with.
+ *
+ * Reads as an announcement, not as a chat line: the name comes first, then what
+ * was sent, then the value when there is one. The value is spoken as diamonds
+ * rather than as a bare number, because "500" on its own does not say what was
+ * counted — and a gift's worth is the reason it is being announced at all.
+ */
+export function giftAnnouncement(nickname: string, giftName: string, count: number, diamonds: number): string {
+  const who = nickname.trim() || 'Someone'
+  const what = count > 1 ? `${giftName} kali ${count}` : giftName || 'a gift'
+  return diamonds > 0 ? `${who} mengirim ${what}, ${diamonds} diamonds` : `${who} mengirim ${what}`
+}

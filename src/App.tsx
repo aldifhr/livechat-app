@@ -26,7 +26,7 @@ export default function App() {
     templateId: settings.giftTemplate,
     customPath: settings.customSoundPath,
   })
-  useGiftNotification(settings.giftNotice)
+  useGiftNotification({ notice: settings.giftNotice, voice: settings.giftVoice })
   useChatAlerts({
     chatSound: settings.chatSound,
     chatTts: settings.chatTts,

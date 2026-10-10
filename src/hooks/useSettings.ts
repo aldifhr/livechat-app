@@ -44,6 +44,8 @@ export interface ViewSettings {
   chatSound: boolean
   /** Read new chat messages aloud with the system voice. */
   chatTts: boolean
+  /** Announce gifts with the neural voice. */
+  giftVoice: boolean
   /** Speak the sender's name before each message read aloud. */
   ttsNames: boolean
   /** Which synthesised sound a gift plays. */
@@ -76,6 +78,7 @@ export const DEFAULT_SETTINGS: ViewSettings = {
   showAsk: true,
   chatSound: false,
   chatTts: false,
+  giftVoice: false,
   ttsNames: true,
   giftTemplate: 'chime',
   chatTemplate: 'blip',

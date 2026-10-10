@@ -1,22 +1,28 @@
 import { useEffect, useRef } from 'react'
 import { attach, detachHandler, type SidecarEvent } from '../lib/sidecar'
 import { playSound, resolveAudio } from '../lib/player'
-import { shouldPlayChatSound, ttsText, CHAT_TTS_GAP_MS } from '../lib/sound'
+import { say, hush } from '../lib/voice'
+import { shouldPlayChatSound, ttsText } from '../lib/sound'
 
 /**
  * What a new chat message does besides appear in the feed: a blip, and speech.
  *
  * Both are gapped the same way the gift sound is — a minimum gap between sounds,
  * because chat arrives several a second in an active room and one blip per
- * message is a buzz rather than a signal. Speech gets the longer gap: a tap that
- * overlaps the next tap is merely busy, but two sentences overlapping are
- * unintelligible.
+ * message is a buzz rather than a signal. Speech gets the longer gap, and it has
+ * to for a second reason here: the voice is synthesised over the network, so the
+ * gap has to cover the round trip as well as the sentence, or the next request
+ * goes out while the previous one is still being spoken.
  *
- * The blip is a template or a custom file, played through the shared player.
- * Speech uses the Web Speech API the webview already has, so there is nothing to
- * install and no asset to ship. Both are guarded: a runtime without the audio or
- * speech APIs gets silence and a working app, never an exception from the feed
- * handler they fire from.
+ * The blip is a template or a custom file, played through the shared player. The
+ * voice is a neural one, synthesised by the host and returned as audio — the
+ * platform's own speech synthesiser is a formant synthesiser and sounds like a
+ * screen reader, which is the whole reason this does not use it. Sending the text
+ * to be spoken is what that voice costs, and it is why the setting is opt-in.
+ *
+ * Everything is guarded. A host that cannot reach the voice service, a runtime
+ * with no Web Audio, a decode that fails — each must yield silence and a working
+ * app, never an exception from the feed handler they fire from.
  */
 
 interface Options {
@@ -30,27 +36,9 @@ interface Options {
   customPath: string
 }
 
-type SpeechSynthesisLike = {
-  speak(utterance: SpeechSynthesisUtterance): void
-  cancel(): void
-}
-
-type SpeechSynthesisUtteranceCtor = new (text: string) => SpeechSynthesisUtterance
-
-/** The browser's speech synthesis, or null when there isn't one. */
-function resolveSpeech(): SpeechSynthesisLike | null {
-  const scope = globalThis as typeof globalThis & {
-    speechSynthesis?: SpeechSynthesisLike
-    SpeechSynthesisUtterance?: SpeechSynthesisUtteranceCtor
-  }
-  if (!scope.speechSynthesis || !scope.SpeechSynthesisUtterance) return null
-  return scope.speechSynthesis
-}
-
 export function useChatAlerts({ chatSound, chatTts, ttsNames, templateId, customPath }: Options): void {
   const audioRef = useRef<AudioContext | null>(null)
   const lastBlipAt = useRef<number | null>(null)
-  const lastSpokeAt = useRef<number | null>(null)
 
   useEffect(() => {
     let active = true
@@ -66,37 +54,13 @@ export function useChatAlerts({ chatSound, chatTts, ttsNames, templateId, custom
       })
     }
 
-    const speak = (nickname: string, text: string) => {
-      const spoken = ttsText(nickname, text, ttsNames)
-      if (spoken === '') return
-
-      const now = Date.now()
-      if (lastSpokeAt.current !== null && now - lastSpokeAt.current < CHAT_TTS_GAP_MS) return
-      lastSpokeAt.current = now
-
-      const synth = resolveSpeech()
-      const Utterance = (globalThis as typeof globalThis & {
-        SpeechSynthesisUtterance?: SpeechSynthesisUtteranceCtor
-      }).SpeechSynthesisUtterance
-      if (!synth || !Utterance) return
-
-      // The previous sentence is cut off, not queued: a live room does not wait,
-      // and a queue of half-finished sentences is worse than dropping one.
-      try {
-        synth.cancel()
-        synth.speak(new Utterance(spoken))
-      } catch {
-        // A voice service that refuses is not worth interrupting the feed over.
-      }
-    }
-
     const handle = (event: SidecarEvent) => {
       if (!active) return
       if (event.type !== 'chat') return
       if (event.platform !== 'tiktok') return
       if (!chatSound && !chatTts) return
       blip()
-      if (chatTts) speak(event.nickname, event.text)
+      if (chatTts) say(ttsText(event.nickname, event.text, ttsNames))
     }
 
     attach(handle)
@@ -106,19 +70,13 @@ export function useChatAlerts({ chatSound, chatTts, ttsNames, templateId, custom
     }
   }, [chatSound, chatTts, ttsNames, templateId, customPath])
 
-  // Turned off: forget when the last sound was, so turning it back on does not
-  // wait out a gap that started while it was off.
+  // Turned off: forget when the last blip was, so turning it back on does not wait
+  // out a gap that started while it was off. The voice is shared, so stopping it
+  // here would also silence a gift announcement — that is left to its own hook.
   useEffect(() => {
     if (!chatSound) lastBlipAt.current = null
   }, [chatSound])
   useEffect(() => {
-    if (!chatTts) {
-      lastSpokeAt.current = null
-      try {
-        resolveSpeech()?.cancel()
-      } catch {
-        // Nothing to cancel, or the service is gone; either way, not fatal.
-      }
-    }
+    if (!chatTts) hush()
   }, [chatTts])
 }

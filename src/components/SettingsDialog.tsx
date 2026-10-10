@@ -47,6 +47,7 @@ const FEED_TOGGLES: { key: keyof ViewSettings; label: string; hint: string }[] =
   { key: 'alwaysOnTop', label: 'On top', hint: 'Keep the window above others' },
   { key: 'giftSound', label: 'Gift sound', hint: 'Chime when a gift arrives' },
   { key: 'giftNotice', label: 'Gift notice', hint: 'Raise a desktop toast when a gift arrives' },
+  { key: 'giftVoice', label: 'Say gifts', hint: 'Announce each gift with the neural voice' },
 ]
 
 /**

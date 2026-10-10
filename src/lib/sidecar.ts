@@ -100,6 +100,7 @@ type HostCommand =
   | 'set_always_on_top'
   | 'notify'
   | 'open_stream'
+  | 'speak'
   | 'pick_sound_file'
   | 'llm_models'
   | 'llm_chat'
@@ -247,6 +248,20 @@ export const host = {
   openStream: async (url: string) => {
     const resolved = await resolve()
     await resolved.invoke('open_stream', { url })
+  },
+  /**
+   * Reads a line of chat aloud with the neural voice, and returns the audio as a
+   * data URL ready to play.
+   *
+   * The text is sent to Microsoft to be spoken — that is what a neural voice this
+   * good costs, and it is why the setting that enables this is opt-in. The audio
+   * comes back as base64 rather than being played in the host, so it goes through
+   * the same AudioContext and the same volume as every other sound.
+   */
+  speak: async (text: string): Promise<string> => {
+    const resolved = await resolve()
+    const encoded = await resolved.invoke('speak', { text })
+    return typeof encoded === 'string' && encoded !== '' ? `data:audio/mpeg;base64,${encoded}` : ''
   },
   /**
    * Opens a file picker and returns the chosen sound file's path.

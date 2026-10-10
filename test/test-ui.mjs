@@ -738,6 +738,12 @@ check('and can be turned off', dialogToggle('Say the name')?.checked === false)
 await click(dialogToggle('Read chat aloud'))
 check('speech off hides the name toggle again', !dialogToggle('Say the name'))
 
+// A gift can be announced with the same voice. Off by default, like every other
+// sound that speaks: it sends text to be spoken, and that has to be asked for.
+check('gift announcements are offered off', dialogToggle('Say gifts')?.checked === false)
+await click(dialogToggle('Say gifts'))
+check('and turn on', dialogToggle('Say gifts')?.checked === true)
+
 console.log('sound templates and a custom file')
 // Scoped to the Sounds section: the Look section above also has selects, and the
 // first `.modal-settings select` is the theme, not a sound.
