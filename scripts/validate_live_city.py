@@ -11,7 +11,7 @@ So this reads real traffic and judges every frame against what the frontend
 normalizer reads, field by field, using the same expectations the TypeScript
 side applies. It is a probe, not a test: it needs a live room.
 
-    apps/api/.venv/bin/python apps/api/tests/validate_live_city.py [overlay-id] [seconds]
+    backend/.venv/bin/python scripts/validate_live_city.py [room-id] [seconds]
 """
 
 import asyncio
@@ -22,7 +22,7 @@ from collections import Counter
 
 import websockets
 
-WS = "wss://kit-backend.aldifhr.my.id/ws/overlay/{overlay_id}"
+WS = "wss://kit-backend.aldifhr.my.id/ws/room/{room_id}"
 
 #: What `lib/feed-wire.ts` reads, per kind. A frame missing one of these produces
 #: an entry with a hole in it, which then reads as an empty string or NaN in the
@@ -100,14 +100,14 @@ class Report:
 
 
 async def main() -> None:
-    overlay_id = sys.argv[1] if len(sys.argv) > 1 else "b8069c75-ede2-49b5-b565-f861c4bdd72e"
+    room_id = sys.argv[1] if len(sys.argv) > 1 else ""
     seconds = float(sys.argv[2]) if len(sys.argv) > 2 else 60.0
 
     report = Report()
     room = None
-    print(f"watching {overlay_id} for {seconds:.0f}s")
+    print(f"watching {room_id} for {seconds:.0f}s")
     try:
-        async with websockets.connect(WS.format(overlay_id=overlay_id)) as sock:
+        async with websockets.connect(WS.format(room_id=room_id)) as sock:
             deadline = asyncio.get_event_loop().time() + seconds
             while asyncio.get_event_loop().time() < deadline:
                 left = deadline - asyncio.get_event_loop().time()

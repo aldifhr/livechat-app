@@ -9,6 +9,7 @@ does not mean editing the file that owns routing.
 import json
 import logging
 import os
+import re
 import secrets
 from contextlib import asynccontextmanager
 from typing import Any
@@ -187,19 +188,32 @@ def token_is_valid(request: Request) -> bool:
     return bool(query) and secrets.compare_digest(query, expected)
 
 
-#: The one write route open to OBS, which cannot send a header. Matched per path
-#: segment rather than as a prefix: `startswith("/api/room-connect/")` also
-#: exempted a hypothetical `/api/room-connect-all` or `/api/room-connect/bulk`,
+#: The write routes open to OBS and to the desktop app, neither of which can send
+#: a header. Matched per path segment rather than as a prefix: a plain
+#: `startswith` also exempted anything that merely began with those characters,
 #: which would arrive one refactor later with no auth and no diff on this line.
-EXEMPT_WRITE_PREFIX = "/api/room-connect/"
+#:
+#: Both are safe because neither lets the caller choose the destination beyond
+#: the handle: `room-connect/{id}` reads its username from the stored room, and
+#: `room-connect-by-username` creates or reuses the room for the handle given.
+EXEMPT_WRITE_PATHS = frozenset({
+    "/api/room-connect/",
+    "/api/room-connect-by-username",
+})
 
 
 def is_exempt_write_path(path: str) -> bool:
-    if not path.startswith(EXEMPT_WRITE_PREFIX):
-        return False
-    # Exactly one non-empty segment: the room id, and nothing below it.
-    rest = path[len(EXEMPT_WRITE_PREFIX):]
-    return bool(rest) and "/" not in rest
+    for prefix in EXEMPT_WRITE_PATHS:
+        if not path.startswith(prefix):
+            continue
+        if prefix.endswith("/"):
+            # Exactly one non-empty segment: the room id, and nothing below it.
+            rest = path[len(prefix):]
+            if rest and "/" not in rest:
+                return True
+        elif path == prefix:
+            return True
+    return False
 
 
 def warn_if_auth_unsatisfiable() -> None:
@@ -280,6 +294,12 @@ class CreateRoomRequest(BaseModel):
 class UpdateRoomRequest(BaseModel):
     name: str | None = None
     username: str | None = None
+
+
+class ConnectByUsernameRequest(BaseModel):
+    """A handle and nothing else — the app's whole ask of the backend."""
+
+    username: str = ""
 
 
 class ConfigUpdateRequest(BaseModel):
@@ -442,6 +462,110 @@ async def connect(req: ConnectRequest):
     if not username:
         raise HTTPException(status_code=400, detail="username is required")
     return await _connect_room(room_id, username)
+
+
+#: A TikTok handle. Deliberately narrow: letters, digits, dot and underscore, 2
+#: to 24 characters, which is what the platform actually issues. This is the only
+#: check standing between an unauthenticated caller and a connection attempt, so
+#: it rejects anything that is not shaped like a handle — a URL, a path, a shell
+#: fragment, a thousand-character string — rather than forwarding a guess to
+#: TikTok and letting someone else's server find out what it does with junk.
+USERNAME_RE = re.compile(r"^[A-Za-z0-9._]{2,24}$")
+
+
+def _handle_is_sane(username: str) -> bool:
+    """Whether the handle is not merely well-shaped but a plausible one.
+
+    The pattern above says "no URL, no shell fragment, no thousand characters".
+    It still lets `..`, `...` and `.` through, because a dot is legal in a real
+    handle — `bittersweet.by` is a streamer. What it cannot tell is whether the
+    string is a name or a path fragment, and a path fragment is the one shape
+    worth refusing here: it is the shape a caller reaches for when probing
+    something other than a handle.
+    """
+    if username in {".", "..", "..."}:
+        return False
+    return True
+
+#: How many rooms this endpoint may bring into existence. The route is exempt
+#: from the token gate, so without a ceiling anyone who found the URL could
+#: slowly fill the store and open a connection per entry — bounded cost rather
+#: than a data leak, but still someone else's resources to pay for. Rooms made
+#: through the token-gated route are not counted, so a dashboard user is never
+#: blocked by this.
+AUTO_ROOM_LIMIT = 20
+
+
+def normalise_username(raw: str) -> str:
+    return raw.strip().lstrip("@").strip()
+
+
+@router.post("/api/room-connect-by-username")
+async def room_connect_by_username(req: ConnectByUsernameRequest):
+    """Connect a handle, creating its room on the way. No token, no id.
+
+    The flow the desktop app wants is one field: type a handle, watch the chat.
+    Making that true needed a path that does not require a room to exist first,
+    and `POST /api/rooms` is behind the write token — a token deliberately not
+    shipped in the app, because one embedded in a binary is extractable and
+    grants full write access to the backend.
+
+    So this route creates the room it needs. That makes it an open proxy for
+    "connect to any handle": unauthenticated callers can name a streamer and
+    have the server open a connection to them. That is a cost and an IP exposure
+    problem, not a data leak — the room belongs to whoever named it and no room
+    can be read or pointed elsewhere through here. Three things bound it: the
+    handle must be shaped like a handle, one room per handle, and the number of
+    rooms this route may create is capped.
+
+    Existing rooms are reused, so a room made in the dashboard still connects and
+    keeps its config.
+    """
+    username = normalise_username(req.username)
+    if not USERNAME_RE.fullmatch(username) or not _handle_is_sane(username):
+        raise HTTPException(
+            status_code=400,
+            detail="username must be 2-24 characters of letters, digits, dot or underscore",
+        )
+
+    try:
+        record, created = store.find_or_create_room_for_username(username)
+    except ValueError as exc:  # pragma: no cover — the regex above already rejected it
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # Only rooms this route had to invent count against the ceiling. Counting
+    # every room would let someone fill the cap with junk handles and lock a
+    # real streamer out of connecting; counting every room *except* junk is the
+    # same problem. The count is therefore the number of rooms that have a
+    # username but no source, which is what an auto-created room looks like: a
+    # dashboard room either has no username yet or is being connected on
+    # purpose. It is a heuristic, and the log says when it rejects, so the
+    # failure mode is visible rather than silent.
+    if created:
+        # all_rooms() is keyed by id and returns the records themselves, so the
+        # id has to come from the key rather than from the record.
+        auto = sum(
+            1
+            for other_id, other in store.all_rooms().items()
+            if str(other.get("username", "")).strip() and other_id not in sources
+        )
+        if auto > AUTO_ROOM_LIMIT:
+            logger.warning(
+                "room-connect-by-username: refusing to create a room for @%s — %d "
+                "auto-created rooms already exist (limit %d)",
+                username,
+                auto,
+                AUTO_ROOM_LIMIT,
+            )
+            store.delete_room(record["id"])
+            raise HTTPException(
+                status_code=429,
+                detail=f"too many auto-created rooms (limit {AUTO_ROOM_LIMIT}); delete some first",
+            )
+
+    room_id = record["id"]
+    result = await _connect_room(room_id, username)
+    return {"room_id": room_id, **result}
 
 
 async def _connect_room(room_id: str, username: str) -> dict:

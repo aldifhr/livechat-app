@@ -18,11 +18,11 @@ So this file measures and changes nothing:
   it. Measured by how many tasks are alive when events arrive faster than the
   fan-out can finish.
 - PERF-03: `store._flush` writes a JSON file synchronously inside an async
-  handler. Measured per write, at a realistic number of overlays.
+  handler. Measured per write, at a realistic number of rooms.
 
 Run with the backend's interpreter:
 
-    apps/api/.venv/bin/python apps/api/tests/measure_broadcast.py
+    backend/.venv/bin/python scripts/measure_broadcast.py
 """
 
 import asyncio
@@ -34,9 +34,12 @@ import tempfile
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+# The backend lives in ../backend, a sibling of this file rather than the
+# parent, which is what moving these out of apps/api/tests changed.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
 from hub import Hub  # noqa: E402
+from hub import ROOM  # noqa: E402
 from hub import SEND_TIMEOUT_S  # noqa: E402
 
 SLOW_SEND_S = 0.25  # a browser source that has stalled but is not yet dropped
@@ -76,12 +79,12 @@ async def measure_perf01() -> None:
         hub = Hub()
         t0 = time.perf_counter()
         slow_id = await hub.connect(
-            FakeSocket("slow", SLOW_SEND_S if slow else 0), "overlay", "scene-a"
+            FakeSocket("slow", SLOW_SEND_S if slow else 0), ROOM, "scene-a"
         )
         for i in range(FAST_CLIENTS):
-            await hub.connect(FakeSocket(f"fast{i}"), "overlay", "scene-a")  # type: ignore[arg-type]
+            await hub.connect(FakeSocket(f"fast{i}"), ROOM, "scene-a")  # type: ignore[arg-type]
 
-        await hub.broadcast({"type": "comment", "text": "halo"}, overlay_id="scene-a")
+        await hub.broadcast({"type": "comment", "text": "halo"}, room_id="scene-a")
         # Delivery is queued now, so broadcast returning is not delivery. Wait
         # for the writers to drain before reading timestamps, or this measures
         # the cost of enqueueing and calls it a broadcast.
@@ -124,7 +127,7 @@ async def measure_perf02() -> None:
     hub_module.hub = hub = Hub()
     ids = []
     for i in range(4):
-        ids.append(await hub.connect(Counting(f"c{i}"), "overlay", "scene-a"))  # type: ignore[arg-type]
+        ids.append(await hub.connect(Counting(f"c{i}"), ROOM, "scene-a"))  # type: ignore[arg-type]
 
     def pending() -> int:
         return sum(1 for t in asyncio.all_tasks() if t is not asyncio.current_task() and "emit" in (t.get_coro().__qualname__ if hasattr(t.get_coro(), "__qualname__") else ""))
@@ -156,8 +159,8 @@ def measure_perf03() -> None:
     import store
 
     tmp = Path(tempfile.mkdtemp())
-    target = tmp / "overlays.json"
-    store.OVERLAYS_FILE = target
+    target = tmp / "rooms.json"
+    store.ROOMS_FILE = target
 
     for count in (2, 20, 100, 400):
         # The payload has to go through the module's own cache, because
@@ -168,7 +171,7 @@ def measure_perf03() -> None:
         store._cache = {
             f"o{i}": {
                 "id": f"o{i}",
-                "name": f"overlay {i}",
+                "name": f"room {i}",
                 "username": f"user{i}",
                 "config": {"type": "city", "style": {"max-people": 45, "extra": "x" * 200}},
             }
@@ -181,7 +184,7 @@ def measure_perf03() -> None:
             store._flush()
             times.append((time.perf_counter() - t0) * 1000)
         size = target.stat().st_size
-        print(f"  {count:4d} overlays  {size/1024:7.1f}KiB   "
+        print(f"  {count:4d} rooms    {size/1024:7.1f}KiB   "
               f"median {statistics.median(times):6.2f}ms   p95 {sorted(times)[int(len(times)*0.95)-1]:6.2f}ms   max {max(times):6.2f}ms")
 
     print(f"  -> a 60fps frame is 16.7ms. Anything above that is visible stall time on the event loop.")

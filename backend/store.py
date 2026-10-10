@@ -124,3 +124,58 @@ def username_of(room_id: str) -> str:
     with _lock:
         record = _record(room_id)
         return str(record.get("username", "")) if record else ""
+
+
+def find_room_by_username(username: str) -> dict[str, Any] | None:
+    """The room already configured for this handle, case-insensitively.
+
+    A name is not an identity: `Bittersweet`, `bittersweet` and `@bittersweet`
+    are one streamer, and three rooms claiming to be the same one would each
+    open their own connection to the same room. Matching is done on the
+    normalised handle rather than on the stored string so a room saved by hand
+    as `@bittersweet` is found by a request for `bittersweet`.
+    """
+    wanted = username.strip().lstrip("@").casefold()
+    if not wanted:
+        return None
+    with _lock:
+        for room_id, record in _data().items():
+            stored = str(record.get("username", "")).strip().lstrip("@").casefold()
+            if stored == wanted:
+                return {"id": room_id, **copy.deepcopy(record)}
+    return None
+
+
+def find_or_create_room_for_username(username: str, config: dict[str, Any] | None = None) -> tuple[dict[str, Any], bool]:
+    """The room for this handle, created if there is none. One room per handle.
+
+    The lookup and the insert share one critical section on purpose. Doing them
+    separately meant two requests arriving together for a handle nobody had
+    asked for both saw "not found" and both inserted, leaving two rooms on one
+    streamer — and two TikTok connections to the same live, which is the exact
+    thing this function exists to make impossible.
+
+    Returns the record and whether this call is what brought it into existence.
+    The flag is the only way the caller can tell a room it just invented from one
+    that was already there, which matters because the ceiling below counts only
+    the invented ones.
+    """
+    wanted = username.strip().lstrip("@").casefold()
+    if not wanted:
+        raise ValueError("username is required")
+    with _lock:
+        data = _data()
+        for room_id, record in data.items():
+            stored = str(record.get("username", "")).strip().lstrip("@").casefold()
+            if stored == wanted:
+                return {"id": room_id, **copy.deepcopy(record)}, False
+        room_id = str(uuid.uuid4())
+        record = {
+            "name": username.strip().lstrip("@"),
+            "username": username.strip().lstrip("@"),
+            "config": config or {},
+            "createdAt": time.time(),
+        }
+        data[room_id] = record
+        _flush()
+        return {"id": room_id, **copy.deepcopy(record)}, True

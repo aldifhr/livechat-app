@@ -1,4 +1,4 @@
-"""Does the room's size actually reach this overlay's socket?
+"""Does the room's size actually reach this client's socket?
 
 The city sits at KAMPUNG 0 in a live room. Three breaks were already found and
 fixed on the frontend — no `viewers` mapping in `FROM_WIRE`, the frame being
@@ -10,7 +10,7 @@ Reporting every frame's keys, not just the ones we hoped for. If `total_user`
 is arriving under a different key than the one `FROM_WIRE.viewers` reads, that
 looks exactly like silence from the frontend, and the difference matters.
 
-    apps/api/.venv/bin/python apps/api/tests/probe_live_viewers.py <overlay-uuid> [seconds]
+    backend/.venv/bin/python scripts/probe_live_viewers.py <room-id> [seconds]
 """
 
 import asyncio
@@ -20,11 +20,11 @@ from collections import Counter
 
 import websockets
 
-WS = "wss://kit-backend.aldifhr.my.id/ws/overlay/{overlay_id}"
+WS = "wss://kit-backend.aldifhr.my.id/ws/room/{room_id}"
 
 
 async def main() -> None:
-    overlay_id = sys.argv[1] if len(sys.argv) > 1 else "b8069c75-ede2-49b5-b565-f861c4bdd72e"
+    room_id = sys.argv[1] if len(sys.argv) > 1 else ""
     seconds = float(sys.argv[2]) if len(sys.argv) > 2 else 30.0
 
     # An absolute deadline, not a per-recv timeout. A busy room sends a frame
@@ -37,9 +37,9 @@ async def main() -> None:
     viewers_payloads: list[dict] = []
     total = 0
 
-    print(f"listening on {overlay_id} for {seconds:.0f}s")
+    print(f"listening on {room_id} for {seconds:.0f}s")
     try:
-        async with websockets.connect(WS.format(overlay_id=overlay_id)) as sock:
+        async with websockets.connect(WS.format(room_id=room_id)) as sock:
             while True:
                 left = deadline - asyncio.get_event_loop().time()
                 if left <= 0:
@@ -72,7 +72,7 @@ async def main() -> None:
         print("no `viewers` frame arrived at all.")
         print("The frontend is now correct for this frame, so the break is before it:")
         print("either the source stopped sending it, or the hub is not routing it to")
-        print("this overlay. Check apps/api/sources/tiktok.py and the overlay_id on the")
+        print("this room. Check backend/sources/tiktok.py and the room_id on the")
         print("broadcast, not the city.")
     else:
         print("`viewers` frames that arrived, verbatim:")
