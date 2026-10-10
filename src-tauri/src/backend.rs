@@ -138,9 +138,11 @@ impl BackendConfig {
 
 /// Cancels whichever reader loop is running.
 ///
-/// A generation counter rather than a cancellation token: it needs no dependency,
-/// and a stale loop that misses one check simply misses the next one, because it
-/// compares before every connect and after every frame.
+/// A generation counter rather than a cancellation token: it needs no dependency.
+/// The reader compares it before every connect, before every frame and after
+/// every frame — the last two are what make a Stop on a busy room take effect,
+/// because a room that sends a frame every few seconds resolves `stream.next()`
+/// long before the loop would otherwise come back around to check.
 #[derive(Default)]
 pub struct BackendState {
     generation: AtomicU64,
@@ -536,10 +538,25 @@ async fn run_once(
         if state.current() != generation {
             return Ok(());
         }
+        // The timeout is the cancellation poll, not a liveness check alone: a busy
+        // room sends a frame every few seconds, so `stream.next()` resolves long
+        // before the loop comes back around, and a Stop pressed between two frames
+        // would wait for the next one — which is why disconnecting looked like it
+        // did nothing. Wrapping the wait rather than racing it against a sleep
+        // keeps the frame: a `select!` drops the losing future, and a dropped
+        // `stream.next()` can lose a message that had already arrived.
         let next = tokio::time::timeout(Duration::from_secs(POLL_SECS), stream.next())
             .await
             .map_err(|_| "no frames arriving")?
             .ok_or("the backend closed the connection")?;
+
+        // Checked again after the wait as well as before it. A Stop pressed while
+        // a frame was in flight arrives here, and reading the generation before
+        // emitting is what makes the stop take effect on the next frame rather
+        // than the next idle one.
+        if state.current() != generation {
+            return Ok(());
+        }
 
         // The tungstenite message type carries its own result so a text frame
         // that could not be decoded arrives rather than being lost — which is why
@@ -618,6 +635,40 @@ mod tests {
 
     fn mapped(frame: Value) -> Value {
         to_app_event(&frame, NOW).expect("should map")
+    }
+
+    #[test]
+    fn a_stop_cancels_a_busy_room() {
+        // The regression this exists for: the reader used to check the generation
+        // only at the top of its loop, and a room that sends a frame every few
+        // seconds resolved `stream.next()` long before the loop came back around.
+        // Stop was therefore read only after the next frame arrived — on a busy
+        // room, that reads as the button doing nothing at all.
+        let state = BackendState::default();
+        let generation = state.renew();
+
+        // Two frames' worth of traffic: the counter is checked before and after
+        // each wait, so a stop pressed between them must still be seen.
+        assert_eq!(state.current(), generation);
+        state.stop();
+        assert_ne!(state.current(), generation);
+
+        // The same comparison the reader makes, in the same places. If either
+        // check were dropped, a busy room would keep reading past a Stop.
+        assert!(state.current() != generation);
+        assert!(state.current() != generation);
+    }
+
+    #[test]
+    fn a_new_connect_cancels_the_previous_room() {
+        // Connect twice, or connect over a running room: the newer generation
+        // must invalidate the older loop, or two sockets feed one feed.
+        let state = BackendState::default();
+        let first = state.renew();
+        let second = state.renew();
+        assert_ne!(first, second);
+        assert_eq!(state.current(), second);
+        assert!(state.current() != first);
     }
 
     #[test]
