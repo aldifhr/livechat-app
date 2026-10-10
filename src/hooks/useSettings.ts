@@ -9,10 +9,17 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { host } from '../lib/sidecar'
+import { resolveDensity, resolveFont, resolveTheme, type DensityId, type FontId, type ThemeId } from '../lib/theme'
 
 export interface ViewSettings {
   /** Scales the feed's type. Driven by ctrl+scroll. */
   fontScale: number
+  /** The look of the whole app, applied as a `data-theme` on <body>. */
+  theme: ThemeId
+  /** The typeface the whole app is set in, as a `data-font` on <body>. */
+  font: FontId
+  /** How much air the layout puts around things. */
+  density: DensityId
   /** One line per message with no avatar: far more rows fit on screen. */
   compact: boolean
   /** Hide "X joined the stream" rows entirely. */
@@ -31,6 +38,9 @@ export interface ViewSettings {
 
 export const DEFAULT_SETTINGS: ViewSettings = {
   fontScale: 1,
+  theme: 'default',
+  font: 'sans',
+  density: 'cozy',
   compact: false,
   hideJoins: false,
   hideFiltered: false,
@@ -50,7 +60,17 @@ function load(): ViewSettings {
     if (!raw) return DEFAULT_SETTINGS
     // Merged over the defaults so a build that adds a field does not leave older
     // saved settings missing it.
-    return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<ViewSettings>) }
+    const saved = JSON.parse(raw) as Partial<ViewSettings>
+    return {
+      ...DEFAULT_SETTINGS,
+      ...saved,
+      // A theme or font a previous build offered and this one dropped would
+      // otherwise reach the stylesheet as a `data-theme` nothing answers to,
+      // leaving the app unstyled and the switcher pointing at a dead option.
+      theme: resolveTheme(saved.theme),
+      font: resolveFont(saved.font),
+      density: resolveDensity(saved.density),
+    }
   } catch {
     return DEFAULT_SETTINGS
   }
@@ -79,6 +99,13 @@ export function useSettings(): UseSettingsResult {
     // the log panel and the jump button as well as the feed.
     document.documentElement.style.setProperty('--feed-font-scale', String(settings.fontScale))
     document.body.classList.toggle('compact', settings.compact)
+    // One attribute each, read by the stylesheet. The theme restyles the whole
+    // app; the font and density are orthogonal to it, so they ride on their own
+    // attributes rather than being baked into each theme — otherwise picking the
+    // pixel theme would lock the font to pixel, and there is no reason it must.
+    document.body.dataset.theme = settings.theme
+    document.body.dataset.font = settings.font
+    document.body.dataset.density = settings.density
   }, [settings])
 
   useEffect(() => {

@@ -76,7 +76,7 @@ function FeedRowImpl({ item, isLast, myNames = [] }: Props) {
           <span className="time">{formatTime(item.timestamp)}</span>
         </div>
 
-        {item.kind === 'chat' ? (
+        {item.kind === 'chat' || item.kind === 'ask' || item.kind === 'answer' ? (
           <>
             <p className={`text${mentionsSomebody(item, myNames) ? ' text-mention' : ''}`}>{item.text}</p>
             {item.emotes && item.emotes.length > 0 && (

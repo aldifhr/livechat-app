@@ -25,7 +25,7 @@ export default function App() {
   useGiftSound(settings.giftSound)
   useGiftNotification(settings.giftNotice)
 
-  const { room, items, totalReceived, clear, log, health, stats } = useChat({
+  const { room, items, totalReceived, clear, ask, asking, log, health, stats } = useChat({
     collapseWindowMs: 2500,
     // Only worth collapsing when a spam wave is actually running; two identical
     // messages in a row are usually just someone repeating themselves.
@@ -186,7 +186,7 @@ export default function App() {
 
       <StatsPanel stats={stats} />
 
-      <AskPanel items={items} room={room} />
+      <AskPanel items={items} room={room} onAsk={ask} asking={asking} />
       <LogPanel entries={log.entries} tallies={log.tallies} onClear={log.clear} />
     </div>
   )

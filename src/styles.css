@@ -749,10 +749,53 @@ select.input option {
   filter: brightness(1.1);
 }
 
+/* Look switcher: three selects that label themselves. */
+
+.look-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.look-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.look-label {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.look-field .input {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+/* ============================================================ density ---- */
+
+/*
+ * The gutters the layout uses, so the density control has something to scale.
+ * Defined here with the cozy default rather than in themes.css, because density
+ * is not a theme — it is orthogonal and applies on top of whichever theme is
+ * chosen, and a default that lives in :root is the value a density block safely
+ * overrides. `--gap` and `--pad-x` feed the rows and panels below.
+ */
+
+:root {
+  --gap: 8px;
+  --pad-x: 14px;
+  --pad-y: 8px;
+}
+
 .row {
   display: flex;
-  gap: 10px;
-  padding: 7px 10px;
+  gap: var(--gap, 10px);
+  padding: var(--pad-y, 7px) var(--pad-x, 10px);
   border-radius: var(--radius);
 }
 

@@ -555,7 +555,11 @@ fake.transport.invoke = async (command, args) => {
 check('the panel starts closed', !$('.ask-body'))
 await click('.ask-toggle')
 check('and opens', !!$('.ask-body'))
-check('with nothing to show yet', /using the recent chat/.test($('.ask-note')?.textContent ?? ''), $('.ask-note')?.textContent)
+check(
+  'with nothing to show yet',
+  /appear in the feed/.test($('.ask-note')?.textContent ?? ''),
+  $('.ask-note')?.textContent,
+)
 
 // A question with no room to be about. The button has to stay off rather than
 // send the model an empty prompt and an empty excerpt, which is a call that
@@ -591,13 +595,24 @@ check(
   JSON.stringify(sentContext),
 )
 
-check('the answer is shown', /The room is talking about the weather/.test($('.ask-text')?.textContent ?? ''), $('.ask-text')?.textContent)
-check('the question is echoed beside it', /what is going on\?/.test($('.ask-question')?.textContent ?? ''))
+// The exchange now lands in the feed rather than in the panel, so these assert
+// on the rows it produces. Each later ask appends more rows, so the checks read
+// the *last* row of each kind rather than the first — otherwise a second answer
+// would still be compared against the first one's text.
+const lastOf = (kind) => $$(`.row-${kind} .text`).at(-1)?.textContent ?? ''
+check('the question is now a feed row', $$('.row-ask').length === 1, String($$('.row-ask').length))
+check('the question text is shown', /what is going on\?/.test($('.row-ask .text')?.textContent ?? ''), $('.row-ask .text')?.textContent)
+check('the answer is a feed row', $$('.row-answer').length === 1, String($$('.row-answer').length))
+check('the answer text is shown', /The room is talking about the weather/.test($('.row-answer .text')?.textContent ?? ''), $('.row-answer .text')?.textContent)
 check('the input is cleared after asking', $('.ask-body input').value === '', $('.ask-body input').value)
-check('and a badge marks the answer', /1 answer/.test($('.log-count')?.textContent ?? ''))
+// Three chat messages were fed to the room just before this. The question and
+// the answer must not have joined them, which is the whole reason they go through
+// `push` and are skipped in the recorder — so the total stays at three.
+check('neither the question nor the answer is counted as a chat message', digits(tile('Messages')) === '3', tile('Messages'))
 
 // The model answering with nothing is a provider failure, not an empty chat, and
-// it must not render as a successful blank answer the user has to interpret.
+// it must not render as a blank row the user has to interpret — it lands saying
+// so instead.
 fake.transport.invoke = async (command) => {
   if (command === 'llm_chat') return '   '
   return undefined
@@ -605,12 +620,11 @@ fake.transport.invoke = async (command) => {
 await type('.ask-body input', 'again')
 await click('.ask-body .btn-primary')
 await flush()
-check('an empty answer is reported as an error', !!$('.ask-error'), $('.ask-error')?.textContent)
-check('and the good answer is not left on screen', !$('.ask-text'))
+check('an empty answer still lands, saying so', /answered with nothing/.test(lastOf('answer')), lastOf('answer'))
 
-// A provider that fails outright. The panel shows the reason rather than a
-// generic message, because "could not reach" and "wrong key" are fixed
-// differently and only the host knows which it was.
+// A provider that fails outright. The reason reaches the feed rather than being
+// swallowed, because "could not reach" and "wrong key" are fixed differently and
+// only the host knows which it was.
 fake.transport.invoke = async (command) => {
   if (command === 'llm_chat') throw new Error('could not reach https://h/v1: connection refused')
   return undefined
@@ -618,7 +632,7 @@ fake.transport.invoke = async (command) => {
 await type('.ask-body input', 'third time')
 await click('.ask-body .btn-primary')
 await flush()
-check('a failed call shows the reason', /connection refused/.test($('.ask-error')?.textContent ?? ''), $('.ask-error')?.textContent)
+check('a failed call puts its reason in the feed', /connection refused/.test(lastOf('answer')), lastOf('answer'))
 
 console.log('the peak is never below the current count')
 // Both are raised from the same frames, but on different clocks: the headcount

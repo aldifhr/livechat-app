@@ -5,6 +5,7 @@ import { backendUrl, normaliseUsername, type BackendConfig } from '../lib/backen
 import type { FeedFilters, KindFilter } from '../hooks/useVisibleItems'
 import type { Health } from '../hooks/useHealth'
 import type { UseSettingsResult, ViewSettings } from '../hooks/useSettings'
+import { DENSITIES, FONTS, THEMES } from '../lib/theme'
 import type { RoomState } from '../types'
 
 interface Props {
@@ -255,6 +256,60 @@ export function Toolbar({
         <span className="font-hint" title="Ctrl + scroll anywhere in the window">
           {Math.round(settings.fontScale * 100)}%
         </span>
+      </div>
+
+      {/*
+        The look controls, on a row of their own rather than crowded onto the
+        toggles: they are three selects that label themselves, and a select
+        beside a checkbox reads as the same kind of control when it is not. Each
+        writes straight into settings, which persists it and applies the body
+        attribute — the switcher holds no state of its own.
+      */}
+      <div className="look-row">
+        <label className="look-field">
+          <span className="look-label">Theme</span>
+          <select
+            className="input"
+            value={settings.theme}
+            onChange={(e) => settings.set('theme', e.target.value as ViewSettings['theme'])}
+          >
+            {THEMES.map((t) => (
+              <option key={t.id} value={t.id} title={t.hint}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="look-field">
+          <span className="look-label">Font</span>
+          <select
+            className="input"
+            value={settings.font}
+            onChange={(e) => settings.set('font', e.target.value as ViewSettings['font'])}
+          >
+            {FONTS.map((f) => (
+              <option key={f.id} value={f.id} title={f.hint}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="look-field">
+          <span className="look-label">Density</span>
+          <select
+            className="input"
+            value={settings.density}
+            onChange={(e) => settings.set('density', e.target.value as ViewSettings['density'])}
+          >
+            {DENSITIES.map((d) => (
+              <option key={d.id} value={d.id} title={d.hint}>
+                {d.label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
     </div>
   )

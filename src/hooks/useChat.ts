@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { attach, detachHandler, host, type FramePlatform, type SidecarEvent } from '../lib/sidecar'
+import { chatContext } from '../lib/llm'
 import { useFeed, type FeedInput } from './useFeed'
 import { useHealth } from './useHealth'
 import { useLog } from './useLog'
@@ -16,6 +17,18 @@ export interface UseChatResult {
   items: FeedItem[]
   totalReceived: number
   clear: () => void
+  /**
+   * Asks the configured model about the room and puts both the question and the
+   * answer in the feed, as if the model were just another chatter.
+   *
+   * The question is pushed immediately so the user sees it land before the round
+   * trip; the answer arrives later and is pushed when it does. Neither goes
+   * through `stats.record`, so a question is not counted as a chat message and
+   * the model does not appear on the chatters leaderboard — it is not a viewer.
+   */
+  ask: (question: string) => Promise<void>
+  /** True while a question is in flight, so the input can show it. */
+  asking: boolean
   log: ReturnType<typeof useLog>
   /** Whether the room is still talking. */
   health: ReturnType<typeof useHealth>['health']
@@ -75,6 +88,70 @@ export function useChat({ collapseWindowMs, collapseThreshold }: UseChatOptions)
       stats.record(item)
     },
     [push, stats],
+  )
+
+  /*
+   * Asking the model, and putting the exchange in the feed.
+   *
+   * The question lands immediately so the user sees their own words before the
+   * round trip; the answer lands when it returns. Both go through `push` rather
+   * than `emit`, so neither is counted as a chat event and the model never joins
+   * the chatters leaderboard — it is not a viewer, and a "message" total that
+   * climbs because you asked a question is a total that lies about the room.
+   *
+   * On failure the answer row is still written, carrying the reason: a question
+   * that silently vanishes reads as a hung app, while one that comes back
+   * "could not reach the endpoint" is a state the user can act on.
+   */
+  const [asking, setAsking] = useState(false)
+  const itemsRef = useRef(items)
+  itemsRef.current = items
+
+  const ask = useCallback(
+    async (question: string) => {
+      const asked = question.trim()
+      if (asked === '' || asking) return
+      setAsking(true)
+      const at = Date.now()
+      // Pushed before the call so the feed scrolls to it as it would to any new
+      // row, rather than jumping twice — once for the question, once for the
+      // answer.
+      push({
+        platform: 'tiktok',
+        kind: 'ask',
+        nickname: 'You',
+        id: 'you',
+        avatar: '',
+        timestamp: at,
+        text: asked,
+      })
+      try {
+        const context = chatContext(itemsRef.current)
+        const answer = await host.llmChat(asked, context)
+        push({
+          platform: 'tiktok',
+          kind: 'answer',
+          nickname: 'AI',
+          id: 'ai',
+          avatar: '',
+          timestamp: Date.now(),
+          text: answer.trim() === '' ? 'The model answered with nothing.' : answer,
+        })
+      } catch (error: unknown) {
+        push({
+          platform: 'tiktok',
+          kind: 'answer',
+          nickname: 'AI',
+          id: 'ai',
+          avatar: '',
+          timestamp: Date.now(),
+          text: `Could not ask: ${message(error)}`,
+        })
+      } finally {
+        setAsking(false)
+      }
+    },
+    [asking, push],
   )
 
   // Read inside the event handler to tell a dropped connection from a
@@ -219,9 +296,16 @@ export function useChat({ collapseWindowMs, collapseThreshold }: UseChatOptions)
   }, [])
 
   return useMemo(
-    () => ({ room, items, totalReceived, clear, health, log: { ...log, tallies }, stats }),
-    [room, items, totalReceived, clear, health, log, tallies, stats],
+    () => ({ room, items, totalReceived, clear, ask, asking, health, log: { ...log, tallies }, stats }),
+    [room, items, totalReceived, clear, ask, asking, health, log, tallies, stats],
   )
 }
 
 export { host }
+
+/** Whatever the rejection was, as one line worth showing. */
+function message(error: unknown): string {
+  if (typeof error === 'string') return error
+  if (error instanceof Error) return error.message
+  return String(error)
+}
