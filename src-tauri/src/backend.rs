@@ -51,8 +51,18 @@ const ATTEMPTS: u32 = 5;
 const BACKOFF_START_SECS: u64 = 1;
 const BACKOFF_MAX_SECS: u64 = 15;
 
+/// The backend this build talks to.
+///
+/// Written in rather than asked for, because it is one address that does not
+/// change between users, and being asked for it every time is the sort of
+/// question that trains people to paste a link without reading where it goes. It
+/// stays in the config file and stays editable — a second backend, or a local one
+/// on `http://127.0.0.1:8000`, is a normal thing to point this at — but a fresh
+/// install already knows where to look.
+pub const DEFAULT_BASE_URL: &str = "https://kit-backend.aldifhr.my.id";
+
 /// Where the backend lives and which stream to read.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct BackendConfig {
     /// Origin and optional path, as typed: `https://kit-backend.example`.
@@ -62,8 +72,13 @@ pub struct BackendConfig {
     /// Not a room id. The backend keys everything by room, so one has to be
     /// resolved — but nobody should have to read a UUID out of a dashboard to
     /// watch a stream, and the lookup is a plain read that needs no token.
-    
     pub username: String,
+}
+
+impl Default for BackendConfig {
+    fn default() -> Self {
+        Self { base_url: DEFAULT_BASE_URL.to_string(), username: String::new() }
+    }
 }
 
 /// Strips a handle down to what the backend has stored.
@@ -186,24 +201,16 @@ pub async fn resolve_and_start(base: &str, username: &str) -> Result<String, Str
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(20))
+        // Followed by hand below. Left on, reqwest rewrites the POST into a GET
+        // when it answers a 301, and the backend answers GET on this route with
+        // 405 "Method Not Allowed" — so an `http://` address, which almost every
+        // server bounces to `https://`, failed in a way that read like a broken
+        // backend rather than a typo.
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| e.to_string())?;
-    let response = client
-        .post(&url)
-        .json(&json!({ "username": wanted }))
-        .send()
-        .await
-        .map_err(|e| format!("could not reach {url}: {e}"))?;
-    if !response.status().is_success() {
-        let status = response.status().to_string();
-        let why = response.text().await.unwrap_or_default();
-        return Err(shorten(&why, &status));
-    }
-    let body = response
-        .text()
-        .await
-        .map_err(|e| format!("could not read {url}: {e}"))?;
 
+    let body = post_connect(&client, &url, &wanted).await?;
     let parsed: Value =
         serde_json::from_str(&body).map_err(|e| format!("{url} did not answer with JSON: {e}"))?;
 
@@ -212,6 +219,91 @@ pub async fn resolve_and_start(base: &str, username: &str) -> Result<String, Str
         .and_then(Value::as_str)
         .map(str::to_string)
         .ok_or_else(|| format!("{url} did not say which room it connected: {body}"))
+}
+
+/// POSTs the connect request and returns the body, following one same-host
+/// redirect with the method intact.
+///
+/// Only ever the same host, and only once. A redirect to somewhere else is not a
+/// scheme upgrade to absorb silently — it is somebody naming a different server,
+/// and a handle is not worth posting to a stranger because a URL said so.
+async fn post_connect(
+    client: &reqwest::Client,
+    start: &str,
+    username: &str,
+) -> Result<String, String> {
+    let mut url = start.to_string();
+    // A loop rather than a recursive call, and a flag rather than a counter: one
+    // hop is the http-to-https bounce, and two is a pair of servers pointing at
+    // each other, which should fail rather than spin.
+    let mut followed = false;
+
+    loop {
+        let response = client
+            .post(&url)
+            .json(&json!({ "username": username }))
+            .send()
+            .await
+            .map_err(|e| format!("could not reach {url}: {e}"))?;
+
+        if response.status().is_redirection() {
+            let target = response
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_string);
+            let status = response.status().to_string();
+            if followed {
+                return Err(format!("{start} kept redirecting, ending at {status}."));
+            }
+            match target {
+                Some(target) if same_host(&url, &target) => {
+                    url = target;
+                    followed = true;
+                    continue;
+                }
+                Some(target) => {
+                    return Err(format!(
+                        "{url} answered {status}, pointing at {target} - a different host. Use the https:// address."
+                    ));
+                }
+                None => return Err(format!("{url} answered {status} without saying where to.")),
+            }
+        }
+
+        if !response.status().is_success() {
+            let status = response.status().to_string();
+            let why = response.text().await.unwrap_or_default();
+            // 405 here is almost never the backend refusing this username. It is a GET
+            // arriving where a POST was meant, and saying so beats passing "Method Not
+            // Allowed" to someone who cannot act on it.
+            if status == "405 Method Not Allowed" {
+                return Err(format!(
+                    "{url} answered 405. That is a GET reaching a POST route, which is what an unfollowed http-to-https redirect turns into - try the https:// address."
+                ));
+            }
+            return Err(shorten(&why, &status));
+        }
+
+        return response
+            .text()
+            .await
+            .map_err(|e| format!("could not read {url}: {e}"));
+    }
+}
+
+/// Whether two absolute URLs point at the same host, ignoring the scheme.
+///
+/// Scheme-blind on purpose: `http` -> `https` on one host is the hop worth
+/// following, and it is the only shape this is ever asked to accept.
+fn same_host(a: &str, b: &str) -> bool {
+    let host_of = |url: &str| {
+        reqwest::Url::parse(url)
+            .ok()
+            .map(|parsed| parsed.host_str().map(str::to_string))
+            .unwrap_or(None)
+    };
+    host_of(a).is_some() && host_of(a) == host_of(b)
 }
 
 /// The socket URL for one room.
@@ -478,11 +570,18 @@ pub fn config_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 }
 
 pub fn read_config(app: &tauri::AppHandle) -> BackendConfig {
-    config_path(app)
+    let mut config: BackendConfig = config_path(app)
         .ok()
         .and_then(|path| std::fs::read_to_string(path).ok())
         .and_then(|raw| serde_json::from_str(&raw).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    // A file written before the address was built in can hold an empty string,
+    // which serde would carry over as-is. An app with no address cannot connect,
+    // so the default wins rather than leaving the user a dead field to fill in.
+    if config.base_url.trim().is_empty() {
+        config.base_url = DEFAULT_BASE_URL.to_string();
+    }
+    config
 }
 
 pub fn write_config(app: &tauri::AppHandle, config: &BackendConfig) -> Result<(), String> {
@@ -655,12 +754,34 @@ mod tests {
 
     #[test]
     fn an_unconfigured_source_says_what_is_missing() {
-        let empty = BackendConfig::default();
-        assert_eq!(empty.describe_missing(), Some("a backend URL"));
+        // The address is written in, so the handle is the only thing that can be
+        // missing - which is the whole point of not asking for it.
+        assert_eq!(BackendConfig::default().describe_missing(), Some("a username"));
         let no_user = BackendConfig { base_url: "https://kit.example".into(), ..Default::default() };
         assert_eq!(no_user.describe_missing(), Some("a username"));
         let ready = BackendConfig { base_url: "https://kit.example".into(), username: "a".into() };
         assert_eq!(ready.describe_missing(), None);
+        // Only reachable if someone deliberately blanks the field, and the saved
+        // value then has to fall back rather than leave the app with no address.
+        let blanked = BackendConfig { base_url: "  ".into(), username: "a".into() };
+        assert_eq!(blanked.describe_missing(), Some("a backend URL"));
+    }
+
+    #[test]
+    fn the_built_in_backend_is_where_the_app_looks_without_being_told() {
+        assert_eq!(BackendConfig::default().base_url, DEFAULT_BASE_URL);
+        assert!(DEFAULT_BASE_URL.starts_with("https://"), "the default must not bounce through a redirect");
+    }
+
+    #[test]
+    fn a_redirect_is_only_followed_when_it_stays_on_the_same_host() {
+        // http -> https on one host is the hop worth taking, and the reason is
+        // that a POST turned into a GET would be answered 405.
+        assert!(same_host("http://kit.example/a", "https://kit.example/a"));
+        assert!(same_host("http://kit.example", "https://kit.example/deeper/path"));
+        assert!(!same_host("https://kit.example", "https://evil.example"));
+        assert!(!same_host("https://kit.example", "https://kit.example.evil.com"));
+        assert!(!same_host("https://kit.example", "not a url"));
     }
 
     #[test]

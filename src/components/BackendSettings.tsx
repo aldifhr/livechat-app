@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react'
 import { host } from '../lib/sidecar'
 import {
-  EMPTY_BACKEND,
-  isReady,
   normaliseBaseUrl,
   normaliseUsername,
   type BackendConfig,
@@ -18,30 +16,23 @@ import {
 
 interface Props {
   open: boolean
+  /** What the app already has. Seeding from this rather than re-reading the host
+   *  on open is what stops a slow answer landing on top of what was typed. */
+  config: BackendConfig
   onClose: () => void
-  /** Called with what was saved, so the toolbar stops saying "not set up". */
+  /** Called with what was saved, so the toolbar's handle stays in step. */
   onSaved: (config: BackendConfig) => void
 }
 
-export function BackendSettings({ open, onClose, onSaved }: Props) {
-  const [config, setConfig] = useState<BackendConfig>(EMPTY_BACKEND)
+export function BackendSettings({ open, config: current, onClose, onSaved }: Props) {
+  const [config, setConfig] = useState<BackendConfig>(current)
   const [status, setStatus] = useState('')
 
   useEffect(() => {
     if (!open) return
-    let active = true
-    host
-      .backendConfigGet()
-      .then((saved) => {
-        if (active) setConfig(saved)
-      })
-      .catch((error: unknown) => {
-        if (active) setStatus(error instanceof Error ? error.message : String(error))
-      })
-    return () => {
-      active = false
-    }
-  }, [open])
+    setConfig(current)
+    setStatus('')
+  }, [open, current])
 
   if (!open) return null
 
@@ -119,7 +110,7 @@ export function BackendSettings({ open, onClose, onSaved }: Props) {
           <button className="btn btn-small" onClick={onClose}>
             Close
           </button>
-          <button className="btn btn-primary btn-small" onClick={save} disabled={!isReady(config)}>
+          <button className="btn btn-primary btn-small" onClick={save} disabled={normaliseUsername(config.username) === '' && normaliseBaseUrl(config.baseUrl) === ''}>
             Save
           </button>
         </div>

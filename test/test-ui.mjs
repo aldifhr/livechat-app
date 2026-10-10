@@ -17,7 +17,7 @@ import { fakeTransport, flush, installDom, loadApp } from './dom.mjs'
 process.env.NODE_ENV = 'development'
 
 const { entry } = await loadApp()
-const { App, Overlay, setTransport } = await import(entry)
+const { App, Overlay, setTransport, DEFAULT_BASE_URL: DEFAULT_BACKEND } = await import(entry)
 
 const harness = installDom()
 const React = (await import('react')).default
@@ -91,45 +91,50 @@ check(
   JSON.stringify(fake.commands),
 )
 
-console.log('the backend must be set up before it can be read')
-// With no backend configured there is nothing to read, and the button has to say
-// so rather than accepting a click that quietly does nothing.
+console.log('the handle is asked for in front, not in a dialog')
+// The address is built in, so the only thing a user has to supply is which stream
+// to read. That question belongs where they land, not two clicks in.
 const connectButton = () => $('.room-row .btn-primary')
-check('connect is disabled with no backend', connectButton()?.disabled === true)
-check(
-  'and the toolbar says why',
-  /No backend set up yet/.test($('.source-note')?.textContent ?? ''),
-  $('.source-note')?.textContent,
-)
+const handleInput = () => $('.handle-input')
+check('there is a handle field', Boolean(handleInput()))
+check('it starts empty', handleInput().value === '')
+check('connect is disabled until there is something to connect to', connectButton()?.disabled === true)
+check('and the toolbar says what it wants', /Type the handle/.test($('.source-note')?.textContent ?? ''), $('.source-note')?.textContent)
 
-console.log('the backend dialog')
-await click($$('.room-row .btn').find((b) => b.textContent.trim() === 'Set up…'))
-check('it opens', Boolean($('.modal')))
-const backendInput = (placeholder) => $$('.modal .input').find((i) => i.placeholder === placeholder)
-await type(backendInput('https://kit-backend.example'), 'https://kit-backend.example')
-await type(backendInput('mybasic.indonesia'), '@mybasic.indonesia')
-await click($$('.modal .btn').find((b) => b.textContent.trim() === 'Save'))
-const stored = fake.lastCommand('backend_config_save')
-// Normalised on the way out, because the room is found by exact username match
-// and "@foo" is not the room the backend has.
-check('saves the address trimmed', stored?.args?.config?.baseUrl === 'https://kit-backend.example', JSON.stringify(stored?.args?.config))
-check('saves the handle without its @', stored?.args?.config?.username === 'mybasic.indonesia', JSON.stringify(stored?.args?.config))
-// Handed up rather than left in the dialog: the toolbar says whether a backend is
-// set up, and saving is the only thing that can change the answer.
-check('the toolbar learns it at once', /mybasic\.indonesia/.test($('.source-note')?.textContent ?? ''), $('.source-note')?.textContent)
-check('and connect becomes possible', connectButton()?.disabled === false, `disabled=${connectButton()?.disabled}`)
+await type(handleInput(), '@mybasic.indonesia')
+check('the value reached React state', handleInput().value === '@mybasic.indonesia', handleInput().value)
+check('connect becomes possible', connectButton()?.disabled === false, `disabled=${connectButton()?.disabled}`)
+
+console.log('the handle is remembered without being asked twice')
+// Debounced, so this waits rather than checking instantly.
+await new Promise((done) => setTimeout(done, 600))
+const remembered = fake.lastCommand('backend_config_save')
+check('the address was saved alongside it', remembered?.args?.config?.baseUrl === DEFAULT_BACKEND, JSON.stringify(remembered?.args?.config))
+check('and the handle without its @', remembered?.args?.config?.username === 'mybasic.indonesia', JSON.stringify(remembered?.args?.config))
 
 console.log('connecting asks the host for the right thing')
 await click(connectButton())
 const asked = fake.lastCommand('backend_connect')
 check(
-  'with the address and the handle',
+  'with the built-in address and the typed handle',
   JSON.stringify(asked) ===
     JSON.stringify({
       command: 'backend_connect',
-      args: { config: { baseUrl: 'https://kit-backend.example', username: 'mybasic.indonesia' } },
+      args: { config: { baseUrl: DEFAULT_BACKEND, username: 'mybasic.indonesia' } },
     }),
   JSON.stringify(asked),
+)
+
+console.log('the address is still changeable for the cases that need it')
+await click($$('.room-row .btn').find((b) => b.textContent.trim() === 'Set up…'))
+check('the dialog opens', Boolean($('.modal')))
+const backendInput = (placeholder) => $$('.modal .input').find((i) => i.placeholder === placeholder)
+await type(backendInput('https://kit-backend.example'), 'https://kit-backend.example')
+await click($$('.modal .btn').find((b) => b.textContent.trim() === 'Save'))
+check(
+  'a different address is saved',
+  fake.lastCommand('backend_config_save')?.args?.config?.baseUrl === 'https://kit-backend.example',
+  JSON.stringify(fake.lastCommand('backend_config_save')?.args?.config),
 )
 
 console.log('frames drive the feed')

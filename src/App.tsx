@@ -181,6 +181,7 @@ export default function App() {
       <LlmSettings open={llmOpen} onClose={() => setLlmOpen(false)} />
       <BackendSettings
         open={backendOpen}
+        config={backend}
         onClose={() => setBackendOpen(false)}
         onSaved={setBackend}
       />

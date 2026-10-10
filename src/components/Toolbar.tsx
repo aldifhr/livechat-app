@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { host } from '../lib/sidecar'
 import { PLATFORM, PLATFORMS } from '../lib/platforms'
-import { isReady, normaliseBaseUrl, normaliseUsername, type BackendConfig } from '../lib/backend'
+import { backendUrl, normaliseUsername, type BackendConfig } from '../lib/backend'
 import type { FeedFilters, KindFilter } from '../hooks/useVisibleItems'
 import type { Health } from '../hooks/useHealth'
 import type { UseSettingsResult, ViewSettings } from '../hooks/useSettings'
@@ -50,6 +50,11 @@ const CONDITIONAL_TOGGLES: {
  * One room, read from a backend. There is no source picker because there is only
  * one source: the app does not talk to TikTok itself, so a control for choosing
  * between two would be choosing between one thing and nothing.
+ *
+ * The handle is the one thing asked for, so it sits in front rather than in Set
+ * up. The address is not here at all: there is one backend this build knows, and
+ * a field for it is a field to get wrong. Set up still has it for the cases where
+ * it is genuinely a different address.
  */
 export function Toolbar({
   room,
@@ -69,19 +74,37 @@ export function Toolbar({
 }: Props) {
   const spec = PLATFORMS[PLATFORM]
   const [busy, setBusy] = useState(false)
+  // Seeded once from what was saved, then the user's to edit: re-deriving it on
+  // every render would undo half-typed handles under the cursor.
+  const [handle, setHandle] = useState(() => normaliseUsername(backend.username))
+  const savedHandle = useRef(normaliseUsername(backend.username))
 
   const isConnecting = busy || room.status === 'connecting'
   const isConnected = room.status === 'connected'
-  const backendReady = isReady(backend)
+  const wanted = normaliseUsername(handle)
+  const canConnect = wanted !== '' && !isConnecting
+
+  /*
+    Remembered as soon as it stops changing, not on connect: being made to
+    reconnect to save a handle is the same as not remembering it. Debounced
+    because a save per keystroke is a write per keystroke, and `savedHandle`
+    stops the timer mattering once it has landed.
+  */
+  useEffect(() => {
+    if (!wanted || wanted === savedHandle.current) return
+    const timer = setTimeout(() => {
+      savedHandle.current = wanted
+      host.backendConfigSave({ baseUrl: backendUrl(backend), username: wanted }).catch(() => {})
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [wanted, backend])
 
   async function connect() {
     setBusy(true)
     onClear()
     try {
-      await host.backendConnect({
-        baseUrl: normaliseBaseUrl(backend.baseUrl),
-        username: normaliseUsername(backend.username),
-      })
+      await host.backendConnect({ baseUrl: backendUrl(backend), username: wanted })
+      savedHandle.current = wanted
     } catch {
       // The host's rejection says why in words — no room for that handle, the URL
       // is wrong, the host is down. The status line picks it up; this only has to
@@ -104,22 +127,23 @@ export function Toolbar({
   return (
     <div className="toolbar">
       <div className="room-row">
-        <span className="source-note">
-          {backendReady ? (
-            <>
-              <strong>@{normaliseUsername(backend.username)}</strong> via{' '}
-              {normaliseBaseUrl(backend.baseUrl)}
-            </>
-          ) : (
-            'No backend set up yet'
-          )}
-        </span>
+        <input
+          className="input handle-input"
+          placeholder="Streamer's handle"
+          aria-label="Streamer's TikTok handle"
+          value={handle}
+          disabled={isConnected}
+          onChange={(e) => setHandle(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && canConnect) connect()
+          }}
+        />
         {isConnected ? (
           <button className="btn btn-danger" onClick={disconnect}>
             Stop
           </button>
         ) : (
-          <button className="btn btn-primary" onClick={connect} disabled={!backendReady || isConnecting}>
+          <button className="btn btn-primary" onClick={connect} disabled={!canConnect}>
             {isConnecting ? 'Connecting…' : 'Connect'}
           </button>
         )}
@@ -139,6 +163,15 @@ export function Toolbar({
         <button className="btn btn-small llm-btn" onClick={onOpenBackend} title="Backend address and streamer">
           Set up…
         </button>
+        <span className="source-note">
+          {wanted ? (
+            <>
+              <strong>@{wanted}</strong> via {backendUrl(backend).replace(/^https?:\/\//, '')}
+            </>
+          ) : (
+            'Type the handle to start'
+          )}
+        </span>
 
         <div className={`status status-${room.status} room-status`}>
           <span className="dot" />

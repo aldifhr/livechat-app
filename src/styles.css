@@ -106,6 +106,12 @@ body {
   flex: 1 1 260px;
 }
 
+/* The handle holds its place in front instead of stretching like a filter field,
+   so the address beside it still has somewhere to sit. */
+.room-row .handle-input {
+  flex: 0 1 240px;
+}
+
 .room-status {
   flex: 1 1 100%;
 }

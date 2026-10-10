@@ -11,5 +11,6 @@
 import App from '../src/App'
 import Overlay from '../src/components/Overlay'
 import { setTransport, host, attach } from '../src/lib/sidecar'
+import { DEFAULT_BASE_URL } from '../src/lib/backend'
 
-export { App, Overlay, setTransport, host, attach }
+export { App, Overlay, setTransport, host, attach, DEFAULT_BASE_URL }

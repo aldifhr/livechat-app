@@ -6,9 +6,18 @@
  * user typed. `https` in means `wss` out, so this only has to strip and trim.
  *
  * What the user supplies is a handle, not a room id. The backend keys everything
- * by room and exposes no lookup, so the host resolves one from `GET /api/rooms`
- * — but nobody should have to read a UUID out of a dashboard to watch a stream.
+ * by room but finds or creates one from the handle itself, so nobody should have
+ * to read a UUID out of a dashboard to watch a stream.
  */
+
+/**
+ * The backend this build talks to.
+ *
+ * Mirrors `DEFAULT_BASE_URL` in src-tauri/src/backend.rs. It is written in rather
+ * than asked for because it is one address that does not change between users,
+ * and it stays editable in Set up for the second-backend and local cases.
+ */
+export const DEFAULT_BASE_URL = 'https://kit-backend.aldifhr.my.id'
 
 export interface BackendConfig {
   /** Origin, optionally with a path: `https://kit-backend.example`. */
@@ -18,6 +27,11 @@ export interface BackendConfig {
 }
 
 export const EMPTY_BACKEND: BackendConfig = { baseUrl: '', username: '' }
+
+/** The address to talk to, falling back to the built-in one when none is saved. */
+export function backendUrl(config: BackendConfig): string {
+  return normaliseBaseUrl(config.baseUrl) || DEFAULT_BASE_URL
+}
 
 /**
  * A base URL as typed, ready for the host to turn into a socket address.
