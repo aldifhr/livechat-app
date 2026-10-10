@@ -19,7 +19,14 @@ reqwest = { version = "0.12", features = ["json"] }
 # The backend's event stream. Opened from here rather than from the webview for
 # the same reason as reqwest: the page's content security policy keeps it from
 # reaching any other origin, and a feed URL is not something a page should hold.
-tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
+#
+# native-tls, not rustls: reqwest above takes native-tls by default, and asking
+# rustls here put two TLS stacks in one process with rustls carrying no crypto
+# provider. rustls resolves its provider at the first handshake and panics when it
+# cannot, which is a crash on connect rather than an error anyone could read.
+# One stack means one trust store and nothing to install at startup. On Windows
+# both end up on Schannel, the same implementation the webview already trusts.
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 tokio = { version = "1", features = ["time"] }
 # Already in the tree through reqwest and Tauri; pulled in directly because the
 # socket is read through the `Stream` interface.

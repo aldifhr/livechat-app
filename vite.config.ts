@@ -9,6 +9,13 @@ export default defineConfig({
   server: {
     port: 5183,
     strictPort: true,
+    // target/ is cargo's, not the frontend's. Watching it meant watching tens of
+    // thousands of build artifacts, and watching the .exe specifically meant
+    // failing with EBUSY every time cargo held it open to link - which takes the
+    // dev server down mid-build and reports it as a watcher error.
+    watch: {
+      ignored: ['**/src-tauri/target/**'],
+    },
   },
   build: {
     outDir: 'dist',

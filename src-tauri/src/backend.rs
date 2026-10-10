@@ -175,14 +175,24 @@ fn endpoint(base: &str, path: &str) -> String {
 /// The body can be a whole HTML error page, and this is the only place it is ever
 /// shown.
 fn shorten(text: &str, fallback: &str) -> String {
+    const LIMIT: usize = 200;
     let trimmed = text.trim();
     if trimmed.is_empty() {
         return fallback.to_string();
     }
-    if trimmed.len() <= 200 {
+    if trimmed.len() <= LIMIT {
         return trimmed.to_string();
     }
-    format!("{}…", &trimmed[..200])
+    // Walked by character rather than sliced at LIMIT, because LIMIT is a byte
+    // count and the body is not necessarily ASCII. Slicing there is a panic the
+    // first time a multi-byte character straddles the cut, which is a crash on
+    // exactly the path that was already going wrong.
+    let cut = trimmed
+        .char_indices()
+        .nth(LIMIT)
+        .map(|(index, _)| index)
+        .unwrap_or(trimmed.len());
+    format!("{}…", &trimmed[..cut])
 }
 
 /// Starts reading a username, and reports which room it landed in.
@@ -765,6 +775,58 @@ mod tests {
         // value then has to fall back rather than leave the app with no address.
         let blanked = BackendConfig { base_url: "  ".into(), username: "a".into() };
         assert_eq!(blanked.describe_missing(), Some("a backend URL"));
+    }
+
+    #[test]
+    fn an_error_body_is_cut_on_a_character_boundary_not_a_byte_one() {
+        // len() counts bytes and the body can be UTF-8, so slicing at a fixed byte
+        // offset lands mid-character and panics on a length that looks fine.
+        // 199 ASCII then "é" puts a two-byte character across offset 200.
+        let body = format!("{}é", "a".repeat(199));
+        let cut = shorten(&body, "fallback");
+        assert!(cut.ends_with('…'));
+        // Back to bytes on purpose: a char-safe cut is still under the budget.
+        assert!(cut.len() <= 204, "{}", cut.len());
+        // And it must not have lost the tail of a character into invalid UTF-8.
+        assert!(cut.chars().all(|c| c == 'a' || c == 'é' || c == '…'));
+    }
+
+    #[test]
+    fn a_short_body_is_left_alone() {
+        assert_eq!(shorten("{\"detail\":\"nope\"}", "fallback"), "{\"detail\":\"nope\"}");
+        assert_eq!(shorten("   ", "fallback"), "fallback");
+    }
+
+    /// Opens a real socket to the deployed backend and waits for a frame.
+    ///
+    /// Ignored by default because it reaches the network. Run it with
+    /// `cargo test -- --ignored`.
+    ///
+    /// It earns its place because the failure it guards does not arrive as an
+    /// error. A TLS stack with no crypto provider panics during the handshake, and
+    /// with `panic = "abort"` in release that is the whole app dying on Connect
+    /// rather than anything the UI could report. Nothing else here would notice.
+    #[test]
+    #[ignore = "reaches the deployed backend"]
+    fn the_socket_to_a_real_backend_opens_and_frames_arrive() {
+        const LIVE: &str = "https://kit-backend.aldifhr.my.id";
+
+        let room = tauri::async_runtime::block_on(resolve_and_start(LIVE, "mybasic.indonesia"))
+            .expect("should resolve a room for a live handle");
+        let url = socket_url(LIVE, &room);
+
+        tauri::async_runtime::block_on(async move {
+            use futures_util::StreamExt as _;
+            let (mut stream, _response) = tokio_tungstenite::connect_async(&url)
+                .await
+                .expect("the wss handshake should succeed");
+            let next = tokio::time::timeout(Duration::from_secs(30), stream.next())
+                .await
+                .expect("no frames arrived within 30s");
+            let frame = next.expect("the backend closed the connection")
+                .expect("the frame could not be read");
+            assert!(matches!(frame, tokio_tungstenite::tungstenite::Message::Text(_)), "{frame:?}");
+        });
     }
 
     #[test]
