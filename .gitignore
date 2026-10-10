@@ -15,4 +15,5 @@ src-tauri/resources/livechat-bridge.exe
 # directory, never from here. Ignored anyway so a stray file cannot be committed
 # by accident.
 .env
-.env.*
+.env.*__pycache__/
+*.pyc
