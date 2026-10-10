@@ -17,7 +17,7 @@ import { fakeTransport, flush, installDom, loadApp } from './dom.mjs'
 process.env.NODE_ENV = 'development'
 
 const { entry } = await loadApp()
-const { App, Overlay, setTransport, DEFAULT_BASE_URL: DEFAULT_BACKEND } = await import(entry)
+const { App, setTransport, DEFAULT_BASE_URL: DEFAULT_BACKEND } = await import(entry)
 
 const harness = installDom()
 const React = (await import('react')).default
@@ -531,10 +531,10 @@ check('diamonds are totalled', tile('Diamonds') === '99', tile('Diamonds'))
 // exactly those four — no reliance on where the second boundary happened to fall.
 check('the rate is over the last minute', tile('Per minute') === '4', tile('Per minute'))
 
-// Three components subscribe to the same channel — the feed, the gift chime and
-// the overlay — and all three attach during the same mount. Any of them landing a
-// second registration on the transport delivers every frame twice, which shows up
-// here as doubled totals rather than as anything a user could name.
+// Two components subscribe to the same channel — the feed and the gift chime — and
+// both attach during the same mount. Either landing a second registration on the
+// transport delivers every frame twice, which shows up here as doubled totals
+// rather than as anything a user could name.
 check('one subscription, however many components asked for one', tile('Messages') === '3' && tile('Gifts') === '1', `${tile('Messages')} messages / ${tile('Gifts')} gifts`)
 
 console.log('the peak is never below the current count')
@@ -585,79 +585,6 @@ check('the log has entries', lines.length > 0, String(lines.length))
 check('every line has a level', lines.every((l) => /info|warn|error/.test(l.querySelector('.log-level')?.textContent ?? '')))
 check('every line has a time', lines.every((l) => /\d{2}\.\d{2}\.\d{2}/.test(l.querySelector('.log-time')?.textContent ?? '')))
 check('the log attributed the room', /tiktok:/.test($$('.log-message').map((m) => m.textContent).join(' ')))
-
-console.log('the overlay window')
-// A second root in the same page: the overlay is its own window in the app, and
-// rendering it here is the closest a headless run gets to that.
-await act(async () => {
-  root.render(React.createElement(Overlay))
-})
-await flush()
-
-check('it starts with nothing to show', /Waiting for gifts/.test($('.overlay-idle')?.textContent ?? ''))
-check('the body goes transparent for it', doc.body.classList.contains('overlay-body') === true)
-
-await act(async () => {
-  fake.emit({ platform: 'tiktok', type: 'viewers', count: 2400 })
-  fake.emit({ platform: 'tiktok', type: 'chat', ...viewer({ id: 'o1' }), text: 'a plain message', timestamp: 1700000020000 })
-  fake.emit({ platform: 'tiktok', type: 'follow', ...viewer({ id: 'o2' }), timestamp: 1700000020001 })
-  fake.emit({ platform: 'tiktok', type: 'like', ...viewer({ id: 'o3' }), count: 12, timestamp: 1700000020002 })
-  fake.emit({
-    platform: 'tiktok',
-    type: 'gift',
-    ...viewer({ id: 'o4', nickname: 'pemberi' }),
-    giftName: 'Leo',
-    count: 3,
-    diamonds: 120,
-    timestamp: 1700000020003,
-  })
-  fake.emit({ platform: 'tiktok', type: 'like', ...viewer({ id: 'o5' }), count: 400, timestamp: 1700000020004 })
-})
-
-const cards = $$('.overlay-card')
-// An overlay sits over the stream: a card per chat message would be a chat log
-// nobody can read, and a row per like pulse would flicker faster than it can be
-// seen. Only what is worth reading from across the room belongs here.
-check('a chat message does not reach the overlay', !cards.some((c) => /a plain message/.test(c.textContent ?? '')))
-check('a follow does not reach it either', cards.length === 2, String(cards.length))
-check('a gift does', /Leo/.test(cards.at(-1)?.textContent ?? ''), cards.at(-1)?.textContent)
-check('the gift says how many', /×3/.test(cards.at(-1)?.textContent ?? ''))
-check('the gift shows what it was worth', /120 ◆/.test(cards.at(-1)?.textContent ?? ''))
-check('a small like burst is dropped', !cards.some((c) => /12 likes/.test(c.textContent ?? '')))
-check('a big one is shown', /400 likes/.test(cards[0]?.textContent ?? ''), cards[0]?.textContent)
-check('the newest card is first', /likes/.test(cards[0]?.textContent ?? ''))
-check('the header shows the headcount', /2[.,]400/.test($('.overlay-room')?.textContent ?? ''), $('.overlay-room')?.textContent)
-
-await act(async () => {
-  for (let n = 0; n < 6; n += 1) {
-    fake.emit({ platform: 'tiktok', type: 'gift', ...viewer({ id: `g${n}` }), giftName: `G${n}`, count: 1, diamonds: 1, timestamp: 1700000021000 + n })
-  }
-})
-check('the stack is capped', $$('.overlay-card').length === 3, String($$('.overlay-card').length))
-check('and the newest survived', /G5/.test($$('.overlay-card')[0]?.textContent ?? ''))
-
-console.log('a gift that carries a picture')
-await act(async () => {
-  fake.emit({
-    platform: 'tiktok',
-    type: 'gift',
-    ...viewer({ id: 'p1', nickname: 'penggambar' }),
-    giftName: 'Leo',
-    count: 1,
-    diamonds: 10,
-    giftImage: 'https://p16.example.test/gift/leo.png',
-    timestamp: 1700000022000,
-  })
-})
-check('the card shows it', $$('.overlay-card')[0]?.querySelector('.overlay-gift-image')?.getAttribute('src') === 'https://p16.example.test/gift/leo.png', $$('.overlay-card')[0]?.innerHTML)
-// Not every gift has one — a room whose catalogue request failed, or a gift added
-// to the catalogue after the handshake, both arrive bare. Nothing may be reserved
-// for a picture that is not coming.
-check('a gift with no picture leaves nothing in its place', $$('.overlay-gift-image').length === 1, `${$$('.overlay-gift-image').length} images on screen`)
-
-await click('.overlay-close')
-check('closing asks the host to hide it', JSON.stringify(fake.lastCommand('set_overlay_visible')) ===
-  JSON.stringify({ command: 'set_overlay_visible', args: { visible: false } }), JSON.stringify(fake.lastCommand('set_overlay_visible')))
 
 console.log('teardown')
 await act(async () => {

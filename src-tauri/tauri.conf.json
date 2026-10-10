@@ -20,23 +20,6 @@
         "minHeight": 420,
         "resizable": true,
         "center": true
-      },
-      {
-        "label": "overlay",
-        "title": "Live Chat Overlay",
-        "width": 460,
-        "height": 300,
-        "minWidth": 240,
-        "minHeight": 120,
-        "resizable": true,
-        "transparent": true,
-        "decorations": false,
-        "shadow": false,
-        "alwaysOnTop": true,
-        "skipTaskbar": true,
-        "dragDropEnabled": false,
-        "visible": false,
-        "focus": false
       }
     ],
     "security": {

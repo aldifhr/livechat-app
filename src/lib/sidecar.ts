@@ -98,9 +98,6 @@ export type LogLevel = 'info' | 'warn' | 'error'
 type HostCommand =
   | 'minimize_to_tray'
   | 'set_always_on_top'
-  | 'window_label'
-  | 'set_overlay_visible'
-  | 'set_overlay_click_through'
   | 'notify'
   | 'open_stream'
   | 'llm_models'
@@ -207,28 +204,6 @@ export const host = {
   setAlwaysOnTop: async (onTop: boolean) => {
     const resolved = await resolve()
     await resolved.invoke('set_always_on_top', { onTop })
-  },
-  /**
-   * Which window this frontend is running in.
-   *
-   * The two windows load the same bundle and render different things, and the
-   * bundle has to know which it is before it renders. Asked of the host rather
-   * than read off `getCurrentWindow()` so the webview needs no window permission
-   * just to find out its own name.
-   */
-  windowLabel: async (): Promise<string> => {
-    const resolved = await resolve()
-    const label = await resolved.invoke('window_label')
-    return typeof label === 'string' ? label : 'main'
-  },
-  setOverlayVisible: async (visible: boolean) => {
-    const resolved = await resolve()
-    await resolved.invoke('set_overlay_visible', { visible })
-  },
-  /** Turns the overlay into a hole in the desktop: clicks fall through to it. */
-  setOverlayClickThrough: async (on: boolean) => {
-    const resolved = await resolve()
-    await resolved.invoke('set_overlay_click_through', { on })
   },
   /** A desktop toast, raised by the host rather than by the webview. */
   notify: async (title: string, body: string) => {

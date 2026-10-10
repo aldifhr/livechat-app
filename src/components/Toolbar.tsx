@@ -31,17 +31,14 @@ const TOGGLES: { key: keyof ViewSettings; label: string; hint: string }[] = [
   { key: 'alwaysOnTop', label: 'On top', hint: 'Keep the window above others' },
   { key: 'giftSound', label: 'Gift sound', hint: 'Chime when a gift arrives' },
   { key: 'giftNotice', label: 'Gift notice', hint: 'Raise a desktop toast when a gift arrives' },
-  { key: 'showOverlay', label: 'Overlay', hint: 'Open a transparent window for gifts and likes' },
 ]
 
-/** Only meaningful while the overlay is up: a hidden window cannot pass clicks. */
 const CONDITIONAL_TOGGLES: {
   key: keyof ViewSettings
   label: string
   hint: string
   needs: keyof ViewSettings
 }[] = [
-  { key: 'overlayClickThrough', label: 'Click-through', hint: 'Let clicks fall past the overlay', needs: 'showOverlay' },
 ]
 
 /**

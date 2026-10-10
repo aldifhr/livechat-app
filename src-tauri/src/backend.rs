@@ -425,9 +425,9 @@ pub fn to_app_event(frame: &Value, now_ms: i64) -> Option<Value> {
             "type": "error", "platform": platform,
             "message": frame.get("message").and_then(Value::as_str).unwrap_or_default(),
         }),
-        // `config` is the overlay's own widget settings, `alert` is a donation
-        // hook. Neither is a chat event, and silently folding a donation into a
-        // gift row would put a number in the diamonds total that nobody sent.
+        // `config` is widget settings, `alert` is a donation hook. Neither is a
+        // chat event, and silently folding a donation into a gift row would put
+        // a number in the diamonds total that nobody sent.
         _ => return None,
     })
 }

@@ -28,7 +28,7 @@ export function shouldShowGiftNotice(
   return now - lastShownAt >= gapMs
 }
 
-/** The toast's two lines, built the same way the overlay builds its card. */
+/** The toast's two lines. */
 export function noticeText(nickname: string, giftName: string, count: number, diamonds: number): {
   title: string
   body: string

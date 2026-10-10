@@ -23,10 +23,6 @@ export interface ViewSettings {
   showModeratorBadge: boolean
   /** Keep the window above others, for a second monitor. */
   alwaysOnTop: boolean
-  /** Show the transparent window that puts gifts over the stream. */
-  showOverlay: boolean
-  /** Let clicks through that window to whatever is under it. */
-  overlayClickThrough: boolean
   /** Chime when a gift arrives. */
   giftSound: boolean
   /** Raise a desktop toast when a gift arrives. */
@@ -40,8 +36,6 @@ export const DEFAULT_SETTINGS: ViewSettings = {
   hideFiltered: false,
   showModeratorBadge: true,
   alwaysOnTop: false,
-  showOverlay: false,
-  overlayClickThrough: false,
   giftSound: true,
   giftNotice: true,
 }
@@ -94,21 +88,6 @@ export function useSettings(): UseSettingsResult {
       // A window manager that refuses is not worth interrupting the user over.
     })
   }, [settings.alwaysOnTop])
-
-  useEffect(() => {
-    // Only while it is showing: a window that was hidden underneath a click-
-    // through overlay would still swallow clicks on whatever it covers.
-    if (!settings.showOverlay) return
-    host.setOverlayClickThrough(settings.overlayClickThrough).catch(() => {
-      // Same reasoning as always-on-top.
-    })
-  }, [settings.showOverlay, settings.overlayClickThrough])
-
-  useEffect(() => {
-    host.setOverlayVisible(settings.showOverlay).catch(() => {
-      // The overlay is a separate window; not having one is not fatal.
-    })
-  }, [settings.showOverlay])
 
   const set = useCallback(<K extends keyof ViewSettings>(key: K, value: ViewSettings[K]) => {
     setSettings((previous) => (previous[key] === value ? previous : { ...previous, [key]: value }))

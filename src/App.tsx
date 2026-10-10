@@ -21,9 +21,6 @@ export default function App() {
   const [filters, setFilters] = useState<FeedFilters>({ kind: 'all', search: '' })
   const settings = useSettings()
 
-  // Mounted in the main window only. The overlay is click-through decoration
-  // sitting on top of a stream — a chime there would fire over whatever the
-  // streamer is already playing, and from a window they cannot click to silence.
   useGiftSound(settings.giftSound)
   useGiftNotification(settings.giftNotice)
 

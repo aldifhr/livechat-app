@@ -5,10 +5,6 @@ import { noticeText, shouldShowGiftNotice } from '../lib/notice'
 /**
  * A desktop toast on a gift.
  *
- * Mounted in the main window only, like the chime: the overlay is click-through
- * decoration, and a toast raised from there would outlive it and credit the wrong
- * window for it.
- *
  * Failure is swallowed. A notification service that is off, blocked, or mid-update
  * must not be able to take the feed down with it — the same reasoning as the room
  * status line admitting when it does not know what is going on.

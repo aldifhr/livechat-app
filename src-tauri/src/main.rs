@@ -39,47 +39,6 @@ fn set_always_on_top(app: tauri::AppHandle, on_top: bool) {
     }
 }
 
-/// Which window this frontend is running in.
-///
-/// Both windows load the same bundle and render different things, so the bundle
-/// has to know which one it is before it renders. Asked here rather than read off
-/// `getCurrentWindow()` so the webview needs no window permission just to learn
-/// its own name.
-#[tauri::command]
-fn window_label(window: tauri::WebviewWindow) -> String {
-    window.label().to_string()
-}
-
-/// Shows or hides the overlay.
-///
-/// Split from `set_always_on_top` because the overlay has its own window: it is
-/// created hidden so it cannot flash on screen at launch, and this is what puts
-/// it there — or takes it away, leaving the stream being read either way.
-#[tauri::command]
-fn set_overlay_visible(app: tauri::AppHandle, visible: bool) {
-    let Some(window) = app.get_webview_window("overlay") else {
-        return;
-    };
-    if visible {
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
-    } else {
-        let _ = window.hide();
-    }
-}
-
-/// Lets clicks through the overlay to whatever is underneath it.
-///
-/// Without this an overlay sits between the streamer and their own desktop, and
-/// the only way past it is to move the window out of the way first.
-#[tauri::command]
-fn set_overlay_click_through(app: tauri::AppHandle, on: bool) {
-    if let Some(window) = app.get_webview_window("overlay") {
-        let _ = window.set_ignore_cursor_events(on);
-    }
-}
-
 /// A desktop toast.
 ///
 /// Built here rather than called from the webview so the notification plugin
@@ -194,9 +153,8 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     use tauri::tray::TrayIconBuilder;
 
     let show = MenuItem::with_id(app, "show", "Show", true, None::<&str>)?;
-    let overlay = MenuItem::with_id(app, "overlay", "Overlay", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &overlay, &quit])?;
+    let menu = Menu::with_items(app, &[&show, &quit])?;
 
     let builder = TrayIconBuilder::with_id("main")
         .tooltip("TikTok Live Chat")
@@ -207,19 +165,6 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
                     let _ = window.show();
                     let _ = window.unminimize();
                     let _ = window.set_focus();
-                }
-            }
-            // Reachable from here as well as from the toolbar, because the
-            // toolbar's own overlay toggle cannot turn click-through back off
-            // once the overlay has stopped taking clicks.
-            "overlay" => {
-                if let Some(window) = app.get_webview_window("overlay") {
-                    if window.is_visible().unwrap_or(false) {
-                        let _ = window.hide();
-                    } else {
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    }
                 }
             }
             "quit" => {
@@ -275,9 +220,6 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
         minimize_to_tray,
         set_always_on_top,
-        window_label,
-        set_overlay_visible,
-        set_overlay_click_through,
         notify,
         llm_models,
         llm_config_get,
@@ -315,17 +257,6 @@ fn main() {
                 });
             }
 
-            // Same rule as the main window: the overlay is decoration over a
-            // stream, so closing it must not read as closing the app.
-            if let Some(window) = app.get_webview_window("overlay") {
-                let hideable = window.clone();
-                window.on_window_event(move |event| {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                        api.prevent_close();
-                        let _ = hideable.hide();
-                    }
-                });
-            }
             Ok(())
         })
         .run(tauri::generate_context!())
