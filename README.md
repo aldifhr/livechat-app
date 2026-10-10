@@ -4,7 +4,7 @@ Desktop app (Tauri + React) untuk TikTok live chat. Sidecar Node.js (`tiktok-liv
 
 ## Backend (StreamKit)
 
-Backend Python (FastAPI + TikTokLive) untuk overlay OBS. WebSocket real-time, token auth, multi-overlay.
+Backend Python (FastAPI + TikTokLive) untuk live chat room. WebSocket real-time, token auth, multi-room.
 
 ```
 backend/
@@ -47,16 +47,16 @@ Semua write butuh `X-StreamKit-Token`. Semua response JSON.
 
 | Method | Endpoint | Auth | Keterangan |
 |---|---|---|---|
-| `GET` | `/api/overlays` | — | Daftar overlay |
-| `POST` | `/api/overlays` | token | Buat overlay (butuh `name`) |
-| `GET` | `/api/overlays/{id}` | — | Detail satu overlay |
-| `PATCH` | `/api/overlays/{id}` | token | Ubah `name` / `username` |
-| `DELETE` | `/api/overlays/{id}` | token | Hapus overlay |
-| `POST` | `/api/overlays/{id}/config` | token | Simpan config |
-| `GET` | `/api/overlays/{id}/status` | — | Status koneksi |
+| `GET` | `/api/rooms` | — | Daftar room |
+| `POST` | `/api/rooms` | token | Buat room (butuh `name`) |
+| `GET` | `/api/rooms/{id}` | — | Detail satu room |
+| `PATCH` | `/api/rooms/{id}` | token | Ubah `name` / `username` |
+| `DELETE` | `/api/rooms/{id}` | token | Hapus room |
+| `POST` | `/api/rooms/{id}/config` | token | Simpan config |
+| `GET` | `/api/rooms/{id}/status` | — | Status koneksi |
 | `POST` | `/api/connect` | token | Sambungkan ke room |
 | `POST` | `/api/disconnect` | token | Putuskan |
-| `POST` | `/api/overlays/{id}/trigger` | token | Trigger manual (test gift) |
+| `POST` | `/api/rooms/{id}/trigger` | token | Trigger manual (test gift) |
 | `POST` | `/api/hooks/{id}` | token | Webhook untuk integrasi luar |
 | `GET` | `/api/polls/{id}` | — | Baca poll |
 | `GET` | `/api/polls/{id}/vote` | — | Vote (`?choice=N`) |

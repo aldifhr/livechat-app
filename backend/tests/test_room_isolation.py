@@ -1,9 +1,9 @@
 """Two streams on one backend must not hear each other.
 
-The hub records which overlay each socket is watching, but the recipient filter
+The hub records which room each socket is watching, but the recipient filter
 only consulted that map when the caller had also named a client type. Every
-producer in `events.py` passes an overlay id and none of them pass a client type,
-so `_targets` fell through to "every connected socket": two overlays on two
+producer in `events.py` passes an room id and none of them pass a client type,
+so `_targets` fell through to "every connected socket": two rooms on two
 different TikTok accounts received each other's comments, gifts, donations, each
 other's config and each other's connection status.
 
@@ -21,7 +21,7 @@ messages be inspected exactly as they arrived.
 
 Run with the backend's interpreter, the only one with the app's dependencies:
 
-    apps/api/.venv/bin/python apps/api/tests/test_overlay_isolation.py
+    apps/api/.venv/bin/python apps/api/tests/test_room_isolation.py
 """
 
 import asyncio
@@ -127,16 +127,16 @@ async def open_socket(path: str):
 
 
 async def run() -> None:
-    a, b = "overlay-account-a", "overlay-account-b"
+    a, b = "room-account-a", "room-account-b"
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         for name, label in ((a, "Scene A"), (b, "Scene B")):
-            made = await client.post("/api/overlays", json={"name": label}, headers=AUTH)
+            made = await client.post("/api/rooms", json={"name": label}, headers=AUTH)
             check(f"created {label}", made.status_code in (200, 201), f"got {made.status_code}")
 
-        sock_a, task_a = await open_socket(f"/ws/overlay/{a}")
-        sock_b, task_b = await open_socket(f"/ws/overlay/{b}")
+        sock_a, task_a = await open_socket(f"/ws/room/{a}")
+        sock_b, task_b = await open_socket(f"/ws/room/{b}")
         try:
             await sock_a.drain_opening()
             await sock_b.drain_opening()
@@ -182,10 +182,10 @@ async def run() -> None:
             check("B received no error", await sock_b.expect_nothing(), "A's error crossed to B")
 
             print("a third scene shares nothing with either")
-            c = "overlay-account-c"
-            made = await client.post("/api/overlays", json={"name": "Scene C"}, headers=AUTH)
+            c = "room-account-c"
+            made = await client.post("/api/rooms", json={"name": "Scene C"}, headers=AUTH)
             check("created Scene C", made.status_code in (200, 201), f"got {made.status_code}")
-            sock_c, task_c = await open_socket(f"/ws/overlay/{c}")
+            sock_c, task_c = await open_socket(f"/ws/room/{c}")
             try:
                 await sock_c.drain_opening()
                 await emit(c, Event(kind="comment", user="carol", user_id="carol", value="halo C"))

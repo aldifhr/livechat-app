@@ -45,7 +45,7 @@ async def run_burst(n):
     done = 0
     loop = asyncio.get_running_loop()
 
-    async def fake_emit(overlay_id, event):
+    async def fake_emit(room_id, event):
         nonlocal live, peak, done
         live += 1
         peak = max(peak, live)

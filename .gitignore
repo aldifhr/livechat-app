@@ -25,3 +25,7 @@ venv/
 .pytest_cache/
 *.egg-info/__pycache__/
 *.pyc
+
+# Runtime state — local room records and usernames, not source.
+backend/config/rooms.json
+backend/config/overlays.json

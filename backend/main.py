@@ -24,7 +24,7 @@ import events
 import store
 from watchdog import LivenessWatchdog
 from events import ALERT, Event
-from hub import OVERLAY, hub
+from hub import ROOM, hub
 from sources import TikTokSource
 
 logger = logging.getLogger("streamkit.api")
@@ -33,13 +33,13 @@ logger = logging.getLogger("streamkit.api")
 # can't drift apart — an earlier version mirrored the full schema here and
 # silently overrode the frontend defaults with stale values. Nothing is left for
 # this backend to default: a record's config is whatever the editor wrote, and an
-# overlay nobody has edited yet has no config at all. An empty dict is therefore
+# room nobody has edited yet has no config at all. An empty dict is therefore
 # the correct default, and it is stated rather than inlined so the three places
 # that need one cannot drift into disagreeing about what "no config" is.
 #
 # It used to hold a theme id. The theme is gone from the frontend, so the key was
 # dead weight that every record carried and every summary repeated.
-DEFAULT_OVERLAY_CONFIG: dict[str, Any] = {}
+DEFAULT_ROOM_CONFIG: dict[str, Any] = {}
 
 # Without this, Python's default level is WARNING and every log.info in the
 # event path is discarded — the log would look like it was working while saying
@@ -62,7 +62,7 @@ if _LEVEL != "NONE":
 # live connections
 # --------------------------------------------------------------------------
 
-#: overlay_id -> source. One live room per overlay, whatever asked for it.
+#: room_id -> source. One live room per room, whatever asked for it.
 sources: dict[str, TikTokSource] = {}
 
 
@@ -73,12 +73,12 @@ liveness = LivenessWatchdog()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Re-aim every overlay that was pointed at a room when the process last went
+    # Re-aim every room that was pointed at a room when the process last went
     # down.
     #
     # A restart used to leave every live stream dead until somebody noticed and
     # called the reconnect endpoint by hand. The channel is already stored per
-    # overlay — it is what the editor writes — so nothing new is needed here, only
+    # room — it is what the editor writes — so nothing new is needed here, only
     # for it to be acted on at boot. A room that fails to come back is logged and
     # left alone: it must not stop the others, and it must not crash the API.
     await restore_sources()
@@ -96,23 +96,23 @@ async def lifespan(app: FastAPI):
 
 
 async def restore_sources() -> list[str]:
-    """Reconnect every overlay with a stored channel. Returns what came back."""
+    """Reconnect every room with a stored channel. Returns what came back."""
     restored: list[str] = []
     try:
-        records = store.all_overlays()
+        records = store.all_rooms()
     except Exception as exc:  # noqa: BLE001 — a bad config file must not stop the API
-        logger.warning("could not read stored overlays for restore: %s", exc)
+        logger.warning("could not read stored rooms for restore: %s", exc)
         return restored
 
-    for overlay_id, record in records.items():
+    for room_id, record in records.items():
         username = str(record.get("username", "") or "").strip().lstrip("@")
         if not username:
             continue
         try:
-            await _connect_room(overlay_id, username)
-            restored.append(f"{overlay_id}@{username}")
+            await _connect_room(room_id, username)
+            restored.append(f"{room_id}@{username}")
         except Exception as exc:  # noqa: BLE001 — one room must not block the rest
-            logger.warning("could not restore %s (%s): %s", overlay_id, username, exc)
+            logger.warning("could not restore %s (%s): %s", room_id, username, exc)
     if restored:
         logger.info("restored %d source(s) on boot: %s", len(restored), ", ".join(restored))
     return restored
@@ -137,9 +137,9 @@ router = APIRouter()
 # authorisation
 #
 # A deployed API is public. Without a token anyone could delete a stream's
-# overlays, rewrite its config, or post a fake 999-diamond gift that permanently
+# rooms, rewrite its config, or post a fake 999-diamond gift that permanently
 # advances the astronaut roster. Read and stream access stays open on purpose:
-# the overlay page is loaded by OBS, which cannot send a header, and it needs the
+# the room page is loaded by OBS, which cannot send a header, and it needs the
 # event stream to render at all.
 # --------------------------------------------------------------------------
 
@@ -174,8 +174,8 @@ async def guard_mutations(request: Request, call_next):
     WebSocket path is exempt because it is not an HTTP request in the first
     place, and because OBS cannot authenticate at all.
 
-    /api/overlay-connect/{id} is exempt because OBS loads the overlay page
-    which cannot send a header, and the username comes from the overlay's own
+    /api/room-connect/{id} is exempt because OBS loads the room page
+    which cannot send a header, and the username comes from the room's own
     stored config — not from the caller — so there is nothing to forge.
 
     The rejection is returned rather than raised: an HTTPException thrown from
@@ -183,9 +183,9 @@ async def guard_mutations(request: Request, call_next):
     as an unhandled error instead of a 401.
     """
     if request.method in ("POST", "PATCH", "PUT", "DELETE"):
-        # overlay-connect is config-scoped (username from stored overlay) and
+        # room-connect is config-scoped (username from stored room) and
         # OBS cannot send headers — exempt it from the token gate.
-        if not request.url.path.startswith("/api/overlay-connect/") and not token_is_valid(request):
+        if not request.url.path.startswith("/api/room-connect/") and not token_is_valid(request):
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Invalid or missing STREAMKIT_TOKEN"},
@@ -199,14 +199,14 @@ async def guard_mutations(request: Request, call_next):
 
 
 class ConnectRequest(BaseModel):
-    # Optional because /api/disconnect is posted with only an overlay id, and
+    # Optional because /api/disconnect is posted with only an room id, and
     # this used to be required — which made disconnect answer 422 and left the
     # editor's Stop button silently doing nothing. /api/connect validates it.
     username: str = ""
-    overlay_id: str | None = None
+    room_id: str | None = None
 
 
-class CreateOverlayRequest(BaseModel):
+class CreateRoomRequest(BaseModel):
     name: str
 #: Starting scene, resolved by the caller.
     #:
@@ -217,14 +217,14 @@ class CreateOverlayRequest(BaseModel):
     config: dict[str, Any] | None = None
 
 
-class UpdateOverlayRequest(BaseModel):
+class UpdateRoomRequest(BaseModel):
     name: str | None = None
     username: str | None = None
 
 
 class ConfigUpdateRequest(BaseModel):
     config: dict[str, Any]
-    overlay_id: str | None = None
+    room_id: str | None = None
 
 
 class TriggerRequest(BaseModel):
@@ -263,14 +263,14 @@ class HookRequest(BaseModel):
 
 
 # --------------------------------------------------------------------------
-# overlays
+# rooms
 # --------------------------------------------------------------------------
 
 
-def _summary(overlay_id: str, record: dict[str, Any]) -> dict[str, Any]:
+def _summary(room_id: str, record: dict[str, Any]) -> dict[str, Any]:
     config = record.get("config", {})
     return {
-        "id": overlay_id,
+        "id": room_id,
         "name": record.get("name", "Untitled"),
         "username": record.get("username", ""),
         "config": config,
@@ -278,68 +278,68 @@ def _summary(overlay_id: str, record: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-@router.get("/api/overlays")
-async def list_overlays():
-    return {"overlays": [_summary(oid, rec) for oid, rec in store.all_overlays().items()]}
+@router.get("/api/rooms")
+async def list_rooms():
+    return {"rooms": [_summary(oid, rec) for oid, rec in store.all_rooms().items()]}
 
 
-@router.post("/api/overlays")
-async def create_overlay(req: CreateOverlayRequest):
+@router.post("/api/rooms")
+async def create_room(req: CreateRoomRequest):
     name = req.name.strip() or "Untitled"
-    config = req.config if req.config is not None else dict(DEFAULT_OVERLAY_CONFIG)
-    record = store.create_overlay(name, config)
-    return {"overlay": _summary(record["id"], record)}
+    config = req.config if req.config is not None else dict(DEFAULT_ROOM_CONFIG)
+    record = store.create_room(name, config)
+    return {"room": _summary(record["id"], record)}
 
 
-@router.patch("/api/overlays/{overlay_id}")
-async def update_overlay(overlay_id: str, req: UpdateOverlayRequest):
+@router.patch("/api/rooms/{room_id}")
+async def update_room(room_id: str, req: UpdateRoomRequest):
     username_changed = False
     if req.username is not None:
-        current = store.username_of(overlay_id)
+        current = store.username_of(room_id)
         incoming = req.username.strip().lstrip("@")
         username_changed = incoming != current
 
-    record = store.update_overlay(
-        overlay_id,
+    record = store.update_room(
+        room_id,
         name=req.name.strip() if req.name is not None else None,
         username=req.username.strip().lstrip("@") if req.username is not None else None,
     )
     if record is None:
-        raise HTTPException(status_code=404, detail="Overlay not found")
+        raise HTTPException(status_code=404, detail="Room not found")
 
     # A different username means the running source is pointed at the wrong
-    # room, so drop it; the overlay page re-requests the connection on reload.
+    # room, so drop it; the room page re-requests the connection on reload.
     if username_changed:
-        source = sources.get(overlay_id)
+        source = sources.get(room_id)
         if source is not None and source.is_running():
             await source.stop()
 
-    return {"overlay": _summary(overlay_id, record)}
+    return {"room": _summary(room_id, record)}
 
 
-@router.get("/api/overlays/{overlay_id}")
-async def get_overlay(overlay_id: str):
-    record = store.get_overlay(overlay_id)
+@router.get("/api/rooms/{room_id}")
+async def get_room(room_id: str):
+    record = store.get_room(room_id)
     if record is None:
-        raise HTTPException(status_code=404, detail="Overlay not found")
+        raise HTTPException(status_code=404, detail="Room not found")
     return record
 
 
-@router.delete("/api/overlays/{overlay_id}")
-async def delete_overlay(overlay_id: str):
-    if not store.delete_overlay(overlay_id):
-        raise HTTPException(status_code=404, detail="Overlay not found")
-    source = sources.pop(overlay_id, None)
+@router.delete("/api/rooms/{room_id}")
+async def delete_room(room_id: str):
+    if not store.delete_room(room_id):
+        raise HTTPException(status_code=404, detail="Room not found")
+    source = sources.pop(room_id, None)
     if source is not None:
         await source.stop()
     return {"status": "ok"}
 
 
-@router.post("/api/overlays/{overlay_id}/config")
-async def update_overlay_config(overlay_id: str, req: ConfigUpdateRequest):
-    if not store.set_config(overlay_id, req.config):
-        raise HTTPException(status_code=404, detail="Overlay not found")
-    await events.emit_config(overlay_id, req.config)
+@router.post("/api/rooms/{room_id}/config")
+async def update_room_config(room_id: str, req: ConfigUpdateRequest):
+    if not store.set_config(room_id, req.config):
+        raise HTTPException(status_code=404, detail="Room not found")
+    await events.emit_config(room_id, req.config)
     return {"status": "ok"}
 
 
@@ -348,83 +348,83 @@ async def update_overlay_config(overlay_id: str, req: ConfigUpdateRequest):
 # --------------------------------------------------------------------------
 
 
-@router.post("/api/overlay-connect/{overlay_id}")
-async def overlay_connect(overlay_id: str):
-    """Connect the room an overlay is already configured for, with no login.
+@router.post("/api/room-connect/{room_id}")
+async def room_connect(room_id: str):
+    """Connect the room an room is already configured for, with no login.
 
-    OBS loads /overlay/<id> on the streamer's own machine and cannot log in, so
+    OBS loads /room/<id> on the streamer's own machine and cannot log in, so
     /api/connect — which takes the username from the request and can therefore
-    aim the global room at anything — is closed to it. That left the overlay
+    aim the global room at anything — is closed to it. That left the room
     unable to ever reach a stream and showing the sample scene forever.
 
     The difference here is that the username is not taken from the request. It is
-    read from the overlay's own saved config, so this can only ever connect the
-    room that overlay already names. A caller who wants a different room has to
+    read from the room's own saved config, so this can only ever connect the
+    room that room already names. A caller who wants a different room has to
     change the config first, which is behind the session. There is no body to
-    forge and no path to hijack another overlay's stream.
+    forge and no path to hijack another room's stream.
     """
-    username = store.username_of(overlay_id).strip().lstrip("@")
+    username = store.username_of(room_id).strip().lstrip("@")
     if not username:
         # No config to honour is a configuration error, not an auth error, and
         # saying "not signed in" would send the caller looking for a password
         # that cannot possibly help.
         raise HTTPException(
             status_code=409,
-            detail="overlay has no username configured; set one in the editor",
+            detail="room has no username configured; set one in the editor",
         )
-    return await _connect_room(overlay_id, username)
+    return await _connect_room(room_id, username)
 
 
 @router.post("/api/connect")
 async def connect(req: ConnectRequest):
-    overlay_id = req.overlay_id or "default"
+    room_id = req.room_id or "default"
     username = req.username.strip().lstrip("@")
     if not username:
         raise HTTPException(status_code=400, detail="username is required")
-    return await _connect_room(overlay_id, username)
+    return await _connect_room(room_id, username)
 
 
-async def _connect_room(overlay_id: str, username: str) -> dict:
+async def _connect_room(room_id: str, username: str) -> dict:
     """Point the one global room at `username`, replacing any previous source.
 
     Shared by the session-gated /api/connect and the config-scoped
-    /api/overlay-connect, so the two cannot drift apart in how they start or
+    /api/room-connect, so the two cannot drift apart in how they start or
     report a source.
     """
-    existing = sources.get(overlay_id)
+    existing = sources.get(room_id)
     if existing and existing.is_running() and existing.username == username:
         # Idempotent path. The ConnectEvent for this source already fired
         # earlier, so anyone attaching now would otherwise never learn the
         # current state — push it explicitly.
-        await hub.broadcast(existing.status_payload(), overlay_id=overlay_id)
+        await hub.broadcast(existing.status_payload(), room_id=room_id)
         return {
             "status": "already-connected",
             "username": existing.username,
-            "overlay_id": overlay_id,
+            "room_id": room_id,
             **existing.status_payload(),
         }
 
     if existing:
         await existing.stop()
 
-    source = TikTokSource(username, overlay_id)
-    sources[overlay_id] = source
+    source = TikTokSource(username, room_id)
+    sources[room_id] = source
     source.start_background()
-    return {"status": "connecting", "username": username, "overlay_id": overlay_id}
+    return {"status": "connecting", "username": username, "room_id": room_id}
 
 
 @router.post("/api/disconnect")
 async def disconnect(req: ConnectRequest):
-    overlay_id = req.overlay_id or "default"
-    source = sources.pop(overlay_id, None)
+    room_id = req.room_id or "default"
+    source = sources.pop(room_id, None)
     if source is not None:
         await source.stop()
     return {"status": "disconnected"}
 
 
-@router.get("/api/overlays/{overlay_id}/status")
-async def connection_status(overlay_id: str):
-    source = sources.get(overlay_id)
+@router.get("/api/rooms/{room_id}/status")
+async def connection_status(room_id: str):
+    source = sources.get(room_id)
     return source.status_payload() if source else {"type": "status", "connected": False, "message": "Offline"}
 
 
@@ -433,19 +433,19 @@ async def connection_status(overlay_id: str):
 # --------------------------------------------------------------------------
 
 
-@router.post("/api/overlays/{overlay_id}/trigger")
-async def trigger(overlay_id: str, req: TriggerRequest):
-    """Emit an event into an overlay by hand.
+@router.post("/api/rooms/{room_id}/trigger")
+async def trigger(room_id: str, req: TriggerRequest):
+    """Emit an event into an room by hand.
 
-    This is the seam that makes the overlay more than a chat mirror: anything
+    This is the seam that makes the room more than a chat mirror: anything
     that can POST here — a Stream Deck, a Discord bot, a cron job — appears on
     the stream without touching the backend.
     """
-    if store.get_overlay(overlay_id) is None:
-        raise HTTPException(status_code=404, detail="Overlay not found")
+    if store.get_room(room_id) is None:
+        raise HTTPException(status_code=404, detail="Room not found")
 
     await events.emit(
-        overlay_id,
+        room_id,
         Event(
             kind=req.kind,
             user=req.user,
@@ -476,16 +476,16 @@ async def trigger(overlay_id: str, req: TriggerRequest):
     return {"status": "ok", "kind": req.kind}
 
 
-@router.post("/api/hooks/{overlay_id}")
-async def webhook(overlay_id: str, req: HookRequest):
+@router.post("/api/hooks/{room_id}")
+async def webhook(room_id: str, req: HookRequest):
     """Alias for `trigger` with a flatter body, for external integrations.
 
     Kept separate rather than merged so the intent at the call site is
     readable, and so this path can grow its own auth later without changing
     what the dashboard's own button posts.
     """
-    if store.get_overlay(overlay_id) is None:
-        raise HTTPException(status_code=404, detail="Overlay not found")
+    if store.get_room(room_id) is None:
+        raise HTTPException(status_code=404, detail="Room not found")
 
     value = req.text
     if req.amount is not None and not value:
@@ -500,7 +500,7 @@ async def webhook(overlay_id: str, req: HookRequest):
         meta["amount"] = req.amount
 
     await events.emit(
-        overlay_id,
+        room_id,
         Event(
             kind=req.kind,
             user=req.user,
@@ -528,18 +528,18 @@ async def webhook(overlay_id: str, req: HookRequest):
 # --------------------------------------------------------------------------
 
 
-@app.websocket("/ws/{client_type}/{overlay_id}")
-async def websocket_endpoint(websocket: WebSocket, client_type: str, overlay_id: str):
-    client_id = await hub.connect(websocket, client_type, overlay_id)
+@app.websocket("/ws/{client_type}/{room_id}")
+async def websocket_endpoint(websocket: WebSocket, client_type: str, room_id: str):
+    client_id = await hub.connect(websocket, client_type, room_id)
     try:
-        record = store.get_overlay(overlay_id)
-        config = record.get("config", DEFAULT_OVERLAY_CONFIG) if record else DEFAULT_OVERLAY_CONFIG
+        record = store.get_room(room_id)
+        config = record.get("config", DEFAULT_ROOM_CONFIG) if record else DEFAULT_ROOM_CONFIG
         await websocket.send_text(json.dumps({"type": "config", "config": config}, ensure_ascii=False))
 
         # Send a status snapshot on attach. Connection-state events are edge
         # triggered, so a client opening the socket after the handshake
         # finished would otherwise sit on "connecting" forever.
-        source = sources.get(overlay_id)
+        source = sources.get(room_id)
         payload = source.status_payload() if source else {"type": "status", "connected": False, "message": "Offline"}
         await websocket.send_text(json.dumps(payload, ensure_ascii=False))
 

@@ -16,7 +16,7 @@ from sources.viewers_count import judge
 from events import COMMENT, FOLLOW, GIFT, JOIN, LIKE, SHARE, VIEWERS, Event, dispatch, emit_error, emit_status
 
 # TikTok substitutes these when a viewer's profile is unavailable or deleted.
-# Broadcasting them puts literal "Not found" / "?" on the overlay, so they are
+# Broadcasting them puts literal "Not found" / "?" on the room, so they are
 # dropped rather than shown as if they were usernames.
 PLACEHOLDER_NICKNAMES = {"", "?", "not found", "unknown", "-", "null", "none"}
 
@@ -46,9 +46,9 @@ logger = logging.getLogger("streamkit.tiktok")
 
 
 class TikTokSource:
-    def __init__(self, username: str, overlay_id: str) -> None:
+    def __init__(self, username: str, room_id: str) -> None:
         self.username = username
-        self.overlay_id = overlay_id
+        self.room_id = room_id
         self._client = None
         # The previous audience figure, so an implausible jump can be called out
         # rather than silently driving the city's size.
@@ -109,7 +109,7 @@ class TikTokSource:
             )
         except ImportError:
             await emit_error(
-                self.overlay_id,
+                self.room_id,
                 "TikTokLive library not installed. Run: pip install TikTokLive",
             )
             return
@@ -120,13 +120,13 @@ class TikTokSource:
         @self._client.on(ConnectEvent)
         async def on_connect(_):
             self._connected = True
-            await emit_status(self.overlay_id, connected=True, message=f"Connected to @{self.username}")
+            await emit_status(self.room_id, connected=True, message=f"Connected to @{self.username}")
 
         @self._client.on(DisconnectEvent)
         async def on_disconnect(_):
             self._running = False
             self._connected = False
-            await emit_status(self.overlay_id, connected=False, message="Disconnected")
+            await emit_status(self.room_id, connected=False, message="Disconnected")
 
         @self._client.on(CommentEvent)
         async def on_comment(event):
@@ -134,7 +134,7 @@ class TikTokSource:
             if not name:
                 return
             dispatch(
-                self.overlay_id,
+                self.room_id,
                 Event(
                     kind=COMMENT,
                     user=name,
@@ -149,7 +149,7 @@ class TikTokSource:
             if not name:
                 return
             dispatch(
-                self.overlay_id,
+                self.room_id,
                 Event(
                     kind=LIKE,
                     user=name,
@@ -166,7 +166,7 @@ class TikTokSource:
             if not name:
                 return
             dispatch(
-                self.overlay_id,
+                self.room_id,
                 Event(
                     kind=GIFT,
                     user=name,
@@ -188,7 +188,7 @@ class TikTokSource:
             if not name:
                 return
             dispatch(
-                self.overlay_id,
+                self.room_id,
                 Event(
                     kind=JOIN,
                     user=name,
@@ -218,7 +218,7 @@ class TikTokSource:
                 logger.warning(verdict.warning)
             if verdict.count is None:
                 return
-            dispatch(self.overlay_id, Event(kind=VIEWERS, meta={"count": verdict.count}))
+            dispatch(self.room_id, Event(kind=VIEWERS, meta={"count": verdict.count}))
 
         # Social events are registered as the concrete subclasses rather than
         # SocialEvent: TikTokLive matches handlers on the emitted class, and a
@@ -229,7 +229,7 @@ class TikTokSource:
             if not name:
                 return
             dispatch(
-                self.overlay_id,
+                self.room_id,
                 Event(kind=FOLLOW, user=name, user_id=display_id(event.user)),
             )
 
@@ -242,7 +242,7 @@ class TikTokSource:
             # string is absent, so it is optional rather than defaulted to 0.
             joined = event.users_joined
             dispatch(
-                self.overlay_id,
+                self.room_id,
                 Event(
                     kind=SHARE,
                     user=name,
@@ -258,10 +258,10 @@ class TikTokSource:
         except Exception as e:
             self._running = False
             self._connected = False
-            await emit_error(self.overlay_id, f"Connection failed: {e}")
+            await emit_error(self.room_id, f"Connection failed: {e}")
         finally:
             self._connected = False
-            await emit_status(self.overlay_id, connected=False, message="Disconnected")
+            await emit_status(self.room_id, connected=False, message="Disconnected")
 
     async def stop(self) -> None:
         self._running = False

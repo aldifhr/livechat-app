@@ -2,7 +2,7 @@
 
 There was no logging anywhere in the backend: an event was built, fanned out to
 the WebSockets, and dropped. So when a live room produced a fast-moving viewer
-count and a busy chat and the overlay showed an empty canvas, there was nothing to
+count and a busy chat and the room showed an empty canvas, there was nothing to
 look at — the question could only be answered by attaching a script to the socket
 and reading it by eye, and comparing that to a screenshot.
 
@@ -14,7 +14,7 @@ The log answers the questions that actually come up, which are mostly counts and
   * Is the event arriving? ``comment #1``, ``#2``, ``#3`` in sequence. If the
     counter for a kind never moves, that kind is not being produced.
   * Is it the same person every time? Repeats are printed, because a stream
-    where one account fills the chat is a different problem from a dead overlay.
+    where one account fills the chat is a different problem from a dead room.
 
 Counts go to stdout as ``kind=count`` lines rather than being accumulated and
 dumped periodically, so a slow trickle still shows up: a comment every four

@@ -8,7 +8,7 @@ py-spy found the process parked in `qsize()` with the GIL held, which is why the
 API stopped answering entirely while the source kept logging events. The frame
 here that fails is the whole regression: `qsize` is monkeypatched to raise, and
 the hub must not touch it. Any future version that reintroduces the scan fails
-loudly instead of hanging a production overlay.
+loudly instead of hanging a production room.
 """
 
 import asyncio
@@ -52,7 +52,7 @@ def attach(h: hub.Hub, cid: str, delay: float = 0.0) -> FakeWS:
     ws = FakeWS(delay)
     any_ws: Any = ws  # the hub is typed for a WebSocket; this is a stand-in
     h.active[cid] = any_ws
-    h.overlay_clients[cid] = "ov"
+    h.room_clients[cid] = "ov"
     h._queues[cid] = asyncio.Queue(maxsize=hub.CLIENT_QUEUE_LIMIT)
     return ws
 

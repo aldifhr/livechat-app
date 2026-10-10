@@ -125,7 +125,7 @@ def to_wire(event: Event) -> dict[str, Any]:
     serialise = SERIALISERS.get(event.kind)
     if serialise is None:
         # An unknown kind is a bug in the caller, not a reason to silence the
-        # overlay: surface it as an alert so it is visible while developing
+        # room: surface it as an alert so it is visible while developing
         # rather than dropped on the floor.
         return _alert(
             Event(kind=ALERT, value=event.kind, meta={"title": "unhandled kind", "icon": "⚠"})
@@ -133,7 +133,7 @@ def to_wire(event: Event) -> dict[str, Any]:
     return serialise(event)
 
 
-async def emit(overlay_id: str, event: Event) -> None:
+async def emit(room_id: str, event: Event) -> None:
     # Logged here rather than in each source, so every producer is covered by one
     # line of code: TikTok, the manual trigger and any future source all pass
     # through emit, and a source that forgot to log would be invisible if the call
@@ -142,10 +142,10 @@ async def emit(overlay_id: str, event: Event) -> None:
     # Outside the broadcast on purpose. The log has to keep working when every
     # client has gone — a quiet log is exactly when it is needed.
     eventlog.record(event.kind, user=event.user, text=event.value, meta=event.meta)
-    await hub.broadcast(to_wire(event), overlay_id=overlay_id)
+    await hub.broadcast(to_wire(event), room_id=room_id)
 
 
-async def emit_status(overlay_id: str, *, connected: bool, message: str, connecting: bool = False) -> None:
+async def emit_status(room_id: str, *, connected: bool, message: str, connecting: bool = False) -> None:
     # A snapshot sent at the start of a session is connecting=True, not a state
     # change, and treating it as a disconnect would reset the counters before
     # there is anything to count.
@@ -154,16 +154,16 @@ async def emit_status(overlay_id: str, *, connected: bool, message: str, connect
     payload: dict[str, Any] = {"type": "status", "connected": connected, "message": message}
     if connecting:
         payload["connecting"] = True
-    await hub.broadcast(payload, overlay_id=overlay_id)
+    await hub.broadcast(payload, room_id=room_id)
 
 
-async def emit_error(overlay_id: str, message: str) -> None:
+async def emit_error(room_id: str, message: str) -> None:
     eventlog.error(message)
-    await hub.broadcast({"type": "error", "message": message}, overlay_id=overlay_id)
+    await hub.broadcast({"type": "error", "message": message}, room_id=room_id)
 
 
-async def emit_config(overlay_id: str, config: dict[str, Any]) -> None:
-    await hub.broadcast({"type": "config", "config": config}, overlay_id=overlay_id)
+async def emit_config(room_id: str, config: dict[str, Any]) -> None:
+    await hub.broadcast({"type": "config", "config": config}, room_id=room_id)
 
 
 # How many fan-outs may be in flight at once.
@@ -192,16 +192,16 @@ def _gate() -> asyncio.Semaphore:
     return _inflight
 
 
-async def _emit_gated(overlay_id: str, event: Event) -> None:
+async def _emit_gated(room_id: str, event: Event) -> None:
     async with _gate():
-        await emit(overlay_id, event)
+        await emit(room_id, event)
 
 
-def dispatch(overlay_id: str, event: Event) -> asyncio.Task:
+def dispatch(room_id: str, event: Event) -> asyncio.Task:
     """Fire an event without making the caller await the fan-out.
 
     WebSocket sends can block on a stalled client, and a source's handler runs
     inside TikTokLive's event loop; awaiting here would let one wedged browser
     source back-pressure the whole live stream.
     """
-    return asyncio.create_task(_emit_gated(overlay_id, event))
+    return asyncio.create_task(_emit_gated(room_id, event))

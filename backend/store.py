@@ -1,7 +1,7 @@
-"""Overlay persistence.
+"""Room persistence.
 
-The original loader re-read and re-wrote the entire overlays file on every
-request. That is harmless for one overlay and wrong for twenty: each request
+The original loader re-read and re-wrote the entire rooms file on every
+request. That is harmless for one room and wrong for twenty: each request
 re-parses the JSON, and two saves issued in the same tick each hold their own
 copy of the file, so whichever flushed last silently discarded the other. The
 file is now read once and mutated in place behind a lock, and each write is
@@ -19,7 +19,7 @@ from typing import Any
 
 BASE_DIR = Path(__file__).parent
 CONFIG_DIR = BASE_DIR / "config"
-OVERLAYS_FILE = CONFIG_DIR / "overlays.json"
+ROOMS_FILE = CONFIG_DIR / "rooms.json"
 
 # A plain lock, not asyncio.Lock: every critical section below is synchronous
 # and contains no await, so the only thing the lock is protecting against is a
@@ -31,14 +31,14 @@ _cache: dict[str, Any] | None = None
 def _data() -> dict[str, Any]:
     global _cache
     if _cache is None:
-        if OVERLAYS_FILE.exists():
+        if ROOMS_FILE.exists():
             try:
-                _cache = json.loads(OVERLAYS_FILE.read_text(encoding="utf-8"))
+                _cache = json.loads(ROOMS_FILE.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
                 # A corrupt file must not brick the API. The bad copy is set
                 # aside so it can be inspected instead of silently overwritten.
-                broken = OVERLAYS_FILE.with_suffix(".json.corrupt")
-                os.replace(OVERLAYS_FILE, broken)
+                broken = ROOMS_FILE.with_suffix(".json.corrupt")
+                os.replace(ROOMS_FILE, broken)
                 _cache = {}
         else:
             _cache = {}
@@ -48,29 +48,29 @@ def _data() -> dict[str, Any]:
 def _flush() -> None:
     data = _data()
     CONFIG_DIR.mkdir(exist_ok=True)
-    tmp = OVERLAYS_FILE.with_suffix(".json.tmp")
+    tmp = ROOMS_FILE.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-    os.replace(tmp, OVERLAYS_FILE)
+    os.replace(tmp, ROOMS_FILE)
 
 
-def _record(overlay_id: str) -> dict[str, Any] | None:
-    return _data().get(overlay_id)
+def _record(room_id: str) -> dict[str, Any] | None:
+    return _data().get(room_id)
 
 
-def all_overlays() -> dict[str, Any]:
+def all_rooms() -> dict[str, Any]:
     """A detached copy, so a caller cannot mutate the cache by accident."""
     with _lock:
         return copy.deepcopy(_data())
 
 
-def get_overlay(overlay_id: str) -> dict[str, Any] | None:
+def get_room(room_id: str) -> dict[str, Any] | None:
     with _lock:
-        record = _record(overlay_id)
+        record = _record(room_id)
         return copy.deepcopy(record) if record else None
 
 
-def create_overlay(name: str, config: dict[str, Any]) -> dict[str, Any]:
-    overlay_id = str(uuid.uuid4())
+def create_room(name: str, config: dict[str, Any]) -> dict[str, Any]:
+    room_id = str(uuid.uuid4())
     record = {
         "name": name,
         "username": "",
@@ -78,19 +78,19 @@ def create_overlay(name: str, config: dict[str, Any]) -> dict[str, Any]:
         "createdAt": time.time(),
     }
     with _lock:
-        _data()[overlay_id] = record
+        _data()[room_id] = record
         _flush()
-    return {"id": overlay_id, **record}
+    return {"id": room_id, **record}
 
 
-def update_overlay(
-    overlay_id: str,
+def update_room(
+    room_id: str,
     *,
     name: str | None = None,
     username: str | None = None,
 ) -> dict[str, Any] | None:
     with _lock:
-        record = _record(overlay_id)
+        record = _record(room_id)
         if record is None:
             return None
         if name is not None:
@@ -101,18 +101,18 @@ def update_overlay(
         return copy.deepcopy(record)
 
 
-def delete_overlay(overlay_id: str) -> bool:
+def delete_room(room_id: str) -> bool:
     with _lock:
-        if overlay_id not in _data():
+        if room_id not in _data():
             return False
-        del _data()[overlay_id]
+        del _data()[room_id]
         _flush()
         return True
 
 
-def set_config(overlay_id: str, config: dict[str, Any]) -> bool:
+def set_config(room_id: str, config: dict[str, Any]) -> bool:
     with _lock:
-        record = _record(overlay_id)
+        record = _record(room_id)
         if record is None:
             return False
         record["config"] = config
@@ -120,7 +120,7 @@ def set_config(overlay_id: str, config: dict[str, Any]) -> bool:
         return True
 
 
-def username_of(overlay_id: str) -> str:
+def username_of(room_id: str) -> str:
     with _lock:
-        record = _record(overlay_id)
+        record = _record(room_id)
         return str(record.get("username", "")) if record else ""
