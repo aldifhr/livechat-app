@@ -99,7 +99,15 @@ export function useChat({ collapseWindowMs, collapseThreshold }: UseChatOptions)
           }
           setRoom((previous) => ({
             ...previous,
-            status: event.connecting ? 'connecting' : event.connected ? 'connected' : previous.status === 'connected' ? 'idle' : 'error',
+            status: event.connecting
+              ? 'connecting'
+              : event.connected
+                ? 'connected'
+                : event.liveEnded
+                  ? 'ended'
+                  : previous.status === 'connected'
+                    ? 'idle'
+                    : 'error',
             message: event.message,
           }))
           break

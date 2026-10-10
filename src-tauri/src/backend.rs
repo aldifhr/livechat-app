@@ -415,6 +415,10 @@ pub fn to_app_event(frame: &Value, now_ms: i64) -> Option<Value> {
             "type": "status", "platform": platform,
             "connected": frame.get("connected").and_then(Value::as_bool).unwrap_or(false),
             "connecting": frame.get("connecting").and_then(Value::as_bool).unwrap_or(false),
+            // The streamer stopped, as distinct from our connection dropping.
+            // Carried as sent and defaulted false, so a status frame from an older
+            // backend that knows nothing about live ends still maps cleanly.
+            "liveEnded": frame.get("liveEnded").and_then(Value::as_bool).unwrap_or(false),
             "message": frame.get("message").and_then(Value::as_str).unwrap_or_default(),
         }),
         "error" => json!({

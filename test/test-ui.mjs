@@ -175,6 +175,38 @@ check('the viewer count is shown', /1[.,]234 watching/.test($('.room-status')?.t
 check('the room title is shown', $('.room-title')?.textContent === 'A title')
 check('every row carries its platform tag', $$('.row .room-tag').every((t) => t.textContent === 'TT'))
 
+console.log('the live ending is its own state, not an error')
+// The whole point of the flag: a finished live and a dropped socket look the same
+// from the feed, and putting them in one state would paint a normal outcome in
+// the error colour and send the app looking for something to reconnect to.
+await act(async () => {
+  fake.emit({
+    platform: 'tiktok',
+    type: 'status',
+    connected: false,
+    liveEnded: true,
+    message: '@mybasic.indonesia is no longer live',
+  })
+})
+check(
+  'the status says the live ended',
+  /no longer live/.test($('.room-status')?.textContent ?? ''),
+  $('.room-status')?.textContent,
+)
+check('and it is not styled as an error', !$('.status-error'), $('.room-status')?.className)
+check('the ended state is applied', !!$('.status-ended'), $('.room-status')?.className)
+
+// A dropped connection, by contrast, is not a finished live and must not claim to
+// be one — otherwise the retry that follows a network blip never happens.
+await act(async () => {
+  fake.emit({ platform: 'tiktok', type: 'status', connected: false, message: 'Disconnected' })
+})
+check(
+  'a plain disconnect does not say the live ended',
+  !/no longer live/.test($('.room-status')?.textContent ?? ''),
+  $('.room-status')?.textContent,
+)
+
 console.log('the feed respects its cap')
 await act(async () => {
   for (let n = 0; n < 600; n++) {
@@ -250,6 +282,14 @@ check('the empty state explains why', /No messages match the current filter/.tes
 await type('.input-search', '')
 
 console.log('reconnecting replaces the old room')
+// Back to connected first: the live-ending assertions above left the room in the
+// ended state, where the button is Connect rather than Stop, and this section is
+// about what happens when a Stop is followed by a Connect. Driven from the state
+// the test set up rather than left behind, so the two sections do not depend on
+// each other's ordering.
+await act(async () => {
+  fake.emit({ platform: 'tiktok', type: 'status', connected: true, message: 'Connected to @x' })
+})
 await click('.room-row .btn-danger')
 // The host confirms the close, exactly as the real one does — the row keeps its
 // Stop button until then, so a test that skipped this would see the old state.

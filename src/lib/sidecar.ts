@@ -71,7 +71,20 @@ export type SidecarEvent = Tagged &
         timestamp: number
       }
     | { type: 'viewers'; count: number }
-    | { type: 'status'; connected: boolean; connecting?: boolean; message: string }
+    | {
+        type: 'status'
+        connected: boolean
+        connecting?: boolean
+        /**
+         * The streamer stopped, rather than the connection dropping.
+         *
+         * Both stop events arriving, and the feed alone cannot tell them apart.
+         * This is what lets the app say "live ended" instead of reconnecting to a
+         * handle that has gone quiet, which reads as a hung app.
+         */
+        liveEnded?: boolean
+        message: string
+      }
     | { type: 'room'; username: string; roomId: string; title: string }
     | { type: 'error'; message: string }
     /** A diagnostic line from the bridge, surfaced in the app's log panel. */

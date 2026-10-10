@@ -69,7 +69,13 @@ export interface FeedItem extends Viewer {
  * is nothing to lie about.
  */
 export interface RoomState {
-  status: 'idle' | 'connecting' | 'connected' | 'error'
+  /**
+   * `ended` is its own state rather than a flavour of `error`: the live finished
+   * and nothing is wrong, which is the one outcome where the right thing to do
+   * next is to stop rather than retry. Folding it into `error` would put a red
+   * badge on a normal event.
+   */
+  status: 'idle' | 'connecting' | 'connected' | 'ended' | 'error'
   message: string
   /** The streamer handle, as TikTok spells it. */
   target: string

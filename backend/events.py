@@ -53,6 +53,13 @@ class Event:
     #: Bare payload, no verb attached. "sent Rose x1", not "kei sent Rose x1" —
     #: the verb is a presentation concern and belongs in the renderer.
     value: str = ""
+    #: Extra fields the wire format may or may not carry. `liveEnded` is one of
+    #: them: set when the stream itself finished rather than the socket dropping.
+    #: The two look identical from the outside — both stop events arriving — but
+    #: they mean opposite things for what to do next, since a dropped socket is
+    #: worth reconnecting and a finished live is not. Nothing downstream can tell
+    #: them apart otherwise, which is why this is carried rather than inferred
+    #: later from "no events for a while".
     meta: dict[str, Any] = field(default_factory=dict)
 
 
@@ -158,7 +165,14 @@ async def emit(room_id: str, event: Event) -> None:
     await hub.broadcast(to_wire(event), room_id=room_id)
 
 
-async def emit_status(room_id: str, *, connected: bool, message: str, connecting: bool = False) -> None:
+async def emit_status(
+    room_id: str,
+    *,
+    connected: bool,
+    message: str,
+    connecting: bool = False,
+    live_ended: bool = False,
+) -> None:
     # A snapshot sent at the start of a session is connecting=True, not a state
     # change, and treating it as a disconnect would reset the counters before
     # there is anything to count.
@@ -167,6 +181,13 @@ async def emit_status(room_id: str, *, connected: bool, message: str, connecting
     payload: dict[str, Any] = {"type": "status", "connected": connected, "message": message}
     if connecting:
         payload["connecting"] = True
+    # Carried only when true, so a plain status frame is byte-for-byte what it was
+    # before this existed and an older client reading it sees nothing new. The
+    # flag is what separates "the streamer stopped" from "our connection dropped":
+    # the app says "live ended" for one and reconnects for the other, and it
+    # cannot tell them apart from the stream of events alone.
+    if live_ended:
+        payload["liveEnded"] = True
     await hub.broadcast(payload, room_id=room_id)
 
 

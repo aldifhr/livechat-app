@@ -235,6 +235,16 @@ body {
   color: var(--accent);
 }
 
+/*
+ * The live finished. Deliberately not the error colour: nothing went wrong, the
+ * streamer stopped, and a red badge on that reads as a fault the user has to fix.
+ * Muted is the honest tone, and the dot keeps its default for the same reason —
+ * the word "Ended" beside it already says what happened.
+ */
+.status-ended {
+  color: var(--muted);
+}
+
 .status-connected {
   color: var(--text);
 }

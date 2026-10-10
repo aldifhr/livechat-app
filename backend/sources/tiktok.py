@@ -110,6 +110,11 @@ class TikTokSource:
         # latter is what makes a newly-attached client's status honest.
         self._running = False
         self._connected = False
+        # Whether the streamer stopped rather than the connection failing. Kept
+        # separately from `_running` because that one means "a connection was
+        # attempted" and the router reads it, so overloading it here would let a
+        # new connect replace this object while its teardown is still running.
+        self._live_ended = False
         self._task: asyncio.Task | None = None
 
     def status_payload(self) -> dict[str, Any]:
@@ -125,6 +130,16 @@ class TikTokSource:
                 "connected": False,
                 "connecting": True,
                 "message": f"Connecting to @{self.username}",
+            }
+        # A client attaching after the live already ended gets the same honest
+        # answer as one that was there when it happened, rather than a bare
+        # "Offline" that is indistinguishable from never-connected.
+        if self._live_ended:
+            return {
+                "type": "status",
+                "connected": False,
+                "message": f"@{self.username} is no longer live",
+                "liveEnded": True,
             }
         return {"type": "status", "connected": False, "message": "Offline"}
 
@@ -158,6 +173,7 @@ class TikTokSource:
                 JoinEvent,
                 FollowEvent,
                 ShareEvent,
+                LiveEndEvent,
             )
         except ImportError:
             await emit_error(
@@ -179,6 +195,31 @@ class TikTokSource:
             self._running = False
             self._connected = False
             await emit_status(self.room_id, connected=False, message="Disconnected")
+
+        @self._client.on(LiveEndEvent)
+        async def on_live_end(_):
+            """The streamer stopped, as opposed to our socket dropping.
+
+            Both stop delivering events, and from the feed alone they are the
+            same thing. They are not the same thing: a dropped connection is
+            worth reconnecting to, a finished live is not — the user is not
+            going to be there in an hour. Saying which one it was lets the app
+            stop instead of silently retrying against a handle that has gone
+            quiet, which is the failure that looks like a hung app.
+
+            `_running` is left alone. It means "a connection was attempted" and
+            the router reads it to decide whether a room still has a source, so
+            clearing it here would let a new connect replace this object while
+            its own teardown is still running.
+            """
+            self._connected = False
+            self._live_ended = True
+            await emit_status(
+                self.room_id,
+                connected=False,
+                message=f"@{self.username} is no longer live",
+                live_ended=True,
+            )
 
         @self._client.on(CommentEvent)
         async def on_comment(event):
@@ -323,11 +364,27 @@ class TikTokSource:
             await emit_error(self.room_id, f"Connection failed: {e}")
         finally:
             self._connected = False
-            await emit_status(self.room_id, connected=False, message="Disconnected")
+            # Skipped when the live already ended. This `finally` runs on the way
+            # out of a finished stream too, so without the guard it sent a plain
+            # "Disconnected" a moment after the flagged one and overwrote it — the
+            # app saw the stream end and then, immediately, a generic disconnect,
+            # which is the ambiguity this was added to remove. A deliberate
+            # `stop()` takes the same path, and there the generic message is the
+            # correct one.
+            #
+            # A condition, not a `return`: returning out of a `finally` discards
+            # an in-flight exception, which would swallow a connection failure
+            # that this same block is meant to report.
+            if not self._live_ended:
+                await emit_status(self.room_id, connected=False, message="Disconnected")
 
     async def stop(self) -> None:
         self._running = False
         self._connected = False
+        # Cleared so a deliberate stop does not leave the object claiming the live
+        # ended, which would make its next status frame report a finished stream
+        # it never saw finish.
+        self._live_ended = False
         if self._client is not None:
             try:
                 await asyncio.wait_for(self._client.disconnect(), timeout=5)
