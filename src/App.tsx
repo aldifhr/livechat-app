@@ -9,9 +9,11 @@ import { useChat } from './hooks/useChat'
 import { useChatAlerts } from './hooks/useChatAlerts'
 import { useGiftNotification } from './hooks/useGiftNotification'
 import { useGiftSound } from './hooks/useGiftSound'
+import { useMentionAlert } from './hooks/useMentionAlert'
 import { useSettings } from './hooks/useSettings'
 import { useKindCounts, useVisibleItems, type FeedFilters } from './hooks/useVisibleItems'
 import { EMPTY_BACKEND, type BackendConfig } from './lib/backend'
+import { myHandles } from './lib/mentions'
 import { host } from './lib/sidecar'
 
 export default function App() {
@@ -27,6 +29,15 @@ export default function App() {
     customPath: settings.customSoundPath,
   })
   useGiftNotification({ notice: settings.giftNotice, voice: settings.giftVoice })
+  useMentionAlert({
+    myHandle: settings.myHandle,
+    sound: settings.mentionAlert,
+    voice: settings.giftVoice,
+  })
+
+  // The handles that count as "me", parsed once here rather than per row: the feed
+  // is the busiest path in the app and every chat row is checked against them.
+  const mine = myHandles(settings.myHandle)
   useChatAlerts({
     chatSound: settings.chatSound,
     chatTts: settings.chatTts,
@@ -173,7 +184,7 @@ export default function App() {
                 key={item.key}
                 item={item}
                 isLast={index === visible.length - 1}
-                myNames={[]}
+                myNames={mine}
               />
             ))
           )}

@@ -744,6 +744,58 @@ check('gift announcements are offered off', dialogToggle('Say gifts')?.checked =
 await click(dialogToggle('Say gifts'))
 check('and turn on', dialogToggle('Say gifts')?.checked === true)
 
+console.log('mentions of me')
+// The highlight has existed in FeedRow for a long time; this is the half that was
+// missing — a handle to compare against. Without one nothing is highlighted, which
+// is the default: a highlight on the wrong name is worse than none.
+check('no handles by default, so nothing is highlighted yet', $('[data-section="feed"] input[placeholder*="yourname"]')?.value === '', $('[data-section="feed"] input[placeholder*="yourname"]')?.value)
+const handleField = () => $('[data-section="feed"] input[placeholder*="yourname"]')
+await type(handleField(), 'ana')
+check('the handle reaches the setting', handleField().value === 'ana', handleField().value)
+
+// A message naming that handle is highlighted; one naming someone else is not.
+await act(async () => {
+  fake.emit({
+    platform: 'tiktok',
+    type: 'chat',
+    ...viewer({ id: 'm1', nickname: 'budi' }),
+    text: 'halo ana, nonton ya',
+    timestamp: 1700000012000,
+    mentions: ['ana'],
+  })
+})
+check('a message naming me is highlighted', $$('.text-mention').length === 1, String($$('.text-mention').length))
+check('and it is the right row', /halo ana/.test($('.text-mention')?.textContent ?? ''), $('.text-mention')?.textContent)
+
+await act(async () => {
+  fake.emit({
+    platform: 'tiktok',
+    type: 'chat',
+    ...viewer({ id: 'm2', nickname: 'citra' }),
+    text: 'halo budi, nonton ya',
+    timestamp: 1700000012100,
+    mentions: ['budi'],
+  })
+})
+check('a message naming someone else is not', $$('.text-mention').length === 1, String($$('.text-mention').length))
+
+// Case and a leading @ are the same person, because TikTok sends all three forms.
+await act(async () => {
+  fake.emit({
+    platform: 'tiktok',
+    type: 'chat',
+    ...viewer({ id: 'm3', nickname: 'dewi' }),
+    text: 'ANA lihat ini',
+    timestamp: 1700000012200,
+    mentions: ['@ANA'],
+  })
+})
+check('case and a leading @ still count', $$('.text-mention').length === 2, String($$('.text-mention').length))
+
+check('the mention alert is offered off', dialogToggle('Mention alert')?.checked === false)
+await click(dialogToggle('Mention alert'))
+check('and turns on', dialogToggle('Mention alert')?.checked === true)
+
 console.log('sound templates and a custom file')
 // Scoped to the Sounds section: the Look section above also has selects, and the
 // first `.modal-settings select` is the theme, not a sound.

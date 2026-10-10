@@ -46,6 +46,17 @@ export interface ViewSettings {
   chatTts: boolean
   /** Announce gifts with the neural voice. */
   giftVoice: boolean
+  /**
+   * The handles that count as "me", comma-separated.
+   *
+   * More than one because a person streams under one name and chats under
+   * another, and a mention of either is a mention of them. Empty means nothing is
+   * highlighted and no mention is alerted on — which is the default, because a
+   * highlight that fires on the wrong name is worse than none.
+   */
+  myHandle: string
+  /** Play a sound when a message mentions one of those handles. */
+  mentionAlert: boolean
   /** Speak the sender's name before each message read aloud. */
   ttsNames: boolean
   /** Which synthesised sound a gift plays. */
@@ -79,6 +90,8 @@ export const DEFAULT_SETTINGS: ViewSettings = {
   chatSound: false,
   chatTts: false,
   giftVoice: false,
+  myHandle: '',
+  mentionAlert: false,
   ttsNames: true,
   giftTemplate: 'chime',
   chatTemplate: 'blip',

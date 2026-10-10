@@ -48,6 +48,7 @@ const FEED_TOGGLES: { key: keyof ViewSettings; label: string; hint: string }[] =
   { key: 'giftSound', label: 'Gift sound', hint: 'Chime when a gift arrives' },
   { key: 'giftNotice', label: 'Gift notice', hint: 'Raise a desktop toast when a gift arrives' },
   { key: 'giftVoice', label: 'Say gifts', hint: 'Announce each gift with the neural voice' },
+  { key: 'mentionAlert', label: 'Mention alert', hint: 'A sound when a message names you' },
 ]
 
 /**
@@ -283,7 +284,7 @@ export function SettingsDialog({ open, settings, onClose }: Props) {
           </div>
         </section>
 
-        <section className="settings-section">
+        <section className="settings-section" data-section="feed">
           <h3 className="settings-heading">Feed</h3>
           <div className="settings-toggles">
             {FEED_TOGGLES.map((option) => (
@@ -297,6 +298,22 @@ export function SettingsDialog({ open, settings, onClose }: Props) {
               </label>
             ))}
           </div>
+          <label className="field">
+            <span className="field-label">My handles</span>
+            <input
+              className="input"
+              placeholder="yourname, othername"
+              value={settings.myHandle}
+              onChange={(e) => settings.set('myHandle', e.target.value)}
+              spellCheck={false}
+              autoComplete="off"
+            />
+            <span className="field-note">
+              Comma-separated. A message naming any of these is highlighted, and alerted on if the
+              mention alert is on. Leave empty for no highlights at all.
+            </span>
+          </label>
+
           <div className="settings-toggles">
             {ALERT_TOGGLES.filter((option) => !option.needs || settings[option.needs]).map((option) => (
               <label key={option.key} className="toggle" title={option.hint}>
