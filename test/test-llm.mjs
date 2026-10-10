@@ -51,7 +51,7 @@ if (tsc.status !== 0) {
   process.exit(1)
 }
 
-const { isReady, modelOptions, normaliseBaseUrl } = await import(pathToFileURL(join(dir, 'lib', 'llm.js')).href)
+const { chatContext, isReady, modelOptions, normaliseBaseUrl } = await import(pathToFileURL(join(dir, 'lib', 'llm.js')).href)
 
 console.log('a base URL as typed')
 check('an empty field stays empty', normaliseBaseUrl('') === '')
@@ -91,6 +91,26 @@ check('the saved model is still offered', kept[0] === 'a', JSON.stringify(kept))
 check('and the rest follow it', JSON.stringify(kept.slice(1)) === '["b","c"]')
 check('it is not duplicated when it is listed', JSON.stringify(modelOptions(['a', 'b'], 'a')) === '["a","b"]')
 check('a whitespace selection is not a selection', JSON.stringify(modelOptions(['a'], '   ')) === '["a"]')
+
+console.log('the excerpt a question is answered from')
+const chat = (nickname, text, extra = {}) => ({ kind: 'chat', nickname, text, ...extra })
+check('a message becomes one line', JSON.stringify(chatContext([chat('ana', 'hi')])) === '["ana: hi"]')
+check('an empty chat sends nothing', JSON.stringify(chatContext([])) === '[]')
+check('joins and likes are not conversation', JSON.stringify(chatContext([
+  { kind: 'join', nickname: 'ana', text: undefined },
+  { kind: 'like', nickname: 'ana', count: 3 },
+])) === '[]')
+// A message that is only an emote carries no words, and spending the limit on it
+// would push the lines that do have words out of the excerpt.
+check('an emote-only message is left out', JSON.stringify(chatContext([chat('ana', '  ')])) === '[]')
+check('the tail is kept, not the head', JSON.stringify(
+  chatContext([chat('a', '1'), chat('b', '2'), chat('c', '3')], 2),
+) === '["b: 2","c: 3"]')
+// The repetition is the notable part; repeating it in full would spend the limit
+// saying the same thing again.
+check('a collapsed run says so once', JSON.stringify(chatContext([chat('ana', 'W stream', { repeatCount: 7 })])) === '["ana: W stream x7"]')
+check('a run of one is not annotated', JSON.stringify(chatContext([chat('ana', 'W stream', { repeatCount: 1 })])) === '["ana: W stream"]')
+check('a zero limit sends nothing', JSON.stringify(chatContext([chat('ana', 'hi')], 0)) === '[]')
 
 console.log(failures === 0 ? '\nall passed' : `\n${failures} failed`)
 process.exit(failures === 0 ? 0 : 1)

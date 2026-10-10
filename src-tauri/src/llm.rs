@@ -1,13 +1,13 @@
 //! Talking to an OpenAI-compatible endpoint.
 //!
-//! Both the model list and, later, the completions themselves go out from here
-//! rather than from the webview. The webview's content security policy forbids it
-//! from reaching any other origin, which is not a limitation to work around but
-//! the reason this file exists: an API key typed into a page is a key a page can
-//! be made to leak.
+//! Both the model list and the completions themselves go out from here rather than
+//! from the webview. The webview's content security policy forbids it from
+//! reaching any other origin, which is not a limitation to work around but the
+//! reason this file exists: an API key typed into a page is a key a page can be
+//! made to leak.
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::path::PathBuf;
 
 /// Where an OpenAI-compatible endpoint lives and which model to use.
@@ -76,12 +76,42 @@ pub fn clear_config(app: &tauri::AppHandle) -> Result<(), String> {
 ///
 /// Kept distinct from a transport failure because the two mean different things to
 /// whoever typed the URL in: one is a typo, the other is a server that is down.
+/// One type for both jobs because the split is the same either way — the only
+/// thing that differs between listing models and asking one a question is how
+/// long it is reasonable to wait.
 #[derive(Debug)]
-pub enum ModelListError {
+pub enum EndpointError {
     /// The request never completed — wrong host, no route, refused, or timed out.
     Unreachable(String),
-    /// It answered, and not with a model list.
+    /// It answered, and not with what was asked for.
     Refused(String),
+}
+
+/// One turn of a conversation, in the shape the endpoint wants.
+///
+/// A struct rather than a pair of strings because the field names are the wire's,
+/// and a tuple would leave every construction site spelling them out by hand.
+/// Serialize only: a turn is written out and never read back.
+#[derive(Debug, Clone, Serialize)]
+pub struct Turn {
+    pub role: String,
+    pub content: String,
+}
+
+impl Turn {
+    pub fn system(content: impl Into<String>) -> Self {
+        Self {
+            role: "system".into(),
+            content: content.into(),
+        }
+    }
+
+    pub fn user(content: impl Into<String>) -> Self {
+        Self {
+            role: "user".into(),
+            content: content.into(),
+        }
+    }
 }
 
 /// Whether a URL is one this app is willing to hand to the OS.
@@ -140,13 +170,13 @@ pub fn model_ids(body: &Value) -> Vec<String> {
 /// A 401 is reported with whatever the server said, because "API key required" is
 /// the single most likely thing to go wrong here and it is worth passing on
 /// verbatim rather than flattening into "failed".
-pub async fn list_models(base: &str, api_key: &str) -> Result<Vec<String>, ModelListError> {
+pub async fn list_models(base: &str, api_key: &str) -> Result<Vec<String>, EndpointError> {
     let url = endpoint(base, "models");
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()
-        .map_err(|e| ModelListError::Unreachable(e.to_string()))?;
+        .map_err(|e| EndpointError::Unreachable(e.to_string()))?;
 
     let response = client
         .get(&url)
@@ -155,28 +185,93 @@ pub async fn list_models(base: &str, api_key: &str) -> Result<Vec<String>, Model
         .bearer_auth(api_key)
         .send()
         .await
-        .map_err(|e| ModelListError::Unreachable(e.to_string()))?;
+        .map_err(|e| EndpointError::Unreachable(e.to_string()))?;
 
     let status = response.status();
     let text = response
         .text()
         .await
-        .map_err(|e| ModelListError::Unreachable(e.to_string()))?;
+        .map_err(|e| EndpointError::Unreachable(e.to_string()))?;
 
     if !status.is_success() {
-        return Err(ModelListError::Refused(shorten(&text, &status.to_string())));
+        return Err(EndpointError::Refused(shorten(&text, &status.to_string())));
     }
 
     let body: Value = serde_json::from_str(&text)
-        .map_err(|e| ModelListError::Refused(format!("not JSON: {e}")))?;
+        .map_err(|e| EndpointError::Refused(format!("not JSON: {e}")))?;
 
     let ids = model_ids(&body);
     if ids.is_empty() {
-        return Err(ModelListError::Refused(
+        return Err(EndpointError::Refused(
             "the endpoint answered, but listed no models".into(),
         ));
     }
     Ok(ids)
+}
+
+/// Asks the model something, and returns the text it answered with.
+///
+/// The long timeout is the whole difference from listing models: a listing is a
+/// read, but a completion is a generation, and cutting one off at fifteen seconds
+/// would fail exactly the questions that were worth asking. Two minutes is long
+/// enough for a slow reasoner and short enough that a wedged provider does not
+/// leave the panel waiting for ever.
+pub async fn chat(
+    base: &str,
+    api_key: &str,
+    model: &str,
+    messages: &[Turn],
+) -> Result<String, EndpointError> {
+    let url = endpoint(base, "chat/completions");
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| EndpointError::Unreachable(e.to_string()))?;
+
+    let response = client
+        .post(&url)
+        .bearer_auth(api_key)
+        .json(&json!({ "model": model, "messages": messages, "stream": false }))
+        .send()
+        .await
+        .map_err(|e| EndpointError::Unreachable(e.to_string()))?;
+
+    let status = response.status();
+    let text = response
+        .text()
+        .await
+        .map_err(|e| EndpointError::Unreachable(e.to_string()))?;
+
+    if !status.is_success() {
+        return Err(EndpointError::Refused(shorten(&text, &status.to_string())));
+    }
+
+    let body: Value = serde_json::from_str(&text)
+        .map_err(|e| EndpointError::Refused(format!("not JSON: {e}")))?;
+
+    // A refusal and an empty answer are the same thing to whoever asked: the
+    // model chose to say nothing, and there is no answer to show either way.
+    let answer = completion_text(&body)
+        .filter(|answer| !answer.trim().is_empty())
+        .ok_or_else(|| EndpointError::Refused("the model answered with no text".into()))?;
+    Ok(answer)
+}
+
+/// The answer out of a `/chat/completions` response.
+///
+/// Reads `choices[0].message.content`, falling back to `choices[0].text`, which is
+/// where the older completion-shaped endpoints put the same answer. Everything
+/// else in the envelope — ids, usage, finish reasons — is somebody else's
+/// bookkeeping and is not read here.
+pub fn completion_text(body: &Value) -> Option<String> {
+    let choice = body.get("choices")?.as_array()?.first()?;
+    choice
+        .get("message")
+        .and_then(|m| m.get("content"))
+        .and_then(Value::as_str)
+        .or_else(|| choice.get("text").and_then(Value::as_str))
+        .map(str::to_string)
 }
 
 /// Keeps an error message to one readable line.
@@ -238,6 +333,44 @@ mod tests {
     fn drops_duplicate_names() {
         let body = json!({ "data": [{ "id": "a" }, { "id": "a" }, { "id": "b" }] });
         assert_eq!(model_ids(&body), vec!["a", "b"]);
+    }
+
+    #[test]
+    fn reads_the_answer_out_of_a_completion() {
+        let body = json!({
+            "id": "chatcmpl-1",
+            "object": "chat.completion",
+            "model": "cx/gpt-5.6-sol",
+            "choices": [{
+                "index": 0,
+                "finish_reason": "stop",
+                "message": { "role": "assistant", "content": "They are talking about the new GPU." }
+            }],
+            "usage": { "prompt_tokens": 812, "completion_tokens": 24 }
+        });
+        assert_eq!(
+            completion_text(&body).as_deref(),
+            Some("They are talking about the new GPU.")
+        );
+    }
+
+    #[test]
+    fn falls_back_to_the_completion_shaped_answer() {
+        // Older endpoints answer the same request under `text` rather than
+        // `message.content`, and there is no way to ask which one is coming.
+        let body = json!({ "choices": [{ "text": "Mostly about cats." }] });
+        assert_eq!(completion_text(&body).as_deref(), Some("Mostly about cats."));
+    }
+
+    #[test]
+    fn an_unexpected_completion_is_none_rather_than_a_panic() {
+        assert!(completion_text(&json!({})).is_none());
+        assert!(completion_text(&json!({ "choices": [] })).is_none());
+        assert!(completion_text(&json!({ "choices": "nope" })).is_none());
+        assert!(completion_text(&json!({ "choices": [{}] })).is_none());
+        // A refusal comes back with the reason in its place of content, and
+        // reading it as a number must not take the panel down.
+        assert!(completion_text(&json!({ "choices": [{ "message": { "content": 7 } }] })).is_none());
     }
 
     #[test]

@@ -101,6 +101,7 @@ type HostCommand =
   | 'notify'
   | 'open_stream'
   | 'llm_models'
+  | 'llm_chat'
   | 'llm_config_get'
   | 'llm_config_save'
   | 'llm_config_clear'
@@ -142,7 +143,10 @@ async function tauriTransport(): Promise<Transport> {
       return unlisten
     },
     invoke: async (command, args) => {
-      await invoke(command, args)
+      // Returned, not merely awaited: without this the promise settles with
+      // `undefined` and every command that returns something — the saved config,
+      // the model list — reads as empty rather than as a failure.
+      return invoke(command, args)
     },
   }
 }
@@ -233,6 +237,20 @@ export const host = {
     const resolved = await resolve()
     const models = await resolved.invoke('llm_models', { baseUrl, apiKey })
     return Array.isArray(models) ? models.filter((m): m is string => typeof m === 'string') : []
+  },
+  /**
+   * Asks the configured model a question about the room.
+   *
+   * The endpoint, the key and the model are not arguments: the host reads them
+   * from its own config, so a credential is never handed back to the page in
+   * order to be used. What the page does send is the excerpt the question is
+   * about, because choosing which messages are relevant is a reading decision and
+   * it belongs where the feed is.
+   */
+  llmChat: async (question: string, context: string[]): Promise<string> => {
+    const resolved = await resolve()
+    const answer = await resolved.invoke('llm_chat', { question, context })
+    return typeof answer === 'string' ? answer : ''
   },
   llmConfigGet: async (): Promise<LlmConfig> => {
     const resolved = await resolve()

@@ -59,8 +59,62 @@ fn notify(app: tauri::AppHandle, title: String, body: String) {
 async fn llm_models(base_url: String, api_key: String) -> Result<Vec<String>, String> {
     match llm::list_models(&base_url, &api_key).await {
         Ok(ids) => Ok(ids),
-        Err(llm::ModelListError::Unreachable(why)) => Err(format!("could not reach {base_url}: {why}")),
-        Err(llm::ModelListError::Refused(why)) => Err(why),
+        Err(llm::EndpointError::Unreachable(why)) => Err(format!("could not reach {base_url}: {why}")),
+        Err(llm::EndpointError::Refused(why)) => Err(why),
+    }
+}
+
+/// Asks the configured model a question about the room.
+///
+/// The endpoint, the key and the model are read from disk here rather than sent in
+/// by the page, so the credential travels from the config file to the socket and
+/// nowhere else. It is the one asymmetry with `llm_models`, which has to take them
+/// from the page because its whole job is to test settings the user has not saved
+/// yet; nothing here is worth testing unsaved.
+///
+/// `context` is the chat excerpt the question is about, already chosen and trimmed
+/// by the page — deciding which messages are relevant is a reading decision, and
+/// it belongs where the feed is.
+#[tauri::command]
+async fn llm_chat(
+    app: tauri::AppHandle,
+    question: String,
+    context: Vec<String>,
+) -> Result<String, String> {
+    let question = question.trim();
+    if question.is_empty() {
+        return Err("nothing to ask".into());
+    }
+
+    let config = llm::read_config(&app);
+    if config.base_url.trim().is_empty() || config.api_key.trim().is_empty() {
+        return Err("no endpoint configured — set one up under Model first".into());
+    }
+    if config.model.trim().is_empty() {
+        return Err("no model selected — pick one under Model first".into());
+    }
+
+    let transcript = if context.is_empty() {
+        "(the chat is empty)".to_string()
+    } else {
+        context.join("\n")
+    };
+
+    let messages = vec![
+        llm::Turn::system(
+            "You are answering questions about a TikTok live chat, given an excerpt of it. \
+             Answer from the excerpt. If the excerpt does not say, say so plainly rather than \
+             guessing. Be brief: a couple of sentences at most.",
+        ),
+        llm::Turn::user(format!("Chat so far:\n{transcript}\n\nQuestion: {question}")),
+    ];
+
+    match llm::chat(&config.base_url, &config.api_key, &config.model, &messages).await {
+        Ok(answer) => Ok(answer),
+        Err(llm::EndpointError::Unreachable(why)) => {
+            Err(format!("could not reach {}: {why}", config.base_url))
+        }
+        Err(llm::EndpointError::Refused(why)) => Err(why),
     }
 }
 
@@ -222,6 +276,7 @@ fn main() {
         set_always_on_top,
         notify,
         llm_models,
+        llm_chat,
         llm_config_get,
         llm_config_save,
         llm_config_clear,

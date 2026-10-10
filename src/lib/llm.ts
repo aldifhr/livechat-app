@@ -2,10 +2,15 @@
  * What an OpenAI-compatible endpoint is, and how a typed one is read.
  *
  * Pure, so the fiddly parts — a URL pasted without a scheme, a saved model the
- * endpoint has stopped offering — are checked without a network or a window. Both
- * of those look trivial and neither is: the first fails as a connection error
- * rather than a typo, and the second silently drops the user's selection.
+ * endpoint has stopped offering, which messages are worth sending to a model — are
+ * checked without a network or a window. All three of those look trivial and none
+ * of them are: the first fails as a connection error rather than a typo, the
+ * second silently drops the user's selection, and the third decides whether an
+ * answer is about the room at all.
  */
+
+import type { FeedItem } from '../types'
+
 
 /** The three fields the host stores. Mirrors `LlmConfig` in src-tauri/src/llm.rs. */
 export interface LlmConfig {
@@ -53,4 +58,44 @@ export function modelOptions(models: string[], current: string): string[] {
   const unique = [...new Set(models.map((m) => m.trim()).filter(Boolean))].sort()
   if (chosen === '' || unique.includes(chosen)) return unique
   return [chosen, ...unique]
+}
+
+/**
+ * How many messages of context ride along with a question.
+ *
+ * A number rather than a token count because there is no tokenizer to count with:
+ * every provider here counts differently, and a limit in messages is one the app
+ * can state plainly in the UI. Sixty is about the point where a busy room's
+ * recent history stops being what the question was about and starts being the
+ * whole session.
+ */
+export const CONTEXT_MESSAGES = 60
+
+/**
+ * The chat excerpt a question is answered from.
+ *
+ * Chat rows only. Joins and likes are not conversation, and a gift is worth one
+ * line of its own rather than being dropped — but a viewer spamming an emoji is
+ * not, so anything that is only an emote goes.
+ *
+ * The tail, because a live question is about now: the hundredth message back is
+ * already a different conversation, and it is what pushes the relevant lines out
+ * of the limit.
+ */
+export function chatContext(items: FeedItem[], limit = CONTEXT_MESSAGES): string[] {
+  const lines: string[] = []
+  for (const item of items) {
+    if (item.kind !== 'chat') continue
+    const text = (item.text ?? '').trim()
+    if (text === '') continue
+    // `x3` rather than three copies: the repetition is what makes a message
+    // notable, and repeating it in full would spend the limit saying it again.
+    const times = (item.repeatCount ?? 1) > 1 ? ` x${item.repeatCount}` : ''
+    lines.push(`${item.nickname}: ${text}${times}`)
+  }
+  // Not `slice(-limit)`: `-0` is `0`, so a limit of zero would slice from the
+  // start and send the entire room, which is the one thing a limit of zero is
+  // supposed to prevent.
+  if (limit <= 0) return []
+  return lines.slice(-limit)
 }

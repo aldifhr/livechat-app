@@ -354,7 +354,10 @@ body {
   padding: 7px 20px;
 }
 
-.log-toggle {
+/* The ask panel's bar is the log's bar, worn under another name. Grouped rather
+   than given its own copy so the two cannot drift apart. */
+.log-toggle,
+.ask-toggle {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -368,16 +371,19 @@ body {
   user-select: none;
 }
 
-.log-toggle:hover {
+.log-toggle:hover,
+.ask-toggle:hover {
   color: var(--text);
 }
 
-.log-caret {
+.log-caret,
+.ask-caret {
   display: inline-block;
   transition: transform 0.12s ease;
 }
 
-.log-caret-open {
+.log-caret-open,
+.ask-caret-open {
   transform: rotate(90deg);
 }
 
@@ -461,6 +467,68 @@ body {
 .log-empty {
   margin: 8px 0 4px;
   color: var(--muted);
+}
+
+/* The ask panel shares the log's bar and caret, so only what is its own is here. */
+.ask-panel {
+  flex: 0 0 auto;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+}
+
+.ask-hint {
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ask-body {
+  padding: 8px 20px 12px;
+  border-top: 1px solid var(--line);
+}
+
+.ask-row {
+  display: flex;
+  gap: 8px;
+}
+
+.ask-row .input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ask-answer {
+  margin-top: 8px;
+  max-height: 190px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.ask-question {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.ask-text {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.ask-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ask-error {
+  margin: 0;
+  color: var(--accent);
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .btn-small {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { AskPanel } from './components/AskPanel'
 import { BackendSettings } from './components/BackendSettings'
 import { FeedRow } from './components/FeedRow'
 import { LlmSettings } from './components/LlmSettings'
@@ -185,6 +186,7 @@ export default function App() {
 
       <StatsPanel stats={stats} />
 
+      <AskPanel items={items} room={room} />
       <LogPanel entries={log.entries} tallies={log.tallies} onClear={log.clear} />
     </div>
   )
