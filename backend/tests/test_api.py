@@ -298,10 +298,24 @@ try:
             )
             check("delete with the right token works", guarded.delete(f"/api/rooms/{gid}", headers=good).status_code == 200)
 
-        # The query form is what a browser source in OBS has to fall back on.
+        # A token in the query string used to be accepted, for a browser source
+        # in OBS that cannot send headers. There is no such caller left — the
+        # frontend sends no token at all, and the OBS room page died with the
+        # sidecar — so accepting it only put the token where it ends up in access
+        # logs and screenshots, which is the opposite of what a token is for.
+        # Pinned as refused so it cannot quietly come back.
+        # Pinned on a write, which is the only thing the gate ever covered: the
+        # old test used a GET, where the query token was never read because
+        # middleware guards mutations only. So "a GET with a token works" was
+        # never evidence the fallback existed — it just passed. Now that the
+        # fallback is gone, a write with a query token has to be refused.
         check(
-            "token also accepted as a query param",
-            guarded.get("/api/rooms?token=s3cret").status_code == 200,
+            "a write with a query-param token is refused",
+            guarded.post("/api/rooms?token=s3cret", json={"name": "ViaQuery"}).status_code == 401,
+        )
+        check(
+            "while the same write with the header is accepted",
+            guarded.post("/api/rooms", json={"name": "ViaHeader"}, headers=good).status_code == 200,
         )
 finally:
     os.environ.pop("STREAMKIT_TOKEN", None)

@@ -179,17 +179,13 @@ def token_is_valid(request: Request) -> bool:
         # one was reachable.
         return auth_is_disabled()
     header = request.headers.get("x-streamkit-token", "")
-    if header and secrets.compare_digest(header, expected):
-        return True
-    # Query form, for the one caller that cannot set headers: the browser source
-    # URL in OBS. It is a real trade-off — the token then lands in OBS logs and
-    # screenshots — so it is only a fallback, never the preferred path.
-    query = request.query_params.get("token", "")
-    return bool(query) and secrets.compare_digest(query, expected)
+    return bool(header) and secrets.compare_digest(header, expected)
 
 
-#: The write routes open to OBS and to the desktop app, neither of which can send
-#: a header. Matched per path segment rather than as a prefix: a plain
+#: The write routes the desktop app needs. It sends no token: the handle is the
+#: whole ask, and a token in the app binary would be extractable and would grant
+#: full write access to every other route besides these two. Matched per path
+#: segment rather than as a prefix: a plain
 #: `startswith` also exempted anything that merely began with those characters,
 #: which would arrive one refactor later with no auth and no diff on this line.
 #:
@@ -246,19 +242,18 @@ async def guard_mutations(request: Request, call_next):
     A method check rather than a path list, so a new mutating route is protected
     the moment it is added instead of the day someone remembers to add it. The
     WebSocket path is exempt because it is not an HTTP request in the first
-    place, and because OBS cannot authenticate at all.
+    place.
 
-    /api/room-connect/{id} is exempt because OBS loads the room page
-    which cannot send a header, and the username comes from the room's own
-    stored config — not from the caller — so there is nothing to forge.
+    /api/room-connect/{id} is exempt because the username comes from the room's
+    own stored config — not from the caller — so there is nothing to forge.
 
     The rejection is returned rather than raised: an HTTPException thrown from
     middleware is not routed through the exception handlers, so it would surface
     as an unhandled error instead of a 401.
     """
     if request.method in ("POST", "PATCH", "PUT", "DELETE"):
-        # room-connect is config-scoped (username from stored room) and
-        # OBS cannot send headers — exempt it from the token gate.
+        # room-connect is config-scoped (username from the stored room, never
+        # from the caller) — exempt it from the token gate.
         if not is_exempt_write_path(request.url.path) and not token_is_valid(request):
             return JSONResponse(
                 status_code=401,
@@ -432,10 +427,12 @@ async def update_room_config(room_id: str, req: ConfigUpdateRequest):
 async def room_connect(room_id: str):
     """Connect the room an room is already configured for, with no login.
 
-    OBS loads /room/<id> on the streamer's own machine and cannot log in, so
-    /api/connect — which takes the username from the request and can therefore
-    aim the global room at anything — is closed to it. That left the room
-    unable to ever reach a stream and showing the sample room forever.
+    The desktop app connects by handle through /api/room-connect-by-username, so
+    this stays for a caller that names a room it does not have a username for —
+    the editor, or anything scripting against the backend. /api/connect, which
+    takes the username from the request and can therefore aim the global room at
+    anything, is closed to it. That left the room unable to ever reach a stream
+    and showing the sample room forever.
 
     The difference here is that the username is not taken from the request. It is
     read from the room's own saved config, so this can only ever connect the
