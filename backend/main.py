@@ -82,6 +82,11 @@ async def lifespan(app: FastAPI):
     # left alone: it must not stop the others, and it must not crash the API.
     await restore_sources()
 
+    # Before anything else, because a deploy with no token looks exactly like a
+    # deploy with a broken client from the outside: every write 401s, and nothing
+    # else says why.
+    warn_if_auth_unsatisfiable()
+
     # Watched from a thread, because the failure it exists for is one the loop
     # cannot report: a backend that stops yielding answers nothing and writes
     # nothing, and the only evidence available is a stack taken from outside it.
@@ -142,18 +147,36 @@ router = APIRouter()
 # event stream to render at all.
 # --------------------------------------------------------------------------
 
-#: Read from the API's environment. Unset means open, so local development and a
-#: fresh clone keep working with no setup. Read per call rather than cached at
-#: import so a test — and a future config reload — can change it without
-#: reimporting the module.
+#: Read from the API's environment. Read per call rather than cached at import so
+#: a test — and a future config reload — can change it without reimporting the
+#: module.
 def api_token() -> str:
     return os.environ.get("STREAMKIT_TOKEN", "").strip()
+
+
+#: Set to a truthy value to run with the write gate open and no token required.
+#: Development only. It exists so a fresh clone still runs with no setup, which is
+#: the one case where "no token configured" should mean "no auth wanted" instead
+#: of "no auth possible".
+AUTH_DISABLED_ENV = "STREAMKIT_AUTH_DISABLED"
+
+_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+
+def auth_is_disabled() -> bool:
+    return os.environ.get(AUTH_DISABLED_ENV, "").strip().lower() in _TRUTHY
 
 
 def token_is_valid(request: Request) -> bool:
     expected = api_token()
     if not expected:
-        return True
+        # No token configured is *unsatisfiable*, not *open*. Returning True here
+        # meant a deploy that forgot STREAMKIT_TOKEN served every write — delete a
+        # room, rewrite its config, post a fake gift — to anyone who found the
+        # URL, while every other layer still looked protected. An unsatisfiable
+        # check and no check at all are not the same thing, and only the second
+        # one was reachable.
+        return auth_is_disabled()
     header = request.headers.get("x-streamkit-token", "")
     if header and secrets.compare_digest(header, expected):
         return True
@@ -162,6 +185,44 @@ def token_is_valid(request: Request) -> bool:
     # screenshots — so it is only a fallback, never the preferred path.
     query = request.query_params.get("token", "")
     return bool(query) and secrets.compare_digest(query, expected)
+
+
+#: The one write route open to OBS, which cannot send a header. Matched per path
+#: segment rather than as a prefix: `startswith("/api/room-connect/")` also
+#: exempted a hypothetical `/api/room-connect-all` or `/api/room-connect/bulk`,
+#: which would arrive one refactor later with no auth and no diff on this line.
+EXEMPT_WRITE_PREFIX = "/api/room-connect/"
+
+
+def is_exempt_write_path(path: str) -> bool:
+    if not path.startswith(EXEMPT_WRITE_PREFIX):
+        return False
+    # Exactly one non-empty segment: the room id, and nothing below it.
+    rest = path[len(EXEMPT_WRITE_PREFIX):]
+    return bool(rest) and "/" not in rest
+
+
+def warn_if_auth_unsatisfiable() -> None:
+    """Say so at boot, once, in the log a deploy actually reads.
+
+    Fail-closed plus silence looks identical to a broken client from the outside:
+    every write 401s and nothing says why. The check cannot fail, so this is the
+    only place the cause can come from.
+    """
+    if api_token():
+        return
+    if auth_is_disabled():
+        logger.warning(
+            "AUTH: %s is set and STREAMKIT_TOKEN is not — every write endpoint "
+            "is open to anyone who can reach this port",
+            AUTH_DISABLED_ENV,
+        )
+        return
+    logger.warning(
+        "AUTH: STREAMKIT_TOKEN is not set — every write will be refused with 401 "
+        "until it is, or until %s=true for local development",
+        AUTH_DISABLED_ENV,
+    )
 
 
 @app.middleware("http")
@@ -184,7 +245,7 @@ async def guard_mutations(request: Request, call_next):
     if request.method in ("POST", "PATCH", "PUT", "DELETE"):
         # room-connect is config-scoped (username from stored room) and
         # OBS cannot send headers — exempt it from the token gate.
-        if not request.url.path.startswith("/api/room-connect/") and not token_is_valid(request):
+        if not is_exempt_write_path(request.url.path) and not token_is_valid(request):
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Invalid or missing STREAMKIT_TOKEN"},

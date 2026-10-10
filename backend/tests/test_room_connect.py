@@ -27,6 +27,13 @@ from store import create_room, update_room, delete_room  # noqa: E402
 
 from fastapi.testclient import TestClient  # noqa: E402
 
+# The gate now refuses every write when STREAMKIT_TOKEN is unset, and this suite
+# exercises `/api/connect`, which is not exempt. So the token has to exist here
+# for the assertion below to mean "the ungated verb still connects" rather than
+# "an unauthenticated call was refused" — the two look identical from the room's
+# point of view, and the second one is what the guard is supposed to do.
+os.environ.setdefault("STREAMKIT_TOKEN", "s3cret")
+
 passed = failed = 0
 
 
@@ -54,7 +61,12 @@ def main_run():
 
     app = main.app
     client = TestClient(app)
-    client.headers.update({"X-StreamKit-Token": os.environ.get("STREAMKIT_TOKEN", "")})
+    # This suite's earlier calls carry their own header where one is needed. The
+    # shared header exists for /api/connect, the one route in here that is *not*
+    # exempt and so needs a token — and it used to pass with an empty one only
+    # because an unset STREAMKIT_TOKEN accepted everything. With the gate closed,
+    # an empty header is refused, so the value is given explicitly.
+    client.headers.update({"X-StreamKit-Token": os.environ.get("STREAMKIT_TOKEN", "s3cret")})
 
     print("the room reaches the room it is already configured for")
     ov = create_room("uji room", {"theme": "outline"})

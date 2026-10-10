@@ -66,10 +66,27 @@ Semua write butuh `X-StreamKit-Token`. Semua response JSON.
 
 ### Auth
 
-Semua write butuh header `X-StreamKit-Token` yang cocok dengan `STREAMKIT_TOKEN`. Read dan WebSocket tetap terbuka — OBS Browser Source tidak bisa bawa kredensial.
+Semua write butuh header `X-StreamKit-Token` yang cocok dengan `STREAMKIT_TOKEN`,
+atau `?token=` di query string (fallback untuk OBS yang tidak bisa kirim header).
+
+**Gate fail closed.** Kalau `STREAMKIT_TOKEN` tidak di-set, setiap write di-refuse
+dengan 401 — bukan dibuka. Ini berbeda dari versi sebelumnya yang menerima semua
+write saat env kosong, yang membuat deploy yang kehilangan env file jadi API terbuka
+padahal lapisan lain terlihat tetap terlindungi. Eksplisitkan mode dev dengan
+`STREAMKIT_AUTH_DISABLED=true`, dan backend akan memperingatkan di log saat boot
+bahwa semua write terbuka.
+
+Read dan WebSocket tetap terbuka — OBS Browser Source tidak bisa bawa kredensial.
+
+Satu-satunya write yang di-exempt adalah `POST /api/room-connect/{id}`, karena OBS
+memuat halaman room tanpa header dan username-nya diambil dari config room yang
+tersimpan, bukan dari caller. Dicocokkan per segment path, bukan `startswith`, jadi
+route dengan nama lebih panjang tidak mewarisi exemption itu.
 
 ### Env
 
 | Nama | Keterangan |
 |---|---|
-| `STREAMKIT_TOKEN` | Token write. Kosong = backend terbuka. |
+| `STREAMKIT_TOKEN` | Token write. Kosong = semua write 401. |
+| `STREAMKIT_AUTH_DISABLED` | `true` = auth dimatikan. Hanya untuk dev. |
+| `STREAMKIT_CONFIG_DIR` | Lokasi `rooms.json`. Default `backend/config`. |

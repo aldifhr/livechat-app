@@ -19,6 +19,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 _tmp = Path(tempfile.mkdtemp())
 os.environ["STREAMKIT_CONFIG_DIR"] = str(_tmp)
 
+# This suite's own calls are written without a token, and that used to work
+# because "no token configured" meant "auth off". It no longer does — the backend
+# fails closed now, because an unset token on a deployed host is a silent hole
+# rather than a sensible default. The opt-out is named and explicit from here on,
+# so the suite states which mode it is in instead of inheriting one from the
+# environment. The token block at the bottom of the file turns auth back on and
+# exercises the gate for real.
+os.environ["STREAMKIT_AUTH_DISABLED"] = "true"
+
 import store  # noqa: E402
 
 store.CONFIG_DIR = _tmp
@@ -76,6 +85,33 @@ def auth():
 
 
 AUTH = auth()
+
+
+def _warning_text() -> str:
+    """What the boot check logs, captured off the logger rather than stdout.
+
+    The warning is the only thing that distinguishes a deploy with no token from
+    a deploy with a broken client, so asserting it fires is the point. Reading it
+    from the logger instead of the log file keeps the check independent of
+    logging configuration the suite does not own.
+    """
+    import logging
+
+    class _Capture(logging.Handler):
+        def __init__(self):
+            super().__init__()
+            self.records: list[str] = []
+
+        def emit(self, record):
+            self.records.append(record.getMessage())
+
+    handler = _Capture()
+    main.logger.addHandler(handler)
+    try:
+        main.warn_if_auth_unsatisfiable()
+    finally:
+        main.logger.removeHandler(handler)
+    return " ".join(handler.records)
 
 
 with TestClient(main.app) as client:
@@ -240,6 +276,68 @@ try:
         check(
             "token also accepted as a query param",
             guarded.get("/api/rooms?token=s3cret").status_code == 200,
+        )
+finally:
+    os.environ.pop("STREAMKIT_TOKEN", None)
+
+print("fail-closed with no token")
+# The block above proved a configured token gates writes. This proves the other
+# half: an *unconfigured* token refuses them too. It used to accept them —
+# `if not expected: return True` — which made a deploy that lost its env file a
+# fully open API that still looked protected everywhere else.
+os.environ.pop("STREAMKIT_AUTH_DISABLED", None)
+os.environ.pop("STREAMKIT_TOKEN", None)
+try:
+    with TestClient(main.app) as sealed:
+        check(
+            "a write with no token configured is refused, not allowed",
+            sealed.post("/api/rooms", json={"name": "Unconfigured"}).status_code == 401,
+        )
+        check(
+            "and a query param does not open it either",
+            sealed.post("/api/rooms?token=anything", json={"name": "Guessed"}).status_code == 401,
+        )
+        check("read still open", sealed.get("/api/rooms").status_code == 200)
+
+    os.environ["STREAMKIT_AUTH_DISABLED"] = "true"
+    with TestClient(main.app) as opened:
+        check(
+            "the dev opt-out opens writes again",
+            opened.post("/api/rooms", json={"name": "Dev"}).status_code == 200,
+        )
+    check(
+        "and the boot warning says the API is open, not that it is refusing",
+        "every write endpoint" in _warning_text(),
+    )
+finally:
+    os.environ.pop("STREAMKIT_AUTH_DISABLED", None)
+    os.environ.pop("STREAMKIT_TOKEN", None)
+
+print("the OBS exemption is exactly one route")
+# The gate exempts /api/room-connect/{id} because OBS cannot send a header. It
+# used to be a prefix match, so anything that started with those characters was
+# exempt for free — and a longer route name would have inherited that with no
+# diff on the line that grants it.
+for path, should_be_exempt in (
+    ("/api/room-connect/abc", True),
+    ("/api/room-connect/", False),
+    ("/api/room-connect", False),
+    ("/api/room-connect-all", False),
+    ("/api/room-connect/abc/force", False),
+    ("/api/room-connect-admin", False),
+    ("/api/rooms", False),
+):
+    check(
+        f"{path} {'is' if should_be_exempt else 'is not'} exempt",
+        main.is_exempt_write_path(path) is should_be_exempt,
+    )
+
+os.environ["STREAMKIT_TOKEN"] = "s3cret"
+try:
+    with TestClient(main.app) as tight:
+        check(
+            "a longer route name is gated, not exempt",
+            tight.post("/api/room-connect-admin", json={}).status_code == 401,
         )
 finally:
     os.environ.pop("STREAMKIT_TOKEN", None)

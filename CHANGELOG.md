@@ -4,6 +4,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
 
 ## [Unreleased]
 
+### Security
+- **Auth sekarang fail closed.** `token_is_valid` mengembalikan `True` kalau
+  `STREAMKIT_TOKEN` tidak di-set, jadi deploy yang kehilangan env file atau salah
+  deploy akan melayani setiap write — delete room, rewrite config, post gift palsu —
+  ke siapa pun yang menemukan URL, sementara lapisan lain masih terlihat terlindungi.
+  Sekarang token kosong berarti **tidak bisa diverifikasi**, bukan tanpa auth.
+  - Opt-out eksplisit: `STREAMKIT_AUTH_DISABLED=true` untuk dev.
+  - `warn_if_auth_unsatisfiable()` dipanggil di boot, jadi kasus "token hilang" tidak
+    lagi terlihat identik dengan "client rusak" dari luar — keduanya cuma 401 tanpa
+    penjelasan apa pun.
+- **Exemption OBS tidak lagi prefix match.** `startswith("/api/room-connect/")`
+  memberi exemption gratis ke route apa pun yang diawali string itu —
+  `/api/room-connect-all`, `/api/room-connect/bulk` akan lolos auth tanpa satu
+  baris diff pun di baris yang memberikannya. Sekarang `is_exempt_write_path()`
+  mencocokkan tepat satu segment, dan test mengunci ketujuh varian path termasuk
+  nama yang lebih panjang.
+
 ### Fixed
 - **Grammatical residue dari rename `overlay` → `room`.** `sed` mengganti kata tanpa
   menjaga bentuk: `An room id` (main.py), `A scene's own id` (hub.py), plus docstring
@@ -14,6 +31,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
   - `test_eventlog.py`, `test_watchdog.py` — `import os` tidak terpakai
   - `test_event_fanout.py`, `test_room_connect.py`, `test_viewer_coalesce.py` —
     variabel lokal `loop`, `rr`, `ws` di-assign tapi tidak dibaca
+- **Test suite menyiratkan mode auth.** `test_api.py` dan `test_room_connect.py`
+  melakukan write tanpa token dan itu bekerja hanya karena gate-nya fail-open. Keduanya
+  sekarang menyebut mode yang mereka pakai secara eksplisit, dan ada test baru yang
+  membuktikan write tanpa token ditolak.
+
+### Added
+- Test untuk fail-closed (`test_api.py`): write tanpa token ditolak, `?token=` tidak
+  membukanya, read tetap terbuka, dan `STREAMKIT_AUTH_DISABLED` membukanya sambil
+  memperingatkan.
+- Test untuk exemption path (`test_api.py`): tujuh varian path, termasuk
+  `/api/room-connect-admin` yang harus di-gate.
 
 ### Known issues (pre-existing, bukan dari audit ini)
 - **`npm test` gagal 3 dari suite `test:stats`.** `a rising headcount raises the peak
