@@ -22,7 +22,6 @@ interface Props {
   onCollapseChange: (enabled: boolean) => void
   onClear: () => void
   onOpenLlm: () => void
-  onOpenBackend: () => void
 }
 
 const TOGGLES: { key: keyof ViewSettings; label: string; hint: string }[] = [
@@ -68,7 +67,6 @@ export function Toolbar({
   onCollapseChange,
   onClear,
   onOpenLlm,
-  onOpenBackend,
 }: Props) {
   const spec = PLATFORMS[PLATFORM]
   const [busy, setBusy] = useState(false)
@@ -158,9 +156,6 @@ export function Toolbar({
             Watch
           </button>
         )}
-        <button className="btn btn-small llm-btn" onClick={onOpenBackend} title="Backend address and streamer">
-          Set up…
-        </button>
         <span className="source-note">
           {wanted ? (
             <>

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AskPanel } from './components/AskPanel'
-import { BackendSettings } from './components/BackendSettings'
 import { FeedRow } from './components/FeedRow'
 import { LlmSettings } from './components/LlmSettings'
 import { LogPanel } from './components/LogPanel'
@@ -17,7 +16,6 @@ import { host } from './lib/sidecar'
 export default function App() {
   const [collapse, setCollapse] = useState(true)
   const [llmOpen, setLlmOpen] = useState(false)
-  const [backendOpen, setBackendOpen] = useState(false)
   const [backend, setBackend] = useState<BackendConfig>(EMPTY_BACKEND)
   const [filters, setFilters] = useState<FeedFilters>({ kind: 'all', search: '' })
   const settings = useSettings()
@@ -131,7 +129,6 @@ export default function App() {
         onCollapseChange={setCollapse}
         onClear={clear}
         onOpenLlm={() => setLlmOpen(true)}
-        onOpenBackend={() => setBackendOpen(true)}
       />
 
       <div className="feed-wrap">
@@ -177,12 +174,6 @@ export default function App() {
       </div>
 
       <LlmSettings open={llmOpen} onClose={() => setLlmOpen(false)} />
-      <BackendSettings
-        open={backendOpen}
-        config={backend}
-        onClose={() => setBackendOpen(false)}
-        onSaved={setBackend}
-      />
 
       <StatsPanel stats={stats} />
 

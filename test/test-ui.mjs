@@ -125,18 +125,6 @@ check(
   JSON.stringify(asked),
 )
 
-console.log('the address is still changeable for the cases that need it')
-await click($$('.room-row .btn').find((b) => b.textContent.trim() === 'Set up…'))
-check('the dialog opens', Boolean($('.modal')))
-const backendInput = (placeholder) => $$('.modal .input').find((i) => i.placeholder === placeholder)
-await type(backendInput('https://kit-backend.example'), 'https://kit-backend.example')
-await click($$('.modal .btn').find((b) => b.textContent.trim() === 'Save'))
-check(
-  'a different address is saved',
-  fake.lastCommand('backend_config_save')?.args?.config?.baseUrl === 'https://kit-backend.example',
-  JSON.stringify(fake.lastCommand('backend_config_save')?.args?.config),
-)
-
 console.log('frames drive the feed')
 await act(async () => {
   fake.emit({ platform: 'tiktok', type: 'status', connected: true, message: 'Connected to @x' })
