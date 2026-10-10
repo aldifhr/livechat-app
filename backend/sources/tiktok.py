@@ -42,6 +42,58 @@ def display_id(user: Any) -> str:
     return (getattr(user, "username", "") or "").strip()
 
 
+def avatar_url(user: Any) -> str:
+    """The user's avatar URL, or "" when TikTok did not send one.
+
+    `avatar_thumb` is an ImageModel, not a list — a small protobuf message with
+    a `url_list: list[str]` on it. Reading it as if the attribute were the list
+    itself silently yields nothing, because iterating a protobuf message gives
+    field names rather than URLs; that is why this goes through `url_list`
+    explicitly. Confirmed against the installed library
+    (TikTokLiveProto/v3/webcast/model/user.py:1354, base.ImageModel), not against
+    the docs: the examples file describes it as an image and the wire type is a
+    message, and getting that wrong produced an empty avatar on every frame
+    while looking like correct code.
+
+    Empty is the normal case and not a failure. TikTok populates this on comment
+    events and leaves it empty or absent on join, follow, like and gift, so four
+    of the six per-viewer kinds have no avatar and never will with this library.
+
+    Tolerates every shape the events actually arrive in, and none of them
+    raises: `user` is None on events that carry no user at all, `avatar_thumb` is
+    None rather than an ImageModel on some of those, and `url_list` can be empty
+    or hold empty strings. A helper that raised here would turn a missing avatar
+    into a lost event, which is the wrong trade: a row with an initial is fine, a
+    dropped comment is not.
+
+    It does not guard against a `user` whose attribute access itself raises.
+    That is not a shape TikTokLive produces, and handling it would mean a
+    try/except around every field on the event to defend against a library
+    bug — which would then hide that bug rather than report it.
+
+    No fallback for a shape the library does not produce either: if a future
+    version types this as a plain list, an empty avatar is the correct visible
+    result and a silent second code path would hide the change.
+
+    The URL is signed by TikTok (`x-expires`, `x-signature`) and stops working
+    within hours. It is sent per event rather than remembered, so a client that
+    holds one for a while will show a broken image and no amount of retrying
+    will bring it back — that is the platform's design, not a bug here.
+    """
+    if user is None:
+        return ""
+    thumb = getattr(user, "avatar_thumb", None)
+    if thumb is None:
+        return ""
+    urls = getattr(thumb, "url_list", None)
+    if not isinstance(urls, (list, tuple)):
+        return ""
+    for entry in urls:
+        if isinstance(entry, str) and entry.strip():
+            return entry.strip()
+    return ""
+
+
 logger = logging.getLogger("streamkit.tiktok")
 
 
@@ -139,6 +191,7 @@ class TikTokSource:
                     kind=COMMENT,
                     user=name,
                     user_id=display_id(event.user),
+                    avatar=avatar_url(event.user),
                     value=event.comment,
                 ),
             )
@@ -154,6 +207,7 @@ class TikTokSource:
                     kind=LIKE,
                     user=name,
                     user_id=display_id(event.user),
+                    avatar=avatar_url(event.user),
                     meta={"count": event.count, "totalLikes": event.total},
                 ),
             )
@@ -171,6 +225,7 @@ class TikTokSource:
                     kind=GIFT,
                     user=name,
                     user_id=display_id(event.user),
+                    avatar=avatar_url(event.user),
                     meta={
                         "giftName": event.gift.name or "Gift",
                         "count": event.repeat_count,
@@ -193,6 +248,7 @@ class TikTokSource:
                     kind=JOIN,
                     user=name,
                     user_id=display_id(event.user),
+                    avatar=avatar_url(event.user),
                     meta={"viewers": event.member_count},
                 ),
             )
@@ -230,7 +286,12 @@ class TikTokSource:
                 return
             dispatch(
                 self.room_id,
-                Event(kind=FOLLOW, user=name, user_id=display_id(event.user)),
+                Event(
+                    kind=FOLLOW,
+                    user=name,
+                    user_id=display_id(event.user),
+                    avatar=avatar_url(event.user),
+                ),
             )
 
         @self._client.on(ShareEvent)
@@ -247,6 +308,7 @@ class TikTokSource:
                     kind=SHARE,
                     user=name,
                     user_id=display_id(event.user),
+                    avatar=avatar_url(event.user),
                     meta={"count": joined} if joined else {},
                 ),
             )

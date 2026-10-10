@@ -44,6 +44,12 @@ class Event:
     #: people can share one, so anything that keys state per viewer (the
     #: astronaut widget's persistent roster, for one) needs this instead.
     user_id: str = ""
+    #: Avatar URL where the source has one. Empty is the normal case, not an
+    #: error: TikTok populates it on comment events and leaves it empty on
+    #: join/follow/like/gift, so a row without an avatar is the ordinary state of
+    #: a row rather than a broken one. Empty means "draw the initial", and the
+    #: renderer must never turn it into an image request.
+    avatar: str = ""
     #: Bare payload, no verb attached. "sent Rose x1", not "kei sent Rose x1" —
     #: the verb is a presentation concern and belongs in the renderer.
     value: str = ""
@@ -51,8 +57,15 @@ class Event:
 
 
 def _named(e: Event) -> dict[str, Any]:
-    """The user fields every per-viewer event carries."""
-    return {"user": e.user, "userId": e.user_id or e.user}
+    """The user fields every per-viewer event carries.
+
+    The avatar is included here rather than per-serializer because every one of
+    them describes a person, and TikTok's population of it is uneven: comments
+    have one, joins and follows do not. Passing it through the shared helper
+    means a kind that has an avatar sends it, and the kinds that do not send an
+    empty string the renderer already knows how to draw.
+    """
+    return {"user": e.user, "userId": e.user_id or e.user, "avatar": e.avatar}
 
 
 def _comment(e: Event) -> dict[str, Any]:

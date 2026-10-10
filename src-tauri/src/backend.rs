@@ -365,11 +365,12 @@ pub fn to_app_event(frame: &Value, now_ms: i64) -> Option<Value> {
         // but an empty one would key every such viewer to the same row.
         if raw.is_empty() { user() } else { raw.to_string() }
     };
-    // The backend carries no avatar: TikTokLive has none on its events, and the
-    // only way to get one is a profile-page scrape per viewer. The feed renders
-    // an initial instead, which is why this is an empty string rather than a
-    // field the app would have to treat as missing.
-    let avatar = "";
+    // The backend carries an avatar only on the events where TikTok populates
+    // one — comments. Join, follow, like and gift arrive without it, so this
+    // reads whatever came back and defaults to empty, which the feed renders as
+    // an initial. Reading it as a string rather than forcing "" is the whole
+    // change: the field was already being carried, it was just discarded here.
+    let avatar = frame.get("avatar").and_then(Value::as_str).unwrap_or_default();
 
     let count = frame.get("count").and_then(Value::as_i64).unwrap_or(1);
 

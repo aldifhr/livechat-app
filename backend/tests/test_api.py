@@ -202,10 +202,10 @@ with TestClient(main.app) as client:
     check("delete twice is 404", client.delete(f"/api/rooms/{oid}", headers=AUTH).status_code == 404)
 
 print("wire format")
-check("comment wire unchanged", to_wire(Event(kind="comment", user="a", value="hi")) == {"type": "comment", "user": "a", "userId": "a", "text": "hi"})
-check("like wire unchanged", to_wire(Event(kind="like", user="a", meta={"count": 2, "totalLikes": 9})) == {"type": "like", "user": "a", "userId": "a", "count": 2, "totalLikes": 9})
-check("gift wire unchanged", to_wire(Event(kind="gift", user="a", meta={"giftName": "Rose", "count": 1, "value": 5})) == {"type": "gift", "user": "a", "userId": "a", "giftName": "Rose", "count": 1, "value": 5})
-check("join wire unchanged", to_wire(Event(kind="join", user="a", meta={"viewers": 3})) == {"type": "join", "user": "a", "userId": "a", "viewers": 3})
+check("comment wire unchanged", to_wire(Event(kind="comment", user="a", value="hi")) == {"type": "comment", "user": "a", "userId": "a", "avatar": "", "text": "hi"})
+check("like wire unchanged", to_wire(Event(kind="like", user="a", meta={"count": 2, "totalLikes": 9})) == {"type": "like", "user": "a", "userId": "a", "avatar": "", "count": 2, "totalLikes": 9})
+check("gift wire unchanged", to_wire(Event(kind="gift", user="a", meta={"giftName": "Rose", "count": 1, "value": 5})) == {"type": "gift", "user": "a", "userId": "a", "avatar": "", "giftName": "Rose", "count": 1, "value": 5})
+check("join wire unchanged", to_wire(Event(kind="join", user="a", meta={"viewers": 3})) == {"type": "join", "user": "a", "userId": "a", "avatar": "", "viewers": 3})
 check("viewers wire unchanged", to_wire(Event(kind="viewers", meta={"count": 12})) == {"type": "viewers", "count": 12})
 check("unknown kind surfaces as alert", to_wire(Event(kind="bogus"))["type"] == ALERT)
 
@@ -222,6 +222,32 @@ check(
 )
 check("follow carries user_id", to_wire(Event(kind="follow", user="a", user_id="z"))["userId"] == "z")
 check("share carries user_id", to_wire(Event(kind="share", user="a", user_id="z"))["userId"] == "z")
+
+# Avatar. Empty is the field's normal state: TikTok populates it on comment
+# events and leaves it empty on join, follow, like and gift, so every kind
+# carries the key and the renderer decides between a picture and an initial.
+# Asserting the key is always present matters more than asserting it has a
+# value — a client that reads frame["avatar"] must not have to distinguish
+# "no avatar" from "old backend that never sent one".
+print("avatar on the wire")
+AVATAR = "https://p16-sign-va.tiktokcdn.com/abc~t0123.jpg"
+check(
+    "a comment with an avatar carries the url",
+    to_wire(Event(kind="comment", user="kei", avatar=AVATAR, value="hi"))["avatar"] == AVATAR,
+)
+for kind in ("comment", "like", "gift", "join", "follow", "share"):
+    check(
+        f"{kind} sends the avatar key even when empty",
+        "avatar" in to_wire(Event(kind=kind, user="a")),
+    )
+check(
+    "an empty avatar is an empty string, never None",
+    to_wire(Event(kind="comment", user="a"))["avatar"] == "",
+)
+check(
+    "viewers carries no avatar at all — it describes nobody",
+    "avatar" not in to_wire(Event(kind="viewers", meta={"count": 12})),
+)
 
 print("token guard")
 # Everything above ran with no token set, which must stay open so a fresh clone
