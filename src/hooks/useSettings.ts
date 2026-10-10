@@ -34,6 +34,12 @@ export interface ViewSettings {
   giftSound: boolean
   /** Raise a desktop toast when a gift arrives. */
   giftNotice: boolean
+  /** Show the session stats panel at the bottom of the window. */
+  showStats: boolean
+  /** Show the in-app log panel at the bottom of the window. */
+  showLog: boolean
+  /** Show the ask-the-model panel at the bottom of the window. */
+  showAsk: boolean
 }
 
 export const DEFAULT_SETTINGS: ViewSettings = {
@@ -48,6 +54,9 @@ export const DEFAULT_SETTINGS: ViewSettings = {
   alwaysOnTop: false,
   giftSound: true,
   giftNotice: true,
+  showStats: true,
+  showLog: true,
+  showAsk: true,
 }
 
 const FONT_MIN = 0.75

@@ -5,7 +5,6 @@ import { backendUrl, normaliseUsername, type BackendConfig } from '../lib/backen
 import type { FeedFilters, KindFilter } from '../hooks/useVisibleItems'
 import type { Health } from '../hooks/useHealth'
 import type { UseSettingsResult, ViewSettings } from '../hooks/useSettings'
-import { DENSITIES, FONTS, THEMES } from '../lib/theme'
 import type { RoomState } from '../types'
 
 interface Props {
@@ -18,17 +17,15 @@ interface Props {
   health: Health
   settings: UseSettingsResult
   backend: BackendConfig
+  /** The current feed rows, so Clear can say when there is nothing to clear. */
+  items: number
   onFiltersChange: (filters: Partial<FeedFilters>) => void
   onCollapseChange: (enabled: boolean) => void
-  onClear: () => void
-  onOpenLlm: () => void
+  onClearChat: () => void
+  onOpenSettings: () => void
 }
 
 const TOGGLES: { key: keyof ViewSettings; label: string; hint: string }[] = [
-  { key: 'compact', label: 'Compact', hint: 'One line per message, no avatars' },
-  { key: 'hideJoins', label: 'Hide joins', hint: 'Drop "X joined the stream" rows' },
-  { key: 'hideFiltered', label: 'Hide filtered', hint: 'Drop messages TikTok already filtered' },
-  { key: 'alwaysOnTop', label: 'On top', hint: 'Keep the window above others' },
   { key: 'giftSound', label: 'Gift sound', hint: 'Chime when a gift arrives' },
   { key: 'giftNotice', label: 'Gift notice', hint: 'Raise a desktop toast when a gift arrives' },
 ]
@@ -63,10 +60,11 @@ export function Toolbar({
   health,
   settings,
   backend,
+  items,
   onFiltersChange,
   onCollapseChange,
-  onClear,
-  onOpenLlm,
+  onClearChat,
+  onOpenSettings,
 }: Props) {
   const spec = PLATFORMS[PLATFORM]
   const [busy, setBusy] = useState(false)
@@ -97,7 +95,7 @@ export function Toolbar({
 
   async function connect() {
     setBusy(true)
-    onClear()
+    onClearChat()
     try {
       await host.backendConnect({ baseUrl: backendUrl(backend), username: wanted })
       savedHandle.current = wanted
@@ -205,10 +203,11 @@ export function Toolbar({
       </div>
 
       {/*
-        Collapse spam lives here rather than beside the search box. It is a
-        reading preference, like everything else on this row, and it sat on a row
-        of its own that pushed the search field below the fold in a window of
-        ordinary size.
+        The stream itself: the handle, connect, filters, and the few things worth
+        a glance while watching. Everything else — theme, font, density, the
+        panels, the model — is behind the gear. This row used to carry a look
+        switcher of its own and a Model button, which pushed the chat below the
+        fold and made the toolbar something to scroll past.
       */}
       <div className="view-toggles">
         <label className="toggle" title="Collapse identical consecutive messages">
@@ -236,75 +235,32 @@ export function Toolbar({
           </label>
         ))}
 
-        {/* Moved up onto the toggle row: it said the same thing as the active chip
-            and the search box beside it, and a row of its own was the one the
-            window could least afford. */}
         <span className="summary">
           {totalReceived.toLocaleString()} events
           {kind !== 'all' && ` · ${spec.kinds.find((k) => k.value === kind)?.label.toLowerCase()}`}
           {search.trim() && ' · search'}
         </span>
 
-        <button className="btn btn-small llm-btn" onClick={onOpenLlm} title="Point the app at a model">
-          Model
+        <button
+          className="btn btn-small"
+          onClick={onClearChat}
+          disabled={items === 0}
+          title="Clear every row from the feed"
+        >
+          Clear
+        </button>
+
+        <button
+          className="btn btn-small settings-btn"
+          onClick={onOpenSettings}
+          title="Theme, font, density, panels and model"
+          aria-label="Settings"
+        >
+          ⚙
         </button>
         <span className="font-hint" title="Ctrl + scroll anywhere in the window">
           {Math.round(settings.fontScale * 100)}%
         </span>
-      </div>
-
-      {/*
-        The look controls, on a row of their own rather than crowded onto the
-        toggles: they are three selects that label themselves, and a select
-        beside a checkbox reads as the same kind of control when it is not. Each
-        writes straight into settings, which persists it and applies the body
-        attribute — the switcher holds no state of its own.
-      */}
-      <div className="look-row">
-        <label className="look-field">
-          <span className="look-label">Theme</span>
-          <select
-            className="input"
-            value={settings.theme}
-            onChange={(e) => settings.set('theme', e.target.value as ViewSettings['theme'])}
-          >
-            {THEMES.map((t) => (
-              <option key={t.id} value={t.id} title={t.hint}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="look-field">
-          <span className="look-label">Font</span>
-          <select
-            className="input"
-            value={settings.font}
-            onChange={(e) => settings.set('font', e.target.value as ViewSettings['font'])}
-          >
-            {FONTS.map((f) => (
-              <option key={f.id} value={f.id} title={f.hint}>
-                {f.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="look-field">
-          <span className="look-label">Density</span>
-          <select
-            className="input"
-            value={settings.density}
-            onChange={(e) => settings.set('density', e.target.value as ViewSettings['density'])}
-          >
-            {DENSITIES.map((d) => (
-              <option key={d.id} value={d.id} title={d.hint}>
-                {d.label}
-              </option>
-            ))}
-          </select>
-        </label>
       </div>
     </div>
   )

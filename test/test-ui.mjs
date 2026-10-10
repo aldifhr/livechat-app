@@ -327,47 +327,30 @@ check('the error reached the log', /not live/.test(doc.body.textContent ?? ''))
 check('the error badge appeared', !!$('.log-badge'), $('.log-badge')?.textContent ?? 'none')
 
 console.log('reading preferences')
-check('compact is off by default', $$('.view-toggles').length === 1)
-const toggleByLabel = (label) =>
+// The look and feed preferences moved behind the gear, so this opens the dialog
+// and drives them there. Only gift sound/notice and collapse stay on the toolbar.
+check('compact is off by default', doc.body.classList.contains('compact') === false)
+
+await click('.settings-btn')
+check('the settings dialog opens', Boolean($('.modal-settings')))
+const dialogToggle = (label) =>
+  $$('.modal-settings .toggle').find((t) => t.textContent.trim().startsWith(label))?.querySelector('input')
+const toolbarToggle = (label) =>
   $$('.view-toggles .toggle').find((t) => t.textContent.trim().startsWith(label))?.querySelector('input')
 
-await click(toggleByLabel('Compact'))
+await click(dialogToggle('Compact'))
 check('turning on compact sets the class', doc.body.classList.contains('compact') === true)
-await click(toggleByLabel('Compact'))
+await click(dialogToggle('Compact'))
 check('turning it off clears the class', doc.body.classList.contains('compact') === false)
 
-// On by default, and stored: whether a chime fires at 3am is a preference, not a
-// decision to make on every launch.
-const soundToggle = toggleByLabel('Gift sound')
-check('the gift sound is offered', Boolean(soundToggle))
-check('it is on to begin with', soundToggle?.checked === true)
-
-// jsdom has no Web Audio, so this is the only place the missing-audio path is
-// exercised — and it matters more than it looks: a throw from the gift handler
-// would take down the feed, which is the app's whole job.
-await click(soundToggle)
-check('it can be turned off', toggleByLabel('Gift sound')?.checked === false)
-await act(async () => {
-  fake.emit({ platform: 'tiktok', type: 'gift', ...viewer({ id: 'silent' }), giftName: 'Mute', count: 1, diamonds: 5, timestamp: 1700000006700 })
-})
-check('a gift with the sound off leaves the feed intact', $$('.row-gift').some((r) => /Mute/.test(r.textContent ?? '')))
-
-await click(toggleByLabel('Gift sound'))
-check('and back on', toggleByLabel('Gift sound')?.checked === true)
-await act(async () => {
-  fake.emit({ platform: 'tiktok', type: 'gift', ...viewer({ id: 'loud' }), giftName: 'Chime', count: 1, diamonds: 9999, timestamp: 1700000006800 })
-})
-check('a gift with the sound on still lands in the feed', $$('.row-gift').some((r) => /Chime/.test(r.textContent ?? '')))
-check('and nothing about the room broke', $$('.row').length > 0)
-
-await click(toggleByLabel('Hide joins'))
+await click(dialogToggle('Hide joins'))
 // Emitted fresh: the earlier join row was pushed out by the 500-row cap test,
 // which is the app behaving correctly and leaves nothing here to toggle.
 await act(async () => {
   fake.emit({ platform: 'tiktok', type: 'join', nickname: 'Latecomer', avatar: '', viewerId: 'v-late', timestamp: 1700000006400 })
 })
 check('the toggle actually hides a join row', $$('.row-join').length === 0, String($$('.row-join').length))
-await click(toggleByLabel('Hide joins'))
+await click(dialogToggle('Hide joins'))
 check('and they come back when it is off', $$('.row-join').length === 1, String($$('.row-join').length))
 
 await act(async () => {
@@ -381,10 +364,38 @@ await act(async () => {
   })
 })
 check('a filtered message is shown by default', $$('.badge-filtered').length === 1)
-await click(toggleByLabel('Hide filtered'))
+await click(dialogToggle('Hide filtered'))
 check('hide-filtered removes it', $$('.badge-filtered').length === 0)
-await click(toggleByLabel('Hide filtered'))
+await click(dialogToggle('Hide filtered'))
 check('and brings it back', $$('.badge-filtered').length === 1)
+
+await click($('.modal-close'))
+check('the dialog closes', !$('.modal-settings'))
+
+// On by default, and stored: whether a chime fires at 3am is a preference, not a
+// decision to make on every launch. These stay on the toolbar — a glanceable
+// switch you flip without opening anything.
+const soundToggle = toolbarToggle('Gift sound')
+check('the gift sound is offered', Boolean(soundToggle))
+check('it is on to begin with', soundToggle?.checked === true)
+
+// jsdom has no Web Audio, so this is the only place the missing-audio path is
+// exercised — and it matters more than it looks: a throw from the gift handler
+// would take down the feed, which is the app's whole job.
+await click(soundToggle)
+check('it can be turned off', toolbarToggle('Gift sound')?.checked === false)
+await act(async () => {
+  fake.emit({ platform: 'tiktok', type: 'gift', ...viewer({ id: 'silent' }), giftName: 'Mute', count: 1, diamonds: 5, timestamp: 1700000006700 })
+})
+check('a gift with the sound off leaves the feed intact', $$('.row-gift').some((r) => /Mute/.test(r.textContent ?? '')))
+
+await click(toolbarToggle('Gift sound'))
+check('and back on', toolbarToggle('Gift sound')?.checked === true)
+await act(async () => {
+  fake.emit({ platform: 'tiktok', type: 'gift', ...viewer({ id: 'loud' }), giftName: 'Chime', count: 1, diamonds: 9999, timestamp: 1700000006800 })
+})
+check('a gift with the sound on still lands in the feed', $$('.row-gift').some((r) => /Chime/.test(r.textContent ?? '')))
+check('and nothing about the room broke', $$('.row').length > 0)
 
 await act(async () => {
   fake.emit({
@@ -670,6 +681,41 @@ check('the log has entries', lines.length > 0, String(lines.length))
 check('every line has a level', lines.every((l) => /info|warn|error/.test(l.querySelector('.log-level')?.textContent ?? '')))
 check('every line has a time', lines.every((l) => /\d{2}\.\d{2}\.\d{2}/.test(l.querySelector('.log-time')?.textContent ?? '')))
 check('the log attributed the room', /tiktok:/.test($$('.log-message').map((m) => m.textContent).join(' ')))
+
+console.log('clearing the chat')
+// The feed has rows from every section above. Clear empties it without touching
+// the connection — the button is a reading reset, not a disconnect.
+check('the feed has rows to clear', $$('.row').length > 0, String($$('.row').length))
+const clearButton = $$('.view-toggles .btn').find((b) => b.textContent.trim() === 'Clear')
+check('the clear button is offered', Boolean(clearButton))
+check('and is enabled while there is something to clear', clearButton?.disabled === false)
+await click(clearButton)
+check('the feed is emptied', $$('.row').length === 0, String($$('.row').length))
+check('the empty state explains itself', /No messages yet/.test($('.empty-title')?.textContent ?? ''), $('.empty-title')?.textContent)
+check('the clear button goes quiet when there is nothing to clear', $$('.view-toggles .btn').find((b) => b.textContent.trim() === 'Clear')?.disabled === true)
+
+// New chat still arrives after a clear: clearing is a view reset, not a stop.
+await act(async () => {
+  fake.emit({ platform: 'tiktok', type: 'chat', ...viewer({ id: 'afterclear' }), text: 'still live', timestamp: 1700000011000 })
+})
+check('chat keeps arriving after a clear', $$('.row').some((r) => /still live/.test(r.textContent ?? '')))
+
+console.log('panels can be turned off')
+// The three bottom panels take vertical space the chat could use. Each can be
+// switched off from the settings dialog and comes back when switched on.
+await click('.settings-btn')
+await click(dialogToggle('Stats panel'))
+check('the stats panel goes away', !$('.stats-panel'))
+await click(dialogToggle('Log panel'))
+check('the log panel goes away', !$('.log-panel'))
+await click(dialogToggle('Ask panel'))
+check('the ask panel goes away', !$('.ask-panel'))
+await click(dialogToggle('Stats panel'))
+check('and each comes back', Boolean($('.stats-panel')))
+await click(dialogToggle('Log panel'))
+check('the log is back too', Boolean($('.log-panel')))
+await click(dialogToggle('Ask panel'))
+check('and the ask is back', Boolean($('.ask-panel')))
 
 console.log('teardown')
 await act(async () => {

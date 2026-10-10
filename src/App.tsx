@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AskPanel } from './components/AskPanel'
 import { FeedRow } from './components/FeedRow'
-import { LlmSettings } from './components/LlmSettings'
 import { LogPanel } from './components/LogPanel'
+import { SettingsDialog } from './components/SettingsDialog'
 import { StatsPanel } from './components/StatsPanel'
 import { Toolbar } from './components/Toolbar'
 import { useChat } from './hooks/useChat'
@@ -14,11 +14,11 @@ import { EMPTY_BACKEND, type BackendConfig } from './lib/backend'
 import { host } from './lib/sidecar'
 
 export default function App() {
-  const [collapse, setCollapse] = useState(true)
-  const [llmOpen, setLlmOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [backend, setBackend] = useState<BackendConfig>(EMPTY_BACKEND)
   const [filters, setFilters] = useState<FeedFilters>({ kind: 'all', search: '' })
   const settings = useSettings()
+  const [collapse, setCollapse] = useState(true)
 
   useGiftSound(settings.giftSound)
   useGiftNotification(settings.giftNotice)
@@ -125,10 +125,11 @@ export default function App() {
         health={health}
         settings={settings}
         backend={backend}
+        items={items.length}
         onFiltersChange={onFiltersChange}
         onCollapseChange={setCollapse}
-        onClear={clear}
-        onOpenLlm={() => setLlmOpen(true)}
+        onClearChat={clear}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
 
       <div className="feed-wrap">
@@ -173,12 +174,12 @@ export default function App() {
         )}
       </div>
 
-      <LlmSettings open={llmOpen} onClose={() => setLlmOpen(false)} />
+      <SettingsDialog open={settingsOpen} settings={settings} onClose={() => setSettingsOpen(false)} />
 
-      <StatsPanel stats={stats} />
+      {settings.showStats && <StatsPanel stats={stats} />}
 
-      <AskPanel items={items} room={room} onAsk={ask} asking={asking} />
-      <LogPanel entries={log.entries} tallies={log.tallies} onClear={log.clear} />
+      {settings.showAsk && <AskPanel items={items} room={room} onAsk={ask} asking={asking} />}
+      {settings.showLog && <LogPanel entries={log.entries} tallies={log.tallies} onClear={log.clear} />}
     </div>
   )
 }
