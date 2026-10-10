@@ -26,8 +26,6 @@ Run with the backend's interpreter:
 """
 
 import asyncio
-import json
-import os
 import statistics
 import sys
 import tempfile
@@ -78,7 +76,7 @@ async def measure_perf01() -> None:
     for label, slow in (("all fast", 0), ("one slow socket", 1)):
         hub = Hub()
         t0 = time.perf_counter()
-        slow_id = await hub.connect(
+        await hub.connect(
             FakeSocket("slow", SLOW_SEND_S if slow else 0), ROOM, "scene-a"
         )
         for i in range(FAST_CLIENTS):
@@ -187,7 +185,7 @@ def measure_perf03() -> None:
         print(f"  {count:4d} rooms    {size/1024:7.1f}KiB   "
               f"median {statistics.median(times):6.2f}ms   p95 {sorted(times)[int(len(times)*0.95)-1]:6.2f}ms   max {max(times):6.2f}ms")
 
-    print(f"  -> a 60fps frame is 16.7ms. Anything above that is visible stall time on the event loop.")
+    print("  -> a 60fps frame is 16.7ms. Anything above that is visible stall time on the event loop.")
 
 
 async def main() -> None:

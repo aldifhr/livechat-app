@@ -150,8 +150,6 @@ function resolve(): Promise<Transport> {
   return active
 }
 
-let resolvedUnlisten: (() => void) | null = null
-
 /**
  * Shared across every `attach`, so it cannot be null while a registration is
  * already in flight.
@@ -168,7 +166,7 @@ export async function attach(onEvent?: EventHandler): Promise<void> {
   // transport then has two subscribers and delivers every frame twice.
   attaching = (async () => {
     const resolved = await resolve()
-    resolvedUnlisten = await resolved.listen((event) => {
+    await resolved.listen((event) => {
       for (const handler of listeners) handler(event)
     })
   })()
@@ -185,13 +183,6 @@ export async function attach(onEvent?: EventHandler): Promise<void> {
  */
 export function detachHandler(handler: EventHandler): void {
   listeners.delete(handler)
-}
-
-export function detach(): void {
-  resolvedUnlisten?.()
-  resolvedUnlisten = null
-  attaching = null
-  listeners.clear()
 }
 
 export const host = {

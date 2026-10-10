@@ -9,12 +9,6 @@
 /** Roughly the last few minutes in a busy room. */
 export const MAX_ITEMS = 500
 
-/** Repeat suppression: a spam wave arrives as one message per member. */
-export const DEFAULT_COLLAPSE_WINDOW_MS = 2500
-export const DEFAULT_COLLAPSE_THRESHOLD = 3
-
-export const NO_COLLAPSE = { windowMs: 0, threshold: 0 } as const
-
 export interface CollapseOptions {
   windowMs: number
   threshold: number

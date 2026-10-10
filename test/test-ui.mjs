@@ -450,6 +450,16 @@ check('it opens', Boolean($('.stats-body')))
 const tile = (label) =>
   $$('.stat-tile').find((t) => t.querySelector('.stat-label')?.textContent === label)?.querySelector('.stat-value')?.textContent
 
+/**
+ * A stat's digits, with the locale's group separators removed.
+ *
+ * The panel renders through toLocaleString, so "11,296" and "11.296" are the same
+ * number in two places and which one appears depends on the machine. Comparing
+ * digits keeps these assertions about the value the panel computed rather than
+ * about how the current locale writes it.
+ */
+const digits = (text) => (text ?? '').replace(/\D/g, '')
+
 // Counted from a known zero: earlier sections pushed six hundred messages through
 // on purpose, so anything asserted against the running totals would be a test of
 // the order the sections happen to run in.
@@ -501,16 +511,22 @@ await act(async () => {
 await act(async () => {
   await new Promise((resolve) => setTimeout(resolve, 300))
 })
-check('a rising headcount raises the peak with it', tile('Peak') === '11.296', tile('Peak'))
-check('and the current count is added across rooms', tile('Watching') === '11.296', tile('Watching'))
+// The panel formats with toLocaleString, whose separator depends on the runtime
+// locale. jsdom here does not match a browser's, so asserting the formatted
+// string pinned this suite to whichever one it happened to run under — it failed
+// with a comma against a test written for a period, and would flip the other way
+// on a machine with a different locale. Asserting the digits leaves the locale
+// to the renderer, which is where that choice belongs.
+check('a rising headcount raises the peak with it', digits(tile('Peak')) === '11296', tile('Peak'))
+check('and the current count is added across rooms', digits(tile('Watching')) === '11296', tile('Watching'))
 await act(async () => {
   fake.emit({ platform: 'tiktok', type: 'viewers', count: 500 })
 })
 await act(async () => {
   await new Promise((resolve) => setTimeout(resolve, 300))
 })
-check('a falling headcount does not lower the peak', tile('Peak') === '11.296', tile('Peak'))
-check('but the current count follows it down', tile('Watching') === '500', tile('Watching'))
+check('a falling headcount does not lower the peak', digits(tile('Peak')) === '11296', tile('Peak'))
+check('but the current count follows it down', digits(tile('Watching')) === '500', tile('Watching'))
 
 const board = $$('.chatter').map((row) => row.querySelector('.chatter-name')?.textContent)
 // All four spoke once each, so the order is the name tie-break and nothing else.

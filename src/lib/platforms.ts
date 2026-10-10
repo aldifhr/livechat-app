@@ -51,6 +51,3 @@ export const PLATFORMS: Record<Platform, PlatformSpec> = {
 
 /** The only platform. Named rather than inlined so call sites read as intent. */
 export const PLATFORM: Platform = 'tiktok'
-
-/** What this platform can deliver, as the filter chips offer it. */
-export const KINDS: PlatformSpec['kinds'] = PLATFORMS[PLATFORM].kinds

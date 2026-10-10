@@ -646,12 +646,6 @@ async def trigger(room_id: str, req: TriggerRequest):
                 # a triggered gift worth a third of a real one, and left the
                 # frontend guessing whether to multiply — which is how a total
                 # ends up counted twice.
-                # `diamonds` is the total for the whole send, matching what
-                # sources/tiktok.py puts in `value`: one gift of five sent three
-                # times is fifteen. Sending the per-unit figure here instead made
-                # a triggered gift worth a third of a real one, and left the
-                # frontend guessing whether to multiply — which is how a total
-                # ends up counted twice.
                 "diamonds": req.diamonds * req.count,
                 "value": req.diamonds * req.count,
             },

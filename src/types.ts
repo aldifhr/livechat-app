@@ -61,26 +61,6 @@ export interface FeedItem extends Viewer {
   repeatCount?: number
 }
 
-export interface StatusEvent {
-  connected: boolean
-  connecting?: boolean
-  message: string
-}
-
-export interface RoomEvent {
-  username: string
-  roomId: string
-  title: string
-}
-
-export interface ViewersEvent {
-  count: number
-}
-
-export interface ErrorEvent {
-  message: string
-}
-
 /**
  * What the app shows about the room.
  *
