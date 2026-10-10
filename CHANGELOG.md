@@ -4,6 +4,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
 
 ## [Unreleased]
 
+### Fixed
+- **Grammatical residue dari rename `overlay` → `room`.** `sed` mengganti kata tanpa
+  menjaga bentuk: `An room id` (main.py), `A scene's own id` (hub.py), plus docstring
+  dan label test yang masih menyebut "scene" — sisa dari rename lama StreamKit yang
+  tidak ikut. Semua dikembalikan ke "room".
+- **7 temuan pyflakes**, semuanya cosmetic dan tidak mengubah perilaku:
+  - `main.py` — `import asyncio` dan `from hub import ROOM` tidak terpakai
+  - `test_eventlog.py`, `test_watchdog.py` — `import os` tidak terpakai
+  - `test_event_fanout.py`, `test_room_connect.py`, `test_viewer_coalesce.py` —
+    variabel lokal `loop`, `rr`, `ws` di-assign tapi tidak dibaca
+
+### Known issues (pre-existing, bukan dari audit ini)
+- **`npm test` gagal 3 dari suite `test:stats`.** `a rising headcount raises the peak
+  with it`, `and the current count is added across rooms`, `a falling headcount does
+  not lower the peak` — semuanya melaporkan peak `11,296`. Dikonfirmasi masih gagal
+  identik di `6d8376f` (HEAD sebelum audit) dengan nilai yang sama, jadi bukan
+  regresi dari perubahan rename. Suite `test:stats` murni frontend
+  (`sidecar/test-stats.mjs`) dan tidak menyentuh backend Python, sehingga test ini
+  tidak bisa dipengaruhi edit di `backend/`. Jalankan tunggal (`npm run test:stats`)
+  hijau — hanya gagal ketika `test:ui` berjalan lebih dulu di proses yang sama,
+  curiga shared state / jsdom global. Belum ditelusuri.
+
 ## [1.0.0] — 2026-10-10
 
 ### Changed

@@ -6,7 +6,6 @@ and nothing else; the split exists so that adding a widget or an event source
 does not mean editing the file that owns routing.
 """
 
-import asyncio
 import json
 import logging
 import os
@@ -24,7 +23,7 @@ import events
 import store
 from watchdog import LivenessWatchdog
 from events import ALERT, Event
-from hub import ROOM, hub
+from hub import hub
 from sources import TikTokSource
 
 logger = logging.getLogger("streamkit.api")
@@ -208,7 +207,7 @@ class ConnectRequest(BaseModel):
 
 class CreateRoomRequest(BaseModel):
     name: str
-#: Starting scene, resolved by the caller.
+#: Starting room, resolved by the caller.
     #:
     #: The frontend owns the config schema entirely — this module used to mirror
     #: a single key of it, because a second copy of the schema here is how the two
@@ -355,7 +354,7 @@ async def room_connect(room_id: str):
     OBS loads /room/<id> on the streamer's own machine and cannot log in, so
     /api/connect — which takes the username from the request and can therefore
     aim the global room at anything — is closed to it. That left the room
-    unable to ever reach a stream and showing the sample scene forever.
+    unable to ever reach a stream and showing the sample room forever.
 
     The difference here is that the username is not taken from the request. It is
     read from the room's own saved config, so this can only ever connect the

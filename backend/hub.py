@@ -47,8 +47,8 @@ class Hub:
     def __init__(self) -> None:
         self.active: dict[str, WebSocket] = {}
         # client id to the room it is watching, for every client type that
-        # names one. The customizer panel edits a specific scene's config, so it
-        # is bound to that scene for delivery purposes even though it is not a
+        # names one. The customizer panel edits a specific room's config, so it
+        # is bound to that room for delivery purposes even though it is not a
         # broadcast client.
         self.room_clients: dict[str, str] = {}
         self.customizer_clients: set[str] = set()
@@ -189,11 +189,11 @@ class Hub:
     def _targets(self, client_type: str | None, room_id: str | None) -> set[str]:
         """Who should receive this message.
 
-        An room id is a boundary, not a hint. Every producer passes one and
+        A room id is a boundary, not a hint. Every producer passes one and
         none of them pass a client type, so a filter that only applied when
         `client_type == ROOM` fell straight through to "everyone" — and two
         streams on the same backend received each other's comments, each other's
-        config and each other's connection status. A scene's own id decides who
+        config and each other's connection status. A room's own id decides who
         hears about it, whatever kind of client is listening.
         """
         if room_id:
@@ -202,7 +202,7 @@ class Hub:
             return self.customizer_clients.copy()
         if client_type == ROOM:
             # Rooms with no id, kept apart from any stray client that never
-            # named a scene.
+            # named a room.
             return set(self.room_clients.keys())
         return set(self.active.keys())
 

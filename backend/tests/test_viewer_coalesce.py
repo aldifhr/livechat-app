@@ -179,7 +179,7 @@ print("\na disconnect clears the held count")
 
 async def leave() -> dict[str, int]:
     h = hub.Hub()
-    ws = attach(h, "c6")
+    attach(h, "c6")
     start_writer(h, "c6")
     h._send("c6", {"type": "viewers", "meta": {"count": 7}})
     held = dict(h._held_viewers)

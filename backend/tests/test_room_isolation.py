@@ -11,7 +11,7 @@ The assertions are about what each socket actually received. A broadcast that
 reaches the wrong two sockets succeeds perfectly, so "did broadcast raise" is
 worth nothing here. What makes a leak visible is asking the other socket whether
 anything arrived, and then reading its next message and finding the other
-scene's payload in it.
+room's payload in it.
 
 This drives the ASGI app directly rather than going through `TestClient`: the
 websocket transport there holds a portal, and issuing an HTTP request from inside
@@ -131,7 +131,7 @@ async def run() -> None:
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        for name, label in ((a, "Scene A"), (b, "Scene B")):
+        for name, label in ((a, "Room A"), (b, "Room B")):
             made = await client.post("/api/rooms", json={"name": label}, headers=AUTH)
             check(f"created {label}", made.status_code in (200, 201), f"got {made.status_code}")
 
@@ -141,7 +141,7 @@ async def run() -> None:
             await sock_a.drain_opening()
             await sock_b.drain_opening()
 
-            print("a comment for one scene reaches only that scene")
+            print("a comment for one room reaches only that room")
             await emit(a, Event(kind="comment", user="alice", user_id="alice", value="dari akun A"))
             await emit(b, Event(kind="comment", user="bob", user_id="bob", value="dari akun B"))
             got_a = await sock_a.take("A's comment")
@@ -152,14 +152,14 @@ async def run() -> None:
             check("B's copy names nobody from A", "alice" not in str(got_b), f"got {got_b}")
             check("B received nothing beyond its own", await sock_b.expect_nothing(), "something leaked to B")
 
-            print("a gift for one scene reaches only that scene")
+            print("a gift for one room reaches only that room")
             await emit(a, Event(kind="gift", user="alice", user_id="alice", value="Lion",
                                 meta={"diamonds": 500, "value": 500, "count": 1, "giftName": "Lion"}))
             got_a = await sock_a.take("A's gift")
             check("A sees the gift", "500" in str(got_a), f"got {got_a}")
             check("B received no gift", await sock_b.expect_nothing(), "the gift crossed to B")
 
-            print("config for one scene does not reach the other")
+            print("config for one room does not reach the other")
             await emit_config(a, {"type": "city", "style": {"max-people": 45}})
             cfg_a = await sock_a.take("A's config")
             check("A gets its own config", "city" in str(cfg_a), f"got {cfg_a}")
@@ -169,22 +169,22 @@ async def run() -> None:
             check("B gets its own config", "chat" in str(cfg_b), f"got {cfg_b}")
             check("and only its own", "city" not in str(cfg_b), f"got {cfg_b}")
 
-            print("status for one scene does not reach the other")
+            print("status for one room does not reach the other")
             await emit_status(a, connected=True, message="Live A")
             status_a = await sock_a.take("A's status")
             check("A sees the status", "Live A" in str(status_a), f"got {status_a}")
             check("B received no status", await sock_b.expect_nothing(), "A's status crossed to B")
 
-            print("an error for one scene reaches only that scene")
+            print("an error for one room reaches only that room")
             await emit_error(a, "A bermasalah")
             err_a = await sock_a.take("A's error")
             check("A sees the error", "bermasalah" in str(err_a), f"got {err_a}")
             check("B received no error", await sock_b.expect_nothing(), "A's error crossed to B")
 
-            print("a third scene shares nothing with either")
+            print("a third room shares nothing with either")
             c = "room-account-c"
-            made = await client.post("/api/rooms", json={"name": "Scene C"}, headers=AUTH)
-            check("created Scene C", made.status_code in (200, 201), f"got {made.status_code}")
+            made = await client.post("/api/rooms", json={"name": "Room C"}, headers=AUTH)
+            check("created Room C", made.status_code in (200, 201), f"got {made.status_code}")
             sock_c, task_c = await open_socket(f"/ws/room/{c}")
             try:
                 await sock_c.drain_opening()

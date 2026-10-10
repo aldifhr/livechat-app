@@ -8,7 +8,7 @@ is, and it takes no body: the username comes from the room's saved config.
 
 These assert that distinction holds, because the failure mode of getting it
 wrong is silent. The room simply never connects and the streamer watches a
-sample scene; nothing in that looks like a security failure, which is how the
+sample room; nothing in that looks like a security failure, which is how the
 public `/api/connect` could have looked fine while letting anyone repoint the
 stream.
 """
@@ -102,7 +102,7 @@ def main_run():
             {"room_id": "another-room", "username": "someone.else"},
         ):
             started.clear()
-            rr = client.post(f"/api/room-connect/{ov['id']}", json=probe)
+            client.post(f"/api/room-connect/{ov['id']}", json=probe)
             check(
                 f"a body of {sorted(probe) or ['none']} cannot change the room",
                 started.get("username") == "room.sConfigured",

@@ -12,7 +12,6 @@ sleeping, so they test the decision rather than the timing.
 
 import asyncio
 import logging
-import os
 import sys
 import time
 from pathlib import Path

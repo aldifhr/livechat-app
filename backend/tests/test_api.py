@@ -80,9 +80,9 @@ AUTH = auth()
 
 with TestClient(main.app) as client:
     print("crud")
-    created = client.post("/api/rooms", json={"name": "Test scene"}, headers=AUTH).json()["room"]
+    created = client.post("/api/rooms", json={"name": "Test room"}, headers=AUTH).json()["room"]
     oid = created["id"]
-    check("create returns id+name", bool(oid) and created["name"] == "Test scene")
+    check("create returns id+name", bool(oid) and created["name"] == "Test room")
     # The summary used to carry a `theme` field. It is gone: the frontend has no
     # themes, so the key was a default the backend invented for a concept the rest
     # of the app does not have. A new room carries no config until it is
@@ -90,23 +90,23 @@ with TestClient(main.app) as client:
     check("create defaults to no config", created["config"] == {}, json.dumps(created["config"]))
     check("create has no theme key", "theme" not in created, json.dumps(sorted(created)))
 
-    check("get by id", client.get(f"/api/rooms/{oid}").json()["name"] == "Test scene")
+    check("get by id", client.get(f"/api/rooms/{oid}").json()["name"] == "Test room")
     check("list contains it", oid in [o["id"] for o in client.get("/api/rooms").json()["rooms"]])
 
     check("missing room is 404", client.get("/api/rooms/nope").status_code == 404)
 
     print("create from a template")
-    # The dashboard resolves a template to a full scene and posts it, so that
+    # The dashboard resolves a template to a full config and posts it, so that
     # creating an room is one request rather than create-then-save.
-    scene = {
+    room_config = {
         "version": 2,
         "padding": 12,
         "customCSS": "",
         "global": {"fontSize": 16},
         "widgets": [{"id": "chat-1", "type": "chat", "enabled": True, "x": 0, "y": 1, "scale": 1, "style": {}}],
     }
-    tpl = client.post("/api/rooms", json={"name": "From template", "config": scene}, headers=AUTH).json()["room"]
-    check("template config stored verbatim", tpl["config"] == scene, json.dumps(tpl["config"]))
+    tpl = client.post("/api/rooms", json={"name": "From template", "config": room_config}, headers=AUTH).json()["room"]
+    check("template config stored verbatim", tpl["config"] == room_config, json.dumps(tpl["config"]))
     listed = {o["id"]: o for o in client.get("/api/rooms").json()["rooms"]}
     check("template widgets visible in list",
           listed[tpl["id"]]["config"]["widgets"][0]["type"] == "chat")
