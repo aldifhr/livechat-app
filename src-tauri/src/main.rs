@@ -157,6 +157,39 @@ fn open_stream(app: tauri::AppHandle, url: String) -> Result<(), String> {
         .map_err(|e| format!("could not open a browser: {e}"))
 }
 
+/// Opens a file picker and returns the chosen sound file's path.
+///
+/// Empty string when the user cancels, so the page can tell "no pick" from "a
+/// pick" without treating a cancellation as an error. The path is handed back
+/// rather than the bytes: the file stays where it is and the page reads it when
+/// the sound fires, which is how a large file avoids being held in memory for a
+/// sound that may never play.
+#[tauri::command]
+async fn pick_sound_file(app: tauri::AppHandle) -> Result<String, String> {
+    use tauri_plugin_dialog::DialogExt as _;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .add_filter("Audio", &["mp3", "wav", "ogg", "m4a", "flac", "aac"])
+        .pick_file(move |chosen| {
+            // A cancelled dialog sends nothing; the receiver gets a dropped
+            // sender, which reads as an error below and becomes an empty path.
+            let _ = tx.send(chosen);
+        });
+    let chosen = match rx.await {
+        Ok(Some(path)) => path,
+        // Cancelled, or the sender went away: both mean "no file chosen", which
+        // is not a failure the user has to act on.
+        _ => return Ok(String::new()),
+    };
+    // The path is registered with the asset protocol so the webview can load it,
+    // then handed back as a path: the page converts it with `convertFileSrc` at
+    // play time. Doing the conversion here instead would put a URL where the
+    // setting stores a file, and the setting has to survive a restart.
+    let _ = app.asset_protocol_scope().allow_file(chosen.as_path().ok_or_else(|| "not a local file".to_string())?);
+    Ok(chosen.to_string())
+}
+
 /// The stored backend settings, or an empty one on first launch.
 #[tauri::command]
 fn backend_config_get(app: tauri::AppHandle) -> backend::BackendConfig {
@@ -268,6 +301,8 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .manage(AppState {
             backend: Arc::new(backend::BackendState::default()),
         })
@@ -281,6 +316,7 @@ fn main() {
         llm_config_save,
         llm_config_clear,
         open_stream,
+        pick_sound_file,
         backend_config_get,
         backend_config_save,
         backend_connect,

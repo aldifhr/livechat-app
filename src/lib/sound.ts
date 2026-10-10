@@ -1,5 +1,5 @@
 /**
- * What a gift sounds like.
+ * What the app sounds like.
  *
  * Synthesised rather than played from a file: an app that has to ship a binary
  * for one chime is worse than one that makes the chime, and a synthesised one is
@@ -8,7 +8,7 @@
  */
 
 /**
- * Shortest gap between two sounds.
+ * Shortest gap between two gift sounds.
  *
  * A gift wave arrives as one frame per member, so without a gap a single wave
  * plays the chime as fast as the machine can schedule it — twenty notes that
@@ -21,7 +21,7 @@ export const GIFT_SOUND_GAP_MS = 4000
 export const GIFT_SOUND_GAIN = 0.18
 
 /** Base note. A fifth above middle C — bright without being shrill. */
-const BASE_HZ = 659.25
+const GIFT_BASE_HZ = 659.25
 
 /**
  * Whether a gift arriving now is worth hearing.
@@ -53,7 +53,7 @@ export function giftPitch(diamonds: number): number {
   const value = Number.isFinite(diamonds) ? Math.max(0, diamonds) : 0
   // One octave up per 500 diamonds, held at the octave above the base note.
   const steps = Math.min(1, Math.floor(value / 500))
-  return BASE_HZ * 2 ** steps
+  return GIFT_BASE_HZ * 2 ** steps
 }
 
 /**
@@ -69,3 +69,76 @@ export function giftChord(diamonds: number): { frequency: number; delayMs: numbe
     { frequency: root * 1.5, delayMs: 95 },
   ]
 }
+
+/**
+ * The chat blip.
+ *
+ * One short note, quieter and higher than the gift chime, so it reads as "a
+ * message" rather than "a gift" without the user having to look. It is a blip
+ * and not a chord because chat is far more frequent than gifts — a busy room
+ * would turn a two-note chime into a drone.
+ */
+export const CHAT_SOUND_GAIN = 0.08
+
+/** Higher than the gift's base note, so the two never read as the same event. */
+const CHAT_BASE_HZ = 880
+
+/** Short. A chat blip that rings is a chat blip that covers the next one. */
+export const CHAT_NOTE_MS = 90
+
+export function chatBlip(): { frequency: number; gain: number; durationMs: number } {
+  return { frequency: CHAT_BASE_HZ, gain: CHAT_SOUND_GAIN, durationMs: CHAT_NOTE_MS }
+}
+
+/**
+ * Shortest gap between two chat blips.
+ *
+ * The same problem the gift gap solves, but the busier version: chat arrives
+ * several a second in an active room, and a blip per message is a buzz rather
+ * than a signal. Half a second is about the point where separate messages are
+ * still heard as separate taps.
+ */
+export const CHAT_SOUND_GAP_MS = 500
+
+/** Whether a chat message arriving now is worth a blip. Same shape as the gift one. */
+export function shouldPlayChatSound(
+  enabled: boolean,
+  lastPlayedAt: number | null,
+  now: number,
+  gapMs: number = CHAT_SOUND_GAP_MS,
+): boolean {
+  if (!enabled) return false
+  if (lastPlayedAt === null) return true
+  return now - lastPlayedAt >= gapMs
+}
+
+/**
+ * The text read aloud for one chat message.
+ *
+ * Trimmed to a length a voice can finish before the next message arrives: a
+ * paragraph spoken over a live stream is a wall of overlapping speech. An
+ * ellipsis marks that it was cut rather than pretending that was the whole
+ * message. The name is prefixed only when asked for, because a stream of
+ * anonymous sentences is as hard to follow as one of names.
+ */
+export const TTS_MAX_CHARS = 120
+
+export function ttsText(nickname: string, text: string, withName: boolean): string {
+  const body = text.trim().replace(/\s+/g, ' ')
+  if (body === '') return ''
+  const cut = body.length > TTS_MAX_CHARS ? `${body.slice(0, TTS_MAX_CHARS).trimEnd()}…` : body
+  if (!withName) return cut
+  const who = nickname.trim() || 'Someone'
+  return `${who} says: ${cut}`
+}
+
+/**
+ * Shortest gap between two spoken messages.
+ *
+ * Far longer than the blip's gap, and for a different reason: speech is not a
+ * tap, it is a sentence, and two spoken messages that overlap are unintelligible
+ * rather than merely busy. This is a floor on the start of the next one; the
+ * voice finishing the current utterance is handled separately, by cancelling it
+ * only when a newer message arrives.
+ */
+export const CHAT_TTS_GAP_MS = 1800

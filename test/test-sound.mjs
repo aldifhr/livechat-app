@@ -51,7 +51,7 @@ if (tsc.status !== 0) {
   process.exit(1)
 }
 
-const { GIFT_SOUND_GAP_MS, giftChord, giftPitch, shouldPlayGiftSound } = await import(
+const { GIFT_SOUND_GAP_MS, GIFT_SOUND_GAIN, giftChord, giftPitch, shouldPlayGiftSound, CHAT_SOUND_GAP_MS, CHAT_NOTE_MS, chatBlip, shouldPlayChatSound, ttsText, TTS_MAX_CHARS, CHAT_TTS_GAP_MS } = await import(
   pathToFileURL(join(dir, 'lib', 'sound.js')).href
 )
 
@@ -93,6 +93,34 @@ check('it is two notes', chord.length === 2)
 check('a fifth apart, not an octave', Math.abs(chord[1].frequency / chord[0].frequency - 1.5) < 0.001, String(chord[1].frequency / chord[0].frequency))
 check('the second note follows the first', chord[1].delayMs > chord[0].delayMs)
 check('and not by so much it reads as two sounds', chord[1].delayMs < 200, String(chord[1].delayMs))
+
+console.log('the chat blip')
+const blip = chatBlip()
+check('it is one short note', blip.durationMs === CHAT_NOTE_MS && CHAT_NOTE_MS < 200, String(blip.durationMs))
+check('and quieter than the gift chime', blip.gain < GIFT_SOUND_GAIN, `${blip.gain} vs ${GIFT_SOUND_GAIN}`)
+check('and higher, so the two do not read the same', blip.frequency > giftPitch(0), `${blip.frequency} vs ${giftPitch(0)}`)
+
+console.log('a chat blip is not one per message')
+check('off means silence', !shouldPlayChatSound(false, null, T0))
+check('the first message blips', shouldPlayChatSound(true, null, T0))
+check('a message inside the gap is dropped', !shouldPlayChatSound(true, T0, T0 + 100))
+check('the next one after the gap blips', shouldPlayChatSound(true, T0, T0 + CHAT_SOUND_GAP_MS))
+check('the gap is shorter than the gift gap, since chat is busier', CHAT_SOUND_GAP_MS < GIFT_SOUND_GAP_MS, String(CHAT_SOUND_GAP_MS))
+
+console.log('what gets spoken')
+check('an empty message speaks nothing', ttsText('ana', '   ', true) === '')
+check('a message with no name is just the text', ttsText('ana', 'halo', false) === 'halo')
+check('a message with a name says who', ttsText('ana', 'halo', true) === 'ana says: halo')
+check('a blank name still says something', ttsText('', 'halo', true) === 'Someone says: halo')
+check('runs of whitespace collapse to one', ttsText('ana', 'a   b', false) === 'a b')
+// A long message is cut with an ellipsis, not silently truncated — the ellipsis
+// is what tells a listener it was cut rather than that the message ended there.
+check('a long message is cut', ttsText('ana', 'x'.repeat(TTS_MAX_CHARS + 50), false).endsWith('…'))
+check('and the cut keeps the length bounded', ttsText('ana', 'x'.repeat(1000), false).length <= TTS_MAX_CHARS + 1)
+check('a short message is left whole', ttsText('ana', 'x'.repeat(10), false) === 'x'.repeat(10))
+// Speech needs a longer gap than the blip: overlapping taps are busy, but
+// overlapping sentences are unintelligible.
+check('speech waits longer than a blip does', CHAT_TTS_GAP_MS > CHAT_SOUND_GAP_MS, String(CHAT_TTS_GAP_MS))
 
 console.log(failures === 0 ? '\nall passed' : `\n${failures} failed`)
 process.exit(failures === 0 ? 0 : 1)

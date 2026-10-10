@@ -717,6 +717,67 @@ check('the log is back too', Boolean($('.log-panel')))
 await click(dialogToggle('Ask panel'))
 check('and the ask is back', Boolean($('.ask-panel')))
 
+console.log('chat alerts')
+// Off by default: a blip per message and a voice reading the room are both
+// things that have to be asked for, not assumed.
+check('the chat blip is offered off', dialogToggle('Chat blip')?.checked === false)
+check('and speech is off too', dialogToggle('Read chat aloud')?.checked === false)
+// The name toggle only exists while speech is on — with nothing being spoken,
+// there is no sentence for a name to sit in front of.
+check('the name toggle is hidden while speech is off', !dialogToggle('Say the name'))
+await click(dialogToggle('Chat blip'))
+check('the blip turns on', dialogToggle('Chat blip')?.checked === true)
+await click(dialogToggle('Read chat aloud'))
+check('speech turns on', dialogToggle('Read chat aloud')?.checked === true)
+check('and now the name toggle appears', Boolean(dialogToggle('Say the name')))
+check('on, since it is the useful default', dialogToggle('Say the name')?.checked === true)
+await click(dialogToggle('Say the name'))
+check('and can be turned off', dialogToggle('Say the name')?.checked === false)
+// Turning speech off takes the name toggle with it again rather than leaving a
+// control that silently does nothing.
+await click(dialogToggle('Read chat aloud'))
+check('speech off hides the name toggle again', !dialogToggle('Say the name'))
+
+console.log('sound templates and a custom file')
+// Scoped to the Sounds section: the Look section above also has selects, and the
+// first `.modal-settings select` is the theme, not a sound.
+const soundSelects = () => $$('[data-section="sounds"] select')
+// Gift and chat each have their own template; the gift defaults to the chime the
+// app shipped with, the chat to the short blip.
+check('the gift has a sound to pick', soundSelects().length >= 2, String(soundSelects().length))
+check('the gift defaults to the chime', soundSelects()[0]?.value === 'chime', soundSelects()[0]?.value)
+check('and offers every template', soundSelects()[0]?.options.length >= 4, String(soundSelects()[0]?.options.length))
+// Choosing a different template writes it straight to settings, which persists
+// it — the picker holds no state of its own.
+await act(async () => {
+  const select = soundSelects()[0]
+  const setter = Object.getOwnPropertyDescriptor(harness.dom.window.HTMLSelectElement.prototype, 'value').set
+  setter.call(select, 'coin')
+  select.dispatchEvent(new harness.dom.window.Event('change', { bubbles: true }))
+})
+check('picking a template takes effect', soundSelects()[0]?.value === 'coin', soundSelects()[0]?.value)
+// The chat blip is a separate select, so a gift sound choice does not change it.
+check('the chat blip is its own choice', soundSelects()[1]?.value !== undefined)
+
+// A custom file overrides every template. Picking one asks the host for a path,
+// and an empty path — a cancelled picker — must leave the previous pick alone
+// rather than clear it.
+check('no custom file by default', /No file/.test($('[data-section="sounds"] .field-note')?.textContent ?? ''), $('[data-section="sounds"] .field-note')?.textContent)
+const chooseBtn = $$('[data-section="sounds"] .btn').find((b) => b.textContent.trim() === 'Choose file…')
+check('a file picker is offered', Boolean(chooseBtn))
+// The ask section above replaced `invoke` with one that answers llm_chat but
+// records nothing; restore the recording behaviour so this command is seen.
+fake.transport.invoke = async (command, args) => {
+  fake.commands.push({ command, args })
+  if (command === 'pick_sound_file') return ''
+  return undefined
+}
+await click(chooseBtn)
+check('the host was asked for a file', Boolean(fake.lastCommand('pick_sound_file')), JSON.stringify(fake.commands.at(-1)))
+// Cancelled (empty path): nothing changes, and no error is raised — backing out
+// of a picker is not a failure the user has to act on.
+check('a cancelled pick leaves the settings alone', /No file/.test($('[data-section="sounds"] .field-note')?.textContent ?? ''))
+
 console.log('teardown')
 await act(async () => {
   root.unmount()

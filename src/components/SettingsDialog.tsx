@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { host } from '../lib/sidecar'
 import { EMPTY_CONFIG, EXAMPLE_BASE_URL, isReady, modelOptions, normaliseBaseUrl, type LlmConfig } from '../lib/llm'
 import { DENSITIES, FONTS, THEMES } from '../lib/theme'
+import { TEMPLATES } from '../lib/templates'
+import { invalidateCustomSound, playSound, resolveAudio } from '../lib/player'
 import type { UseSettingsResult, ViewSettings } from '../hooks/useSettings'
 
 /**
@@ -47,11 +49,33 @@ const FEED_TOGGLES: { key: keyof ViewSettings; label: string; hint: string }[] =
   { key: 'giftNotice', label: 'Gift notice', hint: 'Raise a desktop toast when a gift arrives' },
 ]
 
+/**
+ * Alerts on a new chat message.
+ *
+ * Separate from the gift toggles because chat is the frequent case and gifts the
+ * rare one, and a sound per message would be unbearable if it shared the gift's
+ * defaults. `ttsNames` only shows while speech is on — a name is spoken as part
+ * of the message, so with speech off there is nothing for it to modify.
+ */
+const ALERT_TOGGLES: {
+  key: keyof ViewSettings
+  label: string
+  hint: string
+  needs?: keyof ViewSettings
+}[] = [
+  { key: 'chatSound', label: 'Chat blip', hint: 'A short tap when a new message arrives' },
+  { key: 'chatTts', label: 'Read chat aloud', hint: 'Speak new messages with the system voice' },
+  { key: 'ttsNames', label: 'Say the name', hint: 'Speak the sender before each message', needs: 'chatTts' },
+]
+
 export function SettingsDialog({ open, settings, onClose }: Props) {
   const [config, setConfig] = useState<LlmConfig>(EMPTY_CONFIG)
   const [models, setModels] = useState<string[]>([])
   const [status, setStatus] = useState<Status>({ kind: 'idle', text: '' })
   const [revealKey, setRevealKey] = useState(false)
+  // A preview context, separate from the one the alerts use, so previewing a
+  // sound does not compete with a gift that fires while the dialog is open.
+  const previewContextRef = useRef<AudioContext | null>(null)
   // Held so a save that lands after the dialog closes does not reopen it.
   const alive = useRef(true)
   useEffect(() => {
@@ -132,6 +156,43 @@ export function SettingsDialog({ open, settings, onClose }: Props) {
       if (!alive.current) return
       setStatus({ kind: 'error', text: message(error) })
     }
+  }
+
+  // Plays a sound once, through the preview context, so the user hears what they
+  // picked before trusting it to fire on a gift. A custom file wins over the
+  // template, exactly as it does when a real event fires — a preview that sounded
+  // different from the real thing would be worse than no preview.
+  function preview(templateId: string) {
+    previewContextRef.current ??= resolveAudio()
+    void playSound(previewContextRef.current, templateId, settings.customSoundPath)
+  }
+
+  async function pickCustom() {
+    setStatus({ kind: 'busy', text: 'Choose a sound file…' })
+    try {
+      const path = await host.pickSoundFile()
+      if (!alive.current) return
+      // Cancelled: an empty path. The previous pick is left alone rather than
+      // cleared, because backing out of a picker is not a request to forget.
+      if (path === '') {
+        setStatus({ kind: 'idle', text: '' })
+        return
+      }
+      // The old file's decoded buffer is dropped, so the next play reads the new
+      // one instead of replaying what was cached under the old path.
+      invalidateCustomSound()
+      settings.set('customSoundPath', path)
+      setStatus({ kind: 'ok', text: `Using ${path.split(/[\\/]/).pop()}` })
+    } catch (error: unknown) {
+      if (!alive.current) return
+      setStatus({ kind: 'error', text: message(error) })
+    }
+  }
+
+  function clearCustom() {
+    invalidateCustomSound()
+    settings.set('customSoundPath', '')
+    setStatus({ kind: 'ok', text: 'Back to the built-in sounds.' })
   }
 
   if (!open) return null
@@ -234,6 +295,90 @@ export function SettingsDialog({ open, settings, onClose }: Props) {
                 <span>{option.label}</span>
               </label>
             ))}
+          </div>
+          <div className="settings-toggles">
+            {ALERT_TOGGLES.filter((option) => !option.needs || settings[option.needs]).map((option) => (
+              <label key={option.key} className="toggle" title={option.hint}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(settings[option.key])}
+                  onChange={(e) => settings.set(option.key, e.target.checked as never)}
+                />
+                <span>{option.label}</span>
+              </label>
+            ))}
+          </div>
+        </section>
+
+        <section className="settings-section" data-section="sounds">
+          <h3 className="settings-heading">Sounds</h3>
+          <p className="modal-hint">
+            A custom file, if you pick one, plays instead of any template — for gifts and chat alike.
+            Backing out of the picker keeps the file you already have.
+          </p>
+
+          <div className="settings-grid">
+            <label className="field">
+              <span className="field-label">Gift sound</span>
+              <span className="field-row">
+                <select
+                  className="input"
+                  value={settings.giftTemplate}
+                  onChange={(e) => settings.set('giftTemplate', e.target.value)}
+                >
+                  {TEMPLATES.map((t) => (
+                    <option key={t.id} value={t.id} title={t.hint}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+                <button className="btn btn-small" onClick={() => preview(settings.giftTemplate)} title="Hear it">
+                  ▶
+                </button>
+              </span>
+            </label>
+
+            <label className="field">
+              <span className="field-label">Chat blip</span>
+              <span className="field-row">
+                <select
+                  className="input"
+                  value={settings.chatTemplate}
+                  onChange={(e) => settings.set('chatTemplate', e.target.value)}
+                >
+                  {TEMPLATES.map((t) => (
+                    <option key={t.id} value={t.id} title={t.hint}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+                <button className="btn btn-small" onClick={() => preview(settings.chatTemplate)} title="Hear it">
+                  ▶
+                </button>
+              </span>
+            </label>
+          </div>
+
+          <div className="field">
+            <span className="field-label">Custom sound</span>
+            <span className="field-row">
+              <button className="btn btn-small" onClick={pickCustom} disabled={status.kind === 'busy'}>
+                {settings.customSoundPath ? 'Change file…' : 'Choose file…'}
+              </button>
+              {settings.customSoundPath && (
+                <button className="btn btn-small" onClick={clearCustom} disabled={status.kind === 'busy'}>
+                  Use built-in
+                </button>
+              )}
+              <button className="btn btn-small" onClick={() => preview(settings.giftTemplate)} title="Hear it">
+                ▶
+              </button>
+            </span>
+            <span className="field-note">
+              {settings.customSoundPath
+                ? settings.customSoundPath.split(/[\\/]/).pop()
+                : 'No file — the templates above are used.'}
+            </span>
           </div>
         </section>
 

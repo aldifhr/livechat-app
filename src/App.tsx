@@ -6,6 +6,7 @@ import { SettingsDialog } from './components/SettingsDialog'
 import { StatsPanel } from './components/StatsPanel'
 import { Toolbar } from './components/Toolbar'
 import { useChat } from './hooks/useChat'
+import { useChatAlerts } from './hooks/useChatAlerts'
 import { useGiftNotification } from './hooks/useGiftNotification'
 import { useGiftSound } from './hooks/useGiftSound'
 import { useSettings } from './hooks/useSettings'
@@ -20,8 +21,19 @@ export default function App() {
   const settings = useSettings()
   const [collapse, setCollapse] = useState(true)
 
-  useGiftSound(settings.giftSound)
+  useGiftSound({
+    enabled: settings.giftSound,
+    templateId: settings.giftTemplate,
+    customPath: settings.customSoundPath,
+  })
   useGiftNotification(settings.giftNotice)
+  useChatAlerts({
+    chatSound: settings.chatSound,
+    chatTts: settings.chatTts,
+    ttsNames: settings.ttsNames,
+    templateId: settings.chatTemplate,
+    customPath: settings.customSoundPath,
+  })
 
   const { room, items, totalReceived, clear, ask, asking, log, health, stats } = useChat({
     collapseWindowMs: 2500,

@@ -9,9 +9,11 @@ rust-version = "1.77"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon"] }
+tauri = { version = "2", features = ["tray-icon", "protocol-asset"] }
 tauri-plugin-notification = "2"
 tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
 # Reached only from here: the webview's content security policy forbids it from
 # talking to any host but the app's own origin, which is the right shape for an
 # API key that must not end up in the page.

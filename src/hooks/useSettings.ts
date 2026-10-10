@@ -40,6 +40,23 @@ export interface ViewSettings {
   showLog: boolean
   /** Show the ask-the-model panel at the bottom of the window. */
   showAsk: boolean
+  /** Play a short blip when a new chat message arrives. */
+  chatSound: boolean
+  /** Read new chat messages aloud with the system voice. */
+  chatTts: boolean
+  /** Speak the sender's name before each message read aloud. */
+  ttsNames: boolean
+  /** Which synthesised sound a gift plays. */
+  giftTemplate: string
+  /** Which synthesised sound a chat message plays. */
+  chatTemplate: string
+  /**
+   * A sound file the user picked, played instead of any template.
+   *
+   * A path, not the audio itself: the file stays where it is and the app reads it
+   * when it fires. Empty means no custom sound, and a template is used instead.
+   */
+  customSoundPath: string
 }
 
 export const DEFAULT_SETTINGS: ViewSettings = {
@@ -57,6 +74,12 @@ export const DEFAULT_SETTINGS: ViewSettings = {
   showStats: true,
   showLog: true,
   showAsk: true,
+  chatSound: false,
+  chatTts: false,
+  ttsNames: true,
+  giftTemplate: 'chime',
+  chatTemplate: 'blip',
+  customSoundPath: '',
 }
 
 const FONT_MIN = 0.75

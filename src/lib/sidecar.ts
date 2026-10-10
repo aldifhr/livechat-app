@@ -100,6 +100,7 @@ type HostCommand =
   | 'set_always_on_top'
   | 'notify'
   | 'open_stream'
+  | 'pick_sound_file'
   | 'llm_models'
   | 'llm_chat'
   | 'llm_config_get'
@@ -122,6 +123,26 @@ export interface Transport {
   /** Subscribe to host events. Returns an unsubscribe function. */
   listen(handler: (event: SidecarEvent) => void): Promise<() => void>
   invoke(command: HostCommand, args?: Record<string, unknown>): Promise<unknown>
+}
+
+/**
+ * A file path turned into something a webview can load.
+ *
+ * A webview cannot `fetch` an absolute filesystem path — the request never
+ * leaves the page. `convertFileSrc` rewrites it onto the asset protocol, which
+ * the host serves after the pick registered the file in its scope. Used for a
+ * custom sound file, which lives on disk rather than in the bundle.
+ */
+export async function fileUrl(path: string): Promise<string> {
+  try {
+    const { convertFileSrc } = await import('@tauri-apps/api/core')
+    return convertFileSrc(path)
+  } catch {
+    // A headless run, or a host without the API: the path itself is the best
+    // answer there is, and the player's own guard turns a failed load into
+    // silence rather than an error.
+    return path
+  }
 }
 
 /** Set by tests before anything calls `attach`. */
@@ -215,6 +236,7 @@ export const host = {
     await resolved.invoke('notify', { title, body })
   },
   /**
+  /**
    * Opens the stream in the default browser.
    *
    * There is no video player in this app and there is not going to be one: TikTok
@@ -225,6 +247,18 @@ export const host = {
   openStream: async (url: string) => {
     const resolved = await resolve()
     await resolved.invoke('open_stream', { url })
+  },
+  /**
+   * Opens a file picker and returns the chosen sound file's path.
+   *
+   * Empty string on cancel. The picker lives in the host because a webview cannot
+   * open a native dialog on its own, and the path — not the bytes — comes back so
+   * the file is read only when it actually plays.
+   */
+  pickSoundFile: async (): Promise<string> => {
+    const resolved = await resolve()
+    const path = await resolved.invoke('pick_sound_file')
+    return typeof path === 'string' ? path : ''
   },
   /**
    * The models an OpenAI-compatible endpoint offers.
