@@ -46,7 +46,15 @@ export function AskPanel({ items, room }: Props) {
   }, [])
 
   useEffect(() => {
-    if (state.kind === 'ok') answerRef.current?.scrollIntoView({ block: 'nearest' })
+    // Guarded because scrollIntoView is not a function in every environment the
+    // panel renders in: jsdom, where the UI suite runs, implements no layout and
+    // so has none to scroll. The scroll is a nicety — bringing a fresh answer
+    // into view in a long panel — and its absence is never worth an unhandled
+    // TypeError taking the answer down with it.
+    const node = answerRef.current
+    if (state.kind === 'ok' && typeof node?.scrollIntoView === 'function') {
+      node.scrollIntoView({ block: 'nearest' })
+    }
   }, [state])
 
   const busy = state.kind === 'busy'

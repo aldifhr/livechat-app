@@ -537,6 +537,89 @@ check('the rate is over the last minute', tile('Per minute') === '4', tile('Per 
 // rather than as anything a user could name.
 check('one subscription, however many components asked for one', tile('Messages') === '3' && tile('Gifts') === '1', `${tile('Messages')} messages / ${tile('Gifts')} gifts`)
 
+console.log('the ask panel')
+// Records the exact excerpt the panel chose to send, so the assertions below are
+// on what the model would actually be asked about.
+const askedContext = []
+// The model the panel talks to is the host's business, so the test answers the
+// command with a fixed string and asserts on what the panel does with it — the
+// transport is the same one every other command is already faked on.
+fake.transport.invoke = async (command, args) => {
+  if (command === 'llm_chat') {
+    askedContext.push(args)
+    return 'The room is talking about the weather.'
+  }
+  return undefined
+}
+
+check('the panel starts closed', !$('.ask-body'))
+await click('.ask-toggle')
+check('and opens', !!$('.ask-body'))
+check('with nothing to show yet', /using the recent chat/.test($('.ask-note')?.textContent ?? ''), $('.ask-note')?.textContent)
+
+// A question with no room to be about. The button has to stay off rather than
+// send the model an empty prompt and an empty excerpt, which is a call that
+// costs money and can only come back useless.
+await type('.ask-body input', '   ')
+check('a blank question cannot be sent', $('.ask-body .btn-primary').disabled === true)
+
+await type('.ask-body input', 'what is going on?')
+check('a question enables the button', $('.ask-body .btn-primary').disabled === false)
+
+// Sent by Enter rather than by clicking the button: the input is a one-liner and
+// pressing Enter is what someone types into it will actually do.
+await act(async () => {
+  const input = $('.ask-body input')
+  input.dispatchEvent(new harness.dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+})
+await flush()
+
+check('the model was asked', askedContext.length === 1, JSON.stringify(askedContext))
+check('the question went as typed', askedContext[0]?.question === 'what is going on?', askedContext[0]?.question)
+// The excerpt is the chat rows only, in the shape chatContext builds — the same
+// function the model is answering from. A gift in the room must not arrive as
+// conversation, and a viewer count must not arrive at all.
+const sentContext = askedContext[0]?.context ?? []
+check(
+  'every excerpt line is a chat message, not an event',
+  sentContext.every((line) => typeof line === 'string' && /^\S+: /.test(line)),
+  JSON.stringify(sentContext),
+)
+check(
+  'no viewer count leaks into the excerpt',
+  !sentContext.some((line) => /^viewers|watching/i.test(line)),
+  JSON.stringify(sentContext),
+)
+
+check('the answer is shown', /The room is talking about the weather/.test($('.ask-text')?.textContent ?? ''), $('.ask-text')?.textContent)
+check('the question is echoed beside it', /what is going on\?/.test($('.ask-question')?.textContent ?? ''))
+check('the input is cleared after asking', $('.ask-body input').value === '', $('.ask-body input').value)
+check('and a badge marks the answer', /1 answer/.test($('.log-count')?.textContent ?? ''))
+
+// The model answering with nothing is a provider failure, not an empty chat, and
+// it must not render as a successful blank answer the user has to interpret.
+fake.transport.invoke = async (command) => {
+  if (command === 'llm_chat') return '   '
+  return undefined
+}
+await type('.ask-body input', 'again')
+await click('.ask-body .btn-primary')
+await flush()
+check('an empty answer is reported as an error', !!$('.ask-error'), $('.ask-error')?.textContent)
+check('and the good answer is not left on screen', !$('.ask-text'))
+
+// A provider that fails outright. The panel shows the reason rather than a
+// generic message, because "could not reach" and "wrong key" are fixed
+// differently and only the host knows which it was.
+fake.transport.invoke = async (command) => {
+  if (command === 'llm_chat') throw new Error('could not reach https://h/v1: connection refused')
+  return undefined
+}
+await type('.ask-body input', 'third time')
+await click('.ask-body .btn-primary')
+await flush()
+check('a failed call shows the reason', /connection refused/.test($('.ask-error')?.textContent ?? ''), $('.ask-error')?.textContent)
+
 console.log('the peak is never below the current count')
 // Both are raised from the same frames, but on different clocks: the headcount
 // updates whenever the platform reports one and the sample only on a timer, so a
