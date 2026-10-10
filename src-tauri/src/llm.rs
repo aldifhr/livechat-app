@@ -18,7 +18,10 @@ use std::path::PathBuf;
 /// piece of configuration that has to survive a restart — retyping a key just to
 /// list models would make the feature something nobody uses twice.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
+// camelCase because that is what every other field on this wire already is —
+// the bridge frames and the Tauri commands alike — and a struct that quietly
+// answers in a different case is one that silently parses to nothing.
+#[serde(default, rename_all = "camelCase")]
 pub struct LlmConfig {
     pub base_url: String,
     pub api_key: String,

@@ -274,6 +274,29 @@ body {
   align-self: center;
 }
 
+/* Source picker. Its own row rather than sharing the toggle row, because it decides
+   what the room row below it means. */
+.source-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.source-note {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.source-note strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .chip {
   display: inline-flex;
   align-items: center;
@@ -456,6 +479,148 @@ body {
    grows or shrinks with the filter. */
 .summary + .font-hint {
   margin-left: 14px;
+}
+
+.llm-btn {
+  margin-left: 14px;
+}
+
+/* Dialog */
+
+.modal-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.modal {
+  width: min(440px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.modal-close {
+  margin-left: auto;
+  padding: 2px 8px;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.modal-close:hover {
+  color: var(--text);
+}
+
+.modal-hint {
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.field-label {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* The input and its button share a line so a long key does not push the button
+   onto a row of its own in a window this narrow. */
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.field-row .input {
+  min-width: 0;
+}
+
+.field-row .btn {
+  flex: 0 0 auto;
+}
+
+/* The native select, restyled: the default one ignores the panel's colours
+   entirely and reads as a control from another program. */
+select.input {
+  appearance: none;
+  cursor: pointer;
+}
+
+select.input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+select.input option {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.modal-status {
+  margin: 0;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.modal-status-error {
+  color: var(--accent);
+}
+
+.modal-status-ok {
+  color: var(--green);
+}
+
+.modal-status-busy {
+  color: var(--gold);
+}
+
+.modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+/* Pushes Close and Save to the right, leaving Forget on the left — forgetting a
+   key is not the same kind of act as saving one and should not sit beside it. */
+.modal-spacer {
+  flex: 1 1 auto;
 }
 
 /* Feed */

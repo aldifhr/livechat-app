@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { host } from '../lib/sidecar'
 import { PLATFORM, PLATFORMS } from '../lib/platforms'
+import { isReady, normaliseBaseUrl, type BackendConfig, type EventSource } from '../lib/backend'
 import type { FeedFilters, KindFilter } from '../hooks/useVisibleItems'
 import type { Health } from '../hooks/useHealth'
 import type { UseSettingsResult, ViewSettings } from '../hooks/useSettings'
@@ -15,9 +16,13 @@ interface Props {
   collapse: boolean
   health: Health
   settings: UseSettingsResult
+  backend: BackendConfig
   onFiltersChange: (filters: Partial<FeedFilters>) => void
   onCollapseChange: (enabled: boolean) => void
   onClear: () => void
+  onSourceChange: (source: EventSource) => void
+  onOpenLlm: () => void
+  onOpenBackend: () => void
 }
 
 const TOGGLES: { key: keyof ViewSettings; label: string; hint: string }[] = [
@@ -49,18 +54,30 @@ export function Toolbar({
   collapse,
   health,
   settings,
+  backend,
   onFiltersChange,
   onCollapseChange,
   onClear,
+  onSourceChange,
+  onOpenLlm,
+  onOpenBackend,
 }: Props) {
   const spec = PLATFORMS[PLATFORM]
   const [target, setTarget] = useState('')
   const [busy, setBusy] = useState(false)
+  const [storedBackend, setStoredBackend] = useState<BackendConfig>(backend)
 
+  useEffect(() => setStoredBackend(backend), [backend])
+
+  // Held here rather than in App: switching source and pressing Connect are one
+  // decision, and splitting them across two components is how a Connect ends up
+  // talking to a socket that is no longer the one being shown.
+  const fromBackend = settings.eventSource === 'backend'
   const isConnecting = busy || room.status === 'connecting'
   const isConnected = room.status === 'connected'
+  const backendReady = isReady(storedBackend)
 
-  async function connect() {
+  async function connectBridge() {
     const value = target.trim()
     if (!value) return
     setBusy(true)
@@ -72,7 +89,7 @@ export function Toolbar({
     }
   }
 
-  async function disconnect() {
+  async function disconnectBridge() {
     setBusy(true)
     try {
       await host.disconnect(PLATFORM)
@@ -81,42 +98,120 @@ export function Toolbar({
     }
   }
 
+  async function connectBackend() {
+    setBusy(true)
+    onClear()
+    try {
+      await host.backendConnect({ ...storedBackend, baseUrl: normaliseBaseUrl(storedBackend.baseUrl) })
+    } catch {
+      // The host refuses an unconfigured backend, and says why in its rejection.
+      // The status line picks that up; this only has to not leave the button stuck
+      // on "Connecting…" for ever.
+      setBusy(false)
+      return
+    }
+    setBusy(false)
+  }
+
+  async function disconnectBackend() {
+    setBusy(true)
+    try {
+      await host.backendDisconnect()
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="toolbar">
-      <div className="room-row">
-        <input
-          className="input"
-          placeholder={spec.placeholder}
-          aria-label={`${spec.label} ${spec.targetLabel}`}
-          value={target}
-          onChange={(e) => setTarget(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !isConnecting && target.trim()) connect()
-          }}
-          disabled={isConnecting || isConnected}
-        />
-        {isConnected ? (
-          <button className="btn btn-danger" onClick={disconnect}>
-            Stop
-          </button>
-        ) : (
-          <button className="btn btn-primary" onClick={connect} disabled={!target.trim() || isConnecting}>
-            {isConnecting ? 'Connecting…' : 'Connect'}
-          </button>
-        )}
-        {room.status === 'connected' && room.target && (
+      <div className="source-row" role="group" aria-label="Where the chat comes from">
+        {(['bridge', 'backend'] as EventSource[]).map((source) => (
           <button
-            className="btn btn-small watch-btn"
-            title={`Open tiktok.com/@${room.target}/live in your browser`}
-            onClick={() =>
-              host
-                .openStream(`https://www.tiktok.com/@${encodeURIComponent(room.target)}/live`)
-                .catch(() => {})
+            key={source}
+            className={`chip chip-small${fromBackend === (source === 'backend') ? ' chip-active' : ''}`}
+            aria-pressed={fromBackend === (source === 'backend')}
+            title={
+              source === 'bridge'
+                ? 'Run the local bridge in this app — needs nothing else running'
+                : 'Read from a StreamKit backend — no 85 MB bridge, but it has to be up'
             }
+            onClick={() => onSourceChange(source)}
           >
-            Watch
+            {source === 'bridge' ? 'Bridge' : 'Backend'}
           </button>
+        ))}
+        <button className="btn btn-small llm-btn" onClick={onOpenBackend} title="Backend address and overlay">
+          {fromBackend ? 'Configure…' : 'Set up…'}
+        </button>
+      </div>
+
+      <div className="room-row">
+        {fromBackend ? (
+          // No username field: the backend decides which room to read, and there
+          // is nothing this app could type that would change that.
+          <>
+            <span className="source-note">
+              {backendReady ? (
+                <>
+                  Reading <strong>{storedBackend.overlayId.slice(0, 8)}</strong> from{' '}
+                  {normaliseBaseUrl(storedBackend.baseUrl)}
+                </>
+              ) : (
+                'Backend is not set up yet'
+              )}
+            </span>
+            {isConnected ? (
+              <button className="btn btn-danger" onClick={disconnectBackend}>
+                Stop
+              </button>
+            ) : (
+              <button
+                className="btn btn-primary"
+                onClick={connectBackend}
+                disabled={!backendReady || isConnecting}
+              >
+                {isConnecting ? 'Connecting…' : 'Connect'}
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            <input
+              className="input"
+              placeholder={spec.placeholder}
+              aria-label={`${spec.label} ${spec.targetLabel}`}
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !isConnecting && target.trim()) connectBridge()
+              }}
+              disabled={isConnecting || isConnected}
+            />
+            {isConnected ? (
+              <button className="btn btn-danger" onClick={disconnectBridge}>
+                Stop
+              </button>
+            ) : (
+              <button className="btn btn-primary" onClick={connectBridge} disabled={!target.trim() || isConnecting}>
+                {isConnecting ? 'Connecting…' : 'Connect'}
+              </button>
+            )}
+            {room.status === 'connected' && room.target && (
+              <button
+                className="btn btn-small watch-btn"
+                title={`Open tiktok.com/@${room.target}/live in your browser`}
+                onClick={() =>
+                  host
+                    .openStream(`https://www.tiktok.com/@${encodeURIComponent(room.target)}/live`)
+                    .catch(() => {})
+                }
+              >
+                Watch
+              </button>
+            )}
+          </>
         )}
+
         <div className={`status status-${room.status} room-status`}>
           <span className="dot" />
           <span>
@@ -196,6 +291,9 @@ export function Toolbar({
           {search.trim() && ' · search'}
         </span>
 
+        <button className="btn btn-small llm-btn" onClick={onOpenLlm} title="Point the app at a model">
+          Model
+        </button>
         <span className="font-hint" title="Ctrl + scroll anywhere in the window">
           {Math.round(settings.fontScale * 100)}%
         </span>

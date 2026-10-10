@@ -15,5 +15,13 @@ src-tauri/resources/livechat-bridge.exe
 # directory, never from here. Ignored anyway so a stray file cannot be committed
 # by accident.
 .env
-.env.*__pycache__/
+.env.*
+
+# Python, from the StreamKit backend that lives in this repo now.
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/__pycache__/
 *.pyc

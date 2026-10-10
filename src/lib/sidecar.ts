@@ -1,10 +1,14 @@
 /**
- * Talks to the Rust host, which owns the chat bridge.
+ * Talks to the Rust host, which owns the chat bridge and every outbound request.
  *
  * Every frame the bridge produces arrives on one channel; commands are sent back
- * the other way. The bridge is one connection at a time, so the host serialises
- * commands rather than the UI having to coordinate.
+ * the other way. Nothing in here reaches the network itself: the webview's content
+ * security policy forbids it, and the few things that genuinely need the network —
+ * the model list, opening a browser, a desktop toast — are the host's business.
  */
+
+import type { LlmConfig } from './llm'
+import type { BackendConfig } from './backend'
 
 type EventHandler = (event: SidecarEvent) => void
 
@@ -88,6 +92,14 @@ type HostCommand =
   | 'set_overlay_click_through'
   | 'notify'
   | 'open_stream'
+  | 'llm_models'
+  | 'llm_config_get'
+  | 'llm_config_save'
+  | 'llm_config_clear'
+  | 'backend_config_get'
+  | 'backend_config_save'
+  | 'backend_connect'
+  | 'backend_disconnect'
 
 /**
  * How the UI reaches the host.
@@ -241,5 +253,73 @@ export const host = {
   openStream: async (url: string) => {
     const resolved = await resolve()
     await resolved.invoke('open_stream', { url })
+  },
+  /**
+   * The models an OpenAI-compatible endpoint offers.
+   *
+   * Outbound requests are the host's job: the webview's content security policy
+   * forbids it from reaching any other origin, which is exactly right for a key
+   * that must not end up in the page.
+   */
+  llmModels: async (baseUrl: string, apiKey: string): Promise<string[]> => {
+    const resolved = await resolve()
+    const models = await resolved.invoke('llm_models', { baseUrl, apiKey })
+    return Array.isArray(models) ? models.filter((m): m is string => typeof m === 'string') : []
+  },
+  llmConfigGet: async (): Promise<LlmConfig> => {
+    const resolved = await resolve()
+    // `invoke` is typed `unknown` because it is the transport, not this contract;
+    // every field is narrowed before use so a host that answered with something
+    // else entirely yields an empty config rather than a crash.
+    const config = (await resolved.invoke('llm_config_get')) as Partial<LlmConfig> | null | undefined
+    return {
+      baseUrl: typeof config?.baseUrl === 'string' ? config.baseUrl : '',
+      apiKey: typeof config?.apiKey === 'string' ? config.apiKey : '',
+      model: typeof config?.model === 'string' ? config.model : '',
+    }
+  },
+  llmConfigSave: async (config: LlmConfig): Promise<void> => {
+    const resolved = await resolve()
+    await resolved.invoke('llm_config_save', { config })
+  },
+  llmConfigClear: async (): Promise<void> => {
+    const resolved = await resolve()
+    await resolved.invoke('llm_config_clear')
+  },
+  /**
+   * The stored backend settings.
+   *
+   * Read on demand rather than at mount: this is a file on disk, and there is no
+   * reason to pay for that on every launch of an app whose default source is
+   * still the local bridge.
+   */
+  backendConfigGet: async (): Promise<BackendConfig> => {
+    const resolved = await resolve()
+    const config = (await resolved.invoke('backend_config_get')) as Partial<BackendConfig> | null | undefined
+    return {
+      baseUrl: typeof config?.baseUrl === 'string' ? config.baseUrl : '',
+      overlayId: typeof config?.overlayId === 'string' ? config.overlayId : '',
+    }
+  },
+  backendConfigSave: async (config: BackendConfig): Promise<void> => {
+    const resolved = await resolve()
+    await resolved.invoke('backend_config_save', { config })
+  },
+  /**
+   * Reads from the backend instead of the local bridge.
+   *
+   * Returns as soon as the socket pump is spawned. Connecting, retrying and
+   * eventually giving up all happen in the host, and none of them should hold up
+   * the click; what it has to say comes back as frames on the same channel the
+   * bridge uses, which is the whole reason nothing downstream has to change.
+   */
+  backendConnect: async (config: BackendConfig): Promise<void> => {
+    const resolved = await resolve()
+    await resolved.invoke('backend_connect', { config })
+  },
+  /** Stops the backend reader and the local bridge together, so they never both feed the feed. */
+  backendDisconnect: async (): Promise<void> => {
+    const resolved = await resolve()
+    await resolved.invoke('backend_disconnect')
   },
 }

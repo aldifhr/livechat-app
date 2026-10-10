@@ -11,9 +11,12 @@
 // side's diagnostics go.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod backend;
 mod bridge;
 mod llm;
 mod sidecar;
+
+use std::sync::Arc;
 
 use sidecar::Sidecar;
 
@@ -22,6 +25,8 @@ use tauri_plugin_notification::NotificationExt;
 
 pub struct AppState {
     sidecar: Sidecar,
+    /// Which backend reader loop is current, so a new Connect cancels the old one.
+    backend: Arc<backend::BackendState>,
 }
 
 #[tauri::command]
@@ -170,6 +175,51 @@ fn open_stream(app: tauri::AppHandle, url: String) -> Result<(), String> {
         .map_err(|e| format!("could not open a browser: {e}"))
 }
 
+/// The stored backend settings, or an empty one on first launch.
+#[tauri::command]
+fn backend_config_get(app: tauri::AppHandle) -> backend::BackendConfig {
+    backend::read_config(&app)
+}
+
+/// Saves them.
+#[tauri::command]
+fn backend_config_save(app: tauri::AppHandle, config: backend::BackendConfig) -> Result<(), String> {
+    backend::write_config(&app, &config)
+}
+
+/// Starts reading from the backend.
+///
+/// Cancels any loop already running, so Connect twice does not leave two sockets
+/// open feeding the same feed. Returns as soon as the pump is spawned — it
+/// connects, retries and eventually gives up on its own, and none of that should
+/// hold up the UI thread that asked for it.
+#[tauri::command]
+fn backend_connect(
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+    config: backend::BackendConfig,
+) -> Result<(), String> {
+    if let Some(missing) = config.describe_missing() {
+        return Err(format!("backend not configured: {missing} is missing"));
+    }
+    let generation = state.backend.renew();
+    let shared = Arc::clone(&state.backend);
+    tauri::async_runtime::spawn(async move {
+        backend::pump(app, config, shared, generation).await;
+    });
+    Ok(())
+}
+
+/// Stops reading from the backend.
+///
+/// The local bridge is stopped too, so the two are never both feeding the same
+/// feed and doubling every counter on screen.
+#[tauri::command]
+fn backend_disconnect(state: State<'_, AppState>, app: tauri::AppHandle) {
+    state.backend.stop();
+    state.sidecar.disconnect(Some("tiktok".to_string()), &app);
+}
+
 /// The tray icon and its menu.
 ///
 /// Exists because closing the window now only hides it � without somewhere to
@@ -254,7 +304,10 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
-        .manage(AppState { sidecar: Sidecar::new() })
+        .manage(AppState {
+            sidecar: Sidecar::new(),
+            backend: Arc::new(backend::BackendState::default()),
+        })
         .invoke_handler(tauri::generate_handler![
         connect,
         disconnect,
@@ -268,7 +321,11 @@ fn main() {
         llm_config_get,
         llm_config_save,
         llm_config_clear,
-        open_stream
+        open_stream,
+        backend_config_get,
+        backend_config_save,
+        backend_connect,
+        backend_disconnect
     ])
         .setup(|app| {
             // Unpacked before the window appears so the first Connect is not the

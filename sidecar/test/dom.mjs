@@ -167,7 +167,7 @@ export const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
  * window and no Rust process, so a test run costs milliseconds and cannot be
  * derailed by a rate limit on either platform.
  */
-export function fakeTransport() {
+export function fakeTransport(overrides = {}) {
   const commands = []
   const handlers = new Set()
 
@@ -180,6 +180,12 @@ export function fakeTransport() {
       },
       async invoke(command, args) {
         commands.push({ command, args })
+        // Lets a suite answer a command with a real payload — the model list, or
+        // a failure — without every suite having to know which commands exist.
+        const answer = overrides[command]
+        if (typeof answer === 'function') return answer(args)
+        if (answer !== undefined) return answer
+        return undefined
       },
     },
     /** Pushes a frame to the UI exactly as the host would. */
@@ -189,8 +195,9 @@ export function fakeTransport() {
     lastCommand(name) {
       return [...commands].reverse().find((c) => c.command === name)
     },
-  }
 }
+}
+
 /**
  * Ends a suite early when an external condition made it meaningless.
  *

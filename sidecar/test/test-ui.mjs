@@ -24,7 +24,11 @@ const React = (await import('react')).default
 const { createRoot } = await import('react-dom/client')
 const { act } = React
 
-const fake = fakeTransport()
+const fake = fakeTransport({
+  // Answers the one command that needs a real payload for the settings dialog to
+  // have anything to show.
+  llm_config_get: { baseUrl: '', apiKey: '', model: '' },
+})
 setTransport(fake.transport)
 
 const root = createRoot(harness.container)

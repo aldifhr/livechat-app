@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { BackendSettings } from './components/BackendSettings'
 import { FeedRow } from './components/FeedRow'
+import { LlmSettings } from './components/LlmSettings'
 import { LogPanel } from './components/LogPanel'
 import { StatsPanel } from './components/StatsPanel'
 import { Toolbar } from './components/Toolbar'
@@ -8,9 +10,15 @@ import { useGiftNotification } from './hooks/useGiftNotification'
 import { useGiftSound } from './hooks/useGiftSound'
 import { useSettings } from './hooks/useSettings'
 import { useKindCounts, useVisibleItems, type FeedFilters } from './hooks/useVisibleItems'
+import { EMPTY_BACKEND, type BackendConfig, type EventSource } from './lib/backend'
+import { PLATFORM } from './lib/platforms'
+import { host } from './lib/sidecar'
 
 export default function App() {
   const [collapse, setCollapse] = useState(true)
+  const [llmOpen, setLlmOpen] = useState(false)
+  const [backendOpen, setBackendOpen] = useState(false)
+  const [backend, setBackend] = useState<BackendConfig>(EMPTY_BACKEND)
   const [filters, setFilters] = useState<FeedFilters>({ kind: 'all', search: '' })
   const settings = useSettings()
 
@@ -35,6 +43,25 @@ export default function App() {
     { joins: settings.hideJoins, filtered: settings.hideFiltered },
   )
   const counts = useKindCounts(visible)
+
+  // The backend's address, so the toolbar can name what it is about to read
+  // before the user presses Connect. Read once: it changes only through the
+  // dialog, which owns saving it.
+  useEffect(() => {
+    let active = true
+    host
+      .backendConfigGet()
+      .then((saved) => {
+        if (active) setBackend(saved)
+      })
+      .catch(() => {
+        // An unconfigured backend is the default state, not a fault. The toolbar
+        // says so when it matters.
+      })
+    return () => {
+      active = false
+    }
+  }, [])
 
   // Ctrl+wheel resizes the feed. Bound on the window so it works wherever the
   // pointer is, and prevented so the browser does not zoom the whole UI too.
@@ -84,6 +111,29 @@ export default function App() {
     setUnseen(0)
   }, [])
 
+  /**
+   * Switching source stops whatever is running before anything starts.
+   *
+   * Both readers emit on one channel, so leaving the old one going would double
+   * every row and every counter on screen while looking like a busier stream.
+   */
+  const onSourceChange = useCallback(
+    (source: EventSource) => {
+      if (source === settings.eventSource) return
+      // Fire-and-forget: switching source should not wait for the old reader to
+      // acknowledge, and the host cancels it either way. Nothing downstream has
+      // to know this promise is not awaited.
+      const leaving =
+        settings.eventSource === 'backend' ? host.backendDisconnect() : host.disconnect(PLATFORM)
+      void leaving.catch(() => {})
+      settings.set('eventSource', source)
+      clear()
+      pinned.current = true
+      setUnseen(0)
+    },
+    [settings, clear],
+  )
+
   const jumpToLatest = useCallback(() => {
     const node = listRef.current
     if (node) node.scrollTop = node.scrollHeight
@@ -102,9 +152,13 @@ export default function App() {
         collapse={collapse}
         health={health}
         settings={settings}
+        backend={backend}
         onFiltersChange={onFiltersChange}
         onCollapseChange={setCollapse}
         onClear={clear}
+        onSourceChange={onSourceChange}
+        onOpenLlm={() => setLlmOpen(true)}
+        onOpenBackend={() => setBackendOpen(true)}
       />
 
       <div className="feed-wrap">
@@ -148,6 +202,9 @@ export default function App() {
           </button>
         )}
       </div>
+
+      <LlmSettings open={llmOpen} onClose={() => setLlmOpen(false)} />
+      <BackendSettings open={backendOpen} onClose={() => setBackendOpen(false)} />
 
       <StatsPanel stats={stats} />
 
