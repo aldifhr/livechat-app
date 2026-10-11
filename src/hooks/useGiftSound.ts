@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { attach, detachHandler, type SidecarEvent } from '../lib/sidecar'
-import { playSound, resolveAudio } from '../lib/player'
+import { playSound, releaseAudio, resolveAudio } from '../lib/player'
 import { shouldPlayGiftSound } from '../lib/sound'
 
 /**
@@ -38,9 +38,9 @@ export function useGiftSound({ enabled, templateId, customPath }: Options): void
       lastPlayedAt.current = now
 
       contextRef.current ??= resolveAudio()
-      // Awaited rather than fired and forgotten so a custom file that is still
-      // decoding does not start a second, overlapping copy of itself on the next
-      // gift inside the gap.
+      // Fired and forgotten deliberately: the gap check above is what keeps two
+      // gifts from overlapping, and awaiting here would let a rejection from a
+      // slow decode surface as an unhandled promise rejection.
       void playSound(contextRef.current, templateId, customPath).then((used) => {
         contextRef.current = used
       })
@@ -60,6 +60,15 @@ export function useGiftSound({ enabled, templateId, customPath }: Options): void
       detachHandler(handle)
     }
   }, [enabled, templateId, customPath])
+
+  // This hook made its own context, so this hook closes it — on unmount only,
+  // because the effect above re-runs every time a setting changes.
+  useEffect(
+    () => () => {
+      contextRef.current = releaseAudio(contextRef.current)
+    },
+    [],
+  )
 
   // Turned off: forget when the last sound was, so the next one is not measured
   // against a gap that started before the user asked for silence.

@@ -1278,3 +1278,47 @@ select.input option {
   font-variant-numeric: tabular-nums;
 }
 
+
+/* Shown when a render throws. See ErrorBoundary for why this exists. */
+.crash {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100vh;
+  padding: 32px;
+  text-align: center;
+  color: var(--text);
+}
+
+.crash-title {
+  margin: 0;
+  font-size: 18px;
+}
+
+.crash-body {
+  margin: 0;
+  max-width: 42ch;
+  color: var(--muted);
+}
+
+.crash-detail {
+  margin: 0;
+  max-width: 100%;
+  max-height: 30vh;
+  overflow: auto;
+  padding: 10px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 12px;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.crash-actions {
+  display: flex;
+  gap: 8px;
+}

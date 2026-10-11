@@ -183,6 +183,11 @@ function resolve(): Promise<Transport> {
   // run can set it before the first call rather than having to unset Tauri.
   if (transport) return Promise.resolve(transport)
   active ??= tauriTransport()
+  // Cleared on failure for the same reason `attaching` is: a rejected transport
+  // kept in `active` is the identical latch, one layer down.
+  active.catch(() => {
+    active = null
+  })
   return active
 }
 
@@ -203,9 +208,27 @@ export async function attach(onEvent?: EventHandler): Promise<void> {
   attaching = (async () => {
     const resolved = await resolve()
     await resolved.listen((event) => {
-      for (const handler of listeners) handler(event)
+      // One throwing handler must not take the rest of them down with it. The
+      // loop used to be bare, so an exception in an early subscriber aborted it
+      // and every handler after it silently stopped seeing frames — which looks
+      // exactly like the feed having stopped working.
+      for (const handler of listeners) {
+        try {
+          handler(event)
+        } catch (error: unknown) {
+          console.error('a sidecar event handler threw', error)
+        }
+      }
     })
   })()
+
+  // Cleared on failure, so a rejected attach does not latch: the promise stayed
+  // assigned, every later `attach` returned the same rejection, and no listener
+  // was ever registered — an empty app with no error anywhere. All five call
+  // sites ignore this promise, so nothing else would have cleared it.
+  attaching.catch(() => {
+    attaching = null
+  })
 
   return attaching
 }

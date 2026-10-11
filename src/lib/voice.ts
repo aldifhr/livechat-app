@@ -28,6 +28,18 @@ let speaking: HTMLAudioElement | null = null
 let lastSpokeAt: number | null = null
 
 /**
+ * Counts utterances asked for, so one that arrives late knows it has been
+ * superseded.
+ *
+ * `host.speak` is a network round trip, and everything above is decided before it
+ * returns. Without this, `hush()` fired during that round trip paused nothing —
+ * there was no audio yet — and the sentence then started playing *after* the user
+ * had asked for silence. The same applied to a second `say()` whose synthesis came
+ * back after a third had begun.
+ */
+let requested = 0
+
+/**
  * Speaks one sentence, cutting off whatever is already being said.
  *
  * Fire-and-forget: the caller does not wait for the audio, because the feed
@@ -43,6 +55,9 @@ export function say(text: string): void {
   if (lastSpokeAt !== null && now - lastSpokeAt < CHAT_TTS_GAP_MS) return
   lastSpokeAt = now
 
+  // This one is the current request; everything already in flight is now stale.
+  const ticket = (requested += 1)
+
   // Cut off the current sentence rather than waiting for it to finish. Two
   // sentences at once is worse than one of them being dropped.
   if (speaking) {
@@ -53,14 +68,19 @@ export function say(text: string): void {
   void (async () => {
     try {
       const url = await host.speak(spoken)
-      if (url === '') return
+      // A newer utterance asked for, or the voice was hushed, while this was
+      // being synthesised. Either way this one is no longer wanted, and playing
+      // it would be speaking over a decision the user already made.
+      if (ticket !== requested || url === '') return
       const audio = new Audio(url)
       speaking = audio
       // Released when it ends so the next utterance is not measured against a
       // cut-off one, and so a stale element is never paused by mistake.
-      audio.addEventListener('ended', () => {
+      const onEnded = () => {
         if (speaking === audio) speaking = null
-      })
+        audio.removeEventListener('ended', onEnded)
+      }
+      audio.addEventListener('ended', onEnded)
       await audio.play()
     } catch {
       // The voice service is unreachable, or the browser refused to play. Either
@@ -71,8 +91,14 @@ export function say(text: string): void {
 
 /** Stops whatever is being said and forgets the gap. */
 export function hush(): void {
+  // Anything already being synthesised is cancelled before it can start, which
+  // is what stops an in-flight request from speaking over the silence.
+  requested += 1
   if (speaking) {
+    // The source is cleared as well as paused: the element holds the whole
+    // synthesised clip, and leaving it referenced keeps that base64 alive.
     speaking.pause()
+    speaking.removeAttribute('src')
     speaking = null
   }
   lastSpokeAt = null

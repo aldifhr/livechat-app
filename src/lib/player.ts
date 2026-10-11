@@ -38,6 +38,26 @@ export function resolveAudio(): AudioContext | null {
 }
 
 /**
+ * Closes a context a hook created, and forgets it.
+ *
+ * Each context holds an audio thread for as long as it is open. Four hooks each
+ * made their own and none of them let go, so they accumulated for the life of the
+ * window. Handing the context back here rather than closing it in the hook keeps
+ * the closing in one place — a context a caller did not create is not the caller's
+ * to close.
+ */
+export function releaseAudio(context: AudioContext | null | undefined): null {
+  if (!context) return null
+  try {
+    void context.close()
+  } catch {
+    // A context that is already closed, or a runtime without close(). Either way
+    // there is nothing left to release.
+  }
+  return null
+}
+
+/**
  * Resumes a suspended context.
  *
  * A context created before the user has interacted with the window starts
@@ -123,7 +143,9 @@ function playTemplate(context: AudioContext, template: SoundTemplate): void {
  * that came out at a different volume, or a beat off, would read as a bug.
  */
 let customBuffer: { path: string; buffer: AudioBuffer } | null = null
-let customLoad: Promise<AudioBuffer | null> | null = null
+// The in-flight load, carrying the path it is for. Keyed rather than bare so a
+// load for one file is never handed to a caller that asked for another.
+let customLoad: { path: string; promise: Promise<AudioBuffer | null> } | null = null
 
 /** Forgets the decoded file, so a new pick is loaded fresh. */
 export function invalidateCustomSound(): void {
@@ -133,13 +155,16 @@ export function invalidateCustomSound(): void {
 
 async function loadCustom(context: AudioContext, path: string): Promise<AudioBuffer | null> {
   if (customBuffer?.path === path) return customBuffer.buffer
-  // One in-flight load per path: two sounds arriving together must not decode the
-  // same file twice and race to store it.
-  if (customLoad && customBuffer === null) {
-    const pending = await customLoad
+  // One in-flight load *per path*. The guard used to be `customLoad !== null`,
+  // which meant a request for /b.mp3 arriving while /a.mp3 was still decoding
+  // would await A's load and return A's buffer — so picking a new sound played
+  // the old one. Keyed on the path, so a second file starts its own load.
+  if (customLoad && customLoad.path === path) {
+    const pending = await customLoad.promise
     if (pending) return pending
   }
-  customLoad = (async () => {
+  const entry: { path: string; promise: Promise<AudioBuffer | null> } = { path, promise: null as unknown as Promise<AudioBuffer | null> }
+  entry.promise = (async () => {
     try {
       // A path is not a URL a webview can request: it is rewritten onto the asset
       // protocol first, which is what the host registered the file against when
@@ -150,7 +175,10 @@ async function loadCustom(context: AudioContext, path: string): Promise<AudioBuf
       // A promise-based decode: the callback form would need a wrapper and both
       // are equally supported.
       const buffer = await context.decodeAudioData(bytes)
-      customBuffer = { path, buffer }
+      // Stored only if this is still the file the app wants: a decode that
+      // finishes after the user picked something else must not resurrect the
+      // abandoned file as the cached one.
+      if (customLoad === entry) customBuffer = { path, buffer }
       return buffer
     } catch {
       // A missing, unreadable or undecodable file yields silence. The settings
@@ -158,7 +186,8 @@ async function loadCustom(context: AudioContext, path: string): Promise<AudioBuf
       return null
     }
   })()
-  return customLoad
+  customLoad = entry
+  return entry.promise
 }
 
 /**

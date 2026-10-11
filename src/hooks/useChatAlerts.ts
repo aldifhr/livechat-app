@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { attach, detachHandler, type SidecarEvent } from '../lib/sidecar'
-import { playSound, resolveAudio } from '../lib/player'
+import { playSound, releaseAudio, resolveAudio } from '../lib/player'
 import { say, hush } from '../lib/voice'
 import { shouldPlayChatSound, ttsText } from '../lib/sound'
 
@@ -69,6 +69,16 @@ export function useChatAlerts({ chatSound, chatTts, ttsNames, templateId, custom
       detachHandler(handle)
     }
   }, [chatSound, chatTts, ttsNames, templateId, customPath])
+
+  // This hook made its own context, so this hook closes it — on unmount only,
+  // because the effect above re-runs on every settings change and closing there
+  // would cut a blip off mid-play.
+  useEffect(
+    () => () => {
+      audioRef.current = releaseAudio(audioRef.current)
+    },
+    [],
+  )
 
   // Turned off: forget when the last blip was, so turning it back on does not wait
   // out a gap that started while it was off. The voice is shared, so stopping it
