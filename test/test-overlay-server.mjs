@@ -51,14 +51,32 @@ check('there is at least one', backgrounds.length > 0, JSON.stringify(background
 
 // Nothing opaque behind the text. OBS composites the source over whatever is
 // behind it, and an opaque body makes the chat a window onto a second video
-// instead of a caption over the first.
-const opaque = backgrounds.filter((v) => v !== 'transparent' && !v.startsWith('rgba(0, 0, 0, var(') && v !== 'rgba(0, 0, 0, 0.6)')
+// instead of a caption over the first. The test is the property, not a list: a
+// background is opaque unless it is `transparent` or an `rgba(...)` whose alpha is
+// below 1. A translucent tint of any colour — the gift badge's gold, say — still
+// composites, so whitelisting only black would fail a legitimately see-through
+// accent.
+function isOpaque(value) {
+  if (value === 'transparent') return false
+  // The alpha is the last comma-separated component. A `var()` holds the 0..1
+  // setting and is translucent by construction; a number below 1 is translucent;
+  // anything with no alpha channel is opaque. Split on commas that are not inside
+  // parentheses, so `rgba(0, 0, 0, var(--background))` keeps its alpha intact
+  // rather than being cut at the `)` inside `var(`.
+  const inner = value.match(/^rgba\((.*)\)$/)?.[1]
+  if (inner === undefined) return true
+  const parts = inner.split(/,(?![^(]*\))/)
+  const last = parts[parts.length - 1].trim()
+  if (last.startsWith('var(')) return false
+  return Number(last) >= 1
+}
+const opaque = backgrounds.filter(isOpaque)
 check('and none of them is opaque', opaque.length === 0, JSON.stringify(opaque))
 check('the page itself is transparent', backgrounds.includes('transparent'))
 
 // The two that are not transparent, and why each is allowed to be.
 check('the row scrim is behind the setting', backgrounds.includes('rgba(0, 0, 0, var(--background))'))
-check('the only other one is the debug badge', backgrounds.includes('rgba(0, 0, 0, 0.6)'))
+check('the gift badge tint is translucent, not opaque', backgrounds.some((v) => v.startsWith('rgba(255, 215, 106') && !isOpaque(v)))
 check('and that is hidden unless asked for', /#status \{ display: none; \}/.test(style) && /body\.debug #status/.test(style))
 
 console.log('a wrong link says so, and a failed one does not')
@@ -98,9 +116,12 @@ check('the status line is hidden by default', /#status \{ display: none/.test(pa
 
 console.log('names are rendered as text, not markup')
 // A nickname is whatever somebody typed into a TikTok box. `textContent` on both
-// halves is the whole reason a chat full of `<img onerror>` is not a problem.
-check('the name goes in as text', /name\.textContent = who/.test(page))
+// halves is the whole reason a chat full of `<img onerror>` is not a problem. The
+// name is now a link, but its label is still set with `textContent` — the href is
+// built from the handle, the visible text is never markup.
+check('the name goes in as text', /link\.textContent = who/.test(page))
 check('and so does the message', /message\.textContent = body/.test(page))
+check('the gift text goes in as text too', /said\.textContent =/.test(page))
 check('nothing is written with innerHTML', !/innerHTML/.test(page))
 
 console.log('the page survives what the backend sends')
@@ -108,7 +129,7 @@ console.log('the page survives what the backend sends')
 // throws on the first frame it did not expect stops receiving, and the overlay
 // goes quiet without saying why.
 check('a frame that is not json is ignored', /try \{\s*frame = JSON\.parse/.test(page))
-check('a frame with no type is ignored', /if \(!frame \|\| frame\.type/.test(page))
+check('a frame with no type is ignored', /if \(!frame\) return/.test(page))
 check('an empty message is ignored', /if \(body === ''\) return/.test(page))
 check('a nameless sender still renders', /'Someone'/.test(page))
 check('a missing text field does not throw', /text == null \? ''/.test(page))

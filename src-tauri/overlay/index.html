@@ -81,9 +81,36 @@
   .name {
     color: var(--name-colour);
     font-weight: 700;
+    /* Clickable, so it reads as a link — the one thing on a chat a viewer wants to
+       follow up on. Underlined on hover only, so a resting chat is not a page of
+       blue links. */
+    text-decoration: none;
+    cursor: pointer;
   }
 
+  .name:hover { text-decoration: underline; }
+
   .text { color: var(--text-colour); }
+
+  /* A gift row. Its own colour and a diamond badge, so the money that just arrived
+     is the thing the eye lands on — distinct from the chat it sits among. */
+  li.gift {
+    color: var(--gift-colour, #ffd76a);
+    font-weight: 700;
+  }
+
+  li.gift .name { color: var(--gift-colour, #ffd76a); }
+
+  .gift-text { color: var(--text-colour); font-weight: 400; }
+
+  .gift-diamonds {
+    margin-left: 0.4em;
+    padding: 0 0.35em;
+    border-radius: 4px;
+    background: rgba(255, 215, 106, 0.18);
+    color: var(--gift-colour, #ffd76a);
+    font-weight: 700;
+  }
 
   /* Newest at the bottom. The app's feed does the same, and a chat that grows
      downwards is one a viewer reads the way they read every other chat. */
@@ -278,8 +305,8 @@
    */
   var MAX_QUEUE = 20
 
-  function enqueue(user, text) {
-    queue.push({ user: user, text: text })
+  function enqueue(user, text, userId) {
+    queue.push({ user: user, text: text, userId: userId })
     if (queue.length > MAX_QUEUE) queue.splice(0, queue.length - MAX_QUEUE)
     pump()
   }
@@ -289,26 +316,50 @@
     var next = queue.shift()
     if (!next) return
     showing = true
-    render(next.user, next.text)
+    render(next.user, next.text, next.userId)
     setTimeout(function () {
       showing = false
       pump()
     }, config.delay)
   }
 
-  function render(user, text) {
+  /**
+   * The name, as a link to the viewer's TikTok profile.
+   *
+   * Clickable because a name on a stream is the one thing a viewer wants to follow
+   * up on — who said that, who sent that gift — and a chat where the name is dead
+   * text answers none of it. Opens in a new tab; the overlay itself is not
+   * navigated away from, because it is a browser source that has to keep showing.
+   *
+   * `userId` is TikTok's stable handle for the person when the wire carries one,
+   * and the display name is the fallback. Built from the handle, not the display
+   * name, because the display name is not always a valid profile path.
+   */
+  function nameLink(user, userId) {
+    var who = String(user == null ? '' : user).trim() || 'Someone'
+    var handle = String(userId == null ? '' : userId).trim()
+    var link = document.createElement('a')
+    link.className = 'name'
+    link.textContent = who
+    // The profile path: the handle when there is one, else the display name. Both
+    // go through encodeURIComponent so a name with a space or a slash is a valid
+    // path rather than a broken one.
+    var path = handle || who
+    link.href = 'https://www.tiktok.com/@' + encodeURIComponent(path)
+    link.target = '_blank'
+    link.rel = 'noopener noreferrer'
+    link.title = 'Open @' + path + ' on TikTok'
+    return link
+  }
+
+  function render(user, text, userId) {
     var body = String(text == null ? '' : text).trim()
     if (body === '') return
 
     var row = document.createElement('li')
     row.className = 'entering'
 
-    var who = String(user == null ? '' : user).trim() || 'Someone'
-    var name = document.createElement('span')
-    name.className = 'name'
-    name.textContent = who
-    row.appendChild(name)
-
+    row.appendChild(nameLink(user, userId))
     row.appendChild(document.createTextNode(': '))
 
     var message = document.createElement('span')
@@ -319,6 +370,41 @@
     list.appendChild(row)
     document.body.classList.add('ready')
 
+    trim()
+  }
+
+  /**
+   * A gift, shown as its own kind of row.
+   *
+   * Not paced through the chat queue and not retired on the chat's schedule: a
+   * gift is an event, not a message in a conversation, and the whole point of
+   * showing it is that a viewer sees who gave what. Rendered at once, in the gift
+   * colour, with the diamond count — the money that just arrived, which is the one
+   * thing on a stream everyone looks up for.
+   */
+  function renderGift(user, giftName, count, value, userId) {
+    var who = String(user == null ? '' : user).trim() || 'Someone'
+    var row = document.createElement('li')
+    row.className = 'entering gift'
+
+    row.appendChild(nameLink(user, userId))
+
+    var said = document.createElement('span')
+    said.className = 'gift-text'
+    var n = Number(count) || 1
+    said.textContent = ' sent ' + (String(giftName || 'a gift')) + (n > 1 ? ' x' + n : '')
+    row.appendChild(said)
+
+    var diamonds = Number(value) || 0
+    if (diamonds > 0) {
+      var badge = document.createElement('span')
+      badge.className = 'gift-diamonds'
+      badge.textContent = diamonds.toLocaleString() + ' ◆'
+      row.appendChild(badge)
+    }
+
+    list.appendChild(row)
+    document.body.classList.add('ready')
     trim()
   }
 
@@ -339,15 +425,37 @@
    * own body: each pass shifts one row off and retires it, so the count goes down
    * by one however slow the removal is.
    */
+  /**
+   * How many gift rows stay on screen at once.
+   *
+   * Larger than the chat limit, and counted separately from it: a gift is the one
+   * thing a viewer looks up for, and it should outlast the chat that arrives after
+   * it rather than being pushed off by the next few messages. Three is enough to
+   * show a run of gifts without the list becoming a leaderboard.
+   */
+  var GIFT_KEEP = 3
+
   function trim() {
     var live = []
+    var gifts = []
     for (var i = 0; i < list.children.length; i++) {
-      if (list.children[i].dataset.leaving !== '1') live.push(list.children[i])
+      var row = list.children[i]
+      if (row.dataset.leaving === '1') continue
+      live.push(row)
+      if (row.classList.contains('gift')) gifts.push(row)
     }
-    // Past the limit: the oldest goes, and the one above it is kept a moment so
-    // it has something to fade against. Removing two would make the
-    // second-newest vanish while it was still readable.
-    while (live.length > config.max) retire(live.shift())
+    // Chat rows go first, oldest first, so the list stays at its limit. A gift is
+    // only retired once the gifts alone exceed their own keep-count, which is what
+    // lets one sit on screen through a stretch of ordinary chat.
+    var chatCount = live.length - gifts.length
+    var over = live.length - config.max
+    for (var i = 0; i < live.length && over > 0; i++) {
+      if (live[i].classList.contains('gift')) continue
+      retire(live[i])
+      over--
+    }
+    // Then the oldest gifts, if there are more of them than are worth keeping.
+    while (gifts.length > GIFT_KEEP) retire(gifts.shift())
   }
 
   function retire(row) {
@@ -471,11 +579,19 @@
       } catch (error) {
         return
       }
-      // Comments only. The rest of the wire is gifts, likes, joins, view counts
-      // and connection status, and an overlay that showed them would be a
-      // dashboard rather than a chat.
-      if (!frame || frame.type !== 'comment') return
-      enqueue(frame.user, frame.text)
+      if (!frame) return
+      // A gift is shown at once, not paced through the chat queue: it is an event,
+      // not a message in a conversation, and holding it behind twenty queued
+      // comments would bury the one thing everyone looks up for.
+      if (frame.type === 'gift') {
+        renderGift(frame.user, frame.giftName, frame.count, frame.value, frame.userId)
+        return
+      }
+      // Comments only beyond this. The rest of the wire — likes, joins, view
+      // counts, connection status — is not chat, and an overlay that showed it
+      // would be a dashboard rather than a chat.
+      if (frame.type !== 'comment') return
+      enqueue(frame.user, frame.text, frame.userId)
     }
 
     socket.onclose = function () {

@@ -204,13 +204,28 @@ await new Promise((resolve) => setTimeout(resolve, 900))
 check('and the old ones are eventually removed', page.rows().length === 8, String(page.rows().length))
 check('leaving just the newest', /message 59/.test(page.rows().at(-1)?.textContent ?? ''))
 
-console.log('nothing that is not a comment is rendered')
-const before = page.rows().length
-page.frame({ type: 'gift', user: 'ana', giftName: 'Rose' })
+console.log('a gift is rendered as a gift, not as chat')
+// A gift now shows — it is the one thing a viewer looks up for. But it is its own
+// kind of row, not a chat row, so it does not enter the paced chat queue and it is
+// counted apart from the chat limit. Likes and viewer counts are still not chat
+// and are still ignored.
+const chatBefore = page.rows().filter((row) => !row.classList.contains('gift')).length
+page.frame({ type: 'gift', user: 'ana', userId: 'ana', giftName: 'Rose', count: 2, value: 20 })
+await new Promise((resolve) => setTimeout(resolve, 50))
+const giftRow = page.dom.window.document.querySelector('#chat li.gift')
+check('a gift becomes a gift row', Boolean(giftRow), String(page.rows().length))
+check('it names the gift', /Rose/.test(giftRow?.textContent ?? ''), giftRow?.textContent)
+check('it shows the diamond count', /20/.test(giftRow?.textContent ?? ''), giftRow?.textContent)
+check('the gifter name is a link to their profile', giftRow?.querySelector('a.name')?.getAttribute('href') === 'https://www.tiktok.com/@ana', giftRow?.querySelector('a.name')?.getAttribute('href'))
+check('and it did not enter the chat queue as a chat row', page.rows().filter((row) => !row.classList.contains('gift')).length === chatBefore, String(page.rows().length))
+
+console.log('likes and viewer counts are still not rendered')
+const afterGift = page.rows().length
 page.frame({ type: 'like', user: 'ana', count: 5 })
 page.frame({ type: 'viewers', count: 100 })
-check('a gift is not a chat row', page.rows().length === before, String(page.rows().length))
-check('and neither is a viewer count', !/Rose/.test(page.dom.window.document.body.textContent ?? ''))
+await new Promise((resolve) => setTimeout(resolve, 50))
+check('a like is ignored', page.rows().length === afterGift, String(page.rows().length))
+check('a viewer count is ignored', !/100/.test(page.dom.window.document.body.textContent.replace(/20/g, '')), 'viewer count leaked')
 
 console.log('a frame it did not expect does not take the page down')
 // Every one of these is something the backend can send, or something a truncated
