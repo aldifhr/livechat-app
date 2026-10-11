@@ -534,7 +534,11 @@ check('a failure says so, and repeats why', /did not answer/.test($('.modal-stat
 // that is what moderation and AI answers will use — so it has to say when the
 // two differ rather than quietly answering a different question.
 await act(async () => {
-  const input = $$('.modal-settings input').find((i) => i.type === 'password')
+  // The model's key, not "the first password field": the webhook section also has
+  // one, and it sits earlier in the dialog, so a bare type filter would edit the
+  // webhook token and leave the model key — the thing being tested — untouched.
+  // Matched on the placeholder the key input carries and the webhook one does not.
+  const input = $$('.modal-settings input').find((i) => i.type === 'password' && i.placeholder === 'sk-…')
   const setter = Object.getOwnPropertyDescriptor(harness.dom.window.HTMLInputElement.prototype, 'value').set
   setter.call(input, 'sk-not-saved-yet')
   input.dispatchEvent(new harness.dom.window.Event('input', { bubbles: true }))
@@ -718,7 +722,18 @@ check('scrolling to the bottom by hand clears it too', !$('.jump'))
 console.log('the stats panel')
 check('the panel is there', Boolean($('.stats-panel')))
 check('it is collapsed to begin with', !$('.stats-body'))
-// The whole point of a collapsed panel: the headline is visible without a click.
+// A viewer count set now, because the point being checked is that a collapsed
+// panel still shows the number — not that the count survived every clear and
+// reconnect earlier in this file, which is a different property and one the feed
+// tests already cover. Emitting it here keeps this assertion about the glance.
+await act(async () => {
+  fake.emit({ platform: 'tiktok', type: 'viewers', count: 1234 })
+})
+// The stats recorder debounces its change notification by 250ms, so a viewer
+// count set one tick ago has not reached the panel yet — the same wait the other
+// viewer assertions below make. Without it the check races the debounce and reads
+// the previous zero.
+await new Promise((resolve) => setTimeout(resolve, 300))
 check('the collapsed bar still shows the headcount', /1[.,]234/.test($('.stats-glance')?.textContent ?? ''), $('.stats-glance')?.textContent)
 
 await click('.stats-toggle')
