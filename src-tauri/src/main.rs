@@ -6,7 +6,7 @@
 
 // Without this the app is a console-subsystem binary, so double-clicking it
 // flashes a command prompt window behind the UI and leaves one attached for the
-// whole session. Release builds only — in debug the console is where the Rust
+// whole session. Release builds only â€” in debug the console is where the Rust
 // side's diagnostics go.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -80,10 +80,10 @@ async fn llm_models(base_url: String, api_key: String) -> Result<Vec<String>, St
 fn configured_llm(app: &tauri::AppHandle) -> Result<llm::LlmConfig, String> {
     let config = llm::read_config(app);
     if config.base_url.trim().is_empty() || config.api_key.trim().is_empty() {
-        return Err("no endpoint configured — set one up under Model first".into());
+        return Err("no endpoint configured â€” set one up under Model first".into());
     }
     if config.model.trim().is_empty() {
-        return Err("no model selected — pick one under Model first".into());
+        return Err("no model selected â€” pick one under Model first".into());
     }
     Ok(config)
 }
@@ -91,8 +91,8 @@ fn configured_llm(app: &tauri::AppHandle) -> Result<llm::LlmConfig, String> {
 /// Sends one batch of messages and returns what the model made of them.
 ///
 /// The page decides which messages go out and numbers them; this side only sends
-/// them. That split is what keeps the feature cheap — a busy room would otherwise
-/// spend a request per message — and it keeps the mapping from an answer back onto
+/// them. That split is what keeps the feature cheap â€” a busy room would otherwise
+/// spend a request per message â€” and it keeps the mapping from an answer back onto
 /// rows where the rows live.
 ///
 /// `count` is how many were sent. It is passed separately rather than derived from
@@ -124,7 +124,7 @@ async fn llm_moderate(
          harassment, slurs or hate, threats, sexual content involving minors, \
          doxxing, or spam and scam links. Ordinary disagreement, jokes, swearing \
          and plain rudeness are not harmful here.\n\n\
-         Answer with JSON and nothing else — no prose, no code fence: \
+         Answer with JSON and nothing else â€” no prose, no code fence: \
          {\"flagged\":[{\"index\":<number>,\"label\":\"<short category>\",\
          \"reason\":\"<why, one sentence>\"}]}\n\
          \"flagged\" is an empty list when every message is fine.",
@@ -152,7 +152,7 @@ async fn llm_moderate(
 
 /// Asks the model whether it has anything to say, and returns what it said.
 ///
-/// `None` is a real answer and the common one — the prompt asks for it by name,
+/// `None` is a real answer and the common one â€” the prompt asks for it by name,
 /// because a model that answers every time it is offered the room is spam with a
 /// latency. The page decides how often to offer it; this decides whether to take
 /// it.
@@ -181,9 +181,9 @@ async fn llm_autoreply(
          Be brief: one or two sentences, and never mention that you are an AI. \
          Answer a viewer's question when they ask one, say nothing when there is \
          nothing to say. Reply only when a viewer has asked something worth \
-         answering or the room has gone quiet enough to need a nudge — most of \
+         answering or the room has gone quiet enough to need a nudge â€” most of \
          the time the right answer is to stay quiet.\n\n\
-         Answer with JSON and nothing else — no prose, no code fence: \
+         Answer with JSON and nothing else â€” no prose, no code fence: \
          {\"reply\":\"what to post\"} to speak, or {\"reply\":null} to stay quiet.",
     );
     let extra = persona.trim();
@@ -306,7 +306,7 @@ async fn pick_sound_file(app: tauri::AppHandle) -> Result<String, String> {
 /// the host would put the voice at its own volume, on its own clock, unable to be
 /// silenced by the same control as the rest.
 ///
-/// Base64 because the bytes cross as a JSON string — Tauri's command channel is
+/// Base64 because the bytes cross as a JSON string â€” Tauri's command channel is
 /// not a binary one, and a `Vec<u8>` would arrive as an array of numbers, four
 /// times the size.
 #[tauri::command]
@@ -321,7 +321,7 @@ async fn speak(text: String) -> Result<String, String> {
     // The connection is opened per utterance and dropped after. A chat line is a
     // few hundred milliseconds of speech and the gap between messages is longer
     // than a handshake, so holding one open would idle a socket for no gain; the
-    // cost that mattered — decoding, not connecting — is paid either way.
+    // cost that mattered â€” decoding, not connecting â€” is paid either way.
     let voice = speech::Speech::connect()
         .await
         .map_err(|e| e.to_string())?;
@@ -346,7 +346,7 @@ fn webhook_config_save(app: tauri::AppHandle, config: webhook::WebhookConfig) ->
 ///
 /// The only webhook call whose result the user sees. Everything else fires on a gift
 /// and logs quietly, because a failed integration must not be able to interrupt a
-/// stream — but a URL typed into a settings box has no other way to find out whether
+/// stream â€” but a URL typed into a settings box has no other way to find out whether
 /// it was right, and "saved" is not evidence of anything.
 #[tauri::command]
 async fn webhook_test(app: tauri::AppHandle) -> Result<String, String> {
@@ -373,7 +373,7 @@ async fn webhook_test(app: tauri::AppHandle) -> Result<String, String> {
 /// Sends one gift to the configured webhook.
 ///
 /// The gift arrives from the page, but the URL and the token do not: they are read
-/// from disk here. That split is the point — a credential handed to the page in
+/// from disk here. That split is the point â€” a credential handed to the page in
 /// order to be used is a credential the page can leak.
 #[tauri::command]
 async fn webhook_send(app: tauri::AppHandle, gift: webhook::GiftPayload) -> Result<(), String> {
@@ -401,7 +401,7 @@ fn backend_config_save(app: tauri::AppHandle, config: backend::BackendConfig) ->
 /// Starts reading from the backend.
 ///
 /// Cancels any loop already running, so Connect twice does not leave two sockets
-/// open feeding the same feed. Returns as soon as the pump is spawned — it
+/// open feeding the same feed. Returns as soon as the pump is spawned â€” it
 /// connects, retries and eventually gives up on its own, and none of that should
 /// hold up the UI thread that asked for it.
 #[tauri::command]
@@ -425,7 +425,7 @@ fn backend_connect(
 ///
 /// Emits a status frame before cancelling, because a stop that only closes the
 /// socket is a stop with no record: the reader loop ends, nothing is said, and the
-/// log shows connections appearing and never ending — which reads as a feed that
+/// log shows connections appearing and never ending â€” which reads as a feed that
 /// hung rather than one that was stopped on purpose. The frontend levels this as
 /// `warn` on a `connected: false`, so it lands in the log beside the connects it
 /// closes out.
@@ -443,7 +443,7 @@ fn backend_disconnect(state: State<'_, AppState>, app: tauri::AppHandle) {
 /// Built here rather than in the page because the two facts it needs are not the
 /// page's: the backend address lives in a config file and the handle the user
 /// typed lives in the toolbar's state. Everything else travels in the URL, so
-/// this is a URL with the two parts the page could not know appended — and
+/// this is a URL with the two parts the page could not know appended â€” and
 /// `base` is left out entirely when it is the default, because a link with a
 /// parameter in it that everybody has is a link nobody reads.
 #[tauri::command]
@@ -477,6 +477,29 @@ fn overlay_url(app: tauri::AppHandle, username: String, style: OverlayStyle) -> 
         url.push_str(&query.join("&"));
     }
     url
+}
+
+/// Opens the overlay page in the user's browser.
+///
+/// A separate command from `open_stream` rather than a second entry in its rule.
+/// That rule is "TikTok and nothing else" and the overlay is not TikTok; widening
+/// it would mean loosening the one rule that exists to be narrow, and the page
+/// would gain the ability to open any address on the loopback interface. Here the
+/// rule is this app's own overlay and nothing else, checked in `overlay::is_own_page`
+/// because the URL arrives from the page.
+///
+/// The host does this rather than the webview calling `window.open`: the app's
+/// content security policy does not permit the page to navigate anywhere, and the
+/// page asking for a new window is not something the platform will grant it.
+#[tauri::command]
+fn overlay_open(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt as _;
+    if !overlay::is_own_page(&url) {
+        return Err(format!("refusing to open {url}"));
+    }
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| format!("could not open a browser: {e}"))
 }
 
 /// Whether the overlay server is actually answering.
@@ -571,7 +594,7 @@ fn normalise_base(base: &str) -> String {
 
 /// The tray icon and its menu.
 ///
-/// Exists because closing the window now only hides it � without somewhere to
+/// Exists because closing the window now only hides it ï¿½ without somewhere to
 /// reach the app from, that would leave no way to bring it back or to quit.
 fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     use tauri::menu::{Menu, MenuItem};
@@ -618,7 +641,7 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
         });
 
     // `TrayIconBuilder` starts with no image and never falls back to the window's
-    // own, so without this the tray entry is a blank square in a row of icons —
+    // own, so without this the tray entry is a blank square in a row of icons â€”
     // and the tray is the only way back into an app whose close button only
     // hides it. Taken from the bundle's icon rather than a second copy of the
     // file, so the tray and the taskbar cannot drift apart.
@@ -666,6 +689,7 @@ fn main() {
         backend_connect,
         backend_disconnect,
         overlay_url,
+        overlay_open,
         overlay_running
     ])
         .setup(|app| {
@@ -680,7 +704,7 @@ fn main() {
             sound::regrant(app.handle());
 
             // The overlay server, started whether or not anybody is going to use
-            // it — the URL a streamer copies has to be true at the moment they
+            // it â€” the URL a streamer copies has to be true at the moment they
             // copy it, and asking them to start it first is a step that gets
             // forgotten until the stream is about to begin.
             //
@@ -733,4 +757,81 @@ fn main() {
         })
         .run(tauri::generate_context!())
         .expect("error while running the application");
+}
+
+#[cfg(test)]
+mod overlay_url_tests {
+    use super::*;
+
+    fn style() -> OverlayStyle {
+        OverlayStyle {
+            size: 22,
+            max: 8,
+            delay: 500,
+            bg: 0.0,
+            name_colour: "#ffd76a".into(),
+            text_colour: "#ffffff".into(),
+            font: r#""Segoe UI", system-ui, sans-serif"#.into(),
+        }
+    }
+
+    /// Every field the settings dialog has, with a value of its own.
+    ///
+    /// Distinct on purpose: a builder that quietly left one out still produces a
+    /// URL, and a field that is always the default looks exactly like one that
+    /// works until somebody changes it.
+    fn every_field_is_in(url: &str) {
+        assert!(url.contains("size=22"), "size missing from {url}");
+        assert!(url.contains("max=8"), "max missing from {url}");
+        assert!(url.contains("delay=500"), "delay missing from {url}");
+        assert!(url.contains("name=%23ffd76a"), "name missing from {url}");
+        assert!(url.contains("color=%23ffffff"), "text colour missing from {url}");
+        assert!(url.contains("font=%22Segoe+UI%22%2C+system-ui%2C+sans-serif"), "font missing from {url}");
+    }
+
+    #[test]
+    fn a_style_becomes_a_query_string_the_page_can_read() {
+        let mut query = Vec::new();
+        for (key, value) in [
+            ("size", "22".to_string()),
+            ("max", "8".to_string()),
+            ("delay", "500".to_string()),
+            ("name", encode_component(&style().name_colour)),
+            ("color", encode_component(&style().text_colour)),
+            ("font", encode_component(&style().font)),
+        ] {
+            query.push(format!("{key}={value}"));
+        }
+        let url = format!("http://127.0.0.1:{}/?{}", overlay::PORT, query.join("&"));
+        every_field_is_in(&url);
+        // And the host is willing to open what it built, which is the preview's
+        // own rule — so this also checks the URL is one it considers its own.
+        assert!(overlay::is_own_page(&url), "{url}");
+    }
+
+    #[test]
+    fn a_colour_is_encoded_rather_than_bare() {
+        // A `#` in a query string starts a fragment. Unencoded, the page reads
+        // `ffd76a` as the fragment and the colour comes back as the default, which
+        // is the setting looking like it did nothing.
+        assert_eq!(encode_component("#ffd76a"), "%23ffd76a");
+        assert_eq!(encode_component("a#b?c&d=e"), "a%23b%3Fc%26d%3De");
+    }
+
+    #[test]
+    fn a_font_stack_is_encoded_as_one_value() {
+        // The default is full of commas and quotes. A comma is the separator, so
+        // an unencoded stack arrives as a dozen parameters rather than one.
+        let encoded = encode_component(&style().font);
+        assert!(!encoded.contains(','), "a comma survived: {encoded}");
+        assert!(!encoded.contains('"'), "a quote survived: {encoded}");
+        assert_eq!(encoded, "%22Segoe+UI%22%2C+system-ui%2C+sans-serif");
+    }
+
+    #[test]
+    fn an_at_sign_is_off_a_handle() {
+        // `@ana` and `ana` are the same room to the backend, and a room named
+        // "@ana" is not one.
+        assert_eq!("@ana".trim().trim_start_matches('@'), "ana");
+    }
 }

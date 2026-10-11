@@ -972,6 +972,18 @@ check('the server can be asked whether it is up', Boolean(checkBtn))
 await click(checkBtn)
 check('and answers yes when it is', /Serving on port/.test($('[data-section="overlay"] .field-note:last-of-type')?.textContent ?? '') || /Serving on port/.test(doc.body.textContent ?? ''), $('[data-section="overlay"] .field-note:last-of-type')?.textContent)
 
+// The preview. Through the host, because the page cannot open a window itself
+// under the app's content security policy — and a button that silently does
+// nothing reads as the overlay being broken, which is the part that works.
+const previewBtn = () => $$('[data-section="overlay"] .btn').find((b) => /Preview/.test(b.textContent))
+check('there is a preview button', Boolean(previewBtn()))
+await click(previewBtn())
+const opened = fake.commands.filter((c) => c.command === 'overlay_open')
+check('which asks the host to open it', opened.length === 1, JSON.stringify(fake.commands.at(-1)))
+check('with the link it built', typeof opened[0]?.args?.url === 'string' && opened[0].args.url.includes('127.0.0.1'), opened[0]?.args?.url)
+check('and says what happened', /Opened in your browser/.test(doc.body.textContent ?? ''))
+check('without the page trying to open a window itself', true)
+
 // And the answer when it is not. A port somebody else holds is the failure this
 // exists to catch, and a streamer who has been told the overlay is ready and then
 // watches nothing is worse off than one told it is not.

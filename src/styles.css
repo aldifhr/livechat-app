@@ -69,7 +69,14 @@ body {
   flex-wrap: wrap;
 }
 
-.toggle {
+/* Pushes the toolbar's view toggles to the right of their row.
+   Scoped, because `.toggle` is one class used by two places and the other one is
+   a wrapping row in the settings dialog: an auto margin there is not a right
+   alignment, it is every item absorbing a share of the free space, and a line
+   with three items splits it differently from a line with two. The rows stopped
+   lining up with each other the moment a group had an uneven number of toggles
+   in it, which is most of them. */
+.toolbar .toggle {
   margin-left: auto;
 }
 
@@ -337,6 +344,18 @@ body {
   font-size: 13px;
   cursor: pointer;
   user-select: none;
+}
+
+/* In a grid cell the label is what fills it, and a long one has to wrap rather
+   than widen the column and shift everything after it. `min-width: 0` on the box
+   is what lets the span shrink far enough for that. */
+.settings-toggles .toggle {
+  min-width: 0;
+}
+
+.settings-toggles .toggle span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* Log panel */
@@ -747,12 +766,44 @@ select.input option {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 10px;
+  /*
+   * Top-aligned, so a control takes its own height rather than the row's.
+   *
+   * A grid row is as tall as its tallest cell, and the tallest cell in the overlay
+   * row is the background slider with its note underneath it. A stretched item
+   * hands that height down, and `.input` carries `flex: 1` so it takes all of it:
+   * the number fields beside it grew into boxes the size of the tallest thing in
+   * the row. Stretch is the right default for a grid of cards and the wrong one
+   * for a grid of fields, where every cell should look the same size as itself.
+   */
+  align-items: start;
 }
 
+/* Undoes the grow, for the same reason. `.input` needs `flex: 1` in a
+   `.field-row` — that is how an input and its button share a line — but inside a
+   grid cell it has no button beside it and the flex only lets it inflate. */
+.settings-grid .input {
+  flex: 0 0 auto;
+}
+
+/*
+ * A run of toggles, in columns that line up.
+ *
+ * A grid rather than a wrapping flex row. Wrapping puts each item at its natural
+ * width and starts the next line at the left edge, so nothing lines up with
+ * anything above it: "Moderator badge" is wider than "Compact", so the item
+ * beside it starts a little further right on that row than the one above it does.
+ * With a group of eleven in three columns, almost every line is uneven, so almost
+ * every line is ragged.
+ *
+ * `auto-fit` rather than a fixed count so the columns narrow on a small window
+ * instead of overflowing, and `minmax(140px, 1fr)` because the longest label in
+ * any group is about that wide and a narrower floor wraps it before it needs to.
+ */
 .settings-toggles {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px 12px;
 }
 
 /* A labelled run of toggles inside a section. The caption is what lets the eye

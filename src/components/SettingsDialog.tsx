@@ -444,11 +444,27 @@ const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
     }
   }
 
-  function openOverlay(url: string) {
-    // The overlay is this app's own loopback page, and the host's opener refuses
-    // everything but TikTok. Which means opening it from here has to go through
-    // the webview, not the host.
-    window.open(url, '_blank', 'noopener')
+  /**
+   * Opens the preview in a real browser.
+   *
+   * The host does it, not `window.open`: the page cannot navigate anywhere under
+   * the app's content security policy, and a Preview button that silently does
+   * nothing is worse than no button — it reads as the overlay being broken when
+   * the overlay is the part that works.
+   */
+  async function openOverlay(url: string) {
+    setOverlayStatus({ kind: 'busy', text: 'Opening the preview…' })
+    try {
+      await host.overlayOpen(url)
+      if (!alive.current) return
+      setOverlayStatus({
+        kind: 'ok',
+        text: 'Opened in your browser. It looks the same there as it will in OBS.',
+      })
+    } catch (error: unknown) {
+      if (!alive.current) return
+      setOverlayStatus({ kind: 'error', text: message(error) })
+    }
   }
 
   if (!open) return null

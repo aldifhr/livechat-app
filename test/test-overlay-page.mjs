@@ -247,5 +247,55 @@ const unconfigured = load('?max=8')
 await settle()
 check('and it says the handle is missing', /no handle in this link/.test(unconfigured.dom.window.document.body.textContent ?? ''), unconfigured.dom.window.document.body.textContent)
 
+console.log('every setting in the dialog reaches the page')
+// The question a streamer actually has: does changing a field do anything. Each of
+// these has to end up as a custom property the stylesheet consumes, on the rule it
+// is meant to style — a value written nowhere, or written to a rule that does not
+// read it, is a setting that looks like it works.
+const styled = load('?room=ana&size=40&max=5&delay=250&name=%2300ff00&color=%23ff0000&font=Inter&bg=0.5')
+await settle()
+const root = styled.window.document.documentElement
+const variable = (name) => root.style.getPropertyValue(name)
+
+check('text size', variable('--size') === '40px', variable('--size'))
+check('name colour', variable('--name-colour') === '#00ff00', variable('--name-colour'))
+check('text colour', variable('--text-colour') === '#ff0000', variable('--text-colour'))
+check('font', variable('--font') === 'Inter', variable('--font'))
+// This one was the bug: the setting was applied to the page's own background at
+// 60% of its value, and the per-row scrim the stylesheet asks for by name was
+// never written at all — so the thing it is labelled as controlling did nothing,
+// and the thing it was really doing was something nobody asked for.
+check('background reaches the row scrim', variable('--background') === '0.5', variable('--background'))
+
+console.log('and the stylesheet is what consumes them')
+// Which rule reads each one. A custom property that nothing reads is the other
+// half of the same bug: correctly written, correctly ignored.
+const style = PAGE.slice(PAGE.indexOf('<style>') + '<style>'.length, PAGE.indexOf('</style>'))
+check('the text size styles the body', /body\s*\{[^}]*font-size:\s*var\(--size\)/.test(style))
+check('the name colour styles the name', /\.name\s*\{[^}]*color:\s*var\(--name-colour\)/.test(style))
+check('the text colour styles the text', /\.text\s*\{[^}]*color:\s*var\(--text-colour\)/.test(style))
+check('the font styles the body', /body\s*\{[^}]*font-family:\s*var\(--font\)/.test(style))
+check('the background styles the row', /li\s*\{[^}]*background:\s*rgba\(0,\s*0,\s*0,\s*var\(--background\)\)/.test(style))
+// And nothing is given two meanings: the page background must not be set from
+// `bg` as well as the row scrim, or moving the slider changes two things at once
+// and only one of them is the one named on it.
+check('and only the row, so one setting means one thing', !/documentElement\.style\.background\s*=/.test(PAGE))
+
+console.log('and the two limits are honoured through the link, not just read')
+// Not a check that the URL contains the numbers — that would be testing the string
+// I just wrote. This is the page honouring them, which is the claim that matters.
+styled.openRoom()
+await settle()
+await settle()
+for (let n = 0; n < 12; n += 1) styled.say(`v${n}`, `m${n}`)
+check('the gap it was given paces it', await waitFor(() => styled.rows().length === 3), String(styled.rows().length))
+// Twelve at 250ms is three seconds. Long enough to have gone past the limit.
+await new Promise((resolve) => setTimeout(resolve, 3200))
+check(
+  'and it stops at the row count it was given',
+  styled.rows().filter((row) => row.dataset.leaving !== '1').length === 5,
+  String(styled.rows().length),
+)
+
 console.log(failures === 0 ? '\nall passed' : `\n${failures} failed`)
 process.exit(failures === 0 ? 0 : 1)

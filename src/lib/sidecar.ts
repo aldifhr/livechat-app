@@ -122,6 +122,7 @@ type HostCommand =
   | 'backend_connect'
   | 'backend_disconnect'
   | 'overlay_url'
+  | 'overlay_open'
   | 'overlay_running'
 
 /**
@@ -503,6 +504,20 @@ export const host = {
     const resolved = await resolve()
     const url = await resolved.invoke('overlay_url', { username, style })
     return typeof url === 'string' ? url : ''
+  },
+  /**
+   * Opens the overlay page in the user's browser.
+   *
+   * Through the host rather than `window.open`, which does nothing here: the
+   * webview is under a content security policy that does not let the page
+   * navigate anywhere, and a page asking for a new window is not something the
+   * platform grants it. The host checks the address is its own overlay before
+   * handing it to the OS — the same reason `openStream` checks before opening
+   * anything, though here the rule is the loopback port rather than a host list.
+   */
+  overlayOpen: async (url: string): Promise<void> => {
+    const resolved = await resolve()
+    await resolved.invoke('overlay_open', { url })
   },
   /**
    * Whether the overlay server is answering.
