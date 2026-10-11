@@ -23,8 +23,8 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' https: data:; media-src 'self' asset: http://asset.localhost data: blob:; style-src 'self' 'unsafe-inline'",
-      "assetProtocol": { "enable": true, "scope": ["**"] }
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost asset: http://asset.localhost; img-src 'self' https: data:; media-src 'self' asset: http://asset.localhost data: blob:; style-src 'self' 'unsafe-inline'",
+      "assetProtocol": { "enable": true, "scope": [] }
     }
   },
   "bundle": {

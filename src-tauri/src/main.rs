@@ -12,6 +12,7 @@
 
 mod backend;
 mod llm;
+mod sound;
 mod speech;
 
 use std::sync::Arc;
@@ -187,7 +188,17 @@ async fn pick_sound_file(app: tauri::AppHandle) -> Result<String, String> {
     // then handed back as a path: the page converts it with `convertFileSrc` at
     // play time. Doing the conversion here instead would put a URL where the
     // setting stores a file, and the setting has to survive a restart.
-    let _ = app.asset_protocol_scope().allow_file(chosen.as_path().ok_or_else(|| "not a local file".to_string())?);
+    let path = chosen.as_path().ok_or_else(|| "not a local file".to_string())?;
+    // Remembered host-side, because the asset scope is rebuilt empty on every
+    // launch and the page's own storage cannot grant itself anything. Without
+    // this the chosen sound works until the next restart and then silently stops.
+    sound::write_config(
+        &app,
+        &sound::SoundConfig {
+            path: path.to_string_lossy().into_owned(),
+        },
+    )?;
+    let _ = app.asset_protocol_scope().allow_file(path);
     Ok(chosen.to_string())
 }
 
@@ -360,6 +371,11 @@ fn main() {
             // being read while the window is out of the way. The tray is where it
             // comes back from, and where quitting actually lives.
             build_tray(app.handle())?;
+
+            // Re-grants the sound chosen last run, and only that one file. The
+            // asset scope is empty on a fresh launch, so without this a saved
+            // custom sound would stop playing after a restart.
+            sound::regrant(app.handle());
 
             let handle = app.handle().clone();
             if let Some(window) = app.get_webview_window("main") {
