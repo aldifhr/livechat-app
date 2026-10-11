@@ -755,6 +755,32 @@ select.input option {
   gap: 6px 16px;
 }
 
+/* A labelled run of toggles inside a section. The caption is what lets the eye
+   skip to the group it wants instead of reading every label in one long wrap —
+   the Feed section's whole problem was eleven toggles with nothing between them. */
+.toggle-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.toggle-group-label {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* The overlay's two explanatory notes, below the number grid and spanning full
+   width. In a grid cell they wrap into tall towers beside their own input; out
+   here they read as two quiet lines under the row of controls. */
+.overlay-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 /* The gear. Sits with the toggles but is a button, so it keeps its own class
    rather than joining the row of checkbox toggles. */
 .settings-btn {

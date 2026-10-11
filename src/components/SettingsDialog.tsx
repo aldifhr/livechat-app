@@ -80,6 +80,25 @@ function Section({
   )
 }
 
+/**
+ * A labelled run of toggles inside a section.
+ *
+ * The Feed section holds three different kinds of setting — how the feed looks,
+ * what fires on events, and how the message is spoken — and lumping them into one
+ * grid is what made it unreadable: a row of eleven checkboxes with no grouping,
+ * where "hide the joins" sat between a gift sound and an auto-reply. Each group
+ * gets a small caption so the eye can find the one it wants without reading every
+ * label.
+ */
+function ToggleGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="toggle-group">
+      <span className="toggle-group-label">{label}</span>
+      <div className="settings-toggles">{children}</div>
+    </div>
+  )
+}
+
 interface Props {
   open: boolean
   settings: UseSettingsResult
@@ -100,12 +119,32 @@ const PANEL_TOGGLES: { key: keyof ViewSettings; label: string; hint: string }[] 
   { key: 'showLog', label: 'Log panel', hint: 'What the bridge reported, below the chat' },
 ]
 
+/**
+ * What the feed looks like.
+ *
+ * Split out from the sound and alert toggles on purpose: these change what is on
+ * screen, and the ones below change what you hear and get told about. Rendered as
+ * one mixed grid, a user scanning for "hide the joins" reads past gift sounds and
+ * mention alerts to find it — the same reason the groups are sections rather than
+ * one long list.
+ */
 const FEED_TOGGLES: { key: keyof ViewSettings; label: string; hint: string }[] = [
   { key: 'compact', label: 'Compact', hint: 'One line per message, no avatars' },
   { key: 'hideJoins', label: 'Hide joins', hint: 'Drop "X joined the stream" rows' },
   { key: 'hideFiltered', label: 'Hide filtered', hint: 'Drop messages TikTok already filtered' },
   { key: 'showModeratorBadge', label: 'Moderator badge', hint: 'Show the MOD badge on chat rows' },
   { key: 'alwaysOnTop', label: 'On top', hint: 'Keep the window above others' },
+]
+
+/**
+ * What fires on a gift or a mention, and whether the app talks back.
+ *
+ * Its own group because it is the "notify me" cluster — sound, toast, voice, the
+ * mention highlight and the greeting reply — and someone setting those up is
+ * making one decision ("how loud should this be"), not reading them off a list
+ * mixed with how the feed is laid out.
+ */
+const EVENT_TOGGLES: { key: keyof ViewSettings; label: string; hint: string }[] = [
   { key: 'giftSound', label: 'Gift sound', hint: 'Chime when a gift arrives' },
   { key: 'joinSound', label: 'Join sound', hint: 'A soft tap when somebody new arrives' },
   { key: 'giftNotice', label: 'Gift notice', hint: 'Raise a desktop toast when a gift arrives' },
@@ -498,7 +537,7 @@ const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
         </Section>
 
         <Section title="Feed" section="feed">
-          <div className="settings-toggles">
+          <ToggleGroup label="What the feed looks like">
             {FEED_TOGGLES.map((option) => (
               <label key={option.key} className="toggle" title={option.hint}>
                 <input
@@ -509,7 +548,21 @@ const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
                 <span>{option.label}</span>
               </label>
             ))}
-          </div>
+          </ToggleGroup>
+
+          <ToggleGroup label="What fires on a gift or mention">
+            {EVENT_TOGGLES.map((option) => (
+              <label key={option.key} className="toggle" title={option.hint}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(settings[option.key])}
+                  onChange={(e) => settings.set(option.key, e.target.checked as never)}
+                />
+                <span>{option.label}</span>
+              </label>
+            ))}
+          </ToggleGroup>
+
           <label className="field">
             <span className="field-label">My handles</span>
             <input
@@ -526,7 +579,7 @@ const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
             </span>
           </label>
 
-          <div className="settings-toggles">
+          <ToggleGroup label="How messages are spoken">
             {ALERT_TOGGLES.filter((option) => !option.needs || settings[option.needs]).map((option) => (
               <label key={option.key} className="toggle" title={option.hint}>
                 <input
@@ -537,7 +590,7 @@ const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
                 <span>{option.label}</span>
               </label>
             ))}
-          </div>
+          </ToggleGroup>
         </Section>
 
         <Section title="Sounds" section="sounds">
@@ -885,6 +938,11 @@ const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
             straight from the backend, so it keeps working while this window is closed.
           </p>
 
+          {/* The numbers and colours in a grid — but only the controls, not their
+              notes. A long note crammed into a grid cell wraps into a tall ragged
+              tower beside its own input; the two notes that need explaining (delay
+              and background) are pulled out below and span the full width, so the
+              grid stays a tidy row of label-and-control. */}
           <div className="settings-grid">
             <label className="field">
               <span className="field-label">Text size</span>
@@ -925,10 +983,6 @@ const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
                   settings.set('overlayDelay', Math.round(clampNumber(e.target.value, OVERLAY_DELAY.min, OVERLAY_DELAY.max, 500)))
                 }
               />
-              <span className="field-note">
-                {settings.overlayDelay} ms between each message. A busy room talks faster than anyone
-                reads, so without this the last eight messages land together and read as a wall.
-              </span>
             </label>
 
             <label className="field">
@@ -962,12 +1016,19 @@ const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
                 value={Math.round(settings.overlayBg * 100)}
                 onChange={(e) => settings.set('overlayBg', clampNumber(e.target.value, 0, 100, 0) / 100)}
               />
-              <span className="field-note">
-                {settings.overlayBg === 0
-                  ? 'None — the video shows through.'
-                  : `${Math.round(settings.overlayBg * 100)}% black behind each line.`}
-              </span>
             </label>
+          </div>
+
+          <div className="overlay-notes">
+            <span className="field-note">
+              {settings.overlayDelay} ms between messages. A busy room talks faster than anyone reads, so
+              without a gap the last {settings.overlayMax} land together and read as a wall.
+            </span>
+            <span className="field-note">
+              {settings.overlayBg === 0
+                ? 'No background — the video shows through.'
+                : `${Math.round(settings.overlayBg * 100)}% black behind each line.`}
+            </span>
           </div>
 
           <label className="field">
