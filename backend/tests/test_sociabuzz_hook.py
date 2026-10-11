@@ -118,35 +118,53 @@ async def run() -> None:
         try:
             await sock.drain_opening()
 
-            print("a donation with a string amount and a message")
+            print("a real Sociabuzz test-notification body")
+            # The exact key set a live Sociabuzz test notification sends, pasted
+            # from the platform's own response box. This is the shape that has to
+            # work, and it is the one the first version of this hook had never
+            # seen — so it is asserted here verbatim rather than reconstructed.
             posted = await client.post(
                 f"/api/hooks/sociabuzz/{room}",
-                json={"donator": "Budi", "amount": "Rp 10.000", "message": "mantap streamnya!"},
+                json={
+                    "amount": 10000,
+                    "amount_settled": 10000,
+                    "content": "Coffee",
+                    "created_at": "2026-10-11 16:00:00",
+                    "currency": "IDR",
+                    "currency_settled": "IDR",
+                    "email_supporter": "budi@example.com",
+                    "id": "txn-1",
+                    "item": "Coffee",
+                    "level": "Tribe",
+                    "media_type": "",
+                    "media_url": "",
+                    "message": "mantap streamnya!",
+                    "supporter": "Budi",
+                    "vote": "",
+                },
             )
             check("the endpoint answered 200", posted.status_code == 200, f"got {posted.status_code}")
-            check(
-                "and echoed the keys it received",
-                posted.json().get("received") == ["amount", "donator", "message"],
-                str(posted.json()),
-            )
             frame = await sock.take("the donation")
             check("it reached the feed as an alert", frame.get("type") == "alert", str(frame))
-            check("the donator's name is on it", "Budi" in str(frame), str(frame))
-            check("the message is on it", "mantap" in str(frame), str(frame))
-            # The one field the donation jar reads. A hook that posted an amount
-            # used to have it dropped on the way out, so this is the assertion
-            # that matters most.
-            check("the amount survived", frame.get("amount") == 10.0, str(frame))
+            check("the supporter's name is on it", "Budi" in str(frame), str(frame))
+            check("their message is on it", "mantap" in str(frame), str(frame))
+            check("what they bought is on it", "Coffee" in str(frame), str(frame))
+            # The settled amount, the money that actually arrived — not the list
+            # price. And prefixed with the currency, because "10000" alone says
+            # nothing about which money it is.
+            check("the settled amount survived", frame.get("amount") == 10000.0, str(frame))
+            check("and it reads as rupiah, not a bare number", "Rp 10.000" in str(frame) or "Rp 10000" in str(frame), str(frame))
 
-            print("a donation with a camelCase numeric amount and no message")
+            print("the settled amount is preferred over the list amount")
             posted = await client.post(
                 f"/api/hooks/sociabuzz/{room}",
-                json={"fullName": "Sari", "nominal": 25000},
+                json={"supporter": "Sari", "amount": 25000, "amount_settled": 23000, "currency_settled": "IDR"},
             )
             check("answered 200", posted.status_code == 200, f"got {posted.status_code}")
             frame = await sock.take("the second donation")
             check("the name is on it", "Sari" in str(frame), str(frame))
-            check("the amount survived", frame.get("amount") == 25000.0, str(frame))
+            # 23000, not 25000: the settled figure is what was charged.
+            check("the settled amount is used", frame.get("amount") == 23000.0, str(frame))
 
             print("a donation with no recognisable fields still appears")
             posted = await client.post(

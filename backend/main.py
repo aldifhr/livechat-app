@@ -803,11 +803,23 @@ async def sociabuzz_hook(room_id: str, request: Request):
 
     logger.info("sociabuzz: donation for room %s — keys=%s", room_id, sorted(body.keys()))
 
-    # Every name a field has been seen under. Listed widest-first; the exact
-    # set is what the log above teaches us on the first real donation.
-    donator = _pick(body, "donator", "donatur", "donor", "supporter", "name", "fullname", "fullName")
-    amount_raw = _pick(body, "amount", "nominal", "jumlah", "value", "total", "donation", "price")
-    message = _pick(body, "message", "note", "pesan", "support_message", "comment", "text", "message")
+    # The real Sociabuzz shape, confirmed from a live test notification:
+    # `supporter` is the name, `amount_settled`/`currency_settled` are the amount
+    # and its currency, `content` is what the supporter bought ("Coffee", "Traktir
+    # x2"), and `message` is their note. The wider guesses stay below for a shape
+    # we have not seen yet; they cost nothing and a donation that fails to map is
+    # a donation that never appears.
+    donator = _pick(body, "supporter", "donator", "donatur", "donor", "name", "fullname", "fullName")
+    # `amount_settled` before `amount`: the settled figure is what was actually
+    # charged, and `amount` can be the pre-fee list price. Two different numbers
+    # for one donation, and only one of them is the money that arrived.
+    amount_raw = _pick(body, "amount_settled", "amount", "nominal", "jumlah", "value", "total", "donation", "price")
+    currency = _pick(body, "currency_settled", "currency") or ""
+    # `content` is what the supporter bought ("Coffee", "Traktir x2"); `message`
+    # is the note they typed. They are different things and both belong on the
+    # feed — collapsing them into one field loses whichever is not first.
+    content = _pick(body, "content", "item", "product", "title")
+    message = _pick(body, "message", "note", "pesan", "support_message", "comment", "text")
 
     # Sociabuzz amounts are sometimes strings ("Rp 10.000") or integers in the
     # smallest currency unit. Parse what can be parsed, and fall back to the raw
@@ -817,14 +829,29 @@ async def sociabuzz_hook(room_id: str, request: Request):
     amount_label = ""
     if amount_raw is not None:
         amount_label = str(amount_raw)
+        # Sociabuzz sends the amount as a plain number string ("10000") or an
+        # int. It does not put thousands separators in it, so the only separator
+        # that can appear is a decimal point — which is why a stray dot would be
+        # ambiguous and is not handled here. Parse defensively but literally:
+        # strip a currency prefix if the raw value carried one, then convert.
+        cleaned = re.sub(r"[^0-9.]", "", amount_label)
+        # More than one dot means it was a formatted string like "10.000,50",
+        # which Sociabuzz does not send; keep only the integer part rather than
+        # misread the separator as a decimal point ("10.000" -> 10.0, not 10000).
+        if cleaned.count(".") > 1:
+            cleaned = cleaned.split(".")[0]
         try:
-            # Strip currency marks and thousands separators before parsing, so
-            # "Rp 10.000" and "10000" and 10000.0 all resolve to the same number.
-            digits = re.sub(r"[^0-9.]", "", amount_label)
-            if digits:
-                amount_value = float(digits)
+            if cleaned:
+                amount_value = float(cleaned)
         except (ValueError, TypeError):
             amount_value = None
+
+    # A bare "10000" on the feed says nothing about which currency it is, and a
+    # viewer cannot tell Rp from $. Prefixed with the settled currency when there
+    # is one, so "Rp 10.000" reads as money and not as a score.
+    currency_symbol = {"IDR": "Rp", "MYR": "RM", "PHP": "₱", "USD": "$"}.get(str(currency).upper(), "")
+    if currency_symbol and amount_label and not re.search(r"[^0-9.,]", str(amount_raw)):
+        amount_label = f"{currency_symbol} {amount_label}"
 
     user = str(donator).strip() if donator is not None else "SociaBuzz supporter"
     if not user:
@@ -836,7 +863,9 @@ async def sociabuzz_hook(room_id: str, request: Request):
     # donation jar reads.
     parts = [user]
     if amount_label:
-        parts.append(f"{amount_label}")
+        parts.append(amount_label)
+    if content:
+        parts.append(str(content))
     if message:
         parts.append(str(message))
     text = " — ".join(parts)
@@ -848,6 +877,10 @@ async def sociabuzz_hook(room_id: str, request: Request):
         meta["value"] = amount_value
     if amount_label:
         meta["amountLabel"] = amount_label
+    if currency:
+        meta["currency"] = str(currency)
+    if content:
+        meta["content"] = str(content)
     if message:
         meta["message"] = message
 
