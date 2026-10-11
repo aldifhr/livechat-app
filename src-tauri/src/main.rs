@@ -512,17 +512,18 @@ fn overlay_url(app: tauri::AppHandle, username: String, style: OverlayStyle, roo
     let mut url = format!("{}/overlay/", base.trim_end_matches('/'));
 
     let mut query: Vec<String> = Vec::new();
-    // A room id in hand beats a handle: the link becomes just `?room=<id>`, and
-    // the page opens that room directly with no resolve and no styling to carry.
+    // A room id in hand beats a handle for the `room` value: the page opens that
+    // room directly with no resolve step. The styling still travels — a link that
+    // dropped it would render at the page's defaults, which is a different overlay
+    // from the one configured, and the whole point of the settings is that the link
+    // shows what was set.
     if let Some(id) = room_id.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         query.push(format!("room={}", encode_component(id)));
-        url.push('?');
-        url.push_str(&query.join("&"));
-        return url;
-    }
-    let handle = username.trim().trim_start_matches('@').to_string();
-    if !handle.is_empty() {
-        query.push(format!("room={}", encode_component(&handle)));
+    } else {
+        let handle = username.trim().trim_start_matches('@').to_string();
+        if !handle.is_empty() {
+            query.push(format!("room={}", encode_component(&handle)));
+        }
     }
     if base != backend::DEFAULT_BASE_URL {
         query.push(format!("base={}", encode_component(&base)));
