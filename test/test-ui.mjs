@@ -360,6 +360,26 @@ await act(async () => {
 })
 check('the Stop button is back once the host confirms', Boolean(stopButton()), $('.room-row')?.textContent)
 
+// A stop is recorded, not just performed. Closing the socket silently leaves the
+// log showing connections appearing and never ending, which reads as a feed that
+// hung rather than one that was stopped on purpose.
+await click('.room-row .btn-danger')
+await act(async () => {
+  fake.emit({ platform: 'bridge', type: 'status', connected: false, message: 'Disconnected' })
+})
+await click('.log-toggle')
+check(
+  'the disconnect is in the log',
+  $$('.log-line').some((l) => /Disconnected/.test(l.textContent ?? '')),
+  $$('.log-line').map((l) => l.textContent).join(' | '),
+)
+check(
+  'and it is levelled as a warning, not an error',
+  $$('.log-line').some((l) => /Disconnected/.test(l.textContent ?? '') && /warn/.test(l.className)),
+  $$('.log-line').filter((l) => /Disconnected/.test(l.textContent ?? '')).map((l) => l.className).join(' | '),
+)
+await click('.log-toggle')
+
 console.log('failures are shown, not swallowed')
 await act(async () => {
   fake.emit({ platform: 'tiktok', type: 'error', message: 'Streamer is not live right now.' })

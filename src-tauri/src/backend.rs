@@ -22,7 +22,10 @@ use tauri_plugin_notification::NotificationExt as _;
 
 /// The event name the host has always emitted on, and which the frontend's single
 /// `attach` already listens to.
-const EVENT: &str = "sidecar-event";
+/// The channel every frame reaches the webview on. Public so the host commands can
+/// emit their own status frames on the same one — a disconnect emitted anywhere
+/// else would be a log line nothing listens to.
+pub const EVENT: &str = "sidecar-event";
 
 /// Client type used in the socket path.
 ///

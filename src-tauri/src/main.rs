@@ -17,8 +17,9 @@ mod speech;
 
 use std::sync::Arc;
 
-use tauri::{Manager, State};
+use tauri::{Emitter as _, Manager, State};
 use tauri_plugin_notification::NotificationExt;
+use serde_json::json;
 
 pub struct AppState {
     /// Which backend reader loop is current, so a new Connect cancels the old one.
@@ -269,8 +270,19 @@ fn backend_connect(
 }
 
 /// Stops reading from the backend.
+///
+/// Emits a status frame before cancelling, because a stop that only closes the
+/// socket is a stop with no record: the reader loop ends, nothing is said, and the
+/// log shows connections appearing and never ending — which reads as a feed that
+/// hung rather than one that was stopped on purpose. The frontend levels this as
+/// `warn` on a `connected: false`, so it lands in the log beside the connects it
+/// closes out.
 #[tauri::command]
-fn backend_disconnect(state: State<'_, AppState>) {
+fn backend_disconnect(state: State<'_, AppState>, app: tauri::AppHandle) {
+    let _ = app.emit(
+        backend::EVENT,
+        json!({ "type": "status", "platform": "bridge", "connected": false, "message": "Disconnected" }),
+    );
     state.backend.stop();
 }
 
