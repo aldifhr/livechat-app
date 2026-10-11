@@ -247,29 +247,72 @@
     list.appendChild(row)
     document.body.classList.add('ready')
 
-    // One over the limit is kept around so the row above the newest has something
-    // to fade against. Removing two would make the second-newest vanish while it
-    // was still readable.
-    while (list.children.length > config.max + 1) {
-      var oldest = list.firstElementChild
-      retire(oldest)
+    trim()
+  }
+
+  /**
+   * Keeps the list at its limit.
+   *
+   * Counting only the rows that have not started to leave, and retiring from a
+   * snapshot rather than off `firstElementChild`. Both of those are load-bearing.
+   *
+   * `retire` does not remove a row, it marks it: the row fades for 400ms and is
+   * taken out of the tree after. So a `while` loop over `list.children.length`
+   * never sees the number go down — it retires the same first child for ever,
+   * `retire` returns early each time because the row is already marked, and the
+   * page hangs inside the handler on the first message past the limit. Nothing
+   * after that is ever rendered, which reads as the chat simply stopping.
+   *
+   * Iterating a list of the live rows makes the loop's progress visible in its
+   * own body: each pass shifts one row off and retires it, so the count goes down
+   * by one however slow the removal is.
+   */
+  function trim() {
+    var live = []
+    for (var i = 0; i < list.children.length; i++) {
+      if (list.children[i].dataset.leaving !== '1') live.push(list.children[i])
     }
+    // Past the limit: the oldest goes, and the one above it is kept a moment so
+    // it has something to fade against. Removing two would make the
+    // second-newest vanish while it was still readable.
+    while (live.length > config.max) retire(live.shift())
   }
 
   function retire(row) {
     if (!row || row.dataset.leaving === '1') return
+
+    // A backlog check before fading anything. Rows leave after their transition,
+    // so a burst — a reconnect delivering what it missed, say — can mark far more
+    // rows leaving than the screen is meant to hold, and for as long as the fade
+    // runs the list carries all of them. Past a couple in flight the extra ones
+    // are taken out at once: they are already below what anyone is reading, and
+    // nobody sees them go.
+    var inFlight = 0
+    for (var i = 0; i < list.children.length; i++) {
+      if (list.children[i].dataset.leaving === '1') inFlight++
+    }
+    if (inFlight >= 2) {
+      if (row.parentNode) row.parentNode.removeChild(row)
+      return
+    }
+
     row.dataset.leaving = '1'
     row.classList.add('fading')
     // Removed after the transition has run, with a ceiling: under
     // `prefers-reduced-motion` the transition is `display: none`, and a removal
-    // that waits on an event that never fires leaves the row on screen forever.
+    // that waits on an event which never fires would leave the row in the tree
+    // for ever, where `trim` counts it as live.
     var removed = false
     function drop() {
       if (removed) return
       removed = true
       if (row.parentNode) row.parentNode.removeChild(row)
     }
-    row.addEventListener('transitionend', drop)
+    // `transitionend` bubbles, so a transition on anything inside the row would
+    // otherwise arrive here and remove it before its own fade had started.
+    row.addEventListener('transitionend', function (event) {
+      if (event.target === row) drop()
+    })
     setTimeout(drop, 800)
   }
 

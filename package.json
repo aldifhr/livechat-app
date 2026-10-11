@@ -14,7 +14,7 @@
     "test:stats": "node test/test-stats.mjs",
     "test:llm": "node test/test-llm.mjs",
     "test:ai": "node test/test-ai.mjs",
-    "test:overlay": "node test/test-overlay.mjs && node test/test-overlay-server.mjs",
+    "test:overlay": "node test/test-overlay.mjs && node test/test-overlay-server.mjs && node test/test-overlay-page.mjs",
     "test:backend": "node test/test-backend.mjs",
     "test:sound": "node test/test-sound.mjs",
     "test:templates": "node test/test-templates.mjs",
