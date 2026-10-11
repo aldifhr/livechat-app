@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live chat overlay</title>
+<!--
+  One file, on purpose.
+
+  This page is loaded by OBS, not by a person: it is fetched once when a source is
+  added and then left alone for the length of a stream. Everything it needs is
+  inline for that reason — a second request is a second thing that can be slow,
+  and a page that is still arriving is a page showing nothing on someone's stream.
+
+  What it deliberately does not do is talk to the desktop app. It resolves the
+  handle itself and opens its own socket to the StreamKit backend, so it works
+  whether or not the app is running, and the app is only involved in building the
+  URL.
+-->
+<style>
+  :root {
+    /* Replaced from the query string. Every one has a default here as well, so a
+       bare URL renders something rather than nothing. */
+    --size: 22px;
+    --name-colour: #ffd76a;
+    --text-colour: #ffffff;
+    --background: 0;
+    --font: "Segoe UI", system-ui, sans-serif;
+    --align: flex-end;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: transparent;
+    /* OBS composites the source, so the page must not have an opaque body of its
+       own or the video behind it disappears. */
+    overflow: hidden;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    justify-content: var(--align);
+    align-items: flex-start;
+    padding: 24px;
+    font-family: var(--font);
+    font-size: var(--size);
+    line-height: 1.3;
+  }
+
+  /* The list grows from the aligned edge, so `justify-content` on the body is
+     enough to pin it to the bottom, the top, or either side. */
+  #chat {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25em;
+  }
+
+  li {
+    /* A backdrop rather than a box behind the whole list: a solid panel over a
+       stream reads as a dialog box, and most overlays want the video visible
+       behind the text. Set by `?bg=`, and off unless asked for. */
+    background: rgba(0, 0, 0, var(--background));
+    border-radius: 0.25em;
+    padding: 0.1em 0.35em;
+    /* A hint of outline rather than a drop shadow: a shadow is invisible on a
+       bright scene, and this reads on any of them. */
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 1px rgba(0, 0, 0, 0.9);
+    /* Long messages wrap rather than run off the edge of the source. */
+    overflow-wrap: anywhere;
+  }
+
+  .name {
+    color: var(--name-colour);
+    font-weight: 700;
+  }
+
+  .text { color: var(--text-colour); }
+
+  /* Newest at the bottom. The app's feed does the same, and a chat that grows
+     downwards is one a viewer reads the way they read every other chat. */
+  #chat { justify-content: flex-end; }
+
+  /* Old messages fade rather than vanish, so the row above a new one does not
+     blink out of existence in the middle of being read. */
+  li { transition: opacity 400ms ease; }
+  li.fading { opacity: 0; }
+  li.entering { animation: rise 260ms ease-out; }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(0.4em); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  /* No motion asked for: no animation, and no fade. The rows still appear and
+     still expire, they just do it all at once. */
+  @media (prefers-reduced-motion: reduce) {
+    li { transition: none; animation: none; }
+    li.fading { display: none; }
+  }
+
+  /* A connection problem is the one thing this page must not announce. A red box
+     in the corner of somebody's stream is worse than no chat at all, so failures
+     are silent by default and `?debug=1` is how you go looking for them.
+
+     The exception is a link with no handle in it. That is not a transient
+     failure, it is a link that was built wrong, and the only way it can reach a
+     stream is if somebody pasted it into OBS without checking — which is exactly
+     when they need to see it. It shows before anything has been received and is
+     gone the instant a real message arrives. */
+  #status { display: none; }
+  body.debug #status {
+    display: block;
+    position: fixed;
+    top: 4px;
+    left: 4px;
+    font: 11px/1.4 ui-monospace, monospace;
+    color: #ff8a80;
+    background: rgba(0, 0, 0, 0.6);
+    padding: 2px 6px;
+    border-radius: 4px;
+    max-width: 90vw;
+    overflow-wrap: anywhere;
+  }
+
+  #unconfigured {
+    display: none;
+    color: #ffffff;
+    opacity: 0.6;
+    font-size: var(--size);
+  }
+  body.unconfigured #unconfigured { display: block; }
+  /* Anything real, and it goes away. */
+  body.ready #unconfigured { display: none; }
+
+  /* A preview of the whole page while the socket is still resolving, so the
+     source is not a blank rectangle for the first second of a stream. Hidden as
+     soon as anything real arrives. */
+  body:not(.ready):not(.unconfigured) #chat::after {
+    content: "connecting…";
+    color: #ffffff;
+    opacity: 0.35;
+    font-size: var(--size);
+  }
+</style>
+</head>
+<body>
+<ul id="chat" aria-live="polite" aria-relevant="additions"></ul>
+<div id="unconfigured">no handle in this link — add <code>?room=yourhandle</code></div>
+<div id="status"></div>
+
+<script>
+(function () {
+  'use strict'
+
+  // ---- configuration -------------------------------------------------------
+
+  // Baked in by the host at request time. Every key can be overridden by the
+  // query string, and the query string wins — that is what lets a link be edited
+  // by hand and what makes the URL an honest description of what is on screen.
+  var baked = (function () {
+    try { return JSON.parse(document.getElementById('overlay-config').textContent) || {} }
+    catch (e) { return {} }
+  })()
+
+  var query = new URLSearchParams(location.search)
+
+  function param(name, fallback) {
+    var found = query.get(name)
+    return found === null || found === '' ? fallback : found
+  }
+
+  function number(name, fallback, min, max) {
+    var raw = Number(param(name, ''))
+    // `Number('')` is 0 and `Number('wide')` is NaN, and both are worse than the
+    // default: a font size of 0 renders nothing and a row count of NaN renders
+    // every row. Anything that is not a number in range is not a configuration.
+    if (!isFinite(raw)) return fallback
+    return Math.min(max, Math.max(min, raw))
+  }
+
+  var config = {
+    baseUrl: String(param('base', baked.baseUrl || 'https://kit-backend.aldifhr.my.id')).replace(/\/+$/, ''),
+    username: String(param('room', baked.username || '')).replace(/^@/, '').trim(),
+    size: number('size', 22, 8, 96),
+    nameColour: param('name', '#ffd76a'),
+    textColour: param('color', '#ffffff'),
+    // 0 is no backdrop at all, so the video shows straight through; 1 is a solid
+    // panel behind each line. A value in 0..1 rather than a percentage, because
+    // "0.35" reads more clearly than "35%" beside a slider.
+    background: number('bg', 0, 0, 1),
+    max: Math.round(number('max', 8, 1, 50)),
+    // How long between one message appearing and the next.
+    //
+    // A floor rather than a setting with a right answer: at a fifth of a second a
+    // busy room keeps up and reads as fast enough; at two seconds a single message
+    // sits alone for an age before anything follows it. The value is read once
+    // here rather than per message, so a badly chosen number cannot retime a
+    // message already on screen.
+    delay: number('delay', 500, 120, 3000),
+    font: param('font', '"Segoe UI", system-ui, sans-serif'),
+    debug: param('debug', '') !== ''
+  }
+
+  document.documentElement.style.setProperty('--size', config.size + 'px')
+  document.documentElement.style.setProperty('--name-colour', config.nameColour)
+  document.documentElement.style.setProperty('--text-colour', config.textColour)
+  document.documentElement.style.setProperty('--font', config.font)
+  // The background goes behind each line and nowhere else. It used to be applied
+  // to the page itself as well, at 60% of this value — which meant the slider the
+  // streamer was dragging was labelled "background" and was doing two things: the
+  // row scrim it names, at full value, and a tint over the whole source at 0.6 of
+  // it, which nobody asked for and which darkened the video behind the chat. One
+  // setting, one thing it does.
+  document.documentElement.style.setProperty('--background', String(config.background))
+
+  var status = document.getElementById('status')
+
+  function say(message) {
+    // Only ever visible under `?debug=1`. The failure mode of an overlay is
+    // shown to a stream full of people, so silence is the default and this is how
+    // you ask for the truth.
+    if (!config.debug) return
+    document.body.classList.add('debug')
+    status.textContent = message
+  }
+
+  // ---- the feed ------------------------------------------------------------
+
+  var list = document.getElementById('chat')
+
+  /**
+   * Messages waiting to be shown, and whether one is on its way in.
+   *
+   * A queue rather than rendering each frame as it lands, because a room under
+   * load arrives faster than anyone reads. Rendered straight through, the last
+   * eight messages stack up in a tenth of a second and the viewer sees a wall —
+   * which is what a chat looks like on a phone, and is unreadable on a stream
+   * where it is competing with whatever is actually happening. Shown one at a
+   * time, the same eight arrive as eight readable beats.
+   *
+   * So: incoming messages go on the queue, and `pump` releases one every
+   * `config.delay`. The first is released the moment it arrives rather than after
+   * a delay, because there is nothing to pace it against — the room was silent.
+   */
+  var queue = []
+  var showing = false
+
+  /**
+   * How far behind the room the overlay is allowed to get.
+   *
+   * A queue with no cap is a slow-motion recording of a busy room: at a half
+   * second each, a backlog of forty is a message appearing twenty seconds after
+   * it was said, which is not a message about anything any more. Past this the
+   * oldest waiting ones are dropped — they are the stalest, and showing a quarter
+   * of a minute old chat is worse than not showing it.
+   */
+  var MAX_QUEUE = 20
+
+  function enqueue(user, text) {
+    queue.push({ user: user, text: text })
+    if (queue.length > MAX_QUEUE) queue.splice(0, queue.length - MAX_QUEUE)
+    pump()
+  }
+
+  function pump() {
+    if (showing) return
+    var next = queue.shift()
+    if (!next) return
+    showing = true
+    render(next.user, next.text)
+    setTimeout(function () {
+      showing = false
+      pump()
+    }, config.delay)
+  }
+
+  function render(user, text) {
+    var body = String(text == null ? '' : text).trim()
+    if (body === '') return
+
+    var row = document.createElement('li')
+    row.className = 'entering'
+
+    var who = String(user == null ? '' : user).trim() || 'Someone'
+    var name = document.createElement('span')
+    name.className = 'name'
+    name.textContent = who
+    row.appendChild(name)
+
+    row.appendChild(document.createTextNode(': '))
+
+    var message = document.createElement('span')
+    message.className = 'text'
+    message.textContent = body
+    row.appendChild(message)
+
+    list.appendChild(row)
+    document.body.classList.add('ready')
+
+    trim()
+  }
+
+  /**
+   * Keeps the list at its limit.
+   *
+   * Counting only the rows that have not started to leave, and retiring from a
+   * snapshot rather than off `firstElementChild`. Both of those are load-bearing.
+   *
+   * `retire` does not remove a row, it marks it: the row fades for 400ms and is
+   * taken out of the tree after. So a `while` loop over `list.children.length`
+   * never sees the number go down — it retires the same first child for ever,
+   * `retire` returns early each time because the row is already marked, and the
+   * page hangs inside the handler on the first message past the limit. Nothing
+   * after that is ever rendered, which reads as the chat simply stopping.
+   *
+   * Iterating a list of the live rows makes the loop's progress visible in its
+   * own body: each pass shifts one row off and retires it, so the count goes down
+   * by one however slow the removal is.
+   */
+  function trim() {
+    var live = []
+    for (var i = 0; i < list.children.length; i++) {
+      if (list.children[i].dataset.leaving !== '1') live.push(list.children[i])
+    }
+    // Past the limit: the oldest goes, and the one above it is kept a moment so
+    // it has something to fade against. Removing two would make the
+    // second-newest vanish while it was still readable.
+    while (live.length > config.max) retire(live.shift())
+  }
+
+  function retire(row) {
+    if (!row || row.dataset.leaving === '1') return
+
+    // A backlog check before fading anything. Rows leave after their transition,
+    // so a burst — a reconnect delivering what it missed, say — can mark far more
+    // rows leaving than the screen is meant to hold, and for as long as the fade
+    // runs the list carries all of them. Past a couple in flight the extra ones
+    // are taken out at once: they are already below what anyone is reading, and
+    // nobody sees them go.
+    var inFlight = 0
+    for (var i = 0; i < list.children.length; i++) {
+      if (list.children[i].dataset.leaving === '1') inFlight++
+    }
+    if (inFlight >= 2) {
+      if (row.parentNode) row.parentNode.removeChild(row)
+      return
+    }
+
+    row.dataset.leaving = '1'
+    row.classList.add('fading')
+    // Removed after the transition has run, with a ceiling: under
+    // `prefers-reduced-motion` the transition is `display: none`, and a removal
+    // that waits on an event which never fires would leave the row in the tree
+    // for ever, where `trim` counts it as live.
+    var removed = false
+    function drop() {
+      if (removed) return
+      removed = true
+      if (row.parentNode) row.parentNode.removeChild(row)
+    }
+    // `transitionend` bubbles, so a transition on anything inside the row would
+    // otherwise arrive here and remove it before its own fade had started.
+    row.addEventListener('transitionend', function (event) {
+      if (event.target === row) drop()
+    })
+    setTimeout(drop, 800)
+  }
+
+  // ---- the connection ------------------------------------------------------
+
+  // Two steps, because the app has to do the same two: name a handle, get a room
+  // id. There is no route that hands out a room id for a username, and inventing
+  // one here would mean the app and the overlay could disagree about which room
+  // they are watching.
+  function socketFor(base, roomId) {
+    var url = base.replace(/^http/, 'ws') + '/ws/overlay/' + encodeURIComponent(roomId)
+    return new WebSocket(url)
+  }
+
+  function connect() {
+    if (config.username === '') {
+      // Said out loud, unlike everything below. This one is a wrong link rather
+      // than a failed connection, and a streamer testing the link before a stream
+      // is looking at a blank rectangle with no way to tell it apart from a
+      // working one that has simply not seen a message yet.
+      document.body.classList.add('unconfigured')
+      say('no handle — add ?room=yourhandle to the URL')
+      return
+    }
+    document.body.classList.remove('unconfigured')
+
+    fetch(config.baseUrl + '/api/room-connect-by-username', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: config.username })
+    })
+      .then(function (response) {
+        if (!response.ok) throw new Error('HTTP ' + response.status)
+        return response.json()
+      })
+      .then(function (room) {
+        if (!room || !room.room_id) throw new Error('no room id in the answer')
+        open(room.room_id)
+      })
+      .catch(function (error) {
+        say('could not resolve ' + config.username + ': ' + error.message)
+        // The backend may be restarting, or the network may be briefly down.
+        // Retrying on a fixed beat is right here: there is no user to press
+        // anything, and an overlay that gives up is an overlay that stays gone.
+        setTimeout(connect, 5000)
+      })
+  }
+
+  function open(roomId) {
+    var socket
+    try {
+      socket = socketFor(config.baseUrl, roomId)
+    } catch (error) {
+      say('bad backend URL: ' + error.message)
+      setTimeout(connect, 5000)
+      return
+    }
+
+    socket.onopen = function () {
+      say('connected to ' + config.username)
+    }
+
+    socket.onmessage = function (event) {
+      var frame
+      try {
+        frame = JSON.parse(event.data)
+      } catch (error) {
+        return
+      }
+      // Comments only. The rest of the wire is gifts, likes, joins, view counts
+      // and connection status, and an overlay that showed them would be a
+      // dashboard rather than a chat.
+      if (!frame || frame.type !== 'comment') return
+      enqueue(frame.user, frame.text)
+    }
+
+    socket.onclose = function () {
+      say('socket closed, retrying')
+      setTimeout(connect, 3000)
+    }
+
+    socket.onerror = function () {
+      // `close` always follows `error`, and it is `close` that schedules the
+      // retry. Doing it here too would open two connections per failure.
+      say('socket error')
+    }
+  }
+
+  connect()
+})()
+</script>
+
+<!-- Filled in by the host before the page is served. The id is what the script
+     above reads it by; the text is JSON so it is inert until something parses it.
+     A `<script type="application/json">` rather than an inline assignment
+     because this one is data, not code. -->
+<script id="overlay-config" type="application/json">__OVERLAY_CONFIG__</script>
+</body>
+</html>

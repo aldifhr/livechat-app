@@ -255,19 +255,38 @@ const PAGE: &str = include_str!("../overlay/index.html");
 /// eventually be handed something else. The rule is this app's own overlay and
 /// nothing else.
 ///
-/// A prefix check, and that is enough: everything after `http://127.0.0.1:PORT/`
-/// is a path, a query or a fragment, and none of those can send the browser
-/// somewhere other than this port. A `?base=https://elsewhere` in particular is
-/// the overlay reading its own configuration, not a redirect, so the query string
-/// is deliberately not second-guessed here.
-pub fn is_own_page(url: &str) -> bool {
-    let prefix = format!("http://127.0.0.1:{PORT}/");
-    match url.strip_prefix(prefix.as_str()) {
-        // Long enough for the styling parameters and a handle, short enough that
-        // a megabyte of query string never reaches the OS.
-        Some(rest) => rest.len() <= 1024 && !rest.chars().any(|c| c.is_control()),
-        None => false,
+/// Two origins are this app's own overlay, and nothing else:
+///
+/// * the loopback server, `http://127.0.0.1:PORT/`, which the preview and a
+///   same-machine source still use; and
+/// * the backend's `/overlay/` path, `https://<backend>/overlay/`, which is what
+///   OBS is pointed at so a browser source can live on any machine.
+///
+/// `backend_overlay_prefix` is the second one, passed in because the backend
+/// address is the user's own config rather than a constant this module knows. An
+/// empty string means "no backend overlay allowed", which is the case before a
+/// backend is configured.
+///
+/// A prefix check, and that is enough: everything after either prefix is a path,
+/// a query or a fragment, and none of those can send the browser somewhere other
+/// than the matched origin. A `?base=https://elsewhere` in particular is the
+/// overlay reading its own configuration, not a redirect, so the query string is
+/// deliberately not second-guessed here.
+pub fn is_own_page(url: &str, backend_overlay_prefix: &str) -> bool {
+    let loopback = format!("http://127.0.0.1:{PORT}/");
+    let allowed: Vec<String> = if backend_overlay_prefix.is_empty() {
+        vec![loopback]
+    } else {
+        vec![loopback, backend_overlay_prefix.to_string()]
+    };
+    for prefix in &allowed {
+        if let Some(rest) = url.strip_prefix(prefix.as_str()) {
+            // Long enough for the styling parameters and a handle, short enough
+            // that a megabyte of query string never reaches the OS.
+            return rest.len() <= 1024 && !rest.chars().any(|c| c.is_control());
+        }
     }
+    false
 }
 
 #[cfg(test)]
@@ -402,26 +421,45 @@ mod tests {
     #[test]
     fn it_will_open_its_own_page_and_nothing_else() {
         let page = format!("http://127.0.0.1:{PORT}/");
-        assert!(is_own_page(&page));
-        assert!(is_own_page(&format!("{page}?room=ana&size=22")));
+        // No backend overlay allowed here: the loopback server is the only origin.
+        let none = "";
+        assert!(is_own_page(&page, none));
+        assert!(is_own_page(&format!("{page}?room=ana&size=22"), none));
         // The overlay reads its own backend out of the query string, and a `//` in
         // there is that address, not a protocol-relative redirect.
-        assert!(is_own_page(&format!("{page}?base=https://elsewhere.test")));
+        assert!(is_own_page(&format!("{page}?base=https://elsewhere.test"), none));
 
         // Everything below is an opener being handed something else.
-        assert!(!is_own_page("https://example.com/"), "any other host");
-        assert!(!is_own_page(&format!("http://127.0.0.1:{}/", PORT + 1)), "another port on this host");
-        assert!(!is_own_page(&format!("http://localhost:{PORT}/")), "localhost is a hosts file away from here");
+        assert!(!is_own_page("https://example.com/", none), "any other host");
+        assert!(!is_own_page(&format!("http://127.0.0.1:{}/", PORT + 1), none), "another port on this host");
+        assert!(!is_own_page(&format!("http://localhost:{PORT}/"), none), "localhost is a hosts file away from here");
         // The prefix has to include the scheme. Without it, `127.0.0.1:PORT/` on
         // its own is a path, and the OS would resolve it as something else.
-        assert!(!is_own_page(&format!("127.0.0.1:{PORT}/")), "no scheme");
-        assert!(!is_own_page(&format!("file:///C:/Windows/System32/cmd.exe")));
-        assert!(!is_own_page(&format!("http://127.0.0.1:{PORT}evil.test/")), "a lookalike host");
-        assert!(!is_own_page(""), "empty");
+        assert!(!is_own_page(&format!("127.0.0.1:{PORT}/"), none), "no scheme");
+        assert!(!is_own_page(&format!("file:///C:/Windows/System32/cmd.exe"), none));
+        assert!(!is_own_page(&format!("http://127.0.0.1:{PORT}evil.test/"), none), "a lookalike host");
+        assert!(!is_own_page("", none), "empty");
         // A control character is a header, and headers are how an opener stops
         // being an opener.
-        assert!(!is_own_page(&format!("{page}\r\nX-Evil: 1")));
-        assert!(!is_own_page(&format!("{page}?room={}", "x".repeat(2000))));
+        assert!(!is_own_page(&format!("{page}\r\nX-Evil: 1"), none));
+        assert!(!is_own_page(&format!("{page}?room={}", "x".repeat(2000)), none));
+    }
+
+    #[test]
+    fn the_backends_overlay_path_is_also_its_own() {
+        // What OBS is pointed at, so a browser source can live on any machine.
+        let backend = "https://kit-backend.aldifhr.my.id/overlay/";
+        assert!(is_own_page(backend, backend));
+        assert!(is_own_page(&format!("{backend}?room=ana&size=22"), backend));
+        // The loopback server still works alongside it — the preview uses it.
+        let page = format!("http://127.0.0.1:{PORT}/");
+        assert!(is_own_page(&page, backend));
+        // But only the /overlay/ path on the backend, not the whole domain: a
+        // bare host is a different page and must not be opened as the overlay.
+        assert!(!is_own_page("https://kit-backend.aldifhr.my.id/", backend), "the domain root is not the overlay");
+        assert!(!is_own_page("https://kit-backend.aldifhr.my.id/overlay-evil/", backend), "a lookalike path");
+        // With no backend configured, the backend path is not allowed either.
+        assert!(!is_own_page(backend, ""), "no backend means no backend overlay");
     }
 
     /// One real request, over a real socket, to a real listener.

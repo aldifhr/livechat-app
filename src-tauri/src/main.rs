@@ -497,7 +497,12 @@ fn backend_disconnect(state: State<'_, AppState>, app: tauri::AppHandle) {
 fn overlay_url(app: tauri::AppHandle, username: String, style: OverlayStyle) -> String {
     let config = backend::read_config(&app);
     let base = normalise_base(&config.base_url);
-    let mut url = format!("http://127.0.0.1:{}/", overlay::PORT);
+    // Served from the backend, not from this app's loopback port. The overlay page
+    // opens its own socket to the backend anyway, so the only thing OBS needs to
+    // reach is the backend — which means a browser source can live on any machine,
+    // not just the one running the app. The loopback server still exists for the
+    // preview and the local case, but the URL handed out points at the domain.
+    let mut url = format!("{}/overlay/", base.trim_end_matches('/'));
 
     let mut query: Vec<String> = Vec::new();
     let handle = username.trim().trim_start_matches('@').to_string();
@@ -541,7 +546,13 @@ fn overlay_url(app: tauri::AppHandle, username: String, style: OverlayStyle) -> 
 #[tauri::command]
 fn overlay_open(app: tauri::AppHandle, url: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt as _;
-    if !overlay::is_own_page(&url) {
+    // Two origins count as the overlay now: the loopback server and the backend's
+    // /overlay/ path. The backend prefix is built here from the saved config, the
+    // same address `overlay_url` hands out, so the preview and the copied link
+    // open under the same rule.
+    let base = normalise_base(&backend::read_config(&app).base_url);
+    let backend_prefix = format!("{}/overlay/", base.trim_end_matches('/'));
+    if !overlay::is_own_page(&url, &backend_prefix) {
         return Err(format!("refusing to open {url}"));
     }
     app.opener()
@@ -853,8 +864,8 @@ mod overlay_url_tests {
         let url = format!("http://127.0.0.1:{}/?{}", overlay::PORT, query.join("&"));
         every_field_is_in(&url);
         // And the host is willing to open what it built, which is the preview's
-        // own rule � so this also checks the URL is one it considers its own.
-        assert!(overlay::is_own_page(&url), "{url}");
+        // own rule — so this also checks the URL is one it considers its own.
+        assert!(overlay::is_own_page(&url, ""), "{url}");
     }
 
     #[test]

@@ -12,13 +12,14 @@ import logging
 import os
 import re
 import secrets
+from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Any
 
 import uvicorn
 from fastapi import APIRouter, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 import events
@@ -903,6 +904,49 @@ async def sociabuzz_hook(room_id: str, request: Request):
 
 
 
+
+
+# --------------------------------------------------------------------------
+# the stream overlay, as a page
+# --------------------------------------------------------------------------
+#
+# The overlay used to be served by the desktop app on its own loopback port,
+# which meant OBS had to run on the same machine as the app. It does not have to:
+# the page is one self-contained HTML file that opens its own socket to this
+# backend, so the only thing that has to be reachable is the backend itself. This
+# route serves that file from the domain OBS already points at, so a browser
+# source anywhere can load it.
+#
+# The page takes every setting from its query string and has a default for each,
+# so this handler does almost nothing: it reads the file, leaves the query string
+# for the page to read, and answers. Nothing here is per-room and nothing here is
+# authenticated, for the same reason the desktop overlay needed no token — it
+# shows one public chat, and the room is named in the URL by whoever is watching.
+
+
+def _overlay_page() -> str:
+    """The overlay HTML, from disk.
+
+    Read on each request rather than cached at import so editing the file takes
+    effect on reload without a restart — the same reason the desktop overlay
+    reads it with `include_str!` only at build. A missing file is a 500, not a
+    blank page: a browser source showing nothing is indistinguishable from a
+    chat that is merely quiet, which is the one failure nobody can diagnose.
+    """
+    path = Path(__file__).parent / "static" / "overlay.html"
+    return path.read_text(encoding="utf-8")
+
+
+@app.get("/overlay/", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/overlay", response_class=HTMLResponse, include_in_schema=False)
+async def overlay_page() -> HTMLResponse:
+    """Serve the overlay page. Query string is passed through untouched.
+
+    Both with and without the trailing slash, because an OBS browser source is
+    configured once by hand and a redirect on the wrong one is a source that
+    loads nothing with no obvious reason.
+    """
+    return HTMLResponse(_overlay_page(), headers={"Cache-Control": "no-store"})
 
 
 # --------------------------------------------------------------------------

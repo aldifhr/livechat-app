@@ -459,6 +459,26 @@ with TestClient(main.app) as socket_client:
         check("the socket survived every non-object frame", handshake_ok, json.dumps(reply))
         check("and still answers a ping", reply.get("type") == "pong", json.dumps(reply))
 
+
+print("the overlay page, served from the backend")
+# The point of serving it here rather than from the app's loopback port: OBS can
+# live on any machine and still reach it. The page takes its settings from the
+# query string, so the handler is nearly inert — it answers the file and leaves
+# the query for the page. What matters is that it answers at all, with and
+# without the trailing slash, because an OBS source is configured once by hand.
+page = client.get("/overlay/")
+check("the overlay page is served", page.status_code == 200, str(page.status_code))
+check("it is html", "text/html" in page.headers.get("content-type", ""))
+check("it is the real page, not a stub", "Live chat overlay" in page.text)
+check("the config placeholder is left for the page to read", "__OVERLAY_CONFIG__" in page.text)
+check("no-store, so a source reload picks up an edit", page.headers.get("cache-control") == "no-store")
+# With a query string, which is how OBS sends the handle and styling.
+check("it answers with a query string too", client.get("/overlay/?room=ana&size=22").status_code == 200)
+check("and without the trailing slash", client.get("/overlay").status_code == 200)
+# A mistyped path is a 404, not the page — otherwise a typo produces a working
+# chat and nobody can tell why.
+check("a mistyped path is a 404", client.get("/overlay-wrong").status_code == 404)
+
 print()
 if failures:
     print(f"{len(failures)} FAILED: {failures}")
