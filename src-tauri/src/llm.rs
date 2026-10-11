@@ -286,7 +286,16 @@ fn shorten(text: &str, fallback: &str) -> String {
     if trimmed.len() <= 200 {
         return trimmed.to_string();
     }
-    format!("{}…", &trimmed[..200])
+    // Walked by character rather than sliced at 200, because 200 is a byte count
+    // and the body is not necessarily ASCII. Slicing there panics the first time a
+    // multi-byte character straddles the cut, and with `panic = "abort"` that is
+    // the whole app dying on exactly the path that was already going wrong.
+    let cut = trimmed
+        .char_indices()
+        .nth(200)
+        .map(|(index, _)| index)
+        .unwrap_or(trimmed.len());
+    format!("{}…", &trimmed[..cut])
 }
 
 #[cfg(test)]
@@ -386,5 +395,25 @@ mod tests {
         assert!(!is_watchable("file:///C:/Windows/System32/cmd.exe"));
         assert!(!is_watchable("javascript:alert(1)"));
         assert!(!is_watchable(""));
+    }
+
+    #[test]
+    fn a_multibyte_error_body_is_cut_without_panicking() {
+        // The byte-slice version of this function panicked the first time a
+        // multi-byte character straddled the 200-byte cut, and with
+        // `panic = "abort"` that killed the process. This is the regression.
+        let body = format!("{}é", "a".repeat(199));
+        let cut = shorten(&body, "fallback");
+        assert!(cut.ends_with('…'));
+        // Back to bytes on purpose: a char-safe cut is still under the budget.
+        assert!(cut.len() <= 204, "{}", cut.len());
+        // And it must not have lost the tail of a character into invalid UTF-8.
+        assert!(cut.chars().all(|c| c == 'a' || c == 'é' || c == '…'));
+    }
+
+    #[test]
+    fn a_short_error_body_is_left_alone() {
+        assert_eq!(shorten("{\"detail\":\"nope\"}", "fallback"), "{\"detail\":\"nope\"}");
+        assert_eq!(shorten("   ", "fallback"), "fallback");
     }
 }
