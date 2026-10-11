@@ -479,6 +479,34 @@ check("and without the trailing slash", client.get("/overlay").status_code == 20
 # chat and nobody can tell why.
 check("a mistyped path is a 404", client.get("/overlay-wrong").status_code == 404)
 
+print("a connect can remember the room's overlay styling")
+# The point of storing it on the room: the overlay link can then be a bare
+# `?room=<id>` and still render as configured, because the room carries the look.
+made = client.post(
+    "/api/room-connect-by-username",
+    json={
+        "username": "styledstreamer",
+        "overlay": {
+            "overlaySize": 30,
+            "overlayNameColour": "#abcdef",
+            "overlayBg": 0.2,
+            "overlayFont": "Arial",
+            "notAnOverlayKey": "ignored",
+        },
+    },
+)
+check("the connect still succeeds", made.status_code == 200, str(made.status_code))
+styled_id = made.json()["room_id"]
+saved = client.get(f"/api/rooms/{styled_id}").json()["config"]
+check("the size was stored", saved.get("overlaySize") == 30, json.dumps(saved))
+check("the name colour was stored", saved.get("overlayNameColour") == "#abcdef", json.dumps(saved))
+check("the background was stored", saved.get("overlayBg") == 0.2, json.dumps(saved))
+check("the font was stored", saved.get("overlayFont") == "Arial", json.dumps(saved))
+check("an unknown key was dropped, not stored", "notAnOverlayKey" not in saved, json.dumps(saved))
+# And the overlay page bakes that styling in, so the bare id link renders it.
+page = client.get(f"/overlay/?room={styled_id}").text
+check("the page carries the stored size", '"size": 30' in page or '"size":30' in page, page[page.find("__OVERLAY"):][:120] if "__OVERLAY" in page else "no placeholder")
+
 print()
 if failures:
     print(f"{len(failures)} FAILED: {failures}")

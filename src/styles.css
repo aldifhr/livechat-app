@@ -565,6 +565,13 @@ body {
   line-height: 1.5;
 }
 
+/* A hint that is a warning, not a description — "this needs a model first". Said
+   in the accent colour so it is read before the toggle it sits above is reached. */
+.modal-hint-warn {
+  color: var(--accent, #e0a449);
+  margin: 6px 0 0;
+}
+
 .field {
   display: flex;
   flex-direction: column;

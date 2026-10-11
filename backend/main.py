@@ -322,12 +322,59 @@ class UpdateRoomRequest(BaseModel):
 
 
 class ConnectByUsernameRequest(BaseModel):
-    """A handle and nothing else — the app's whole ask of the backend."""
+    """A handle and the overlay styling to remember for its room.
+
+    The styling is optional and saved into the room's config when present, so a
+    bare `?room=<id>` overlay link can render as the configured overlay with
+    nothing in the URL — the room carries the look, the link only names it.
+    """
 
     # Bounded because this route is exempt from the token gate: without a cap the
     # body is read and parsed in full before the handle regex rejects it, so the
     # only limit on what an unauthenticated caller sends is the server's.
     username: str = Field(default="", max_length=64)
+    # Overlay styling to store on the room. Bounded in depth and key count by the
+    # extractor below; a stray blob is ignored rather than stored.
+    overlay: dict[str, Any] | None = None
+
+
+#: The overlay keys the app may store on a room, and nothing else. A connect body
+#: is unauthenticated, so the styling it writes is whitelisted rather than taken
+#: wholesale — a caller cannot use a connect to smuggle arbitrary config in.
+_OVERLAY_STORE_KEYS = (
+    "overlaySize",
+    "overlayNameColour",
+    "overlayTextColour",
+    "overlayBg",
+    "overlayMax",
+    "overlayDelay",
+    "overlayFont",
+)
+
+
+def _clean_overlay(raw: dict[str, Any] | None) -> dict[str, Any]:
+    """Only the known overlay keys, each coerced to the type the page expects."""
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, Any] = {}
+    for key in _OVERLAY_STORE_KEYS:
+        if key not in raw or raw[key] is None:
+            continue
+        value = raw[key]
+        if key in ("overlaySize", "overlayMax", "overlayDelay"):
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, (int, float)):
+                out[key] = value
+        elif key == "overlayBg":
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, (int, float)):
+                out[key] = value
+        else:  # the colour and font strings
+            if isinstance(value, str) and len(value) <= 200:
+                out[key] = value
+    return out
 
 
 class ConfigUpdateRequest(BaseModel):
@@ -589,6 +636,16 @@ async def room_connect_by_username(req: ConnectByUsernameRequest):
         )
 
     room_id = record["id"]
+
+    # Remember the overlay styling on the room, if the app sent any. Merged into
+    # the existing config rather than replacing it, so a room configured elsewhere
+    # keeps everything else. This is what lets the overlay link be a bare
+    # `?room=<id>`: the room carries the look, the link only names it.
+    overlay = _clean_overlay(req.overlay)
+    if overlay:
+        existing = record.get("config") or {}
+        await store.set_config_async(room_id, {**existing, **overlay})
+
     result = await _connect_room(room_id, username)
     return {"room_id": room_id, **result}
 
@@ -917,11 +974,12 @@ async def sociabuzz_hook(room_id: str, request: Request):
 # route serves that file from the domain OBS already points at, so a browser
 # source anywhere can load it.
 #
-# The page takes every setting from its query string and has a default for each,
-# so this handler does almost nothing: it reads the file, leaves the query string
-# for the page to read, and answers. Nothing here is per-room and nothing here is
-# authenticated, for the same reason the desktop overlay needed no token — it
-# shows one public chat, and the room is named in the URL by whoever is watching.
+# The page takes every setting from its query string, and falls back to the values
+# baked into it. When the link names a room by id, this handler bakes that room's
+# saved styling in — so the link can be a bare `?room=<id>` and still render as the
+# configured overlay, with nothing in the URL. Nothing here is authenticated, for
+# the same reason the desktop overlay needed no token: it shows one public chat,
+# and the room is named in the URL by whoever is watching.
 
 
 def _overlay_page() -> str:
@@ -937,16 +995,67 @@ def _overlay_page() -> str:
     return path.read_text(encoding="utf-8")
 
 
+#: The room-config keys that carry overlay styling, mapped to the names the page's
+#: baked config uses. Only these are baked in; everything else in a room's config
+#: is none of the overlay's business.
+_OVERLAY_STYLE_KEYS = {
+    "overlaySize": "size",
+    "overlayNameColour": "nameColour",
+    "overlayTextColour": "textColour",
+    "overlayBg": "background",
+    "overlayMax": "max",
+    "overlayDelay": "delay",
+    "overlayFont": "font",
+}
+
+
+async def _baked_config(room_id: str) -> dict[str, Any]:
+    """The room's saved overlay styling, under the names the page reads.
+
+    Empty when the room does not exist or carries no overlay settings — the page
+    then uses its own defaults, exactly as it did before this existed.
+    """
+    try:
+        record = await store.get_room_async(room_id)
+    except Exception:  # noqa: BLE001 — a store hiccup must not blank the overlay
+        return {}
+    if not record:
+        return {}
+    config = record.get("config") or {}
+    baked: dict[str, Any] = {}
+    for room_key, page_key in _OVERLAY_STYLE_KEYS.items():
+        if room_key in config and config[room_key] is not None:
+            baked[page_key] = config[room_key]
+    return baked
+
+
 @app.get("/overlay/", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/overlay", response_class=HTMLResponse, include_in_schema=False)
-async def overlay_page() -> HTMLResponse:
-    """Serve the overlay page. Query string is passed through untouched.
+async def overlay_page(request: Request) -> HTMLResponse:
+    """Serve the overlay page, baking in the named room's saved styling.
 
     Both with and without the trailing slash, because an OBS browser source is
     configured once by hand and a redirect on the wrong one is a source that
-    loads nothing with no obvious reason.
+    loads nothing for no obvious reason.
     """
-    return HTMLResponse(_overlay_page(), headers={"Cache-Control": "no-store"})
+    html = _overlay_page()
+    # Only a room id names a stored room; a handle is resolved by the page itself
+    # and has no config to read here.
+    room_id = request.query_params.get("room", "").strip()
+    if room_id:
+        baked = await _baked_config(room_id)
+        if baked:
+            payload = json.dumps(baked, ensure_ascii=False)
+            # Same escaping the host uses: a value containing `</script>` would
+            # otherwise end the element early. Room config is user-typed, and this
+            # page is rendered on a stream.
+            safe = (
+                payload.replace("<", "\\u003c")
+                .replace(">", "\\u003e")
+                .replace("&", "\\u0026")
+            )
+            html = html.replace("__OVERLAY_CONFIG__", safe)
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 
 # --------------------------------------------------------------------------

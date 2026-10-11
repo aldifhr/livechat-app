@@ -971,11 +971,23 @@ setConfig(EMPTY_CONFIG)
             in Panels above is free and only fires on &ldquo;hi&rdquo;.
           </p>
 
+          {/* Without a model this feature is dead, and a toggle that can be switched
+              on with nothing behind it is the reason it looked broken: it ran, asked,
+              got "no endpoint configured" back, and logged it where nobody was
+              looking. Said here, before it is switched on, so the state is honest. */}
+          {!ready && (
+            <p className="modal-hint modal-hint-warn">
+              Set up a model under Model below first — this needs one to answer, and will stay silent
+              until there is one.
+            </p>
+          )}
+
           <div className="settings-toggles">
-            <label className="toggle" title="Let the model answer viewers without being asked">
+            <label className="toggle" title={ready ? 'Let the model answer viewers without being asked' : 'Set up a model first'}>
               <input
                 type="checkbox"
                 checked={settings.aiReply}
+                disabled={!ready}
                 onChange={(e) => settings.set('aiReply', e.target.checked)}
               />
               <span>Let the model answer</span>
@@ -991,6 +1003,7 @@ setConfig(EMPTY_CONFIG)
               max={REPLY_MAX_SECONDS}
               step={5}
               value={settings.aiReplySeconds}
+              disabled={!ready}
               onChange={(e) => settings.set('aiReplySeconds', clampSeconds(Number(e.target.value)))}
             />
             <span className="field-note">
@@ -1006,6 +1019,7 @@ setConfig(EMPTY_CONFIG)
               rows={3}
               placeholder="Keep it dry. Never answer anything about how much we have."
               value={settings.aiReplyPersona}
+              disabled={!ready}
               onChange={(e) => settings.set('aiReplyPersona', e.target.value)}
             />
             <span className="field-note">
