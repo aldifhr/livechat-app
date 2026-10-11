@@ -695,13 +695,52 @@ select.input option {
   border-top: 1px solid var(--line);
 }
 
+/* Each settings group is a <details>, so the heading is a <summary> and doubles as
+   the disclosure control. The default marker is replaced with a chevron that turns
+   when open; `list-style: none` removes the browser's own triangle so only ours
+   shows. Cursor pointer makes it read as a control rather than a label. */
 .settings-heading {
   margin: 4px 0 0;
+  padding: 4px 0;
   color: var(--muted);
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-heading::-webkit-details-marker {
+  display: none;
+}
+
+/* The chevron. Rotated a quarter turn when the group is open, which is the one
+   piece of visual feedback that a collapsed group is collapsible at all. */
+.settings-heading::before {
+  content: '▸';
+  font-size: 9px;
+  transition: transform 0.15s ease;
+}
+
+.settings-section[open] > .settings-heading::before {
+  transform: rotate(90deg);
+}
+
+.settings-heading:hover {
+  color: var(--fg);
+}
+
+/* The opened group's contents. Padding-top so the first control is not flush
+   against the heading now that the gap lives here rather than on the section. */
+.settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
 }
 
 .settings-grid {

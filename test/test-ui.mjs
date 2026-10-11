@@ -102,11 +102,21 @@ const handleInput = () => $('.handle-input')
 check('there is a handle field', Boolean(handleInput()))
 check('it starts empty', handleInput().value === '')
 check('connect is disabled until there is something to connect to', connectButton()?.disabled === true)
-check('and the toolbar says what it wants', /Type the handle/.test($('.source-note')?.textContent ?? ''), $('.source-note')?.textContent)
+// With no handle there is nothing for the note to name, so it stays silent — the
+// status line carries the single "enter a handle and press Connect" instruction
+// rather than the toolbar repeating it in a second place.
+check('the note is silent until there is a handle', !$('.source-note'), $('.source-note')?.textContent ?? 'none')
+check('the status line carries the one instruction', /enter a handle/i.test($('.room-status')?.textContent ?? ''), $('.room-status')?.textContent)
+// Filters and search are controls for a feed that does not exist yet, so they wait
+// until there is something to filter rather than cluttering the idle screen.
+check('filters wait until there is a feed', !$('.toolbar-bottom'), 'toolbar-bottom present while idle')
+check('and so does the search box', !$('.input-search'), 'search box present while idle')
 
 await type(handleInput(), '@mybasic.indonesia')
 check('the value reached React state', handleInput().value === '@mybasic.indonesia', handleInput().value)
 check('connect becomes possible', connectButton()?.disabled === false, `disabled=${connectButton()?.disabled}`)
+// The note names the handle once there is one to name — and not before.
+check('the note names the handle now', /@mybasic\.indonesia/.test($('.source-note')?.textContent ?? ''), $('.source-note')?.textContent)
 
 console.log('the handle is remembered without being asked twice')
 // Debounced, so this waits rather than checking instantly.
@@ -471,6 +481,20 @@ check('compact is off by default', doc.body.classList.contains('compact') === fa
 
 await click('.settings-btn')
 check('the settings dialog opens', Boolean($('.modal-settings')))
+// The seven groups are collapsible disclosures, so the dialog opens as a list of
+// titles rather than a wall of controls. Only the two groups people return to —
+// Look and the model — start open; the rest wait to be asked for.
+const sections = () => [...$$('.modal-settings .settings-section')]
+check('every group is a collapsible disclosure', sections().every((s) => s.tagName === 'DETAILS'), sections().map((s) => s.tagName).join(','))
+const openTitles = sections()
+  .filter((s) => s.open)
+  .map((s) => s.querySelector('.settings-heading')?.textContent?.trim())
+check('only the two return-to groups start open', openTitles.length === 2, openTitles.join(', '))
+// A closed group hides its controls until its title is clicked.
+const feed = sections().find((s) => s.getAttribute('data-section') === 'feed')
+check('the feed group starts closed', feed?.open === false, String(feed?.open))
+await click(feed.querySelector('.settings-heading'))
+check('clicking its title opens it', feed.open === true, String(feed.open))
 const dialogToggle = (label) =>
   $$('.modal-settings .toggle').find((t) => t.textContent.trim().startsWith(label))?.querySelector('input')
 const toolbarToggle = (label) =>

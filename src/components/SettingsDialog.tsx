@@ -43,6 +43,43 @@ type Status =
   | { kind: 'error'; text: string }
   | { kind: 'ok'; text: string }
 
+/**
+ * One group of settings, collapsed behind its title.
+ *
+ * The dialog holds seven groups and used to render every one of them open in a
+ * single scroll — so reaching the model settings meant scrolling past theme, font,
+ * density, panels, feed, sounds and webhook, most of which a user touches once and
+ * never again. Each group is a native `<details>`, collapsed by default: the titles
+ * are a table of contents you scan at a glance, and opening one hides the other six
+ * rather than pushing them further down.
+ *
+ * Native `<details>` rather than JS state because the open/closed behaviour is the
+ * browser's, not something to rebuild: keyboard, screen readers and the disclosure
+ * triangle all work without a line of code, and there is no `openSection` state to
+ * keep in step.
+ *
+ * `defaultOpen` keeps the two groups people return to — Look and the model — in the
+ * state most useful on open, while the rarely-touched ones stay shut.
+ */
+function Section({
+  title,
+  defaultOpen = false,
+  section,
+  children,
+}: {
+  title: string
+  defaultOpen?: boolean
+  section?: string
+  children: React.ReactNode
+}) {
+  return (
+    <details className="settings-section" data-section={section} open={defaultOpen}>
+      <summary className="settings-heading">{title}</summary>
+      <div className="settings-body">{children}</div>
+    </details>
+  )
+}
+
 interface Props {
   open: boolean
   settings: UseSettingsResult
@@ -396,8 +433,7 @@ const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
           </button>
         </div>
 
-        <section className="settings-section">
-          <h3 className="settings-heading">Look</h3>
+        <Section title="Look" defaultOpen>
           <div className="settings-grid">
             <label className="field">
               <span className="field-label">Theme</span>
@@ -444,10 +480,9 @@ const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
               </select>
             </label>
           </div>
-        </section>
+        </Section>
 
-        <section className="settings-section">
-          <h3 className="settings-heading">Panels</h3>
+        <Section title="Panels">
           <div className="settings-toggles">
             {PANEL_TOGGLES.map((option) => (
               <label key={option.key} className="toggle" title={option.hint}>
@@ -460,10 +495,9 @@ const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
               </label>
             ))}
           </div>
-        </section>
+        </Section>
 
-        <section className="settings-section" data-section="feed">
-          <h3 className="settings-heading">Feed</h3>
+        <Section title="Feed" section="feed">
           <div className="settings-toggles">
             {FEED_TOGGLES.map((option) => (
               <label key={option.key} className="toggle" title={option.hint}>
@@ -504,10 +538,9 @@ const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
               </label>
             ))}
           </div>
-        </section>
+        </Section>
 
-        <section className="settings-section" data-section="sounds">
-          <h3 className="settings-heading">Sounds</h3>
+        <Section title="Sounds" section="sounds">
           <p className="modal-hint">
             A custom file, if you pick one, plays instead of any template — for gifts and chat alike.
             Backing out of the picker keeps the file you already have.
@@ -597,10 +630,9 @@ const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
                 : 'No file — the templates above are used.'}
             </span>
           </div>
-        </section>
+        </Section>
 
-        <section className="settings-section" data-section="webhook">
-          <h3 className="settings-heading">Webhook</h3>
+        <Section title="Webhook" section="webhook">
           <p className="modal-hint">
             When a gift arrives, its details are posted to the URL below so another app can react — an
             overlay, an alert, a bot. The token is stored on this machine and sent from the app&rsquo;s host,
@@ -671,10 +703,9 @@ const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
               HTTP test
             </button>
           </div>
-        </section>
+        </Section>
 
-        <section className="settings-section">
-          <h3 className="settings-heading">Model</h3>
+        <Section title="Model" defaultOpen>
           <p className="modal-hint">
             Any OpenAI-compatible endpoint. The key is stored on this machine, never in the page, and
             every request is made by the app&rsquo;s host rather than this window.
@@ -748,10 +779,9 @@ const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
               Save model
             </button>
           </div>
-        </section>
+        </Section>
 
-        <section className="settings-section" data-section="moderation">
-          <h3 className="settings-heading">Content moderation</h3>
+        <Section title="Content moderation" section="moderation">
           <p className="modal-hint">
             Every {MODERATION_INTERVAL_MS / 1000} seconds the messages nobody has looked at yet go to
             the model in one batch, and it names the ones worth acting on. Uses the model set up
@@ -794,10 +824,9 @@ const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
               defaults.
             </span>
           </label>
-        </section>
+        </Section>
 
-<section className="settings-section" data-section="replies">
-          <h3 className="settings-heading">AI answers</h3>
+        <Section title="AI answers" section="replies">
           <p className="modal-hint">
             The model reads the same chat and answers on its own, so the room keeps moving while you
             are busy. It is told it may stay quiet, and usually does; what it does say appears in the
@@ -847,9 +876,9 @@ const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
               defaults.
             </span>
           </label>
-        </section>
-      <section className="settings-section" data-section="overlay">
-          <h3 className="settings-heading">Stream overlay</h3>
+        </Section>
+
+        <Section title="Stream overlay" section="overlay">
           <p className="modal-hint">
             A chat you can put straight on the stream. Copy the link, add a{' '}
             <strong>Browser</strong> source in OBS, paste it in, and leave it. It reads the same chat
@@ -978,7 +1007,7 @@ const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
             <span className="field-note">{overlayStatus.text}</span>
             {overlayUrl !== '' && <code className="overlay-url">{overlayUrl}</code>}
           </div>
-        </section>
+        </Section>
       </div>
     </div>
   )

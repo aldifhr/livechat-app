@@ -211,29 +211,39 @@ export function Toolbar({
             Watch
           </button>
         )}
-        <span className="source-note">
-          {!wanted ? (
-            'Type the handle to start'
-          ) : disconnected ? (
-            // Stopped. The handle is still in the field, so it is still named here
-            // — but as a handle, not as a room being read, and the backend is not
-            // mentioned at all because the app is not talking to it.
-            <>
-              <strong>@{wanted}</strong> — stopped
-            </>
-          ) : (
-            <>
-              <strong>@{wanted}</strong> via {backendUrl(backend).replace(/^https?:\/\//, '')}
-            </>
-          )}
-        </span>
+        {/* The note names what is being read, and only that. With no handle typed
+            there is nothing to name, and the feed already says "Enter a username
+            above and press Connect" — a second "Type the handle to start" beside a
+            "Not connected" status is the same instruction twice on one screen. So
+            the note is silent until there is a handle to say something about. */}
+        {wanted ? (
+          <span className="source-note">
+            {disconnected ? (
+              // Stopped. The handle is still in the field, so it is still named here
+              // — but as a handle, not as a room being read, and the backend is not
+              // mentioned at all because the app is not talking to it.
+              <>
+                <strong>@{wanted}</strong> — stopped
+              </>
+            ) : (
+              <>
+                <strong>@{wanted}</strong> via {backendUrl(backend).replace(/^https?:\/\//, '')}
+              </>
+            )}
+          </span>
+        ) : null}
 
         <div className={`status status-${room.status} room-status`}>
           <span className="dot" />
           <span>
             {health === 'stalled'
               ? 'No messages for a while — the stream may have ended'
-              : room.message || 'Not connected'}
+              : room.message ||
+                (room.status === 'connected'
+                  ? 'Live'
+                  : // The one place the idle screen is told what to do. The feed
+                    // repeats it; nothing else in the toolbar does.
+                    'Not connected — enter a handle and press Connect')}
           </span>
           {room.viewers > 0 && (
             <span className="viewers">{room.viewers.toLocaleString()} watching</span>
@@ -242,29 +252,35 @@ export function Toolbar({
         {room.title && <p className="room-title">{room.title}</p>}
       </div>
 
-      <div className="toolbar-bottom">
-        <div className="filters">
-          {spec.kinds.map((option) => (
-            <button
-              key={option.value}
-              className={`chip chip-small${kind === option.value ? ' chip-active' : ''}`}
-              onClick={() => onFiltersChange({ kind: option.value })}
-            >
-              {option.label}
-              {option.value !== 'all' && counts[option.value] > 0 && (
-                <span className="chip-count">{counts[option.value]}</span>
-              )}
-            </button>
-          ))}
-        </div>
+      {/* Filters and search appear only once there is a feed to filter. Before
+          that they are controls for nothing — an idle screen carrying a row of
+          chips and an empty search box reads as clutter, and the search field
+          suggests there is content to look through when there is not. */}
+      {(room.status === 'connected' || items > 0) && (
+        <div className="toolbar-bottom">
+          <div className="filters">
+            {spec.kinds.map((option) => (
+              <button
+                key={option.value}
+                className={`chip chip-small${kind === option.value ? ' chip-active' : ''}`}
+                onClick={() => onFiltersChange({ kind: option.value })}
+              >
+                {option.label}
+                {option.value !== 'all' && counts[option.value] > 0 && (
+                  <span className="chip-count">{counts[option.value]}</span>
+                )}
+              </button>
+            ))}
+          </div>
 
-        <input
-          className="input input-search"
-          placeholder="Filter by name or text"
-          value={search}
-          onChange={(e) => onFiltersChange({ search: e.target.value })}
-        />
-      </div>
+          <input
+            className="input input-search"
+            placeholder="Filter by name or text"
+            value={search}
+            onChange={(e) => onFiltersChange({ search: e.target.value })}
+          />
+        </div>
+      )}
 
       {/*
         The stream itself: the handle, connect, filters, and the few things worth
