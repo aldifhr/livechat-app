@@ -33,11 +33,27 @@ const EVENT: &str = "sidecar-event";
 /// the failure this whole module exists to make visible.
 const CLIENT_TYPE: &str = "room";
 
-/// How long to wait for a frame before checking whether we have been cancelled.
+/// How often to check whether we have been cancelled, while waiting for a frame.
+///
+/// Short, because this is the latency of Stop on a busy room and nothing else. It
+/// is not a liveness threshold — see `SILENCE_LIMIT_SECS`, which is that, and is
+/// deliberately much longer.
 ///
 /// A quiet room sends nothing for minutes, and a loop that only notices
 /// cancellation when a frame arrives would hold its socket open long after Stop.
 const POLL_SECS: u64 = 2;
+
+/// How long the socket may stay silent before the connection is presumed dead.
+///
+/// Deliberately far longer than `POLL_SECS`, and the two must never be the same
+/// number again. Silence here is normal: the backend buffers frames until TikTok's
+/// first event arrives, so a stream whose chat has not started can sit quiet for
+/// minutes while being perfectly healthy. The failure worth catching is a socket
+/// that has stopped answering at all — and a dead one does not announce itself, so
+/// this is a guess. It is guessed generously, because the cost of guessing wrong in
+/// that direction is a feed that looks frozen, and the cost of guessing wrong in
+/// the other direction is dropping a live room during exactly the wait it needed.
+const SILENCE_LIMIT_SECS: u64 = 120;
 
 /// Attempts before giving up and reporting.
 ///
@@ -534,21 +550,50 @@ async fn run_once(
     // Read straight off the stream rather than splitting it: nothing is ever sent
     // on this socket, and splitting allocates a queue for a write half nobody
     // touches.
+    //
+    // Silence is measured rather than assumed, because the only honest statement
+    // about a quiet socket is "nothing has arrived yet" — it is not evidence of a
+    // dead one until enough time has passed to make it unlikely.
+    let mut last_frame_at = std::time::Instant::now();
     loop {
         if state.current() != generation {
             return Ok(());
         }
-        // The timeout is the cancellation poll, not a liveness check alone: a busy
-        // room sends a frame every few seconds, so `stream.next()` resolves long
-        // before the loop comes back around, and a Stop pressed between two frames
-        // would wait for the next one — which is why disconnecting looked like it
-        // did nothing. Wrapping the wait rather than racing it against a sleep
-        // keeps the frame: a `select!` drops the losing future, and a dropped
-        // `stream.next()` can lose a message that had already arrived.
+        // Two waits that used to be one, and the conflation was the bug.
+        //
+        // The timeout exists so a Stop is seen between two frames — a busy room
+        // resolves `stream.next()` every few seconds, so without it the loop would
+        // not come back around to check. Wrapping the wait rather than racing it
+        // against a sleep keeps the frame: a `select!` drops the losing future, and
+        // a dropped `stream.next()` can lose a message that had already arrived.
+        //
+        // What it must not do is also decide the connection is dead, which is what
+        // it was doing. Silence on this socket is normal and long: the backend
+        // buffers frames until TikTok's first event arrives, and a stream whose
+        // chat has not started yet can sit quiet for minutes. Treating POLL_SECS of
+        // quiet as failure made the app give up during exactly the wait it was
+        // supposed to be patient through — connect, one frame, five rejections,
+        // give up — while the backend was alive and about to deliver.
         let next = tokio::time::timeout(Duration::from_secs(POLL_SECS), stream.next())
-            .await
-            .map_err(|_| "no frames arriving")?
-            .ok_or("the backend closed the connection")?;
+            .await;
+
+        let next = match next {
+            Ok(next) => next,
+            // Timed out. That is a poll, not a verdict on its own — but a poll is
+            // how the silence gets measured, so this is where the real threshold
+            // is applied.
+            Err(_) => {
+                if last_frame_at.elapsed() >= Duration::from_secs(SILENCE_LIMIT_SECS) {
+                    return Err("no frames arriving".into());
+                }
+                continue;
+            }
+        }
+        .ok_or("the backend closed the connection")?;
+
+        // Anything at all counts as the connection being alive: a frame the mapper
+        // did not recognise is still the socket answering.
+        last_frame_at = std::time::Instant::now();
 
         // Checked again after the wait as well as before it. A Stop pressed while
         // a frame was in flight arrives here, and reading the generation before
@@ -669,6 +714,21 @@ mod tests {
         assert_ne!(first, second);
         assert_eq!(state.current(), second);
         assert!(state.current() != first);
+    }
+
+    #[test]
+    fn silence_is_not_confused_with_a_dead_socket() {
+        // The bug this pair exists for. The cancellation poll and the liveness
+        // threshold were one number, so a room that had not started chatting yet
+        // was declared dead on its first quiet moment — connect, one frame, five
+        // rejections, give up — while the backend was alive and about to deliver.
+        //
+        // The poll must stay short, because it is the latency of Stop on a busy
+        // room. The silence limit must stay long, because quiet here is normal.
+        assert!(POLL_SECS < SILENCE_LIMIT_SECS, "{POLL_SECS} vs {SILENCE_LIMIT_SECS}");
+        // Comfortably, not marginally: a limit only a few polls long would still
+        // drop a room during the wait it was meant to be patient through.
+        assert!(SILENCE_LIMIT_SECS >= 30 * POLL_SECS, "{SILENCE_LIMIT_SECS} vs {POLL_SECS}");
     }
 
     #[test]
