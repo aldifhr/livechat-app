@@ -87,7 +87,11 @@ export function Toolbar({
   const [disconnected, setDisconnected] = useState(false)
 
   const isConnecting = busy || room.status === 'connecting'
-  const isConnected = room.status === 'connected'
+  // A Stop the host has confirmed, or one this component just made. Both count:
+  // the status frame can lag the click, and a button that still reads "Stop" after
+  // Stop has been pressed is the bug — connect, stop, and the button should say
+  // Connect again, not invite another Stop on a room that is already closed.
+  const isConnected = room.status === 'connected' && !disconnected
   const wanted = normaliseUsername(handle)
   const canConnect = wanted !== '' && !isConnecting
 

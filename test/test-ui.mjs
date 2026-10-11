@@ -329,24 +329,36 @@ check(
   JSON.stringify(fake.lastCommand('backend_disconnect')) === JSON.stringify({ command: 'backend_disconnect' }),
   JSON.stringify(fake.lastCommand('backend_disconnect')),
 )
-// The status line goes quiet because the host says so, exactly as it does live —
-// the app does not assume a stop worked, it waits to be told.
+// The button flips on the click, not on a status frame that may lag behind it.
+// A Stop button that still reads "Stop" after being pressed is the whole bug:
+// connect, stop, and the next press should connect again, not invite a second Stop
+// on a room that is already closed.
+const stopButton = () => $$('.room-row .btn').find((b) => b.textContent.trim() === 'Stop')
+const connectButton2 = () => $$('.room-row .btn').find((b) => b.textContent.trim() === 'Connect')
+check('the Stop button is gone the moment it is pressed', !stopButton(), $('.room-row')?.textContent)
+check('and a Connect button takes its place', Boolean(connectButton2()), $('.room-row')?.textContent)
+check('the field is editable again', $('.handle-input')?.disabled === false, String($('.handle-input')?.disabled))
+check('and the note no longer claims a live room', /stopped/.test($('.source-note')?.textContent ?? ''), $('.source-note')?.textContent)
+check('it stops naming the backend too', !/via/.test($('.source-note')?.textContent ?? ''), $('.source-note')?.textContent)
+// The handle is still there so reconnecting is one click.
+check('the handle is still there to reconnect with', $('.handle-input')?.value === '@mybasic.indonesia', $('.handle-input')?.value)
+// And the status line catches up when the host confirms it, exactly as live.
 await act(async () => {
   fake.emit({ platform: 'tiktok', type: 'status', connected: false, message: 'Disconnected' })
 })
-// The handle stays in the field so reconnecting is one click, but the note stops
-// naming a live room. Leaving "@handle via backend" beside a Disconnected status
-// reads as a connection that never stopped, which is the one thing a Stop button
-// must never appear to have failed to do.
-check('the handle is still there to reconnect with', $('.handle-input')?.value === '@mybasic.indonesia', $('.handle-input')?.value)
-check('and the field is editable again', $('.handle-input')?.disabled === false, String($('.handle-input')?.disabled))
-check('and the note no longer claims a live room', /stopped/.test($('.source-note')?.textContent ?? ''), $('.source-note')?.textContent)
-check('it stops naming the backend too', !/via/.test($('.source-note')?.textContent ?? ''), $('.source-note')?.textContent)
-check('and the status line agrees it is disconnected', /Disconnected/.test($('.room-status')?.textContent ?? ''), $('.room-status')?.textContent)
-// Connecting again clears the stopped note, so the room is named as live once more.
-await click($$('.room-row .btn').find((b) => b.textContent.trim() === 'Connect'))
+check('the status line agrees it is disconnected', /Disconnected/.test($('.room-status')?.textContent ?? ''), $('.room-status')?.textContent)
+// Connecting again clears the stopped note and asks the host, exactly as live —
+// the Stop button returns only when the host confirms the connection, which the
+// fake transport does not do on its own.
+await click(connectButton2())
+check('the host was asked to connect', Boolean(fake.lastCommand('backend_connect')), JSON.stringify(fake.lastCommand('backend_connect')))
 check('connecting names the room again', /via/.test($('.source-note')?.textContent ?? ''), $('.source-note')?.textContent)
 check('and no longer says stopped', !/stopped/.test($('.source-note')?.textContent ?? ''), $('.source-note')?.textContent)
+// The host confirms, and only then does the button offer Stop again.
+await act(async () => {
+  fake.emit({ platform: 'tiktok', type: 'status', connected: true, message: 'Connected' })
+})
+check('the Stop button is back once the host confirms', Boolean(stopButton()), $('.room-row')?.textContent)
 
 console.log('failures are shown, not swallowed')
 await act(async () => {
