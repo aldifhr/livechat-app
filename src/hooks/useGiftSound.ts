@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
-import { attach, detachHandler, type SidecarEvent } from '../lib/sidecar'
-import { playSound, releaseAudio, resolveAudio } from '../lib/player'
+import { type SidecarEvent } from '../lib/sidecar'
+import { useRoomEvents } from '../lib/reactive'
+import { useAudioPlayer } from '../lib/gate'
 import { shouldPlayGiftSound } from '../lib/sound'
 
 /**
@@ -24,51 +25,21 @@ interface Options {
 }
 
 export function useGiftSound({ enabled, templateId, customPath }: Options): void {
-  const contextRef = useRef<AudioContext | null>(null)
+  const { play } = useAudioPlayer()
   // A ref rather than state: read and written inside an event handler, and a
   // state update would be a render for a value nothing renders.
   const lastPlayedAt = useRef<number | null>(null)
 
-  useEffect(() => {
-    let active = true
-
-    const ring = () => {
-      const now = Date.now()
-      if (!shouldPlayGiftSound(enabled, lastPlayedAt.current, now)) return
-      lastPlayedAt.current = now
-
-      contextRef.current ??= resolveAudio()
-      // Fired and forgotten deliberately: the gap check above is what keeps two
-      // gifts from overlapping, and awaiting here would let a rejection from a
-      // slow decode surface as an unhandled promise rejection.
-      void playSound(contextRef.current, templateId, customPath).then((used) => {
-        contextRef.current = used
-      })
-    }
-
-    const handle = (event: SidecarEvent) => {
-      if (!active || event.type !== 'gift') return
-      if (event.platform !== 'tiktok') return
-      ring()
-    }
-
-    attach(handle)
-    return () => {
-      active = false
-      // Taken back off rather than merely muted: this effect re-runs every time
-      // the setting is toggled, and the set it subscribed to outlives it.
-      detachHandler(handle)
-    }
+  useRoomEvents((event: SidecarEvent) => {
+    if (event.type !== 'gift') return
+    const now = Date.now()
+    if (!shouldPlayGiftSound(enabled, lastPlayedAt.current, now)) return
+    lastPlayedAt.current = now
+    // Fired and forgotten deliberately: the gap check above is what keeps two
+    // gifts from overlapping, and awaiting here would let a rejection from a slow
+    // decode surface as an unhandled promise rejection.
+    void play(templateId, customPath)
   }, [enabled, templateId, customPath])
-
-  // This hook made its own context, so this hook closes it — on unmount only,
-  // because the effect above re-runs every time a setting changes.
-  useEffect(
-    () => () => {
-      contextRef.current = releaseAudio(contextRef.current)
-    },
-    [],
-  )
 
   // Turned off: forget when the last sound was, so the next one is not measured
   // against a gap that started before the user asked for silence.

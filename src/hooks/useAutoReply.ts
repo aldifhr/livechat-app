@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { attach, detachHandler, emitLocal, type SidecarEvent } from '../lib/sidecar'
+import { emitLocal, type SidecarEvent } from '../lib/sidecar'
+import { useRoomEvents } from '../lib/reactive'
 import { greetingReply, isGreeting } from '../lib/autoreply'
 
 /**
@@ -38,47 +39,37 @@ export function useAutoReply({ enabled, cooldownMs = DEFAULT_COOLDOWN_MS }: Opti
   // hello would be absurd.
   const lastRepliedAt = useRef<Map<string, number>>(new Map())
 
-  useEffect(() => {
-    if (!enabled) {
-      // Turning it off forgets everyone, so turning it back on does not treat the
-      // whole room as recently-answered and stay silent.
-      lastRepliedAt.current.clear()
-      return
-    }
-    let active = true
+  useRoomEvents((event: SidecarEvent) => {
+    if (!enabled || event.type !== 'chat' || event.isBot === true) return
+    // The bot's own reply comes back through this same listener; ignoring bot
+    // rows here is what stops it answering itself forever.
+    if (!isGreeting(event.text ?? '')) return
 
-    const handle = (event: SidecarEvent) => {
-      if (!active || event.type !== 'chat' || event.isBot === true) return
-      // The bot's own reply comes back through this same listener; ignoring bot
-      // rows here is what stops it answering itself forever.
-      if (!isGreeting(event.text ?? '')) return
+    const now = Date.now()
+    const id = event.id || event.nickname
+    const last = lastRepliedAt.current.get(id)
+    if (last !== undefined && now - last < cooldownMs) return
+    lastRepliedAt.current.set(id, now)
 
-      const now = Date.now()
-      const id = event.id || event.nickname
-      const last = lastRepliedAt.current.get(id)
-      if (last !== undefined && now - last < cooldownMs) return
-      lastRepliedAt.current.set(id, now)
-
-      // Synchronous, same listener path a real frame takes, so the reply lands in
-      // the same tick and reads as an answer rather than a separate event.
-      emitLocal({
-        platform: 'tiktok',
-        type: 'chat',
-        nickname: 'Auto-reply',
-        id: 'autoreply',
-        avatar: '',
-        text: greetingReply(),
-        timestamp: now,
-        isBot: true,
-      })
-    }
-
-    attach(handle)
-    return () => {
-      active = false
-      detachHandler(handle)
-    }
+    // Synchronous, same listener path a real frame takes, so the reply lands in
+    // the same tick and reads as an answer rather than a separate event.
+    emitLocal({
+      platform: 'tiktok',
+      type: 'chat',
+      nickname: 'Auto-reply',
+      id: 'autoreply',
+      avatar: '',
+      text: greetingReply(),
+      timestamp: now,
+      isBot: true,
+    })
   }, [enabled, cooldownMs])
+
+  // Turning it off forgets everyone, so turning it back on does not treat the whole
+  // room as recently-answered and stay silent.
+  useEffect(() => {
+    if (!enabled) lastRepliedAt.current.clear()
+  }, [enabled])
 
   // Pruned so the table does not grow unbounded over a long stream: an entry older
   // than the cooldown is already free to reply again, so holding it changes nothing.
