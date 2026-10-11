@@ -9,6 +9,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { host } from '../lib/sidecar'
+import { clampRows, clampNumber, resolveColour, resolveOverlayFont, OVERLAY_SIZE } from '../lib/overlay'
+import { clampSeconds, resolveModeration, type ModerationMode } from '../lib/ai'
 import { resolveDensity, resolveFont, resolveTheme, type DensityId, type FontId, type ThemeId } from '../lib/theme'
 
 export interface ViewSettings {
@@ -30,8 +32,16 @@ export interface ViewSettings {
   showModeratorBadge: boolean
   /** Keep the window above others, for a second monitor. */
   alwaysOnTop: boolean
-  /** Chime when a gift arrives. */
+  /** Play a sound when a gift arrives. */
   giftSound: boolean
+  /**
+   * A sound when somebody new arrives.
+   *
+   * Off by default, like the chat blip: arrivals are the most repetitive event the
+   * app has, and a sound per person in a filling room is a sound that stops being
+   * information within a minute of being turned on.
+   */
+  joinSound: boolean
   /** Raise a desktop toast when a gift arrives. */
   giftNotice: boolean
   /** Post each gift to the configured webhook. Off by default: it sends data about
@@ -44,8 +54,68 @@ export interface ViewSettings {
   showStats: boolean
   /** Show the in-app log panel at the bottom of the window. */
   showLog: boolean
-  /** Show the ask-the-model panel at the bottom of the window. */
-  showAsk: boolean
+  /**
+   * What the model does with a message it thinks is harmful.
+   *
+   * Not a checkbox because the two useful answers are opposites: `flag` leaves the
+   * streamer in charge and `block` takes the decision away from them. Which of
+   * those someone wants depends on the room and on how much they are watching, so
+   * it is a choice rather than a preference.
+   *
+   * Off by default. Moderation costs a request every few seconds, and a feature
+   * that silently starts sending someone's chat to a paid endpoint the first time
+   * the app is opened is not one anybody asked for.
+   */
+  moderation: ModerationMode
+  /**
+   * The streamer's own rules for this room, in their words.
+   *
+   * Appended to the model's judgement rather than replacing it, so "swearing is
+   * fine here" corrects the default instead of leaving the model with nothing to
+   * go on. Empty means the defaults alone.
+   */
+  moderationRules: string
+  /**
+   * Let the model answer viewers in the chat without being asked.
+   *
+   * Named apart from `autoReply` above, and that is not a naming preference. There
+   * are two things in here that talk to the room and they are not the same
+   * feature: `autoReply` answers a greeting with a fixed line the instant it sees
+   * one, costs nothing and is never wrong, while this asks a model on a timer and
+   * lets it decide it has nothing to say. Sharing a setting would mean one switch
+   * silently controlling both, and turning it off for one would turn it off for
+   * the other.
+   */
+  aiReply: boolean
+  /**
+   * The shortest gap between two of the model's own answers.
+   *
+   * A floor, not a schedule: the model is told it may stay quiet, and usually
+   * does. What this controls is the ceiling on how often it *can* speak.
+   */
+  aiReplySeconds: number
+  /** How the model should behave, in the streamer's words. Empty means the defaults. */
+  aiReplyPersona: string
+  /**
+   * How the OBS overlay looks.
+   *
+   * Six flat fields rather than one nested object, because this is what the
+   * settings file has always been: flat, and every field readable in
+   * `localStorage` without knowing how anything else is shaped. They only become
+   * a group in one place — the query string of the link that gets pasted.
+   *
+   * These change what OBS is showing, not what the app is showing, which is why
+   * they are here and not read off the live feed: a streamer tweaks the size
+   * until it fits their scene, and that should not require a room to be running.
+   */
+  overlaySize: number
+  /** How many messages are on screen at once. */
+  overlayMax: number
+  /** 0 is no backdrop at all, 1 is an opaque panel. */
+  overlayBg: number
+  overlayNameColour: string
+  overlayTextColour: string
+  overlayFont: string
   /** Play a short blip when a new chat message arrives. */
   chatSound: boolean
   /** Read new chat messages aloud with the system voice. */
@@ -77,6 +147,8 @@ export interface ViewSettings {
   giftTemplate: string
   /** Which synthesised sound a chat message plays. */
   chatTemplate: string
+  /** Which synthesised sound an arrival plays. */
+  joinTemplate: string
   /**
    * A sound file the user picked, played instead of any template.
    *
@@ -97,12 +169,23 @@ export const DEFAULT_SETTINGS: ViewSettings = {
   showModeratorBadge: true,
   alwaysOnTop: false,
   giftSound: true,
+  joinSound: false,
   giftNotice: true,
   webhook: false,
   autoReply: false,
   showStats: true,
   showLog: true,
-  showAsk: true,
+  moderation: 'off',
+  moderationRules: '',
+  aiReply: false,
+  aiReplySeconds: 60,
+  aiReplyPersona: '',
+  overlaySize: 22,
+  overlayMax: 8,
+  overlayBg: 0,
+  overlayNameColour: '#ffd76a',
+  overlayTextColour: '#ffffff',
+  overlayFont: '"Segoe UI", system-ui, sans-serif',
   chatSound: false,
   chatTts: false,
   giftVoice: false,
@@ -112,6 +195,7 @@ export const DEFAULT_SETTINGS: ViewSettings = {
   ttsNames: true,
   giftTemplate: 'chime',
   chatTemplate: 'blip',
+  joinTemplate: 'pop',
   customSoundPath: '',
 }
 
@@ -135,6 +219,26 @@ function load(): ViewSettings {
       theme: resolveTheme(saved.theme),
       font: resolveFont(saved.font),
       density: resolveDensity(saved.density),
+      // The AI settings are resolved rather than merged for the same reason. A
+      // moderation mode a previous build offered and this one dropped would reach
+      // the selector as a value nothing answers to, leaving the dropdown blank and
+      // — because `off` is the only safe reading of a mode nobody picked — the
+      // feature silently stopped.
+      moderation: resolveModeration(saved.moderation),
+      // And the interval, which arrives from a number field as text and can be
+      // `NaN` halfway through an edit. `setInterval` with that would stop the
+      // feature for the rest of the session over one keystroke.
+      aiReplySeconds: clampSeconds(Number(saved.aiReplySeconds ?? DEFAULT_SETTINGS.aiReplySeconds)),
+      // And the overlay's styling, for the same reason. These end up in a URL
+      // that the host pastes into a query string, so a size of `NaN` would become
+      // a link that renders nothing and a font of anything at all would be a way
+      // to end the value it sits in.
+      overlaySize: clampNumber(saved.overlaySize, OVERLAY_SIZE.min, OVERLAY_SIZE.max, DEFAULT_SETTINGS.overlaySize),
+      overlayMax: clampRows(saved.overlayMax, DEFAULT_SETTINGS.overlayMax),
+      overlayBg: clampNumber(saved.overlayBg, 0, 1, DEFAULT_SETTINGS.overlayBg),
+      overlayNameColour: resolveColour(saved.overlayNameColour, DEFAULT_SETTINGS.overlayNameColour),
+      overlayTextColour: resolveColour(saved.overlayTextColour, DEFAULT_SETTINGS.overlayTextColour),
+      overlayFont: resolveOverlayFont(saved.overlayFont),
     }
   } catch {
     return DEFAULT_SETTINGS

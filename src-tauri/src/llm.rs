@@ -274,6 +274,202 @@ pub fn completion_text(body: &Value) -> Option<String> {
         .map(str::to_string)
 }
 
+/// One message the model decided is worth acting on.
+///
+/// `index` is a position in the batch, counted from zero. It travels as a number
+/// rather than as a message id because the ids live in the page and only positions
+/// are shared: the page numbers what it sends, this side sends it, and the page
+/// maps the answer back onto its own rows. The prompt numbers them from one and
+/// the conversion happens in `parse_verdicts`, so nothing downstream has to know
+/// that.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Verdict {
+    pub index: usize,
+    /// A short category, shown on the row. Never empty.
+    pub label: String,
+    /// Why it was flagged, in a sentence. Shown as the badge's tooltip.
+    pub reason: String,
+}
+
+/// The first complete JSON value in a model's answer.
+///
+/// Models wrap JSON in prose and in code fences even when told not to, and the
+/// two features below are both unusable if the answer is discarded over a stray
+/// "Sure!" in front of it. So the answer is scanned for a `{…}` or `[…]` that
+/// actually parses rather than parsed whole.
+///
+/// Every opener is tried in turn rather than only the first. A preamble that
+/// mentions a brace without closing it — "the message is {clearly rude, in my
+/// view" — swallows everything after it under any single-candidate scan, and
+/// swallowing a valid answer is the one outcome worse than not parsing at all.
+pub fn json_value(answer: &str) -> Option<Value> {
+    let trimmed = answer.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    // The whole answer, in the common case where the model obeyed the prompt.
+    if let Ok(value) = serde_json::from_str::<Value>(trimmed) {
+        if value.is_object() || value.is_array() {
+            return Some(value);
+        }
+    }
+
+    let bytes = trimmed.as_bytes();
+    for at in 0..bytes.len() {
+        if bytes[at] != b'{' && bytes[at] != b'[' {
+            continue;
+        }
+        let Some(end) = closing_bracket(bytes, at) else {
+            continue;
+        };
+        if let Ok(value) = serde_json::from_str::<Value>(&trimmed[at..=end]) {
+            if value.is_object() || value.is_array() {
+                return Some(value);
+            }
+        }
+    }
+    None
+}
+
+/// The bracket that closes the one at `start`, or `None` if it is never closed.
+///
+/// Counts brackets outside strings only: a reason containing `he said "{` would
+/// otherwise close an object that never opened, and the text after that point
+/// would be discarded along with it.
+fn closing_bracket(bytes: &[u8], start: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut quoted = false;
+    let mut escaped = false;
+
+    for at in start..bytes.len() {
+        let byte = bytes[at];
+        if quoted {
+            if escaped {
+                escaped = false;
+            } else if byte == b'\\' {
+                escaped = true;
+            } else if byte == b'"' {
+                quoted = false;
+            }
+            continue;
+        }
+        match byte {
+            b'"' => quoted = true,
+            b'{' | b'[' => depth += 1,
+            b'}' | b']' => {
+                // `saturating_sub` because the walk starts on an opener, so the
+                // first bracket it meets is always a closer at depth one or more —
+                // but a `]` closing a `[` it did not see is not worth wrapping on.
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(at);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// The flagged messages out of a moderation answer.
+///
+/// `count` is how many messages were sent, and an index outside it is dropped
+/// rather than clamped: a model that answers `{"index": 99}` for a batch of three
+/// must not have the app remove some arbitrary row of the user's chat on its say.
+///
+/// A duplicate index keeps the first verdict, so the count of what was flagged is
+/// a count of rows rather than of lines the model happened to emit.
+pub fn parse_verdicts(answer: &str, count: usize) -> Vec<Verdict> {
+    let Some(body) = json_value(answer) else {
+        return Vec::new();
+    };
+
+    // Both shapes are accepted: the array under `flagged` the prompt asks for, and
+    // a bare array, which is what a model that read the prompt and skipped the
+    // wrapper produces. One retry is worth more than a feature that silently
+    // moderates nothing.
+    let entries = match &body {
+        Value::Array(entries) => entries.clone(),
+        Value::Object(map) => match map.get("flagged") {
+            Some(Value::Array(entries)) => entries.clone(),
+            _ => return Vec::new(),
+        },
+        _ => return Vec::new(),
+    };
+
+    let mut verdicts: Vec<Verdict> = Vec::new();
+    let mut seen: Vec<usize> = Vec::new();
+    for entry in entries {
+        // Numbers from JSON, so a negative or fractional index is not a count.
+        let Some(one_based) = entry.get("index").and_then(Value::as_u64) else {
+            continue;
+        };
+        let Some(index) = one_based.checked_sub(1).map(|n| n as usize) else {
+            continue;
+        };
+        if index >= count || seen.contains(&index) {
+            continue;
+        }
+        seen.push(index);
+
+        let label = entry
+            .get("label")
+            .and_then(Value::as_str)
+            .map(|label| clip(label, LABEL_CHARS))
+            .filter(|label| !label.is_empty())
+            // A flag with no category is still a flag. It is shown on the row, and
+            // a row reading "flagged" says less than the model knew but says
+            // something, where a blank badge says nothing at all.
+            .unwrap_or_else(|| DEFAULT_LABEL.to_string());
+        let reason = entry
+            .get("reason")
+            .and_then(Value::as_str)
+            .map(|reason| clip(reason, REASON_CHARS))
+            .unwrap_or_default();
+
+        verdicts.push(Verdict {
+            index,
+            label,
+            reason,
+        });
+    }
+    verdicts
+}
+
+/// The longest category a row's badge will hold before it is clipped.
+const LABEL_CHARS: usize = 40;
+/// The longest reason kept for a badge's tooltip.
+const REASON_CHARS: usize = 200;
+/// What a verdict with no category of its own is called.
+const DEFAULT_LABEL: &str = "flagged";
+
+/// The reply out of an auto-reply answer.
+///
+/// `None` is the common case and the one the prompt asks for by name: a model
+/// that speaks every time it is asked is worse than no model at all. An answer
+/// that is not JSON at all is also `None` rather than its own text — a model that
+/// ignored the format is more likely to have written "I can't answer that" than
+/// something worth posting, and that line belongs in the log, not in the feed.
+pub fn parse_reply(answer: &str) -> Option<String> {
+    let body = json_value(answer)?;
+    let reply = body.get("reply")?;
+    // Explicit null is how the prompt says "stay quiet", and it has to survive
+    // being read as text: `body.get` alone would turn `null` into `None` by way
+    // of `as_str` returning nothing, which is the same answer by accident rather
+    // than on purpose.
+    let text = reply.as_str()?.trim();
+    if text.is_empty() {
+        return None;
+    }
+    Some(clip(text, REPLY_CHARS))
+}
+
+/// The longest reply kept. A live chat answer is a sentence or two; anything past
+/// this is a model that has stopped answering the question it was given.
+const REPLY_CHARS: usize = 400;
+
 /// Keeps an error message to one readable line.
 ///
 /// The server's body can be a whole HTML error page, and a toast-sized string is
@@ -283,16 +479,23 @@ fn shorten(text: &str, fallback: &str) -> String {
     if trimmed.is_empty() {
         return fallback.to_string();
     }
-    if trimmed.len() <= 200 {
+    clip(trimmed, 200)
+}
+
+/// Trims to at most `max` characters, with an ellipsis if anything was cut.
+///
+/// Walked by character rather than sliced, because `max` is a character count the
+/// UI is promised and `str::len` counts bytes: slicing there panics the first time
+/// a multi-byte character straddles the cut, and with `panic = "abort"` that is
+/// the whole app dying on exactly the path that was already going wrong.
+fn clip(text: &str, max: usize) -> String {
+    let trimmed = text.trim();
+    if trimmed.chars().count() <= max {
         return trimmed.to_string();
     }
-    // Walked by character rather than sliced at 200, because 200 is a byte count
-    // and the body is not necessarily ASCII. Slicing there panics the first time a
-    // multi-byte character straddles the cut, and with `panic = "abort"` that is
-    // the whole app dying on exactly the path that was already going wrong.
     let cut = trimmed
         .char_indices()
-        .nth(200)
+        .nth(max)
         .map(|(index, _)| index)
         .unwrap_or(trimmed.len());
     format!("{}…", &trimmed[..cut])
@@ -400,20 +603,224 @@ mod tests {
     #[test]
     fn a_multibyte_error_body_is_cut_without_panicking() {
         // The byte-slice version of this function panicked the first time a
-        // multi-byte character straddled the 200-byte cut, and with
-        // `panic = "abort"` that killed the process. This is the regression.
-        let body = format!("{}é", "a".repeat(199));
+        // multi-byte character straddled the cut, and with `panic = "abort"` that
+        // killed the process. This is the regression.
+        //
+        // Two accents rather than one: the budget is counted in characters, so a
+        // body of 199 ASCII plus one accent is exactly at the limit and is
+        // returned whole. 201 characters puts a two-byte character astride the
+        // cut, which is the case that used to panic.
+        let body = format!("{}éé", "a".repeat(199));
         let cut = shorten(&body, "fallback");
         assert!(cut.ends_with('…'));
         // Back to bytes on purpose: a char-safe cut is still under the budget.
         assert!(cut.len() <= 204, "{}", cut.len());
         // And it must not have lost the tail of a character into invalid UTF-8.
         assert!(cut.chars().all(|c| c == 'a' || c == 'é' || c == '…'));
+        // A body exactly at the limit is not cut at all.
+        let exact = format!("{}é", "a".repeat(199));
+        assert_eq!(shorten(&exact, "fallback"), exact);
     }
 
     #[test]
     fn a_short_error_body_is_left_alone() {
         assert_eq!(shorten("{\"detail\":\"nope\"}", "fallback"), "{\"detail\":\"nope\"}");
         assert_eq!(shorten("   ", "fallback"), "fallback");
+    }
+
+    #[test]
+    fn finds_json_a_model_wrapped_in_prose_or_a_fence() {
+        assert_eq!(
+            json_value("```json\n{\"reply\":\"hi\"}\n```").unwrap()["reply"],
+            json!("hi")
+        );
+        assert_eq!(
+            json_value("Sure! Here you go: {\"reply\":\"hi\"} Hope that helps.").unwrap()["reply"],
+            json!("hi")
+        );
+        assert_eq!(json_value("  {\"reply\":\"hi\"}  ").unwrap()["reply"], json!("hi"));
+    }
+
+    #[test]
+    fn a_brace_inside_a_string_is_not_the_end_of_the_object() {
+        // The reason field is free text and will contain braces sooner or later.
+        // Counting this one would close an object that never opened and swallow
+        // the whole answer, which is worse than not parsing at all.
+        let answer = r#"{"reply":null,"why":"he said \"{ then left"}"#;
+        assert_eq!(json_value(answer).unwrap()["reply"], Value::Null);
+
+        // And the same quote, escaped.
+        let escaped = r#"{"reply":"a \" b"}"#;
+        assert_eq!(json_value(escaped).unwrap()["reply"], json!("a \" b"));
+    }
+
+    #[test]
+    fn an_unbalanced_brace_in_the_preamble_does_not_hide_the_answer() {
+        let answer = "Analysis: the message is {clearly rude, in my view.\n{\"flagged\":[]}";
+        assert!(json_value(answer).unwrap()["flagged"].is_array());
+    }
+
+    #[test]
+    fn an_answer_with_no_json_in_it_is_none() {
+        assert!(json_value("").is_none());
+        assert!(json_value("   ").is_none());
+        assert!(json_value("I would rather not.").is_none());
+        // A scalar parses fine and is not an object or an array, so it is not the
+        // answer either.
+        assert!(json_value("42").is_none());
+        assert!(json_value("\"a string\"").is_none());
+        // Braces that balance but are not JSON: the walk moves past them.
+        assert!(json_value("{ this is not json }").is_none());
+        // Truncated: an object that opens and never closes.
+        assert!(json_value(r#"{"reply":"cut off mid-"#).is_none());
+    }
+
+    #[test]
+    fn reads_flagged_messages_out_of_the_answer() {
+        let answer = r#"{"flagged":[
+            {"index":1,"label":"hate","reason":"slur aimed at the streamer"},
+            {"index":3,"label":"spam","reason":"gift card link"}
+        ]}"#;
+        assert_eq!(
+            parse_verdicts(answer, 5),
+            vec![
+                Verdict { index: 0, label: "hate".into(), reason: "slur aimed at the streamer".into() },
+                Verdict { index: 2, label: "spam".into(), reason: "gift card link".into() },
+            ]
+        );
+    }
+
+    #[test]
+    fn an_empty_verdict_list_is_the_usual_answer() {
+        assert!(parse_verdicts(r#"{"flagged":[]}"#, 5).is_empty());
+        assert!(parse_verdicts("[]", 5).is_empty());
+        // Prose with no JSON in it. Moderating nothing is a safe failure; acting
+        // on nothing is what this guards against.
+        assert!(parse_verdicts("None of these are harmful.", 5).is_empty());
+    }
+
+    #[test]
+    fn a_bare_array_is_accepted_too() {
+        // The model read the prompt and skipped the `flagged` wrapper. Refusing
+        // this answer means moderating nothing, which is the failure a user would
+        // never notice and never forgive.
+        let answer = r#"[{"index":2,"label":"spam","reason":"link"}]"#;
+        assert_eq!(parse_verdicts(answer, 3)[0].index, 1);
+    }
+
+    #[test]
+    fn an_index_outside_the_batch_is_dropped_rather_than_trusted() {
+        // The single worst failure this function could have: an index past the end
+        // has to remove nothing at all, not wrap, not clamp, not guess.
+        let answer = r#"{"flagged":[{"index":99,"label":"spam","reason":"x"}]}"#;
+        assert!(parse_verdicts(answer, 3).is_empty());
+        // One past the end is past the end — the prompt numbers from one.
+        let last = r#"{"flagged":[{"index":4,"label":"spam","reason":"x"}]}"#;
+        assert!(parse_verdicts(last, 3).is_empty());
+        // Zero is not a line number at all; `checked_sub` rejects it rather than
+        // wrapping it round to the last message in the batch.
+        let zero = r#"{"flagged":[{"index":0,"label":"spam","reason":"x"}]}"#;
+        assert!(parse_verdicts(zero, 3).is_empty());
+    }
+
+    #[test]
+    fn an_index_that_is_not_a_number_is_not_an_index() {
+        let answer = r#"{"flagged":[
+            {"index":"1","label":"hate","reason":"x"},
+            {"index":-1,"label":"hate","reason":"x"},
+            {"index":1.5,"label":"hate","reason":"x"},
+            {"label":"hate","reason":"x"}
+        ]}"#;
+        assert!(parse_verdicts(answer, 3).is_empty());
+    }
+
+    #[test]
+    fn a_repeated_index_is_counted_once() {
+        // Two verdicts for one message would remove or flag the same row twice and
+        // report two hits where there was one.
+        let answer = r#"{"flagged":[
+            {"index":1,"label":"hate","reason":"first"},
+            {"index":1,"label":"spam","reason":"second"}
+        ]}"#;
+        let verdicts = parse_verdicts(answer, 3);
+        assert_eq!(verdicts.len(), 1);
+        assert_eq!(verdicts[0].reason, "first");
+    }
+
+    #[test]
+    fn a_flag_with_no_category_still_reads_as_a_flag() {
+        // An empty badge tells the streamer nothing and looks like a bug.
+        let answer = r#"{"flagged":[{"index":1,"label":"   ","reason":"rude"}]}"#;
+        assert_eq!(parse_verdicts(answer, 3)[0].label, "flagged");
+        // And with nothing to show at all.
+        let bare = r#"{"flagged":[{"index":1}]}"#;
+        assert_eq!(parse_verdicts(bare, 3)[0].label, "flagged");
+        assert_eq!(parse_verdicts(bare, 3)[0].reason, "");
+    }
+
+    #[test]
+    fn a_reason_longer_than_a_badge_holds_is_clipped() {
+        let long = "a".repeat(REASON_CHARS + 50);
+        let answer = json!({ "flagged": [{ "index": 1, "label": "x", "reason": long }] }).to_string();
+        let reason = parse_verdicts(&answer, 3)[0].reason.clone();
+        assert!(reason.ends_with('…'), "{}", reason);
+        assert_eq!(reason.chars().count(), REASON_CHARS + 1);
+    }
+
+    #[test]
+    fn reads_a_reply_out_of_the_answer() {
+        assert_eq!(
+            parse_reply(r#"{"reply":"the GPU one, I think"}"#).as_deref(),
+            Some("the GPU one, I think")
+        );
+        // The fence and the preamble are the same shapes moderation sees.
+        assert_eq!(
+            parse_reply("```json\n{\"reply\":\"hello\"}\n```").as_deref(),
+            Some("hello")
+        );
+    }
+
+    #[test]
+    fn silence_is_an_answer() {
+        // The case the prompt asks for by name, and the common one. It has to come
+        // back as "did not reply" rather than as an empty string posted to chat.
+        assert_eq!(parse_reply(r#"{"reply":null}"#), None);
+        assert_eq!(parse_reply(r#"{"reply":"   "}"#), None);
+        assert_eq!(parse_reply(r#"{"reply":""}"#), None);
+        // No `reply` key at all is the same thing.
+        assert_eq!(parse_reply(r#"{"answer":"hi"}"#), None);
+    }
+
+    #[test]
+    fn an_answer_that_is_not_the_format_is_not_posted() {
+        // A model that ignored the format is more likely to have written a refusal
+        // than something worth putting in a live chat. That belongs in the log.
+        assert_eq!(parse_reply("I'm not able to help with that."), None);
+        assert_eq!(parse_reply(""), None);
+        // Right key, wrong type — a reply that is an object is not a reply.
+        assert_eq!(parse_reply(r#"{"reply":{"text":"hi"}}"#), None);
+    }
+
+    #[test]
+    fn a_reply_longer_than_a_chat_line_holds_is_clipped() {
+        let long = "b".repeat(REPLY_CHARS + 50);
+        let answer = json!({ "reply": long }).to_string();
+        let reply = parse_reply(&answer).unwrap();
+        assert_eq!(reply.chars().count(), REPLY_CHARS + 1);
+        assert!(reply.ends_with('…'));
+    }
+
+    #[test]
+    fn a_multibyte_clip_does_not_panic() {
+        // Every one of these lengths has to survive: the byte-slicing version
+        // panicked whenever a character straddled the cut. From one rather than
+        // from zero, because an empty label is a different case — it falls back
+        // to "flagged", which is covered on its own above.
+        for len in 1..(LABEL_CHARS + 3) {
+            let text = "é".repeat(len);
+            let answer = json!({ "flagged": [{ "index": 1, "label": text, "reason": "r" }] }).to_string();
+            let label = parse_verdicts(&answer, 3)[0].label.clone();
+            assert!(label.chars().all(|c| c == 'é' || c == '…'), "{}", label);
+        }
     }
 }

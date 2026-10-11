@@ -51,7 +51,7 @@ if (tsc.status !== 0) {
   process.exit(1)
 }
 
-const { GIFT_SOUND_GAP_MS, GIFT_SOUND_GAIN, giftChord, giftPitch, shouldPlayGiftSound, CHAT_SOUND_GAP_MS, CHAT_NOTE_MS, chatBlip, shouldPlayChatSound, ttsText, TTS_MAX_CHARS, CHAT_TTS_GAP_MS, giftAnnouncement } = await import(
+const { GIFT_SOUND_GAP_MS, GIFT_SOUND_GAIN, giftChord, giftPitch, shouldPlayGiftSound, CHAT_SOUND_GAP_MS, CHAT_NOTE_MS, chatBlip, shouldPlayChatSound, JOIN_SOUND_GAP_MS, shouldPlayJoinSound, shouldPlaySound, ttsText, TTS_MAX_CHARS, CHAT_TTS_GAP_MS, giftAnnouncement } = await import(
   pathToFileURL(join(dir, 'lib', 'sound.js')).href
 )
 
@@ -106,6 +106,37 @@ check('the first message blips', shouldPlayChatSound(true, null, T0))
 check('a message inside the gap is dropped', !shouldPlayChatSound(true, T0, T0 + 100))
 check('the next one after the gap blips', shouldPlayChatSound(true, T0, T0 + CHAT_SOUND_GAP_MS))
 check('the gap is shorter than the gift gap, since chat is busier', CHAT_SOUND_GAP_MS < GIFT_SOUND_GAP_MS, String(CHAT_SOUND_GAP_MS))
+
+console.log('the join knock')
+check('off means silence', !shouldPlayJoinSound(false, null, T0))
+check('the first arrival is heard', shouldPlayJoinSound(true, null, T0))
+// TikTok batches its join events rather than sending one per viewer, so these
+// arrive in bursts. Without a gap a burst is a burst of sounds.
+check('a second arrival inside the gap is dropped', !shouldPlayJoinSound(true, T0, T0 + 100))
+check('and so is one a moment before it ends', !shouldPlayJoinSound(true, T0, T0 + JOIN_SOUND_GAP_MS - 1))
+check('the next one after the gap sounds', shouldPlayJoinSound(true, T0, T0 + JOIN_SOUND_GAP_MS))
+// An arrival is worth less attention than a message, so the gap is longer than
+// the blip's — but a person is not a gift, so it is shorter than the chime's.
+check('it waits longer than a chat blip does', JOIN_SOUND_GAP_MS > CHAT_SOUND_GAP_MS, String(JOIN_SOUND_GAP_MS))
+check('and less long than a gift chime does', JOIN_SOUND_GAP_MS < GIFT_SOUND_GAP_MS, String(JOIN_SOUND_GAP_MS))
+// Turning it off and back on must not inherit the gap: that is the one state the
+// shared helper cannot see, and it lives in the hook that clears it.
+check('nothing played yet is always allowed', shouldPlayJoinSound(true, null, T0 + 86_400_000))
+
+console.log('one gap rule, three events')
+// The three wrappers are the same decision with a different number. A fourth copy
+// of the rule is how two of them end up disagreeing about whether a first sound
+// is allowed, so they are checked against the one they delegate to.
+for (const [name, rule] of [
+  ['gift', shouldPlayGiftSound],
+  ['chat', shouldPlayChatSound],
+  ['join', shouldPlayJoinSound],
+]) {
+  check(`${name}: off is silence`, rule(false, null, T0) === shouldPlaySound(false, null, T0, 1000))
+  check(`${name}: the first is heard`, rule(true, null, T0) === shouldPlaySound(true, null, T0, 1000))
+  check(`${name}: inside the gap is dropped`, rule(true, T0, T0 + 999, 1000) === shouldPlaySound(true, T0, T0 + 999, 1000))
+  check(`${name}: at the gap is heard`, rule(true, T0, T0 + 1000, 1000) === shouldPlaySound(true, T0, T0 + 1000, 1000))
+}
 
 console.log('what gets spoken')
 check('an empty message speaks nothing', ttsText('ana', '   ', true) === '')

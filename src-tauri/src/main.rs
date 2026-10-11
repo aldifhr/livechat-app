@@ -12,6 +12,7 @@
 
 mod backend;
 mod llm;
+mod overlay;
 mod sound;
 mod speech;
 mod webhook;
@@ -68,35 +69,104 @@ async fn llm_models(base_url: String, api_key: String) -> Result<Vec<String>, St
     }
 }
 
-/// Asks the configured model a question about the room.
+/// The stored endpoint settings, or a reason there are none.
 ///
-/// The endpoint, the key and the model are read from disk here rather than sent in
-/// by the page, so the credential travels from the config file to the socket and
-/// nowhere else. It is the one asymmetry with `llm_models`, which has to take them
-/// from the page because its whole job is to test settings the user has not saved
-/// yet; nothing here is worth testing unsaved.
-///
-/// `context` is the chat excerpt the question is about, already chosen and trimmed
-/// by the page — deciding which messages are relevant is a reading decision, and
-/// it belongs where the feed is.
-#[tauri::command]
-async fn llm_chat(
-    app: tauri::AppHandle,
-    question: String,
-    context: Vec<String>,
-) -> Result<String, String> {
-    let question = question.trim();
-    if question.is_empty() {
-        return Err("nothing to ask".into());
-    }
-
-    let config = llm::read_config(&app);
+/// Shared by both AI commands because the credential is the reason this side owns
+/// the request at all: the endpoint, the key and the model are read from disk here
+/// rather than sent in by the page, so a key never travels anywhere but the config
+/// file and the socket. The three checks are the same for every caller, and a
+/// feature that answered "no endpoint configured" in one shape and "set one up
+/// first" in another is a feature whose error message cannot be quoted.
+fn configured_llm(app: &tauri::AppHandle) -> Result<llm::LlmConfig, String> {
+    let config = llm::read_config(app);
     if config.base_url.trim().is_empty() || config.api_key.trim().is_empty() {
         return Err("no endpoint configured — set one up under Model first".into());
     }
     if config.model.trim().is_empty() {
         return Err("no model selected — pick one under Model first".into());
     }
+    Ok(config)
+}
+
+/// Sends one batch of messages and returns what the model made of them.
+///
+/// The page decides which messages go out and numbers them; this side only sends
+/// them. That split is what keeps the feature cheap — a busy room would otherwise
+/// spend a request per message — and it keeps the mapping from an answer back onto
+/// rows where the rows live.
+///
+/// `count` is how many were sent. It is passed separately rather than derived from
+/// `messages` because the page caps a batch below the prompt's own limit, and an
+/// index outside the batch has to be dropped rather than acted on.
+#[tauri::command]
+async fn llm_moderate(
+    app: tauri::AppHandle,
+    messages: Vec<String>,
+    rules: String,
+    count: usize,
+) -> Result<Vec<llm::Verdict>, String> {
+    if messages.is_empty() {
+        return Err("nothing to moderate".into());
+    }
+    // The page's own number, capped to what it sent: an out-of-range index must
+    // not name a row, and a wrong `count` here would widen or narrow what is
+    // considered real.
+    let count = count.min(messages.len());
+
+    let config = configured_llm(&app)?;
+
+    let batch = messages.join("\n");
+    let extra = rules.trim();
+    let mut system = String::from(
+        "You moderate a live chat. Each line is one message, numbered from 1, as \
+         \"number: nickname: text\".\n\n\
+         Flag a message only when it would be harmful in a public live chat: \
+         harassment, slurs or hate, threats, sexual content involving minors, \
+         doxxing, or spam and scam links. Ordinary disagreement, jokes, swearing \
+         and plain rudeness are not harmful here.\n\n\
+         Answer with JSON and nothing else — no prose, no code fence: \
+         {\"flagged\":[{\"index\":<number>,\"label\":\"<short category>\",\
+         \"reason\":\"<why, one sentence>\"}]}\n\
+         \"flagged\" is an empty list when every message is fine.",
+    );
+    if !extra.is_empty() {
+        // The user's own rules, appended rather than substituted: they narrow what
+        // the model was told, and a streamer who says "swearing is fine here" is
+        // correcting the default rather than replacing the reasoning behind it.
+        system.push_str("\n\nThe streamer adds these rules for this room, which take precedence:");
+        system.push_str("\n");
+        system.push_str(extra);
+    }
+
+    let messages = vec![llm::Turn::system(system), llm::Turn::user(batch)];
+    let answer = match llm::chat(&config.base_url, &config.api_key, &config.model, &messages).await {
+        Ok(answer) => answer,
+        Err(llm::EndpointError::Unreachable(why)) => {
+            return Err(format!("could not reach {}: {why}", config.base_url))
+        }
+        Err(llm::EndpointError::Refused(why)) => return Err(why),
+    };
+
+    Ok(llm::parse_verdicts(&answer, count))
+}
+
+/// Asks the model whether it has anything to say, and returns what it said.
+///
+/// `None` is a real answer and the common one — the prompt asks for it by name,
+/// because a model that answers every time it is offered the room is spam with a
+/// latency. The page decides how often to offer it; this decides whether to take
+/// it.
+///
+/// `topic` is what the stream is: a title and a handle go a long way towards an
+/// answer that is about this room rather than about live chat in general.
+#[tauri::command]
+async fn llm_autoreply(
+    app: tauri::AppHandle,
+    context: Vec<String>,
+    topic: String,
+    persona: String,
+) -> Result<Option<String>, String> {
+    let config = configured_llm(&app)?;
 
     let transcript = if context.is_empty() {
         "(the chat is empty)".to_string()
@@ -104,22 +174,47 @@ async fn llm_chat(
         context.join("\n")
     };
 
-    let messages = vec![
-        llm::Turn::system(
-            "You are answering questions about a TikTok live chat, given an excerpt of it. \
-             Answer from the excerpt. If the excerpt does not say, say so plainly rather than \
-             guessing. Be brief: a couple of sentences at most.",
-        ),
-        llm::Turn::user(format!("Chat so far:\n{transcript}\n\nQuestion: {question}")),
-    ];
-
-    match llm::chat(&config.base_url, &config.api_key, &config.model, &messages).await {
-        Ok(answer) => Ok(answer),
-        Err(llm::EndpointError::Unreachable(why)) => {
-            Err(format!("could not reach {}: {why}", config.base_url))
-        }
-        Err(llm::EndpointError::Refused(why)) => Err(why),
+    let stream = topic.trim();
+    let mut system = String::from(
+        "You are the co-host of a live stream, talking to viewers in the chat as \
+         yourself.\n\n\
+         Be brief: one or two sentences, and never mention that you are an AI. \
+         Answer a viewer's question when they ask one, say nothing when there is \
+         nothing to say. Reply only when a viewer has asked something worth \
+         answering or the room has gone quiet enough to need a nudge — most of \
+         the time the right answer is to stay quiet.\n\n\
+         Answer with JSON and nothing else — no prose, no code fence: \
+         {\"reply\":\"what to post\"} to speak, or {\"reply\":null} to stay quiet.",
+    );
+    let extra = persona.trim();
+    if !extra.is_empty() {
+        system.push_str(
+            "\n\nThe streamer has asked you to behave like this, which takes precedence:",
+        );
+        system.push_str("\n");
+        system.push_str(extra);
     }
+
+    let mut user = String::new();
+    if !stream.is_empty() {
+        user.push_str("The stream: ");
+        user.push_str(stream);
+        user.push_str("\n\n");
+    }
+    user.push_str("Chat so far, one message per line as \"nickname: text\":\n");
+    user.push_str(&transcript);
+    user.push_str("\n\nSpeak now.");
+
+    let messages = vec![llm::Turn::system(system), llm::Turn::user(user)];
+    let answer = match llm::chat(&config.base_url, &config.api_key, &config.model, &messages).await {
+        Ok(answer) => answer,
+        Err(llm::EndpointError::Unreachable(why)) => {
+            return Err(format!("could not reach {}: {why}", config.base_url))
+        }
+        Err(llm::EndpointError::Refused(why)) => return Err(why),
+    };
+
+    Ok(llm::parse_reply(&answer))
 }
 
 /// The stored endpoint settings, or an empty one on first launch.
@@ -343,6 +438,131 @@ fn backend_disconnect(state: State<'_, AppState>, app: tauri::AppHandle) {
     state.backend.stop();
 }
 
+/// The overlay page, for the URL a streamer puts in OBS.
+///
+/// Built here rather than in the page because the two facts it needs are not the
+/// page's: the backend address lives in a config file and the handle the user
+/// typed lives in the toolbar's state. Everything else travels in the URL, so
+/// this is a URL with the two parts the page could not know appended — and
+/// `base` is left out entirely when it is the default, because a link with a
+/// parameter in it that everybody has is a link nobody reads.
+#[tauri::command]
+fn overlay_url(app: tauri::AppHandle, username: String, style: OverlayStyle) -> String {
+    let config = backend::read_config(&app);
+    let base = normalise_base(&config.base_url);
+    let mut url = format!("http://127.0.0.1:{}/", overlay::PORT);
+
+    let mut query: Vec<String> = Vec::new();
+    let handle = username.trim().trim_start_matches('@').to_string();
+    if !handle.is_empty() {
+        query.push(format!("room={}", encode_component(&handle)));
+    }
+    if base != backend::DEFAULT_BASE_URL {
+        query.push(format!("base={}", encode_component(&base)));
+    }
+    for (key, value) in [
+        ("size", style.size.to_string()),
+        ("max", style.max.to_string()),
+        ("bg", format!("{:.2}", style.bg)),
+        ("name", encode_component(&style.name_colour)),
+        ("color", encode_component(&style.text_colour)),
+        ("font", encode_component(&style.font)),
+    ] {
+        query.push(format!("{key}={value}"));
+    }
+
+    if !query.is_empty() {
+        url.push('?');
+        url.push_str(&query.join("&"));
+    }
+    url
+}
+
+/// Whether the overlay server is actually answering.
+///
+/// A poll rather than a flag, because "the port is bound" and "the port is mine"
+/// are different claims: something else on the machine can hold 4319, and a
+/// streamer who has been told the overlay is ready and then watches nothing is
+/// worse off than one who is told it is not.
+#[tauri::command]
+async fn overlay_running() -> bool {
+    let url = format!("http://127.0.0.1:{}/health", overlay::PORT);
+    match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(2))
+        .build()
+    {
+        Ok(client) => matches!(client.get(url).send().await, Ok(response) if response.status().is_success()),
+        Err(_) => false,
+    }
+}
+
+/// The styling a link carries, narrowed to the types the page understands.
+///
+/// Narrowed here because this comes from the page and `url` pastes most of it
+/// into a URL: a colour of `red; background: url(...)` is a query parameter that
+/// the page would put straight into a style attribute.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OverlayStyle {
+    #[serde(default = "default_overlay_size")]
+    size: u32,
+    #[serde(default = "default_overlay_max")]
+    max: u32,
+    #[serde(default)]
+    bg: f32,
+    #[serde(default = "default_name_colour")]
+    name_colour: String,
+    #[serde(default = "default_text_colour")]
+    text_colour: String,
+    #[serde(default = "default_overlay_font")]
+    font: String,
+}
+
+fn default_overlay_size() -> u32 {
+    22
+}
+fn default_overlay_max() -> u32 {
+    8
+}
+fn default_name_colour() -> String {
+    "#ffd76a".into()
+}
+fn default_text_colour() -> String {
+    "#ffffff".into()
+}
+fn default_overlay_font() -> String {
+    // The double quotes are part of the value: this is a font *stack*, and CSS
+    // only treats a multi-word family name as one name when it is quoted.
+    r#""Segoe UI", system-ui, sans-serif"#.into()
+}
+
+/// Percent-encodes the few characters that would otherwise end a query value.
+fn encode_component(value: &str) -> String {
+    value
+        .chars()
+        .map(|c| match c {
+            'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' | '.' | '~' => c.to_string(),
+            // Space as `+` rather than `%20` because that is what a form encodes
+            // it as, and the font stack is mostly spaces.
+            ' ' => "+".to_string(),
+            other => other
+                .to_string()
+                .bytes()
+                .map(|b| format!("%{b:02X}"))
+                .collect::<String>(),
+        })
+        .collect()
+}
+
+fn normalise_base(base: &str) -> String {
+    let trimmed = base.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        backend::DEFAULT_BASE_URL.to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
 /// The tray icon and its menu.
 ///
 /// Exists because closing the window now only hides it � without somewhere to
@@ -423,7 +643,8 @@ fn main() {
         set_always_on_top,
         notify,
         llm_models,
-        llm_chat,
+        llm_moderate,
+        llm_autoreply,
         llm_config_get,
         llm_config_save,
         llm_config_clear,
@@ -437,7 +658,9 @@ fn main() {
         backend_config_get,
         backend_config_save,
         backend_connect,
-        backend_disconnect
+        backend_disconnect,
+        overlay_url,
+        overlay_running
     ])
         .setup(|app| {
             // Closing the window hides it rather than ending the app, so a stream keeps
@@ -449,6 +672,36 @@ fn main() {
             // asset scope is empty on a fresh launch, so without this a saved
             // custom sound would stop playing after a restart.
             sound::regrant(app.handle());
+
+            // The overlay server, started whether or not anybody is going to use
+            // it — the URL a streamer copies has to be true at the moment they
+            // copy it, and asking them to start it first is a step that gets
+            // forgotten until the stream is about to begin.
+            //
+            // Spawned rather than awaited, and a failure is reported rather than
+            // propagated: a port already in use is something the streamer needs to
+            // know about and can fix, and it must not be the reason the app does
+            // not open.
+            let handle_for_overlay = app.handle().clone();
+            let overlay_config = backend::read_config(app.handle());
+            tauri::async_runtime::spawn(async move {
+                let defaults = overlay::OverlayDefaults {
+                    base_url: normalise_base(&overlay_config.base_url),
+                    username: overlay_config.username,
+                    port: overlay::PORT,
+                };
+                if let Err(why) = overlay::serve(defaults).await {
+                    let _ = handle_for_overlay.emit(
+                        overlay::EVENT,
+                        serde_json::json!({
+                            "type": "log",
+                            "platform": "bridge",
+                            "level": "warn",
+                            "message": format!("chat overlay is not serving: {why}")
+                        }),
+                    );
+                }
+            });
 
             let handle = app.handle().clone();
             if let Some(window) = app.get_webview_window("main") {

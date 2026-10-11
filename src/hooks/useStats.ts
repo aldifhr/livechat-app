@@ -169,11 +169,11 @@ export function createStats(): StatsRecorder {
     // people the switch below already counted.
     if (item.kind === 'like' || item.kind === 'join') return
 
-    // An ask or an answer is the reader talking to the model, not the room
-    // talking. Counting them would climb the message total and put the model on
-    // the chatters leaderboard for questions it was asked — both are numbers
-    // about the room, and neither of these is the room.
-    if (item.kind === 'ask' || item.kind === 'answer') return
+    // An answer is the model talking in the room, not the room talking. Counting
+    // it would climb the message total and put the model on the chatters
+    // leaderboard for every answer it gave — both are numbers about the room, and
+    // neither of these is the room.
+    if (item.kind === 'answer') return
 
     const chatter = chatterFor(item)
 

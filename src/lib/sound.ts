@@ -24,22 +24,39 @@ export const GIFT_SOUND_GAIN = 0.18
 const GIFT_BASE_HZ = 659.25
 
 /**
- * Whether a gift arriving now is worth hearing.
+ * Whether an event arriving now is worth hearing.
+ *
+ * One function for every sound the app makes, because it is the same decision
+ * with a different number: the only thing a gap does is answer "was the last one
+ * recent enough that this would be part of it", and that question has three
+ * answers that differ only by a constant. Each event keeps its own name and its
+ * own default below, because the number is the part worth reading off the
+ * settings rather than re-deriving at the call site.
  *
  * `lastPlayedAt` is null before anything has played this session, and that case
- * is deliberately always allowed: a gift in a quiet room is the whole point of
- * the feature, and a gap measured from the start of time would let the first one
+ * is deliberately always allowed: the first gift in a quiet room is the whole
+ * point of the feature, and a gap measured from the start of time would let it
  * through by accident rather than by decision.
  */
+export function shouldPlaySound(
+  enabled: boolean,
+  lastPlayedAt: number | null,
+  now: number,
+  gapMs: number,
+): boolean {
+  if (!enabled) return false
+  if (lastPlayedAt === null) return true
+  return now - lastPlayedAt >= gapMs
+}
+
+/** Whether a gift arriving now is worth hearing. */
 export function shouldPlayGiftSound(
   enabled: boolean,
   lastPlayedAt: number | null,
   now: number,
   gapMs: number = GIFT_SOUND_GAP_MS,
 ): boolean {
-  if (!enabled) return false
-  if (lastPlayedAt === null) return true
-  return now - lastPlayedAt >= gapMs
+  return shouldPlaySound(enabled, lastPlayedAt, now, gapMs)
 }
 
 /**
@@ -100,16 +117,40 @@ export function chatBlip(): { frequency: number; gain: number; durationMs: numbe
  */
 export const CHAT_SOUND_GAP_MS = 500
 
-/** Whether a chat message arriving now is worth a blip. Same shape as the gift one. */
+/** Whether a chat message arriving now is worth a blip. */
 export function shouldPlayChatSound(
   enabled: boolean,
   lastPlayedAt: number | null,
   now: number,
   gapMs: number = CHAT_SOUND_GAP_MS,
 ): boolean {
-  if (!enabled) return false
-  if (lastPlayedAt === null) return true
-  return now - lastPlayedAt >= gapMs
+  return shouldPlaySound(enabled, lastPlayedAt, now, gapMs)
+}
+
+/**
+ * Shortest gap between two join sounds.
+ *
+ * Longer than the chat blip's, because an arrival is worth less attention than a
+ * message: a room filling up is not news, and a tap for every one of them says
+ * "something is happening" without ever saying what. Shorter than the gift's,
+ * because the two are not the same kind of event — a gift is worth money, and a
+ * join is worth a person, and the second should not have to wait four seconds for
+ * the room to notice it.
+ *
+ * Not a correction for joins being frequent. TikTok batches its join events
+ * rather than sending one per viewer, so they already arrive far apart; this is
+ * here for the case where that stops being true, not to thin out a trickle.
+ */
+export const JOIN_SOUND_GAP_MS = 2000
+
+/** Whether a viewer arriving now is worth a sound. */
+export function shouldPlayJoinSound(
+  enabled: boolean,
+  lastPlayedAt: number | null,
+  now: number,
+  gapMs: number = JOIN_SOUND_GAP_MS,
+): boolean {
+  return shouldPlaySound(enabled, lastPlayedAt, now, gapMs)
 }
 
 /**

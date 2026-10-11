@@ -29,7 +29,11 @@ reqwest = { version = "0.12", features = ["json"] }
 # One stack means one trust store and nothing to install at startup. On Windows
 # both end up on Schannel, the same implementation the webview already trusts.
 tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
-tokio = { version = "1", features = ["time"] }
+# `net`/`io-util` for the overlay's HTTP server, `rt` because the listener needs a
+# reactor to park on, and `macros` for `#[tokio::test]`. All of them ride along
+# with what Tauri already pulls in; they are named so the reason is here rather
+# than inferred from a missing feature error.
+tokio = { version = "1", features = ["time", "net", "io-util", "rt", "macros"] }
 # Already in the tree through reqwest and Tauri; pulled in directly because the
 # socket is read through the `Stream` interface.
 futures-util = { version = "0.3", default-features = false, features = ["std"] }

@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { attach, detachHandler, host, type FramePlatform, type SidecarEvent } from '../lib/sidecar'
-import { chatContext } from '../lib/llm'
 import { useFeed, type FeedInput } from './useFeed'
 import { useHealth } from './useHealth'
 import { useLog } from './useLog'
 import { createStats, type StatsRecorder } from './useStats'
-import { IDLE_ROOM, type FeedItem, type RoomState } from '../types'
+import { IDLE_ROOM, type FeedItem, type ModerationMark, type RoomState } from '../types'
 
 export interface UseChatOptions {
   collapseWindowMs: number
@@ -18,17 +17,18 @@ export interface UseChatResult {
   totalReceived: number
   clear: () => void
   /**
-   * Asks the configured model about the room and puts both the question and the
-   * answer in the feed, as if the model were just another chatter.
+   * Writes a row the app invented rather than received.
    *
-   * The question is pushed immediately so the user sees it land before the round
-   * trip; the answer arrives later and is pushed when it does. Neither goes
-   * through `stats.record`, so a question is not counted as a chat message and
-   * the model does not appear on the chatters leaderboard — it is not a viewer.
+   * Skips the counters on purpose: a model's answer is not a chat message and the
+   * model is not a viewer, so a "Messages" total that climbs because the AI spoke
+   * is a total that lies about the room, and the chatters board that answers to it
+   * would list a bot.
    */
-  ask: (question: string) => Promise<void>
-  /** True while a question is in flight, so the input can show it. */
-  asking: boolean
+  post: (item: FeedInput) => void
+  /** Takes rows out of the feed by key. How strict moderation blocks a message. */
+  remove: (keys: ReadonlySet<string>) => void
+  /** Attaches a verdict to rows already on screen. How flagging marks one. */
+  mark: (entries: readonly { key: string; moderation: ModerationMark }[]) => void
   log: ReturnType<typeof useLog>
   /** Whether the room is still talking. */
   health: ReturnType<typeof useHealth>['health']
@@ -43,7 +43,15 @@ function roomOf(platform: FramePlatform): boolean {
 
 export function useChat({ collapseWindowMs, collapseThreshold }: UseChatOptions): UseChatResult {
   const [room, setRoom] = useState<RoomState>(IDLE_ROOM)
-  const { items, push, clear: clearFeed, totalReceived } = useFeed({
+  const {
+    items,
+    push,
+    post,
+    remove,
+    mark,
+    clear: clearFeed,
+    totalReceived,
+  } = useFeed({
     windowMs: collapseWindowMs,
     threshold: collapseThreshold,
   })
@@ -91,68 +99,11 @@ export function useChat({ collapseWindowMs, collapseThreshold }: UseChatOptions)
   )
 
   /*
-   * Asking the model, and putting the exchange in the feed.
-   *
-   * The question lands immediately so the user sees their own words before the
-   * round trip; the answer lands when it returns. Both go through `push` rather
-   * than `emit`, so neither is counted as a chat event and the model never joins
-   * the chatters leaderboard — it is not a viewer, and a "message" total that
-   * climbs because you asked a question is a total that lies about the room.
-   *
-   * On failure the answer row is still written, carrying the reason: a question
-   * that silently vanishes reads as a hung app, while one that comes back
-   * "could not reach the endpoint" is a state the user can act on.
+   * The two hooks below are handed the feed's write functions rather than being
+   * wired into the event path. A model's answer, a blocked message and a flagged
+   * row are all decisions made *after* an event has already been shown, and
+   * putting any of them here would mean a slow provider could hold up the feed.
    */
-  const [asking, setAsking] = useState(false)
-  const itemsRef = useRef(items)
-  itemsRef.current = items
-
-  const ask = useCallback(
-    async (question: string) => {
-      const asked = question.trim()
-      if (asked === '' || asking) return
-      setAsking(true)
-      const at = Date.now()
-      // Pushed before the call so the feed scrolls to it as it would to any new
-      // row, rather than jumping twice — once for the question, once for the
-      // answer.
-      push({
-        platform: 'tiktok',
-        kind: 'ask',
-        nickname: 'You',
-        id: 'you',
-        avatar: '',
-        timestamp: at,
-        text: asked,
-      })
-      try {
-        const context = chatContext(itemsRef.current)
-        const answer = await host.llmChat(asked, context)
-        push({
-          platform: 'tiktok',
-          kind: 'answer',
-          nickname: 'AI',
-          id: 'ai',
-          avatar: '',
-          timestamp: Date.now(),
-          text: answer.trim() === '' ? 'The model answered with nothing.' : answer,
-        })
-      } catch (error: unknown) {
-        push({
-          platform: 'tiktok',
-          kind: 'answer',
-          nickname: 'AI',
-          id: 'ai',
-          avatar: '',
-          timestamp: Date.now(),
-          text: `Could not ask: ${message(error)}`,
-        })
-      } finally {
-        setAsking(false)
-      }
-    },
-    [asking, push],
-  )
 
   // Read inside the event handler to tell a dropped connection from a
   const handle = useCallback(
@@ -310,16 +261,9 @@ export function useChat({ collapseWindowMs, collapseThreshold }: UseChatOptions)
   }, [])
 
   return useMemo(
-    () => ({ room, items, totalReceived, clear, ask, asking, health, log: { ...log, tallies }, stats }),
-    [room, items, totalReceived, clear, ask, asking, health, log, tallies, stats],
+    () => ({ room, items, totalReceived, clear, post, remove, mark, health, log: { ...log, tallies }, stats }),
+    [room, items, totalReceived, clear, post, remove, mark, health, log, tallies, stats],
   )
 }
 
 export { host }
-
-/** Whatever the rejection was, as one line worth showing. */
-function message(error: unknown): string {
-  if (typeof error === 'string') return error
-  if (error instanceof Error) return error.message
-  return String(error)
-}

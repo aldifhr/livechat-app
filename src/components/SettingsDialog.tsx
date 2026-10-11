@@ -1,6 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { host } from '../lib/sidecar'
 import { EMPTY_CONFIG, EXAMPLE_BASE_URL, isReady, modelOptions, normaliseBaseUrl, type LlmConfig } from '../lib/llm'
+import {
+  clampNumber,
+  clampRows,
+  OVERLAY_MAX_ROWS,
+  OVERLAY_PORT,
+  OVERLAY_SIZE,
+  type OverlayStyle,
+} from '../lib/overlay'
+import {
+  clampSeconds,
+  MODERATION_INTERVAL_MS,
+  MODERATION_MODES,
+  REPLY_MAX_SECONDS,
+  REPLY_MIN_SECONDS,
+} from '../lib/ai'
 import { DENSITIES, FONTS, THEMES } from '../lib/theme'
 import { TEMPLATES } from '../lib/templates'
 import { invalidateCustomSound, playSound, resolveAudio, releaseAudio } from '../lib/player'
@@ -30,6 +45,14 @@ type Status =
 interface Props {
   open: boolean
   settings: UseSettingsResult
+  /**
+   * The room the app is reading, for the overlay link.
+   *
+   * Passed in rather than read from a module: the overlay is pointed at whatever
+   * this window is pointed at, and a link naming a different room is a link that
+   * shows somebody else's chat on somebody's stream.
+   */
+  roomTarget?: string
   onClose: () => void
 }
 
@@ -37,7 +60,6 @@ interface Props {
 const PANEL_TOGGLES: { key: keyof ViewSettings; label: string; hint: string }[] = [
   { key: 'showStats', label: 'Stats panel', hint: 'Session numbers below the chat' },
   { key: 'showLog', label: 'Log panel', hint: 'What the bridge reported, below the chat' },
-  { key: 'showAsk', label: 'Ask panel', hint: 'Ask the model about the chat, below the chat' },
 ]
 
 const FEED_TOGGLES: { key: keyof ViewSettings; label: string; hint: string }[] = [
@@ -47,6 +69,7 @@ const FEED_TOGGLES: { key: keyof ViewSettings; label: string; hint: string }[] =
   { key: 'showModeratorBadge', label: 'Moderator badge', hint: 'Show the MOD badge on chat rows' },
   { key: 'alwaysOnTop', label: 'On top', hint: 'Keep the window above others' },
   { key: 'giftSound', label: 'Gift sound', hint: 'Chime when a gift arrives' },
+  { key: 'joinSound', label: 'Join sound', hint: 'A soft tap when somebody new arrives' },
   { key: 'giftNotice', label: 'Gift notice', hint: 'Raise a desktop toast when a gift arrives' },
   { key: 'giftVoice', label: 'Say gifts', hint: 'Announce each gift with the neural voice' },
   { key: 'mentionAlert', label: 'Mention alert', hint: 'A sound when a message names you' },
@@ -78,13 +101,19 @@ const ALERT_TOGGLES: {
   },
 ]
 
-export function SettingsDialog({ open, settings, onClose }: Props) {
+export function SettingsDialog({ open, settings, roomTarget = '', onClose }: Props) {
   const [config, setConfig] = useState<LlmConfig>(EMPTY_CONFIG)
   const [models, setModels] = useState<string[]>([])
   const [status, setStatus] = useState<Status>({ kind: 'idle', text: '' })
   const [revealKey, setRevealKey] = useState(false)
-  const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
+const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
   const [revealToken, setRevealToken] = useState(false)
+  // The overlay's own status and link. Separate from `status`, which belongs to
+  // the model fields above: one is "can I save a key", the other is "is there a
+  // server for OBS to talk to", and sharing a line between them means one of
+  // them overwrites the other's answer.
+  const [overlayStatus, setOverlayStatus] = useState<Status>({ kind: 'idle', text: '' })
+  const [overlayUrl, setOverlayUrl] = useState('')
   // A preview context, separate from the one the alerts use, so previewing a
   // sound does not compete with a gift that fires while the dialog is open.
   const previewContextRef = useRef<AudioContext | null>(null)
@@ -262,6 +291,86 @@ export function SettingsDialog({ open, settings, onClose }: Props) {
     invalidateCustomSound()
     settings.set('customSoundPath', '')
     setStatus({ kind: 'ok', text: 'Back to the built-in sounds.' })
+  }
+
+  /** The styling, as the host wants it: one object rather than six fields. */
+  function overlayStyle(): OverlayStyle {
+    return {
+      size: settings.overlaySize,
+      max: settings.overlayMax,
+      bg: settings.overlayBg,
+      nameColour: settings.overlayNameColour,
+      textColour: settings.overlayTextColour,
+      font: settings.overlayFont,
+    }
+  }
+
+  /**
+   * Builds the link and puts it on the clipboard.
+   *
+   * Both in one action on purpose. A button that only built it would leave the
+   * one step that actually matters — getting it into OBS — as something to do by
+   * hand, right when the link has styling in it that is tedious to retype.
+   *
+   * Clipboard access is not something the page can count on: the permission is
+   * asked for and can be refused, and a webview with no focus never gets it. So
+   * the URL is shown as well as copied, and a failure says so rather than leaving
+   * a button that looks like it worked.
+   */
+  async function copyOverlayLink() {
+    setOverlayStatus({ kind: 'busy', text: 'Building the link…' })
+    try {
+      const url = await host.overlayUrl(roomTarget, overlayStyle())
+      if (!alive.current) return
+      setOverlayUrl(url)
+      try {
+        await navigator.clipboard.writeText(url)
+        if (!alive.current) return
+        setOverlayStatus({
+          kind: 'ok',
+          text: `Copied. Add a Browser source in OBS and paste it in.${roomTarget ? '' : ' Set a handle above first.'}`,
+        })
+      } catch {
+        if (!alive.current) return
+        setOverlayStatus({ kind: 'error', text: 'Could not reach the clipboard — copy the link below.' })
+      }
+    } catch (error: unknown) {
+      if (!alive.current) return
+      setOverlayStatus({ kind: 'error', text: message(error) })
+    }
+  }
+
+  /**
+   * Asks the host whether the overlay server is answering.
+   *
+   * Offered as a button rather than shown as a standing status because the two
+   * failures it distinguishes — not running, and something else holding the port
+   * — need different answers, and only this can tell them apart.
+   */
+  async function checkOverlay() {
+    setOverlayStatus({ kind: 'busy', text: 'Checking…' })
+    try {
+      const running = await host.overlayRunning()
+      if (!alive.current) return
+      setOverlayStatus(
+        running
+          ? { kind: 'ok', text: `Serving on port ${OVERLAY_PORT}.` }
+          : {
+              kind: 'error',
+              text: `Nothing is answering on port ${OVERLAY_PORT} — either this app could not bind it, or something else already has it.`,
+            },
+      )
+    } catch (error: unknown) {
+      if (!alive.current) return
+      setOverlayStatus({ kind: 'error', text: message(error) })
+    }
+  }
+
+  function openOverlay(url: string) {
+    // The overlay is this app's own loopback page, and the host's opener refuses
+    // everything but TikTok. Which means opening it from here has to go through
+    // the webview, not the host.
+    window.open(url, '_blank', 'noopener')
   }
 
   if (!open) return null
@@ -442,6 +551,27 @@ export function SettingsDialog({ open, settings, onClose }: Props) {
                 </button>
               </span>
             </label>
+
+            <label className="field">
+              <span className="field-label">Join knock</span>
+              <span className="field-row">
+                <select
+                  className="input"
+                  value={settings.joinTemplate}
+                  onChange={(e) => settings.set('joinTemplate', e.target.value)}
+                >
+                  {TEMPLATES.map((t) => (
+                    <option key={t.id} value={t.id} title={t.hint}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+                <button className="btn btn-small" onClick={() => preview(settings.joinTemplate)} title="Hear it">
+                  ▶
+                </button>
+              </span>
+              <span className="field-note">Played at most every couple of seconds, however many arrive.</span>
+            </label>
           </div>
 
           <div className="field">
@@ -615,6 +745,217 @@ export function SettingsDialog({ open, settings, onClose }: Props) {
             <button className="btn btn-primary btn-small" onClick={saveModel} disabled={status.kind === 'busy'}>
               Save model
             </button>
+          </div>
+        </section>
+
+        <section className="settings-section" data-section="moderation">
+          <h3 className="settings-heading">Content moderation</h3>
+          <p className="modal-hint">
+            Every {MODERATION_INTERVAL_MS / 1000} seconds the messages nobody has looked at yet go to
+            the model in one batch, and it names the ones worth acting on. Uses the model set up
+            above, and nothing is sent while it is off.
+          </p>
+
+          <label className="field">
+            <span className="field-label">When a message is flagged</span>
+            <select
+              className="input"
+              value={settings.moderation}
+              onChange={(e) => settings.set('moderation', e.target.value as ViewSettings['moderation'])}
+            >
+              {MODERATION_MODES.map((mode) => (
+                <option key={mode.id} value={mode.id} title={mode.hint}>
+                  {mode.label}
+                </option>
+              ))}
+            </select>
+            <span className="field-note">
+              {settings.moderation === 'block'
+                ? 'Flagged messages leave the feed. Each one is recorded in the log panel, with who sent it.'
+                : settings.moderation === 'flag'
+                  ? 'Flagged messages stay on screen, marked with the reason. You decide what to do about them.'
+                  : 'Nothing is sent to the model.'}
+            </span>
+          </label>
+
+          <label className="field">
+            <span className="field-label">Your rules</span>
+            <textarea
+              className="input"
+              rows={3}
+              placeholder="Swearing is fine. Links to gift-card sites are not."
+              value={settings.moderationRules}
+              onChange={(e) => settings.set('moderationRules', e.target.value)}
+            />
+            <span className="field-note">
+              Added to the model&rsquo;s own judgement, which takes these over. Leave empty for the
+              defaults.
+            </span>
+          </label>
+        </section>
+
+<section className="settings-section" data-section="replies">
+          <h3 className="settings-heading">AI answers</h3>
+          <p className="modal-hint">
+            The model reads the same chat and answers on its own, so the room keeps moving while you
+            are busy. It is told it may stay quiet, and usually does; what it does say appears in the
+            feed as an AI row. This is the one that costs a request — the greeting bot
+            in Panels above is free and only fires on &ldquo;hi&rdquo;.
+          </p>
+
+          <div className="settings-toggles">
+            <label className="toggle" title="Let the model answer viewers without being asked">
+              <input
+                type="checkbox"
+                checked={settings.aiReply}
+                onChange={(e) => settings.set('aiReply', e.target.checked)}
+              />
+              <span>Let the model answer</span>
+            </label>
+          </div>
+
+          <label className="field">
+            <span className="field-label">Seconds between answers</span>
+            <input
+              className="input"
+              type="number"
+              min={REPLY_MIN_SECONDS}
+              max={REPLY_MAX_SECONDS}
+              step={5}
+              value={settings.aiReplySeconds}
+              onChange={(e) => settings.set('aiReplySeconds', clampSeconds(Number(e.target.value)))}
+            />
+            <span className="field-note">
+              A floor, not a schedule. Between {REPLY_MIN_SECONDS} and {REPLY_MAX_SECONDS} seconds;
+              the model decides whether to say anything at all.
+            </span>
+          </label>
+
+          <label className="field">
+            <span className="field-label">How it should behave</span>
+            <textarea
+              className="input"
+              rows={3}
+              placeholder="Keep it dry. Never answer anything about how much we have."
+              value={settings.aiReplyPersona}
+              onChange={(e) => settings.set('aiReplyPersona', e.target.value)}
+            />
+            <span className="field-note">
+              Added to the model&rsquo;s own instructions, which take these over. Leave empty for the
+              defaults.
+            </span>
+          </label>
+        </section>
+      <section className="settings-section" data-section="overlay">
+          <h3 className="settings-heading">Stream overlay</h3>
+          <p className="modal-hint">
+            A chat you can put straight on the stream. Copy the link, add a{' '}
+            <strong>Browser</strong> source in OBS, paste it in, and leave it. It reads the same chat
+            straight from the backend, so it keeps working while this window is closed.
+          </p>
+
+          <div className="settings-grid">
+            <label className="field">
+              <span className="field-label">Text size</span>
+              <input
+                className="input"
+                type="number"
+                min={OVERLAY_SIZE.min}
+                max={OVERLAY_SIZE.max}
+                value={settings.overlaySize}
+                onChange={(e) =>
+                  settings.set('overlaySize', clampNumber(e.target.value, OVERLAY_SIZE.min, OVERLAY_SIZE.max, 22))
+                }
+              />
+            </label>
+
+            <label className="field">
+              <span className="field-label">Messages on screen</span>
+              <input
+                className="input"
+                type="number"
+                min={OVERLAY_MAX_ROWS.min}
+                max={OVERLAY_MAX_ROWS.max}
+                value={settings.overlayMax}
+                onChange={(e) => settings.set('overlayMax', clampRows(e.target.value, 8))}
+              />
+            </label>
+
+            <label className="field">
+              <span className="field-label">Name colour</span>
+              <input
+                className="input overlay-colour"
+                type="color"
+                value={settings.overlayNameColour}
+                onChange={(e) => settings.set('overlayNameColour', e.target.value)}
+              />
+            </label>
+
+            <label className="field">
+              <span className="field-label">Text colour</span>
+              <input
+                className="input overlay-colour"
+                type="color"
+                value={settings.overlayTextColour}
+                onChange={(e) => settings.set('overlayTextColour', e.target.value)}
+              />
+            </label>
+
+            <label className="field">
+              <span className="field-label">Background</span>
+              <input
+                className="input"
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                value={Math.round(settings.overlayBg * 100)}
+                onChange={(e) => settings.set('overlayBg', clampNumber(e.target.value, 0, 100, 0) / 100)}
+              />
+              <span className="field-note">
+                {settings.overlayBg === 0
+                  ? 'None — the video shows through.'
+                  : `${Math.round(settings.overlayBg * 100)}% black behind each line.`}
+              </span>
+            </label>
+          </div>
+
+          <label className="field">
+            <span className="field-label">Font</span>
+            <input
+              className="input"
+              placeholder='"Segoe UI", system-ui, sans-serif'
+              value={settings.overlayFont}
+              onChange={(e) => settings.set('overlayFont', e.target.value)}
+              spellCheck={false}
+              autoComplete="off"
+            />
+            <span className="field-note">
+              A CSS font stack. A name with spaces in it has to be quoted, the way CSS wants it.
+            </span>
+          </label>
+
+          <div className="field">
+            <span className="field-label">Link for OBS</span>
+            <span className="field-row">
+              <button
+                className="btn btn-small btn-primary"
+                onClick={copyOverlayLink}
+                disabled={overlayStatus.kind === 'busy'}
+              >
+                {overlayStatus.kind === 'busy' ? 'Copying…' : 'Copy link'}
+              </button>
+              <button className="btn btn-small" onClick={checkOverlay} disabled={overlayStatus.kind === 'busy'}>
+                Check server
+              </button>
+              {overlayUrl !== '' && (
+                <button className="btn btn-small" onClick={() => openOverlay(overlayUrl)} title="Open it in a browser">
+                  Preview
+                </button>
+              )}
+            </span>
+            <span className="field-note">{overlayStatus.text}</span>
+            {overlayUrl !== '' && <code className="overlay-url">{overlayUrl}</code>}
           </div>
         </section>
       </div>

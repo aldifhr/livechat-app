@@ -9,6 +9,8 @@
 
 import type { LlmConfig } from './llm'
 import type { WebhookConfig, WebhookGift } from './webhook'
+import type { ModerationVerdict } from './ai'
+import type { OverlayStyle } from './overlay'
 import type { BackendConfig } from './backend'
 
 type EventHandler = (event: SidecarEvent) => void
@@ -110,7 +112,8 @@ type HostCommand =
   | 'webhook_test'
   | 'webhook_send'
   | 'llm_models'
-  | 'llm_chat'
+  | 'llm_moderate'
+  | 'llm_autoreply'
   | 'llm_config_get'
   | 'llm_config_save'
   | 'llm_config_clear'
@@ -118,6 +121,8 @@ type HostCommand =
   | 'backend_config_save'
   | 'backend_connect'
   | 'backend_disconnect'
+  | 'overlay_url'
+  | 'overlay_running'
 
 /**
  * How the UI reaches the host.
@@ -382,18 +387,52 @@ export const host = {
     return Array.isArray(models) ? models.filter((m): m is string => typeof m === 'string') : []
   },
   /**
-   * Asks the configured model a question about the room.
+   * Asks the model what it makes of a batch of messages.
    *
    * The endpoint, the key and the model are not arguments: the host reads them
    * from its own config, so a credential is never handed back to the page in
-   * order to be used. What the page does send is the excerpt the question is
-   * about, because choosing which messages are relevant is a reading decision and
-   * it belongs where the feed is.
+   * order to be used. What the page does send is the batch it chose, already
+   * numbered — deciding which messages are worth judging is a reading decision,
+   * and it belongs where the feed is.
+   *
+   * `count` is sent alongside the lines rather than left for the host to count.
+   * The host caps it at what it was actually given, which is what makes an index
+   * outside the batch impossible to act on: the worst a confused model can do is
+   * name a row that was in front of it.
    */
-  llmChat: async (question: string, context: string[]): Promise<string> => {
+  llmModerate: async (messages: string[], rules: string): Promise<ModerationVerdict[]> => {
     const resolved = await resolve()
-    const answer = await resolved.invoke('llm_chat', { question, context })
-    return typeof answer === 'string' ? answer : ''
+    const verdicts = await resolved.invoke('llm_moderate', { messages, rules, count: messages.length })
+    // Narrowed field by field rather than trusted: `invoke` is typed `unknown`
+    // because it is the transport, not this contract, and a host that answered
+    // with something else entirely must not have the feed index into it.
+    if (!Array.isArray(verdicts)) return []
+    return verdicts.flatMap((verdict) => {
+      const entry = verdict as Partial<ModerationVerdict> | null
+      if (typeof entry?.index !== 'number' || !Number.isInteger(entry.index) || entry.index < 0) return []
+      return [
+        {
+          index: entry.index,
+          label: typeof entry.label === 'string' ? entry.label : 'flagged',
+          reason: typeof entry.reason === 'string' ? entry.reason : '',
+        },
+      ]
+    })
+  },
+  /**
+   * Asks the model whether it has anything to say about the room.
+   *
+   * `null` is an answer, not a failure: the model is asked for it by name, and
+   * `null` is what comes back most of the time. A host that rejected the request
+   * throws instead, which is how the two stay apart.
+   */
+  llmAutoReply: async (context: string[], topic: string, persona: string): Promise<string | null> => {
+    const resolved = await resolve()
+    const reply = await resolved.invoke('llm_autoreply', { context, topic, persona })
+    // Anything that is not a non-empty string is silence. The host only ever
+    // answers with one of the two, but the two must not collapse into each other
+    // here: posting an empty row is worse than posting nothing.
+    return typeof reply === 'string' && reply.trim() !== '' ? reply.trim() : null
   },
   llmConfigGet: async (): Promise<LlmConfig> => {
     const resolved = await resolve()
@@ -450,5 +489,30 @@ export const host = {
   backendDisconnect: async (): Promise<void> => {
     const resolved = await resolve()
     await resolved.invoke('backend_disconnect')
+  },
+  /**
+   * The link to paste into OBS, with the styling carried in it.
+   *
+   * Built host-side because two of its parts are not the page's: the backend
+   * address is a file on disk and the handle is whatever was typed into the
+   * toolbar. Both of those would otherwise have to be kept in step with a second
+   * copy in the frontend, and a link pointing at a different backend than the app
+   * is reading is a link that shows an empty chat for reasons nobody can see.
+   */
+  overlayUrl: async (username: string, style: OverlayStyle): Promise<string> => {
+    const resolved = await resolve()
+    const url = await resolved.invoke('overlay_url', { username, style })
+    return typeof url === 'string' ? url : ''
+  },
+  /**
+   * Whether the overlay server is answering.
+   *
+   * `false` means either that it is not running or that something else has the
+   * port — both of which a streamer needs to know before a stream rather than
+   * during one, which is why this is asked rather than assumed.
+   */
+  overlayRunning: async (): Promise<boolean> => {
+    const resolved = await resolve()
+    return await resolved.invoke('overlay_running') === true
   },
 }

@@ -674,103 +674,6 @@ check('the rate is over the last minute', tile('Per minute') === '4', tile('Per 
 // rather than as anything a user could name.
 check('one subscription, however many components asked for one', tile('Messages') === '3' && tile('Gifts') === '1', `${tile('Messages')} messages / ${tile('Gifts')} gifts`)
 
-console.log('the ask panel')
-// Records the exact excerpt the panel chose to send, so the assertions below are
-// on what the model would actually be asked about.
-const askedContext = []
-// The model the panel talks to is the host's business, so the test answers the
-// command with a fixed string and asserts on what the panel does with it — the
-// transport is the same one every other command is already faked on.
-fake.transport.invoke = async (command, args) => {
-  if (command === 'llm_chat') {
-    askedContext.push(args)
-    return 'The room is talking about the weather.'
-  }
-  return undefined
-}
-
-check('the panel starts closed', !$('.ask-body'))
-await click('.ask-toggle')
-check('and opens', !!$('.ask-body'))
-check(
-  'with nothing to show yet',
-  /appear in the feed/.test($('.ask-note')?.textContent ?? ''),
-  $('.ask-note')?.textContent,
-)
-
-// A question with no room to be about. The button has to stay off rather than
-// send the model an empty prompt and an empty excerpt, which is a call that
-// costs money and can only come back useless.
-await type('.ask-body input', '   ')
-check('a blank question cannot be sent', $('.ask-body .btn-primary').disabled === true)
-
-await type('.ask-body input', 'what is going on?')
-check('a question enables the button', $('.ask-body .btn-primary').disabled === false)
-
-// Sent by Enter rather than by clicking the button: the input is a one-liner and
-// pressing Enter is what someone types into it will actually do.
-await act(async () => {
-  const input = $('.ask-body input')
-  input.dispatchEvent(new harness.dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-})
-await flush()
-
-check('the model was asked', askedContext.length === 1, JSON.stringify(askedContext))
-check('the question went as typed', askedContext[0]?.question === 'what is going on?', askedContext[0]?.question)
-// The excerpt is the chat rows only, in the shape chatContext builds — the same
-// function the model is answering from. A gift in the room must not arrive as
-// conversation, and a viewer count must not arrive at all.
-const sentContext = askedContext[0]?.context ?? []
-check(
-  'every excerpt line is a chat message, not an event',
-  sentContext.every((line) => typeof line === 'string' && /^\S+: /.test(line)),
-  JSON.stringify(sentContext),
-)
-check(
-  'no viewer count leaks into the excerpt',
-  !sentContext.some((line) => /^viewers|watching/i.test(line)),
-  JSON.stringify(sentContext),
-)
-
-// The exchange now lands in the feed rather than in the panel, so these assert
-// on the rows it produces. Each later ask appends more rows, so the checks read
-// the *last* row of each kind rather than the first — otherwise a second answer
-// would still be compared against the first one's text.
-const lastOf = (kind) => $$(`.row-${kind} .text`).at(-1)?.textContent ?? ''
-check('the question is now a feed row', $$('.row-ask').length === 1, String($$('.row-ask').length))
-check('the question text is shown', /what is going on\?/.test($('.row-ask .text')?.textContent ?? ''), $('.row-ask .text')?.textContent)
-check('the answer is a feed row', $$('.row-answer').length === 1, String($$('.row-answer').length))
-check('the answer text is shown', /The room is talking about the weather/.test($('.row-answer .text')?.textContent ?? ''), $('.row-answer .text')?.textContent)
-check('the input is cleared after asking', $('.ask-body input').value === '', $('.ask-body input').value)
-// Three chat messages were fed to the room just before this. The question and
-// the answer must not have joined them, which is the whole reason they go through
-// `push` and are skipped in the recorder — so the total stays at three.
-check('neither the question nor the answer is counted as a chat message', digits(tile('Messages')) === '3', tile('Messages'))
-
-// The model answering with nothing is a provider failure, not an empty chat, and
-// it must not render as a blank row the user has to interpret — it lands saying
-// so instead.
-fake.transport.invoke = async (command) => {
-  if (command === 'llm_chat') return '   '
-  return undefined
-}
-await type('.ask-body input', 'again')
-await click('.ask-body .btn-primary')
-await flush()
-check('an empty answer still lands, saying so', /answered with nothing/.test(lastOf('answer')), lastOf('answer'))
-
-// A provider that fails outright. The reason reaches the feed rather than being
-// swallowed, because "could not reach" and "wrong key" are fixed differently and
-// only the host knows which it was.
-fake.transport.invoke = async (command) => {
-  if (command === 'llm_chat') throw new Error('could not reach https://h/v1: connection refused')
-  return undefined
-}
-await type('.ask-body input', 'third time')
-await click('.ask-body .btn-primary')
-await flush()
-check('a failed call puts its reason in the feed', /connection refused/.test(lastOf('answer')), lastOf('answer'))
-
 console.log('the peak is never below the current count')
 // Both are raised from the same frames, but on different clocks: the headcount
 // updates whenever the platform reports one and the sample only on a timer, so a
@@ -839,21 +742,20 @@ await act(async () => {
 check('chat keeps arriving after a clear', $$('.row').some((r) => /still live/.test(r.textContent ?? '')))
 
 console.log('panels can be turned off')
-// The three bottom panels take vertical space the chat could use. Each can be
-// switched off from the settings dialog and comes back when switched on.
+// The bottom panels take vertical space the chat could use. Each can be switched
+// off from the settings dialog and comes back when switched on.
 await click('.settings-btn')
 await click(dialogToggle('Stats panel'))
 check('the stats panel goes away', !$('.stats-panel'))
 await click(dialogToggle('Log panel'))
 check('the log panel goes away', !$('.log-panel'))
-await click(dialogToggle('Ask panel'))
-check('the ask panel goes away', !$('.ask-panel'))
 await click(dialogToggle('Stats panel'))
 check('and each comes back', Boolean($('.stats-panel')))
 await click(dialogToggle('Log panel'))
 check('the log is back too', Boolean($('.log-panel')))
-await click(dialogToggle('Ask panel'))
-check('and the ask is back', Boolean($('.ask-panel')))
+// The ask panel is gone with the feature it belonged to: the model now moderates
+// and answers on its own rather than waiting to be asked, so there is nothing left
+// for a panel to do.
 
 console.log('chat alerts')
 // Off by default: a blip per message and a voice reading the room are both
@@ -938,11 +840,17 @@ console.log('sound templates and a custom file')
 // Scoped to the Sounds section: the Look section above also has selects, and the
 // first `.modal-settings select` is the theme, not a sound.
 const soundSelects = () => $$('[data-section="sounds"] select')
-// Gift and chat each have their own template; the gift defaults to the chime the
-// app shipped with, the chat to the short blip.
-check('the gift has a sound to pick', soundSelects().length >= 2, String(soundSelects().length))
+// Gift, chat and joins each have their own template; the gift defaults to the chime
+// the app shipped with, the chat to the short blip, and a join to the soft pop.
+check('the gift has a sound to pick', soundSelects().length >= 3, String(soundSelects().length))
 check('the gift defaults to the chime', soundSelects()[0]?.value === 'chime', soundSelects()[0]?.value)
 check('and offers every template', soundSelects()[0]?.options.length >= 4, String(soundSelects()[0]?.options.length))
+check('a join has its own sound', soundSelects()[2]?.value === 'pop', soundSelects()[2]?.value)
+// Arrivals are the most repetitive event the app has, so this one is off until
+// asked for rather than on until someone regrets it.
+check('the join sound is offered off', dialogToggle('Join sound')?.checked === false)
+await click(dialogToggle('Join sound'))
+check('and turns on', dialogToggle('Join sound')?.checked === true)
 // Choosing a different template writes it straight to settings, which persists
 // it — the picker holds no state of its own.
 await act(async () => {
@@ -955,14 +863,28 @@ check('picking a template takes effect', soundSelects()[0]?.value === 'coin', so
 // The chat blip is a separate select, so a gift sound choice does not change it.
 check('the chat blip is its own choice', soundSelects()[1]?.value !== undefined)
 
+/**
+ * The note under a named field in the Sounds section.
+ *
+ * Scoped by label rather than by position: `.field-note` matches whichever note
+ * comes first in the section, and that is whichever field was added last, so a
+ * positional lookup reads a different field's note the moment a third sound
+ * exists.
+ */
+const soundNote = (label) =>
+  $$('[data-section="sounds"] .field').find((f) => f.querySelector('.field-label')?.textContent === label)?.querySelector(
+    '.field-note',
+  )
+
 // A custom file overrides every template. Picking one asks the host for a path,
 // and an empty path — a cancelled picker — must leave the previous pick alone
 // rather than clear it.
-check('no custom file by default', /No file/.test($('[data-section="sounds"] .field-note')?.textContent ?? ''), $('[data-section="sounds"] .field-note')?.textContent)
+check('no custom file by default', /No file/.test(soundNote('Custom sound')?.textContent ?? ''), soundNote('Custom sound')?.textContent)
 const chooseBtn = $$('[data-section="sounds"] .btn').find((b) => b.textContent.trim() === 'Choose file…')
 check('a file picker is offered', Boolean(chooseBtn))
-// The ask section above replaced `invoke` with one that answers llm_chat but
-// records nothing; restore the recording behaviour so this command is seen.
+// The AI section above replaced `invoke` with one that records commands and
+// answers the moderation and reply commands; restore the recording behaviour so
+// this command is seen.
 fake.transport.invoke = async (command, args) => {
   fake.commands.push({ command, args })
   if (command === 'pick_sound_file') return ''
@@ -972,7 +894,381 @@ await click(chooseBtn)
 check('the host was asked for a file', Boolean(fake.lastCommand('pick_sound_file')), JSON.stringify(fake.commands.at(-1)))
 // Cancelled (empty path): nothing changes, and no error is raised — backing out
 // of a picker is not a failure the user has to act on.
-check('a cancelled pick leaves the settings alone', /No file/.test($('[data-section="sounds"] .field-note')?.textContent ?? ''))
+check('a cancelled pick leaves the settings alone', /No file/.test(soundNote('Custom sound')?.textContent ?? ''))
+
+
+console.log('the stream overlay')
+// The room the app is reading, named here rather than inherited from whatever an
+// earlier section left behind: the overlay is pointed at whatever this window is
+// pointed at, and that is the thing under test.
+await act(async () => {
+  fake.emit({ platform: 'tiktok', type: 'room', username: 'findidntsleep', roomId: 'r-1', title: 'ranked grind' })
+})
+// A link for OBS. Built host-side because two of its parts are not the page's —
+// the backend address is a file on disk and the handle is whatever is in the
+// toolbar — and asserting on the arguments is how we know the styling got there
+// rather than only that a button was pressed.
+const overlayRequests = []
+fake.transport.invoke = async (command, args) => {
+  fake.commands.push({ command, args })
+  if (command === 'overlay_url') {
+    overlayRequests.push(args)
+    return 'http://127.0.0.1:4319/?room=findidntsleep&size=22&max=8'
+  }
+  if (command === 'overlay_running') return true
+  return undefined
+}
+check('there is a section for it', Boolean($('[data-section="overlay"]')))
+check('explains where the link goes', /Browser/.test($('[data-section="overlay"] .modal-hint')?.textContent ?? ''), $('[data-section="overlay"] .modal-hint')?.textContent)
+check('the size has a sensible bound', $('[data-section="overlay"] input[type="number"]')?.min === '8', $('[data-section="overlay"] input[type="number"]')?.min)
+
+const copyBtn = $$('[data-section="overlay"] .btn').find((b) => /Copy link/.test(b.textContent))
+check('there is a button to copy it', Boolean(copyBtn))
+await click(copyBtn)
+check('the host was asked to build it', overlayRequests.length === 1, JSON.stringify(overlayRequests))
+// The room comes from the toolbar, not from a field of its own: an overlay
+// pointed at a different room than the app is showing is a link that puts the
+// wrong chat on the stream.
+check('and it was told which room', overlayRequests[0]?.username === 'findidntsleep', overlayRequests[0]?.username)
+check('with the styling as one object', overlayRequests[0]?.style?.size === 22 && overlayRequests[0]?.style?.max === 8, JSON.stringify(overlayRequests[0]?.style))
+// Shown as well as copied: the clipboard is a permission a webview can be refused.
+check('and the link is shown, not only copied', Boolean($('.overlay-url')), $('.overlay-url')?.textContent)
+
+const checkBtn = $$('[data-section="overlay"] .btn').find((b) => /Check server/.test(b.textContent))
+check('the server can be asked whether it is up', Boolean(checkBtn))
+await click(checkBtn)
+check('and answers yes when it is', /Serving on port/.test($('[data-section="overlay"] .field-note:last-of-type')?.textContent ?? '') || /Serving on port/.test(doc.body.textContent ?? ''), $('[data-section="overlay"] .field-note:last-of-type')?.textContent)
+
+// And the answer when it is not. A port somebody else holds is the failure this
+// exists to catch, and a streamer who has been told the overlay is ready and then
+// watches nothing is worse off than one told it is not.
+fake.transport.invoke = async (command, args) => {
+  fake.commands.push({ command, args })
+  if (command === 'overlay_running') return false
+  return undefined
+}
+await click(checkBtn)
+check('and no when it is not', /Nothing is answering/.test(doc.body.textContent ?? ''), $('[data-section="overlay"] .field-note:last-of-type')?.textContent)
+
+console.log('content moderation')
+
+// Both AI passes are driven off `window.setInterval`, and nothing else in the app
+// asks for that particular one — the health and stats timers use the global. So
+// taking it over lets a test run a pass on demand instead of waiting out five real
+// seconds, and leaves the app's own timers running as they were.
+const realSetInterval = harness.dom.window.setInterval.bind(harness.dom.window)
+const realClearInterval = harness.dom.window.clearInterval.bind(harness.dom.window)
+const intervals = new Map()
+let nextTimer = 1
+harness.dom.window.setInterval = (fn, ms) => {
+  const id = nextTimer++
+  intervals.set(id, { fn, ms })
+  return id
+}
+harness.dom.window.clearInterval = (id) => {
+  intervals.delete(id)
+}
+/**
+ * Runs each registered pass once, as the clock reaching the interval would.
+ *
+ * The list is taken before the loop rather than read as it goes, so a pass that
+ * schedules a timer of its own is not run twice in one tick.
+ */
+async function tick() {
+  for (const { fn } of [...intervals.values()]) {
+    await act(async () => {
+      fn()
+      await flush()
+    })
+  }
+}
+
+/** Drives a native select the way a user picking from it would. */
+async function pickSelect(el, value) {
+  if (!el) throw new Error('no select given')
+  const setter = Object.getOwnPropertyDescriptor(harness.dom.window.HTMLSelectElement.prototype, 'value').set
+  await act(async () => {
+    setter.call(el, value)
+    el.dispatchEvent(new harness.dom.window.Event('change', { bubbles: true }))
+  })
+}
+
+/**
+ * The log, open.
+ *
+ * Idempotent because the panel is a toggle and this section does not control what
+ * state the ones above left it in: clicking blindly would close a log that was
+ * already open, and every assertion on its lines would then read as absent.
+ */
+async function logIsOpen() {
+  if (!$('.log-list')) await click('.log-toggle')
+  return !!$('.log-list')
+}
+
+/** Everything the model was told, from every request so far. */
+const moderationRequests = []
+fake.transport.invoke = async (command, args) => {
+  fake.commands.push({ command, args })
+  if (command === 'llm_moderate') {
+    moderationRequests.push(args)
+    return []
+  }
+  return undefined
+}
+
+check('moderation is off to begin with', fake.commands.every((c) => c.command !== 'llm_moderate'))
+check('and nothing was sent to the model', moderationRequests.length === 0)
+// Off by default is the only safe default for something that sends a room's chat
+// to a paid endpoint the first time the app is opened.
+
+// The settings dialog is still open from the sounds section above, and left that
+// way: both features are configured in it, and opening and closing it around this
+// section would say nothing the sounds section has not already said.
+check('the settings dialog is open', Boolean($('.modal-settings')))
+const moderationSelect = $('[data-section="moderation"] select')
+check('the mode is offered', Boolean(moderationSelect))
+check('and starts off', moderationSelect?.value === 'off', moderationSelect?.value)
+check('with every mode to pick', moderationSelect?.options.length === 3, String(moderationSelect?.options.length))
+check('no ask panel is offered any more', !/Ask/.test(doc.body.textContent ?? ''))
+
+// Both features only run while the room is open — a moderation batch drawn from a
+// dead room's backlog spends the same money to judge messages nobody is watching.
+// So the room is connected first: this section is about what the passes do, and
+// the gate is asserted separately below.
+//
+// The `room` frame goes with it because a real connection sends both, and without
+// one the room has no title or handle for the model to be told about — which is
+// the one input that makes an auto-reply about *this* stream rather than about
+// live chat in general.
+await act(async () => {
+  fake.emit({ platform: 'tiktok', type: 'room', username: 'findidntsleep', roomId: 'r-1', title: 'ranked grind' })
+  fake.emit({ platform: 'tiktok', type: 'status', connected: true, message: 'Connected to @x' })
+})
+check('the room is open', /Connected/.test($('.room-status')?.textContent ?? ''), $('.room-status')?.textContent)
+
+await pickSelect(moderationSelect, 'flag')
+// Straight into a pass rather than waiting out the interval: the messages already
+// on screen are the ones it was just switched on for.
+await act(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 50))
+})
+check('a batch goes out as soon as it is on', moderationRequests.length === 1, String(moderationRequests.length))
+check(
+  'numbered from one, one message per line',
+  /^\d+: [^:]+: \S/.test(moderationRequests[0]?.messages?.[0] ?? ''),
+  moderationRequests[0]?.messages?.[0],
+)
+// The excerpt is chat rows only: a gift, a join and a viewer count are not
+// conversation and there is nothing in them to judge.
+check(
+  'every line is a numbered message',
+  moderationRequests[0].messages.every((line) => /^\d+: /.test(line)),
+  JSON.stringify(moderationRequests[0].messages.slice(0, 3)),
+)
+
+const saySomething = async (nickname, text, over = {}) => {
+  await act(async () => {
+    fake.emit({
+      platform: 'tiktok',
+      type: 'chat',
+      ...viewer({ nickname, id: nickname }),
+      text,
+      timestamp: 1700000090000 + saySomething.at,
+      ...over,
+    })
+  })
+  saySomething.at += 1
+}
+saySomething.at = 0
+
+// Whatever comes back is applied to the feed, so the test answers with a real
+// verdict and asserts on what the row becomes.
+fake.transport.invoke = async (command, args) => {
+  fake.commands.push({ command, args })
+  if (command === 'llm_moderate') {
+    moderationRequests.push(args)
+    return [{ index: 1, label: 'hate', reason: 'slur aimed at the streamer' }]
+  }
+  return undefined
+}
+
+await saySomething('ana', 'ordinary hello')
+await saySomething('rude', 'something the model will object to')
+await tick()
+
+check('the batch held only the new messages', moderationRequests.at(-1).messages.length === 2, JSON.stringify(moderationRequests.at(-1).messages))
+// Index 1 is the second of the two. If the mapping were off by one this would
+// badge the wrong person, which is the failure that would matter.
+check('both messages are still on screen', $$('.row-chat').length >= 2, String($$('.row-chat').length))
+check('the flagged one is marked', $$('.badge-flag').length === 1, String($$('.badge-flag').length))
+check('the badge names the category', /hate/.test($('.badge-flag')?.textContent ?? ''), $('.badge-flag')?.textContent)
+check('and carries the reason', /slur aimed/.test($('.badge-flag')?.getAttribute('title') ?? ''), $('.badge-flag')?.getAttribute('title'))
+check('the row it landed on is the flagged one', /something the model will object to/.test($('.row-flagged .text')?.textContent ?? ''), $('.row-flagged .text')?.textContent)
+check('and the other one is untouched', !$('.row-chat:first-of-type .badge-flag'))
+
+// The same message must not be judged again on every pass for as long as the
+// room is open: that is a request per interval for the rest of the stream.
+const before = moderationRequests.length
+await tick()
+check('a second pass re-sends nothing', moderationRequests.length === before, `${before} then ${moderationRequests.length}`)
+check('a new message does get sent', true)
+
+console.log('the rules the streamer typed in')
+// Read back off the command rather than the field, because the field proving it
+// holds the text is not the same claim as the text reaching the model.
+const rules = $('[data-section="moderation"] textarea')
+check('a rules field is offered', Boolean(rules))
+const inRules = 'Swearing is fine here. Gift-card links are not.'
+await act(async () => {
+  const setter = Object.getOwnPropertyDescriptor(harness.dom.window.HTMLTextAreaElement.prototype, 'value').set
+  setter.call(rules, inRules)
+  rules.dispatchEvent(new harness.dom.window.Event('input', { bubbles: true }))
+})
+// A new message, so there is a batch for the rules to travel with. Without one the
+// check would pass on the previous request, which was sent before anything was
+// typed — true of the rules and true of an empty string alike.
+await saySomething('ana', 'one more')
+await saySomething('rude', 'and another')
+await tick()
+check('what was typed is what is sent', moderationRequests.at(-1)?.rules === inRules, moderationRequests.at(-1)?.rules)
+
+console.log('blocking instead of flagging')
+await pickSelect(moderationSelect, 'block')
+await act(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 50))
+})
+await click($('.modal-close'))
+check('the dialog closes', !$('.modal-settings'))
+
+await saySomething('ana', 'a fresh message')
+await saySomething('rude2', 'a fresh message worth blocking')
+const rowsBefore = $$('.row-chat').length
+await tick()
+
+check('the blocked row left the feed', !/a fresh message worth blocking/.test(doc.body.textContent ?? ''))
+// And only that one. A batch is a list of messages and a mistake in the mapping
+// takes out the wrong person, so the neighbour has to survive it.
+check('the one beside it stayed', /a fresh message/.test(doc.body.textContent ?? ''))
+check('and the row before it is still there', rowsBefore >= $$('.row-chat').length)
+
+console.log('both modes reach the log')
+// Strict blocking takes the message away entirely, so the log is the only record
+// that it happened and who sent it. A blocked row with no trace is a gap a
+// streamer cannot answer for later.
+await click('.log-toggle')
+const logText = () => $('.log-list')?.textContent ?? ''
+check('a flag is recorded', /flagged rude: hate/.test(logText()), logText().slice(-300))
+check('a block is recorded', /blocked rude2: hate/.test(logText()), logText().slice(-300))
+// Left open: the failure check below asserts on a log line too, and opening and
+// closing it twice for one section reads as though the panel were the subject.
+await logIsOpen()
+
+console.log('automated replies')
+const replyRequests = []
+fake.transport.invoke = async (command, args) => {
+  fake.commands.push({ command, args })
+  if (command === 'llm_autoreply') {
+    replyRequests.push(args)
+    return 'the GPU one, I think'
+  }
+  return undefined
+}
+
+await click('.settings-btn')
+await click(dialogToggle('Let the model answer'))
+check('nothing is asked before the interval elapses', replyRequests.length === 0, String(replyRequests.length))
+// Not an immediate pass, either: a model that answers the instant it is switched
+// on interrupts whatever the streamer is in the middle of reading.
+check('and nothing is written before it', $$('.row-answer').length === 0, String($$('.row-answer').length))
+
+const messagesBefore = digits(tile('Messages'))
+await tick()
+
+check('the model was asked', replyRequests.length === 1, String(replyRequests.length))
+check('about this stream, by name', replyRequests[0]?.topic === '@findidntsleep — ranked grind', replyRequests[0]?.topic)
+check('from the chat and nothing else', Array.isArray(replyRequests[0]?.context) && replyRequests[0].context.every((line) => /^\S+: /.test(line)), JSON.stringify(replyRequests[0]?.context?.slice(0, 3)))
+
+const lastOf = (kind) => $$(`.row-${kind} .text`).at(-1)?.textContent ?? ''
+check('what it said lands in the feed', /the GPU one/.test(lastOf('answer')), lastOf('answer'))
+check('as an AI row', /AI/.test($$('.row-answer').at(-1)?.querySelector('.nickname')?.textContent ?? ''), $$('.row-answer').at(-1)?.textContent)
+// The model is not a viewer, so an answer must not climb the room's message total
+// or put it on the chatters board.
+check('and is not counted as a message', digits(tile('Messages')) === messagesBefore, `${messagesBefore} then ${tile('Messages')}`)
+
+console.log('the model is allowed to stay quiet')
+fake.transport.invoke = async (command, args) => {
+  fake.commands.push({ command, args })
+  if (command === 'llm_autoreply') {
+    replyRequests.push(args)
+    return null
+  }
+  return undefined
+}
+await saySomething('ana', 'something new to talk about')
+const answersBefore = $$('.row-answer').length
+await tick()
+check('silence is an answer, not a failure', replyRequests.length === 2, String(replyRequests.length))
+check('and writes no row', $$('.row-answer').length === answersBefore, `${answersBefore} then ${$$('.row-answer').length}`)
+
+console.log('nothing new, nothing asked')
+// The rule that decides what this feature costs: an idle room must not spend a
+// request every interval.
+const askedBefore = replyRequests.length
+await tick()
+check('an unchanged chat is not offered again', replyRequests.length === askedBefore, `${askedBefore} then ${replyRequests.length}`)
+
+console.log('a failure is visible')
+// "Auto-reply is on" and "auto-reply is working" are different claims, and a
+// silent failure is how the second one stops being true unnoticed.
+fake.transport.invoke = async (command, args) => {
+  fake.commands.push({ command, args })
+  if (command === 'llm_autoreply') throw new Error('could not reach https://h/v1: connection refused')
+  if (command === 'llm_moderate') {
+    moderationRequests.push(args)
+    return []
+  }
+  return undefined
+}
+await saySomething('ana', 'another thing to say')
+const answersBeforeFailure = $$('.row-answer').length
+await tick()
+await logIsOpen()
+check('the reason reaches the log', /auto-reply failed/.test(logText()) && /connection refused/.test(logText()), logText().slice(-300))
+// Scoped to the feed, not the page: the reason is in the log on purpose, and the
+// claim being made is narrower than "the words appear nowhere".
+check('and no row is written for it', $$('.row-answer').length === answersBeforeFailure, `${answersBeforeFailure} then ${$$('.row-answer').length}`)
+await click('.log-toggle')
+
+console.log('the persona reaches the model')
+// Back to a transport that records, so the request the persona is checked against
+// is one that was actually sent rather than the last one before the failure.
+fake.transport.invoke = async (command, args) => {
+  fake.commands.push({ command, args })
+  if (command === 'llm_autoreply') {
+    replyRequests.push(args)
+    return 'happy stream'
+  }
+  return undefined
+}
+const persona = $('[data-section="replies"] textarea')
+check('a persona field is offered', Boolean(persona))
+await act(async () => {
+  const setter = Object.getOwnPropertyDescriptor(harness.dom.window.HTMLTextAreaElement.prototype, 'value').set
+  setter.call(persona, 'Keep it dry. Never mention the giveaway.')
+  persona.dispatchEvent(new harness.dom.window.Event('input', { bubbles: true }))
+})
+const personaBefore = replyRequests.length
+await saySomething('ana', 'and one more thing')
+await tick()
+check('the request was sent', replyRequests.length > personaBefore, `${personaBefore} then ${replyRequests.length}`)
+check('what was typed is what is sent', replyRequests.at(-1)?.persona === 'Keep it dry. Never mention the giveaway.', replyRequests.at(-1)?.persona)
+check('and the gap between answers can be set', $('[data-section="replies"] input[type="number"]') !== null)
+
+await click($('.modal-close'))
+// Handed back so the sections below run on real timers again.
+harness.dom.window.setInterval = realSetInterval
+harness.dom.window.clearInterval = realClearInterval
+intervals.clear()
 
 console.log('teardown')
 await act(async () => {
