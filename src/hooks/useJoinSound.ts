@@ -1,25 +1,29 @@
 import { useEffect, useRef } from 'react'
-import { attach, detachHandler, type SidecarEvent } from '../lib/sidecar'
-import { playSound, releaseAudio, resolveAudio } from '../lib/player'
+import { type SidecarEvent } from '../lib/sidecar'
+import { useRoomEvents } from '../lib/reactive'
+import { useAudioPlayer } from '../lib/gate'
 import { shouldPlayJoinSound } from '../lib/sound'
 
 /**
  * A sound when somebody new arrives.
  *
- * Shaped exactly like `useGiftSound` because it is exactly the same job with a
- * different event: subscribe, decide whether to sound, hand it to the shared
- * player. What differs is the gap, which is longer than the chat blip's — an
- * arrival is worth less attention than a message, and one tap per person in a
- * filling room says "something is happening" without ever saying what.
+ * Shaped like `useGiftSound` because it is the same job with a different event.
+ * The subscription and the audio context are shared with it rather than written
+ * out again — that boilerplate was lifted into `reactive.ts` and `gate.ts` for a
+ * reason, and a fourth copy of it is a fourth chance to release the context on
+ * an effect re-run instead of on unmount, which cuts the sound off mid-play the
+ * moment anything else in the settings changes.
  *
- * Worth being honest about what a join *is* here: TikTok batches its join events
- * rather than sending one per viewer, so these arrive in bursts rather than one
- * per person. The gap is what keeps a burst from being a burst of sounds.
+ * What differs is the gap. It is longer than the chat blip's: an arrival is worth
+ * less attention than a message, and one tap per person in a filling room says
+ * "something is happening" without ever saying what. Shorter than the gift's,
+ * because a gift is worth money and a join is worth a person, and the second
+ * should not have to wait four seconds for the room to notice it.
  *
- * The audio context is made on the first join rather than on mount, for the same
- * reason as everywhere else: browsers refuse to start audio before the page has
- * been interacted with, and asking earlier only gets back a context that is
- * silent for the rest of the session.
+ * Worth being honest about what a join *is* here. TikTok batches its join events
+ * rather than sending one per viewer — the bridge says so where it handles them —
+ * so these arrive in bursts, and the gap is what stops a burst being a burst of
+ * sounds. It is not there to thin out a trickle that was never thick.
  */
 
 interface Options {
@@ -31,51 +35,21 @@ interface Options {
 }
 
 export function useJoinSound({ enabled, templateId, customPath }: Options): void {
-  const contextRef = useRef<AudioContext | null>(null)
+  const { play } = useAudioPlayer()
   // A ref rather than state: read and written inside an event handler, and a
   // state update would be a render for a value nothing renders.
   const lastPlayedAt = useRef<number | null>(null)
 
-  useEffect(() => {
-    let active = true
-
-    const knock = () => {
-      const now = Date.now()
-      if (!shouldPlayJoinSound(enabled, lastPlayedAt.current, now)) return
-      lastPlayedAt.current = now
-
-      contextRef.current ??= resolveAudio()
-      // Fired and forgotten: the gap above is what keeps two arrivals from
-      // overlapping, and awaiting here would let a rejection from a slow decode
-      // surface as an unhandled rejection from the feed handler.
-      void playSound(contextRef.current, templateId, customPath).then((used) => {
-        contextRef.current = used
-      })
-    }
-
-    const handle = (event: SidecarEvent) => {
-      if (!active || event.type !== 'join') return
-      if (event.platform !== 'tiktok') return
-      knock()
-    }
-
-    attach(handle)
-    return () => {
-      active = false
-      // Taken back off rather than merely muted: this effect re-runs every time a
-      // setting changes, and the set it subscribed to outlives it.
-      detachHandler(handle)
-    }
+  useRoomEvents((event: SidecarEvent) => {
+    if (event.type !== 'join') return
+    const now = Date.now()
+    if (!shouldPlayJoinSound(enabled, lastPlayedAt.current, now)) return
+    lastPlayedAt.current = now
+    // Fired and forgotten: the gap above is what keeps two arrivals from
+    // overlapping, and awaiting here would let a rejection from a slow decode
+    // surface as an unhandled rejection from the feed handler.
+    void play(templateId, customPath)
   }, [enabled, templateId, customPath])
-
-  // This hook made its own context, so this hook closes it — on unmount only,
-  // because the effect above re-runs every time a setting changes.
-  useEffect(
-    () => () => {
-      contextRef.current = releaseAudio(contextRef.current)
-    },
-    [],
-  )
 
   // Turned off: forget when the last sound was, so the next one is not measured
   // against a gap that started before the user asked for silence.
