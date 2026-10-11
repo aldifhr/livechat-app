@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { attach, detachHandler, host, type SidecarEvent } from '../lib/sidecar'
+import { host, type SidecarEvent } from '../lib/sidecar'
+import { useRoomEvents } from '../lib/reactive'
 import { noticeText, shouldShowGiftNotice } from '../lib/notice'
 import { giftAnnouncement } from '../lib/sound'
 import { say, hush } from '../lib/voice'
@@ -32,38 +33,27 @@ interface Options {
 export function useGiftNotification({ notice, voice }: Options): void {
   const lastShownAt = useRef<number | null>(null)
 
-  useEffect(() => {
-    let active = true
+  useRoomEvents((event: SidecarEvent) => {
+    if (event.type !== 'gift') return
+    if (!notice && !voice) return
 
-    const handle = (event: SidecarEvent) => {
-      if (!active || event.type !== 'gift') return
-      if (event.platform !== 'tiktok') return
-      if (!notice && !voice) return
+    const now = Date.now()
+    if (!shouldShowGiftNotice(notice || voice, lastShownAt.current, now)) return
+    lastShownAt.current = now
 
-      const now = Date.now()
-      if (!shouldShowGiftNotice(notice || voice, lastShownAt.current, now)) return
-      lastShownAt.current = now
+    const count = event.count ?? 1
+    const diamonds = event.diamonds ?? 0
 
-      const count = event.count ?? 1
-      const diamonds = event.diamonds ?? 0
-
-      if (notice) {
-        const { title, body } = noticeText(event.nickname, event.giftName, count, diamonds)
-        host.notify(title, body).catch(() => {
-          // Windows declines toasts when the app has no registered shortcut, and a
-          // declined toast is not something the user can act on.
-        })
-      }
-
-      if (voice) {
-        say(giftAnnouncement(event.nickname, event.giftName, count, diamonds))
-      }
+    if (notice) {
+      const { title, body } = noticeText(event.nickname, event.giftName, count, diamonds)
+      host.notify(title, body).catch(() => {
+        // Windows declines toasts when the app has no registered shortcut, and a
+        // declined toast is not something the user can act on.
+      })
     }
 
-    attach(handle)
-    return () => {
-      active = false
-      detachHandler(handle)
+    if (voice) {
+      say(giftAnnouncement(event.nickname, event.giftName, count, diamonds))
     }
   }, [notice, voice])
 

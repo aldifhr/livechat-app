@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { attach, detachHandler, host, type SidecarEvent } from '../lib/sidecar'
+import { host, type SidecarEvent } from '../lib/sidecar'
+import { useRoomEvents } from '../lib/reactive'
 import { GIFT_SOUND_GAP_MS } from '../lib/sound'
 
 /**
@@ -29,42 +30,27 @@ import { GIFT_SOUND_GAP_MS } from '../lib/sound'
 export function useWebhook({ enabled }: { enabled: boolean }): void {
   const lastSentAt = useRef<number | null>(null)
 
-  useEffect(() => {
-    // No URL check here: the page does not hold the URL any more. Whether there is
-    // one to send to is decided in the host, which is also where an empty URL is
-    // refused rather than posted to nowhere.
-    if (!enabled) return
-    let active = true
+  useRoomEvents((event: SidecarEvent) => {
+    if (!enabled || event.type !== 'gift') return
 
-    const handle = (event: SidecarEvent) => {
-      if (!active || event.type !== 'gift') return
-      if (event.platform !== 'tiktok') return
+    const now = Date.now()
+    if (lastSentAt.current !== null && now - lastSentAt.current < GIFT_SOUND_GAP_MS) return
+    lastSentAt.current = now
 
-      const now = Date.now()
-      if (lastSentAt.current !== null && now - lastSentAt.current < GIFT_SOUND_GAP_MS) return
-      lastSentAt.current = now
-
-      // Not awaited: the feed handler must not block on a network round trip to
-      // somebody else's server.
-      void host
-        .webhookSend({
-          nickname: event.nickname,
-          userId: event.id,
-          giftName: event.giftName,
-          count: event.count ?? 1,
-          diamonds: event.diamonds ?? 0,
-          timestamp: now,
-        })
-        .catch(() => {
-          // A receiver that is down is not something the stream has to know about.
-        })
-    }
-
-    attach(handle)
-    return () => {
-      active = false
-      detachHandler(handle)
-    }
+    // Not awaited: the feed handler must not block on a network round trip to
+    // somebody else's server.
+    void host
+      .webhookSend({
+        nickname: event.nickname,
+        userId: event.id,
+        giftName: event.giftName,
+        count: event.count ?? 1,
+        diamonds: event.diamonds ?? 0,
+        timestamp: now,
+      })
+      .catch(() => {
+        // A receiver that is down is not something the stream has to know about.
+      })
   }, [enabled])
 
   // Off: forget when the last send was, so turning it back on does not wait out a

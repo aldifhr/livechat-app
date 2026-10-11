@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
-import { attach, detachHandler, type SidecarEvent } from '../lib/sidecar'
-import { playSound, releaseAudio, resolveAudio } from '../lib/player'
+import { type SidecarEvent } from '../lib/sidecar'
+import { useRoomEvents } from '../lib/reactive'
+import { useAudioPlayer } from '../lib/gate'
 import { say, hush } from '../lib/voice'
 import { shouldPlayChatSound, ttsText } from '../lib/sound'
 
@@ -37,48 +38,23 @@ interface Options {
 }
 
 export function useChatAlerts({ chatSound, chatTts, ttsNames, templateId, customPath }: Options): void {
-  const audioRef = useRef<AudioContext | null>(null)
+  const { play } = useAudioPlayer()
   const lastBlipAt = useRef<number | null>(null)
 
-  useEffect(() => {
-    let active = true
+  useRoomEvents((event: SidecarEvent) => {
+    if (event.type !== 'chat') return
+    if (!chatSound && !chatTts) return
 
-    const blip = () => {
+    if (chatSound) {
       const now = Date.now()
-      if (!shouldPlayChatSound(chatSound, lastBlipAt.current, now)) return
-      lastBlipAt.current = now
-
-      audioRef.current ??= resolveAudio()
-      void playSound(audioRef.current, templateId, customPath).then((used) => {
-        audioRef.current = used
-      })
+      if (shouldPlayChatSound(chatSound, lastBlipAt.current, now)) {
+        lastBlipAt.current = now
+        void play(templateId, customPath)
+      }
     }
 
-    const handle = (event: SidecarEvent) => {
-      if (!active) return
-      if (event.type !== 'chat') return
-      if (event.platform !== 'tiktok') return
-      if (!chatSound && !chatTts) return
-      blip()
-      if (chatTts) say(ttsText(event.nickname, event.text, ttsNames))
-    }
-
-    attach(handle)
-    return () => {
-      active = false
-      detachHandler(handle)
-    }
+    if (chatTts) say(ttsText(event.nickname, event.text, ttsNames))
   }, [chatSound, chatTts, ttsNames, templateId, customPath])
-
-  // This hook made its own context, so this hook closes it — on unmount only,
-  // because the effect above re-runs on every settings change and closing there
-  // would cut a blip off mid-play.
-  useEffect(
-    () => () => {
-      audioRef.current = releaseAudio(audioRef.current)
-    },
-    [],
-  )
 
   // Turned off: forget when the last blip was, so turning it back on does not wait
   // out a gap that started while it was off. The voice is shared, so stopping it

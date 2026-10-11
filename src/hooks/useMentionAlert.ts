@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { attach, detachHandler, type SidecarEvent } from '../lib/sidecar'
+import { type SidecarEvent } from '../lib/sidecar'
+import { useRoomEvents } from '../lib/reactive'
 import { playMention, releaseAudio, resolveAudio } from '../lib/player'
 import { shouldPlayMentionAlert } from '../lib/sound'
 import { mentionsMe, myHandles } from '../lib/mentions'
@@ -32,6 +33,10 @@ interface Options {
 }
 
 export function useMentionAlert({ myHandle, sound, voice }: Options): void {
+  // Its own context rather than the shared player's: a mention plays `playMention`,
+  // a fixed two-note figure, not a template or a file — so there is nothing for the
+  // player to choose. The lifecycle is the same, so it borrows the same release
+  // helper rather than a second copy of it.
   const audioRef = useRef<AudioContext | null>(null)
   const lastPlayedAt = useRef<number | null>(null)
 
@@ -39,41 +44,29 @@ export function useMentionAlert({ myHandle, sound, voice }: Options): void {
   // busiest path in the app and a mention is checked against every chat row.
   const mine = myHandles(myHandle)
 
-  useEffect(() => {
-    let active = true
+  useRoomEvents((event: SidecarEvent) => {
+    if (event.type !== 'chat') return
+    if (!sound && !voice) return
+    if (!mentionsMe(event.mentions, mine)) return
 
-    const handle = (event: SidecarEvent) => {
-      if (!active) return
-      if (event.type !== 'chat') return
-      if (event.platform !== 'tiktok') return
-      if (!sound && !voice) return
-      if (!mentionsMe(event.mentions, mine)) return
+    const now = Date.now()
+    if (!shouldPlayMentionAlert(sound || voice, lastPlayedAt.current, now)) return
+    lastPlayedAt.current = now
 
-      const now = Date.now()
-      if (!shouldPlayMentionAlert(sound || voice, lastPlayedAt.current, now)) return
-      lastPlayedAt.current = now
-
-      if (sound) {
-        audioRef.current ??= resolveAudio()
-        const context = audioRef.current
-        if (context) {
-          // Suspended until the user has interacted with the window; asking again
-          // is cheap and is what makes the first alert audible at all.
-          if (context.state === 'suspended') void context.resume()
-          playMention(context)
-        }
-      }
-
-      if (voice) {
-        const who = event.nickname.trim() || 'Someone'
-        say(`${who} menyebut kamu`)
+    if (sound) {
+      audioRef.current ??= resolveAudio()
+      const context = audioRef.current
+      if (context) {
+        // Suspended until the user has interacted with the window; asking again
+        // is cheap and is what makes the first alert audible at all.
+        if (context.state === 'suspended') void context.resume()
+        playMention(context)
       }
     }
 
-    attach(handle)
-    return () => {
-      active = false
-      detachHandler(handle)
+    if (voice) {
+      const who = event.nickname.trim() || 'Someone'
+      say(`${who} menyebut kamu`)
     }
   }, [mine.join(','), sound, voice])
 
