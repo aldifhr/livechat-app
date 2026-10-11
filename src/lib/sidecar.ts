@@ -34,6 +34,8 @@ export type SidecarEvent = Tagged &
         avatar: string
         text: string
         timestamp: number
+        /** Written by the app, not a viewer — an auto-reply. Injected locally. */
+        isBot?: boolean
         /** TikTok marked this viewer as a room moderator. */
         isModerator?: boolean
         /** TikTok has filtered this message itself. */
@@ -247,6 +249,29 @@ export async function attach(onEvent?: EventHandler): Promise<void> {
  */
 export function detachHandler(handler: EventHandler): void {
   listeners.delete(handler)
+}
+
+/**
+ * Deliver an event to the current listeners as if it arrived from the host.
+ *
+ * Used by the auto-reply, which answers a greeting by writing a chat row that the
+ * feed then shows like any other. Routing it through the same listener set the real
+ * frames use means the reply is one code path with a real message — same shape,
+ * same renderer, same counters bypass — instead of a second door into the feed
+ * that has to be kept in step by hand.
+ *
+ * Synchronous on purpose: a reply to a greeting should land in the same frame the
+ * viewer's message did, not a tick later, or it reads as a separate event rather
+ * than an answer.
+ */
+export function emitLocal(event: SidecarEvent): void {
+  for (const handler of listeners) {
+    try {
+      handler(event)
+    } catch (error: unknown) {
+      console.error('a sidecar event handler threw', error)
+    }
+  }
 }
 
 export const host = {

@@ -37,6 +37,9 @@ export interface ViewSettings {
   /** Post each gift to the configured webhook. Off by default: it sends data about
    *  the room to a third party, and that has to be asked for. */
   webhook: boolean
+  /** Answer a greeting with a line of its own, so a newcomer is not met with
+   *  silence. Off by default: it makes the app talk, which has to be asked for. */
+  autoReply: boolean
   /** Show the session stats panel at the bottom of the window. */
   showStats: boolean
   /** Show the in-app log panel at the bottom of the window. */
@@ -96,6 +99,7 @@ export const DEFAULT_SETTINGS: ViewSettings = {
   giftSound: true,
   giftNotice: true,
   webhook: false,
+  autoReply: false,
   showStats: true,
   showLog: true,
   showAsk: true,

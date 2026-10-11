@@ -240,6 +240,42 @@ check(
   newestStyle.boxShadow,
 )
 
+console.log('the auto-reply answers a greeting, once per person')
+// Counted on the bot badge, which only an auto-reply row carries — the backlog of
+// real messages above has none, so the count is exactly what this test produces.
+// Off by default: it makes the app talk, which has to be asked for. Turn it on
+// through the settings dialog, the same door a user opens it with.
+await click('.settings-btn')
+const autoReplyToggle = $$('.modal-settings .toggle').find((t) =>
+  t.textContent.trim().startsWith('Auto-reply'),
+)?.querySelector('input')
+await click(autoReplyToggle)
+await click($('.modal-close'))
+// A greeting from a viewer, and one that is not.
+await act(async () => {
+  fake.emit({ platform: 'tiktok', type: 'chat', ...viewer({ id: 'g1' }), text: 'halo', timestamp: 1700000003000 })
+})
+const botRows = () => $$('.row').filter((r) => r.querySelector('.badge-bot'))
+check('a greeting drew a reply', botRows().length === 1, `got ${botRows().length}`)
+check('the reply is the app\u2019s own line', /Senang kamu mampir/.test(botRows()[0]?.textContent ?? ''), botRows()[0]?.textContent)
+// The same viewer saying hello again is one reply, not one per hello — a bot that
+// answers every repeat is a bot that spams.
+await act(async () => {
+  fake.emit({ platform: 'tiktok', type: 'chat', ...viewer({ id: 'g1' }), text: 'hi', timestamp: 1700000003100 })
+})
+check('the same viewer is not answered twice', botRows().length === 1, `got ${botRows().length}`)
+// A message that merely contains a greeting word is not a greeting: "hi can you
+// help" is a question, and answering the greeting instead is worse than silence.
+await act(async () => {
+  fake.emit({ platform: 'tiktok', type: 'chat', ...viewer({ id: 'g2' }), text: 'hi can you help me', timestamp: 1700000003200 })
+})
+check('a greeting inside a question is not answered', botRows().length === 1, `got ${botRows().length}`)
+// A different viewer is answered on their own.
+await act(async () => {
+  fake.emit({ platform: 'tiktok', type: 'chat', ...viewer({ id: 'g3' }), text: 'hai', timestamp: 1700000003300 })
+})
+check('a new viewer is answered', botRows().length === 2, `got ${botRows().length}`)
+
 console.log('joins look like people arriving')
 await act(async () => {
   fake.emit({

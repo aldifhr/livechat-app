@@ -42,6 +42,15 @@ export interface FeedItem extends Viewer {
   mentions?: string[]
   /** Emoji images sent alongside the text. */
   emotes?: { url: string; id: string }[]
+  /**
+   * This row was written by the app, not a viewer — an auto-reply to a greeting.
+   *
+   * Optional rather than always-set because the overwhelming majority of rows are
+   * real messages, and a flag that is false on almost every row should be absent
+   * rather than carried. The renderer uses it to mark the row so a bot reply is
+   * never mistaken for a viewer saying something.
+   */
+  isBot?: boolean
   /** Absent on chat events. */
   text?: string
   giftName?: string

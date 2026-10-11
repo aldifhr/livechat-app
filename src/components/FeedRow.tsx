@@ -74,6 +74,11 @@ function FeedRowImpl({ item, isLast, myNames }: Props) {
               filtered
             </span>
           )}
+          {item.isBot && (
+            <span className="badge-bot" title="Automatic reply">
+              auto
+            </span>
+          )}
           <span className="time">{formatTime(item.timestamp)}</span>
         </div>
 

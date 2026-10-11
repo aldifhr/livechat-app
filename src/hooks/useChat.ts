@@ -220,6 +220,20 @@ export function useChat({ collapseWindowMs, collapseThreshold }: UseChatOptions)
           break
         case 'chat':
           if (!inRoom) break
+          // A bot reply is shown but not counted: it is the app talking, not a
+          // viewer, so it must not inflate the chat total or put the bot on the
+          // chatters leaderboard as if it were a person watching.
+          const bot = event.isBot === true
+          if (bot) {
+            push({
+              ...event,
+              platform: 'tiktok',
+              kind: 'chat',
+              text: event.text,
+              isBot: true,
+            })
+            break
+          }
           emit({
             ...event,
             platform: 'tiktok',

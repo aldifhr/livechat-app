@@ -11,6 +11,7 @@ import { useGiftNotification } from './hooks/useGiftNotification'
 import { useGiftSound } from './hooks/useGiftSound'
 import { useMentionAlert } from './hooks/useMentionAlert'
 import { useWebhook } from './hooks/useWebhook'
+import { useAutoReply } from './hooks/useAutoReply'
 import { useSettings } from './hooks/useSettings'
 import { useKindCounts, useVisibleItems, type FeedFilters } from './hooks/useVisibleItems'
 import { EMPTY_BACKEND, type BackendConfig } from './lib/backend'
@@ -32,6 +33,7 @@ export default function App() {
   })
   useGiftNotification({ notice: settings.giftNotice, voice: settings.giftVoice })
   useWebhook({ enabled: settings.webhook })
+  useAutoReply({ enabled: settings.autoReply })
   useMentionAlert({
     myHandle: settings.myHandle,
     sound: settings.mentionAlert,

@@ -50,6 +50,7 @@ const FEED_TOGGLES: { key: keyof ViewSettings; label: string; hint: string }[] =
   { key: 'giftNotice', label: 'Gift notice', hint: 'Raise a desktop toast when a gift arrives' },
   { key: 'giftVoice', label: 'Say gifts', hint: 'Announce each gift with the neural voice' },
   { key: 'mentionAlert', label: 'Mention alert', hint: 'A sound when a message names you' },
+  { key: 'autoReply', label: 'Auto-reply', hint: 'Answer a greeting (hi, halo, hai) with a line of its own' },
 ]
 
 /**
