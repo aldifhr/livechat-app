@@ -7,7 +7,7 @@
  * that reset on every launch are settings nobody changes.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { host } from '../lib/sidecar'
 import { resolveDensity, resolveFont, resolveTheme, type DensityId, type FontId, type ThemeId } from '../lib/theme'
 
@@ -57,6 +57,14 @@ export interface ViewSettings {
   myHandle: string
   /** Play a sound when a message mentions one of those handles. */
   mentionAlert: boolean
+  /**
+   * Speak the sender's name when a message mentions one of those handles.
+   *
+   * Its own setting rather than the gift one. They were sharing a flag, which
+   * meant the spoken mention was unreachable unless "Say gifts" was also on,
+   * and turning that on enabled this as a side effect nobody could see.
+   */
+  mentionVoice: boolean
   /** Speak the sender's name before each message read aloud. */
   ttsNames: boolean
   /** Which synthesised sound a gift plays. */
@@ -92,6 +100,7 @@ export const DEFAULT_SETTINGS: ViewSettings = {
   giftVoice: false,
   myHandle: '',
   mentionAlert: false,
+  mentionVoice: false,
   ttsNames: true,
   giftTemplate: 'chime',
   chatTemplate: 'blip',
@@ -175,7 +184,13 @@ export function useSettings(): UseSettingsResult {
     }))
   }, [])
 
-  return { ...settings, set, nudgeFontScale }
+  // Memoised, because this object is spread into every consumer's props and
+  // dependencies. A fresh literal on each render made `settings` a changed value
+  // on every message arriving, so effects keyed on it tore down and rebuilt.
+  return useMemo(
+    () => ({ ...settings, set, nudgeFontScale }),
+    [settings, set, nudgeFontScale],
+  )
 }
 
 function clamp(value: number, min: number, max: number): number {

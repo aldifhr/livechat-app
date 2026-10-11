@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import { kindLabel } from '../hooks/useFeed'
+import { mentionsMe } from '../lib/mentions'
 import type { FeedItem } from '../types'
 
 /**
@@ -38,17 +39,17 @@ interface Props {
 /**
  * Whether a mention names this reader.
  *
- * Compared loosely — without the leading @ and lowercased — because TikTok is not
- * consistent about which form it puts in the mention field versus the nickname.
+ * The rule itself lives in `lib/mentions` and is shared with the alert hook: one
+ * rule, one normalisation. A second copy here drifted from it — it did not trim,
+ * so `" ana "` highlighted through the alert path but not in the feed.
  */
-function mentionsSomebody(item: FeedItem, myNames: string[] = []): boolean {
-  if (!item.mentions?.length || myNames.length === 0) return false
-  const mine = new Set(myNames.map((name) => name.replace(/^@+/, '').toLowerCase()))
-  return item.mentions.some((name) => mine.has(String(name).replace(/^@+/, '').toLowerCase()))
+function mentionsSomebody(item: FeedItem, myNames: string[]): boolean {
+  return mentionsMe(item.mentions, myNames)
 }
 
-function FeedRowImpl({ item, isLast, myNames = [] }: Props) {
+function FeedRowImpl({ item, isLast, myNames }: Props) {
   const repeat = item.repeatCount ?? 1
+  const mentioned = mentionsSomebody(item, myNames ?? [])
 
   return (
     <div className={`row row-${item.kind}${isLast ? ' row-new' : ''}`}>
@@ -78,7 +79,7 @@ function FeedRowImpl({ item, isLast, myNames = [] }: Props) {
 
         {item.kind === 'chat' || item.kind === 'ask' || item.kind === 'answer' ? (
           <>
-            <p className={`text${mentionsSomebody(item, myNames) ? ' text-mention' : ''}`}>{item.text}</p>
+            <p className={`text${mentioned ? ' text-mention' : ''}`}>{item.text}</p>
             {item.emotes && item.emotes.length > 0 && (
               <div className="emotes">
                 {item.emotes.map((emote) => (
@@ -133,5 +134,10 @@ export const FeedRow = memo(
     previous.item.avatar === next.item.avatar &&
     previous.item.isModerator === next.item.isModerator &&
     previous.item.isFiltered === next.item.isFiltered &&
-    previous.item.emotes === next.item.emotes,
+    previous.item.emotes === next.item.emotes &&
+    // The highlight, not the row: without this, editing "My handles" in settings
+    // left every already-painted row showing the old answer, so the highlight
+    // only appeared on rows that changed for some unrelated reason.
+    mentionsSomebody(previous.item, previous.myNames ?? []) ===
+      mentionsSomebody(next.item, next.myNames ?? []),
 )

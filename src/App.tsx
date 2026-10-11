@@ -21,6 +21,7 @@ export default function App() {
   const [backend, setBackend] = useState<BackendConfig>(EMPTY_BACKEND)
   const [filters, setFilters] = useState<FeedFilters>({ kind: 'all', search: '' })
   const settings = useSettings()
+  const { nudgeFontScale } = settings
   const [collapse, setCollapse] = useState(true)
 
   useGiftSound({
@@ -32,7 +33,7 @@ export default function App() {
   useMentionAlert({
     myHandle: settings.myHandle,
     sound: settings.mentionAlert,
-    voice: settings.giftVoice,
+    voice: settings.mentionVoice,
   })
 
   // The handles that count as "me", parsed once here rather than per row: the feed
@@ -87,11 +88,11 @@ export default function App() {
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey) return
       e.preventDefault()
-      settings.nudgeFontScale(e.deltaY > 0 ? -0.1 : 0.1)
+      nudgeFontScale(e.deltaY > 0 ? -0.1 : 0.1)
     }
     window.addEventListener('wheel', onWheel, { passive: false })
     return () => window.removeEventListener('wheel', onWheel)
-  }, [settings])
+  }, [nudgeFontScale])
 
   const listRef = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
@@ -115,10 +116,17 @@ export default function App() {
     if (pinned.current) {
       setUnseen(0)
       const node = listRef.current
-      if (node) node.scrollTop = node.scrollHeight
-    } else {
-      setUnseen((count) => count + arrived)
+      if (!node) return
+      node.scrollTop = node.scrollHeight
+      // Avatars, emotes and gift images are lazily loaded, so the height just
+      // measured does not include them. Scrolling again once they land is what
+      // keeps the newest row actually in view in an image-heavy room.
+      const settle = window.setTimeout(() => {
+        if (pinned.current) node.scrollTop = node.scrollHeight
+      }, 250)
+      return () => window.clearTimeout(settle)
     }
+    setUnseen((count) => count + arrived)
   }, [totalReceived])
 
   const onFiltersChange = useCallback((next: Partial<FeedFilters>) => {

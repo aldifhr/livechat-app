@@ -48,11 +48,17 @@ export function useFeed(collapse: CollapseOptions): UseFeedResult {
         // meaningful — prepending would put every new row out of view.
         const newest = previous[previous.length - 1]
         if (collapseDecides(newest, item, collapse)) {
-          // The row is mutated in place and returned inside a new array so React
-          // re-renders that one row. A copy would break the identity that keys
-          // the list and remount every row on each repeat.
-          newest.repeatCount = (newest.repeatCount ?? 1) + 1
-          return [...previous.slice(0, -1), newest]
+          // A copy carrying the same key, not an in-place bump. The key is what
+          // React reconciles on, so the row keeps its identity and its state
+          // across the repeat; the new object is what lets the memoised row see
+          // that repeatCount actually changed. Mutating in place returned the same
+          // object twice, so every compared field matched itself and the `x{n}`
+          // badge froze at whatever it last painted.
+          const bumped: FeedItem = {
+            ...newest,
+            repeatCount: (newest.repeatCount ?? 1) + 1,
+          }
+          return [...previous.slice(0, -1), bumped]
         }
 
         const key = `${item.timestamp}-${seq}-${item.platform}-${item.id}`

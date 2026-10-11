@@ -30,14 +30,6 @@ const TOGGLES: { key: keyof ViewSettings; label: string; hint: string }[] = [
   { key: 'giftNotice', label: 'Gift notice', hint: 'Raise a desktop toast when a gift arrives' },
 ]
 
-const CONDITIONAL_TOGGLES: {
-  key: keyof ViewSettings
-  label: string
-  hint: string
-  needs: keyof ViewSettings
-}[] = [
-]
-
 /**
  * The toolbar.
  *
@@ -73,6 +65,21 @@ export function Toolbar({
   const [handle, setHandle] = useState(() => normaliseUsername(backend.username))
   const savedHandle = useRef(normaliseUsername(backend.username))
 
+  // The saved handle arrives asynchronously, after this component has already
+  // mounted and seeded its state. The initialiser above therefore ran against an
+  // empty backend config, and without this the input stayed blank and Connect
+  // stayed disabled on every launch — a user with a handle saved had to retype it
+  // each time. Adopted once, and only when the field is untouched, so it can never
+  // overwrite something half-typed.
+  const seeded = useRef(false)
+  useEffect(() => {
+    const saved = normaliseUsername(backend.username)
+    if (seeded.current || saved === '') return
+    seeded.current = true
+    setHandle((current) => (current.trim() === '' ? saved : current))
+    savedHandle.current = saved
+  }, [backend.username])
+
   const isConnecting = busy || room.status === 'connecting'
   const isConnected = room.status === 'connected'
   const wanted = normaliseUsername(handle)
@@ -83,12 +90,18 @@ export function Toolbar({
     reconnect to save a handle is the same as not remembering it. Debounced
     because a save per keystroke is a write per keystroke, and `savedHandle`
     stops the timer mattering once it has landed.
+
+    The URL is saved exactly as it stands rather than through `backendUrl`,
+    which substitutes the built-in default for a blank field. Doing that here
+    meant typing a handle for the first time silently wrote a backend address
+    the user had never chosen into their config; the host already applies the
+    same default when it reads the field back.
   */
   useEffect(() => {
     if (!wanted || wanted === savedHandle.current) return
     const timer = setTimeout(() => {
       savedHandle.current = wanted
-      host.backendConfigSave({ baseUrl: backendUrl(backend), username: wanted }).catch(() => {})
+      host.backendConfigSave({ baseUrl: backend.baseUrl, username: wanted }).catch(() => {})
     }, 400)
     return () => clearTimeout(timer)
   }, [wanted, backend])
@@ -215,16 +228,6 @@ export function Toolbar({
           <span>Collapse spam</span>
         </label>
         {TOGGLES.map((option) => (
-          <label key={option.key} className="toggle" title={option.hint}>
-            <input
-              type="checkbox"
-              checked={Boolean(settings[option.key])}
-              onChange={(e) => settings.set(option.key, e.target.checked as never)}
-            />
-            <span>{option.label}</span>
-          </label>
-        ))}
-        {CONDITIONAL_TOGGLES.filter((option) => settings[option.needs]).map((option) => (
           <label key={option.key} className="toggle" title={option.hint}>
             <input
               type="checkbox"

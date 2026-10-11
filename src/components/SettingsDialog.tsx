@@ -3,7 +3,7 @@ import { host } from '../lib/sidecar'
 import { EMPTY_CONFIG, EXAMPLE_BASE_URL, isReady, modelOptions, normaliseBaseUrl, type LlmConfig } from '../lib/llm'
 import { DENSITIES, FONTS, THEMES } from '../lib/theme'
 import { TEMPLATES } from '../lib/templates'
-import { invalidateCustomSound, playSound, resolveAudio } from '../lib/player'
+import { invalidateCustomSound, playSound, releaseAudio, resolveAudio } from '../lib/player'
 import type { UseSettingsResult, ViewSettings } from '../hooks/useSettings'
 
 /**
@@ -68,6 +68,12 @@ const ALERT_TOGGLES: {
   { key: 'chatSound', label: 'Chat blip', hint: 'A short tap when a new message arrives' },
   { key: 'chatTts', label: 'Read chat aloud', hint: 'Speak new messages with the system voice' },
   { key: 'ttsNames', label: 'Say the name', hint: 'Speak the sender before each message', needs: 'chatTts' },
+  {
+    key: 'mentionVoice',
+    label: 'Say mentions',
+    hint: 'Speak the sender when a message names you',
+    needs: 'mentionAlert',
+  },
 ]
 
 export function SettingsDialog({ open, settings, onClose }: Props) {
@@ -78,6 +84,15 @@ export function SettingsDialog({ open, settings, onClose }: Props) {
   // A preview context, separate from the one the alerts use, so previewing a
   // sound does not compete with a gift that fires while the dialog is open.
   const previewContextRef = useRef<AudioContext | null>(null)
+  // The dialog made this context, so the dialog closes it. On unmount rather than
+  // on close, because a closed dialog stays mounted and its context is still the
+  // one a reopened dialog would preview through.
+  useEffect(
+    () => () => {
+      previewContextRef.current = releaseAudio(previewContextRef.current)
+    },
+    [],
+  )
   // Held so a save that lands after the dialog closes does not reopen it.
   const alive = useRef(true)
   useEffect(() => {

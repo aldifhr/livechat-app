@@ -11,5 +11,8 @@
 import App from '../src/App'
 import { setTransport, host, attach } from '../src/lib/sidecar'
 import { DEFAULT_BASE_URL } from '../src/lib/backend'
+import { useFeed } from '../src/hooks/useFeed'
+import { FeedRow } from '../src/components/FeedRow'
+import { myHandles } from '../src/lib/mentions'
 
-export { App, setTransport, host, attach, DEFAULT_BASE_URL }
+export { App, setTransport, host, attach, DEFAULT_BASE_URL, useFeed, FeedRow, myHandles }

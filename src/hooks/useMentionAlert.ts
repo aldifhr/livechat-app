@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { attach, detachHandler, type SidecarEvent } from '../lib/sidecar'
-import { playMention, resolveAudio } from '../lib/player'
+import { playMention, releaseAudio, resolveAudio } from '../lib/player'
 import { shouldPlayMentionAlert } from '../lib/sound'
 import { mentionsMe, myHandles } from '../lib/mentions'
 import { say } from '../lib/voice'
@@ -77,9 +77,21 @@ export function useMentionAlert({ myHandle, sound, voice }: Options): void {
     }
   }, [mine.join(','), sound, voice])
 
+  // This hook made its own context, so this hook closes it. Released on unmount
+  // only: the effect above re-runs on a setting change far more often than the
+  // component unmounts, and closing there would cut a sound off mid-play.
+  useEffect(
+    () => () => {
+      audioRef.current = releaseAudio(audioRef.current)
+    },
+    [],
+  )
+
   // Off: forget when the last alert was, so turning it back on does not wait out a
-  // gap that started while it was off.
+  // gap that started while it was off. Watches both channels, because either one
+  // alone still lets the alert fire — watching only the sound left voice-only use
+  // carrying a timestamp and silencing the first mention after a re-enable.
   useEffect(() => {
-    if (!sound) lastPlayedAt.current = null
-  }, [sound])
+    if (!sound && !voice) lastPlayedAt.current = null
+  }, [sound, voice])
 }

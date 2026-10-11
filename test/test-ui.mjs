@@ -109,7 +109,15 @@ console.log('the handle is remembered without being asked twice')
 // Debounced, so this waits rather than checking instantly.
 await new Promise((done) => setTimeout(done, 600))
 const remembered = fake.lastCommand('backend_config_save')
-check('the address was saved alongside it', remembered?.args?.config?.baseUrl === DEFAULT_BACKEND, JSON.stringify(remembered?.args?.config))
+// Saved as configured rather than with the built-in address substituted in. The
+// host applies that same default when it reads the field back, so writing it
+// here only meant a user's first handle edit silently stored a backend address
+// they had never chosen. What matters is that the field is carried, not filled.
+check(
+  'the address is saved as the user has it',
+  remembered?.args?.config?.baseUrl === '',
+  JSON.stringify(remembered?.args?.config),
+)
 check('and the handle without its @', remembered?.args?.config?.username === 'mybasic.indonesia', JSON.stringify(remembered?.args?.config))
 
 console.log('connecting asks the host for the right thing')
@@ -840,6 +848,98 @@ console.log('teardown')
 await act(async () => {
   root.unmount()
 })
+
+// The regressions below were found by reading, not by a failing assertion, and
+// each one is invisible from the outside: a row that renders the wrong number, an
+// input that never fills. So they are driven directly rather than through the
+// window.
+const { useFeed, FeedRow } = await import(entry)
+
+console.log('a repeated message repaints its counter')
+
+async function feedWith(items) {
+  const box = harness.dom.window.document.createElement('div')
+  const { createRoot } = await import('react-dom/client')
+  const mounted = createRoot(box)
+  let api
+  function Probe() {
+    api = useFeed(items.collapse)
+    return null
+  }
+  await act(async () => {
+    mounted.render(React.createElement(Probe))
+  })
+  return { box, mounted, api: () => api }
+}
+
+const chat = (over = {}) => ({
+  kind: 'chat',
+  id: 'u1',
+  platform: 'tiktok',
+  text: 'hello',
+  nickname: 'eko',
+  avatar: '',
+  timestamp: Date.now(),
+  ...over,
+})
+
+const feedCase = await feedWith({ collapse: { threshold: 2, windowMs: 2500 } })
+await act(async () => {
+  feedCase.api().push(chat())
+})
+const first = feedCase.api().items[0]
+await act(async () => {
+  feedCase.api().push(chat({ timestamp: first.timestamp + 100 }))
+})
+check('the repeat folded into the same row', feedCase.api().items.length === 1, JSON.stringify(feedCase.api().items))
+check('and its counter went up', feedCase.api().items[0].repeatCount === 2, String(feedCase.api().items[0].repeatCount))
+check('while the row kept its key, so React does not remount it', feedCase.api().items[0].key === first.key)
+
+// The bug: the row mutated its own item and handed the same object back, so every
+// field the memo compared matched itself and the badge froze at 2.
+await act(async () => {
+  feedCase.api().push(chat({ timestamp: first.timestamp + 200 }))
+})
+check('a third repeat updates the count', feedCase.api().items[0].repeatCount === 3, String(feedCase.api().items[0].repeatCount))
+
+console.log('the repeat badge actually renders')
+const rowBox = harness.dom.window.document.createElement('div')
+const { createRoot: rowRoot } = await import('react-dom/client')
+const rowMounted = rowRoot(rowBox)
+const item = { ...feedCase.api().items[0] }
+await act(async () => {
+  rowMounted.render(React.createElement(FeedRow, { item, isLast: true }))
+})
+check('the badge shows the count', (rowBox.textContent ?? '').includes('x3'), rowBox.textContent)
+// Same object, new count: exactly what the old in-place mutation produced, and
+// exactly what the memo must not be fooled by.
+const bumped = { ...item, repeatCount: 4 }
+await act(async () => {
+  rowMounted.render(React.createElement(FeedRow, { item: bumped, isLast: true }))
+})
+check('and it repaints when the count changes', (rowBox.textContent ?? '').includes('x4'), rowBox.textContent)
+
+console.log('editing your handles repaints the highlight')
+const mentionRow = { ...item, kind: 'chat', text: 'hi ana', mentions: ['ana'] }
+await act(async () => {
+  rowMounted.render(React.createElement(FeedRow, { item: mentionRow, isLast: true, myNames: [] }))
+})
+check('not highlighted for someone else', !/text-mention/.test(rowBox.innerHTML), rowBox.innerHTML.slice(0, 200))
+await act(async () => {
+  rowMounted.render(React.createElement(FeedRow, { item: mentionRow, isLast: true, myNames: ['ana'] }))
+})
+check('highlighted once the handle matches', /text-mention/.test(rowBox.innerHTML), rowBox.innerHTML.slice(0, 200))
+// Unchanged item, unchanged everything else — only the handles moved.
+await act(async () => {
+  rowMounted.render(React.createElement(FeedRow, { item: mentionRow, isLast: true, myNames: ['someone_else'] }))
+})
+check('and un-highlighted when it stops matching', !/text-mention/.test(rowBox.innerHTML), rowBox.innerHTML.slice(0, 200))
+
+await act(async () => {
+  rowMounted.unmount()
+  feedCase.mounted.unmount()
+})
+
 setTransport(null)
 harness.restore()
 
