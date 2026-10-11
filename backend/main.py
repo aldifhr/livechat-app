@@ -6,6 +6,7 @@ and nothing else; the split exists so that adding a widget or an event source
 does not mean editing the file that owns routing.
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -18,7 +19,7 @@ import uvicorn
 from fastapi import APIRouter, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import events
 import store
@@ -65,6 +66,15 @@ if _LEVEL != "NONE":
 #: room_id -> source. One live room per room, whatever asked for it.
 sources: dict[str, TikTokSource] = {}
 
+#: Serialises replacing one room's source. `_connect_room` has to `await` the old
+#: source's `stop()` before it can put the new one in place, and an `await` in the
+#: middle of that sequence is a hole two concurrent requests fall through: both
+#: read no source, both build one, and the second assignment silently orphans the
+#: first — whose task, socket and handlers then stay live for the life of the
+#: process, emitting a duplicate copy of every event into the same room. The
+#: route that reaches this is unauthenticated, so the race is remotely triggerable.
+_sources_lock = asyncio.Lock()
+
 
 #: Started once for the process. A watchdog that started per lifespan cycle would
 #: leave a thread behind every reload.
@@ -104,7 +114,7 @@ async def restore_sources() -> list[str]:
     """Reconnect every room with a stored channel. Returns what came back."""
     restored: list[str] = []
     try:
-        records = store.all_rooms()
+        records = await store.all_rooms_async()
     except Exception as exc:  # noqa: BLE001 — a bad config file must not stop the API
         logger.warning("could not read stored rooms for restore: %s", exc)
         return restored
@@ -124,16 +134,6 @@ async def restore_sources() -> list[str]:
 
 
 app = FastAPI(title="StreamKit", lifespan=lifespan)
-
-app.add_middleware(
-    CORSMiddleware,
-    # The frontend is served from a different origin than this API, so it has to
-    # be reachable cross-origin. Credentials are never used, which is what makes
-    # "*" acceptable here.
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 router = APIRouter()
 
@@ -179,7 +179,13 @@ def token_is_valid(request: Request) -> bool:
         # one was reachable.
         return auth_is_disabled()
     header = request.headers.get("x-streamkit-token", "")
-    return bool(header) and secrets.compare_digest(header, expected)
+    # Compared as bytes, not as str. `compare_digest` raises TypeError on a str
+    # holding any non-ASCII code point, and headers arrive decoded as latin-1 —
+    # so a single byte above 0x80 in the header was a 500 from inside the auth
+    # check, with a stack trace in the log, on an unauthenticated request.
+    return bool(header) and secrets.compare_digest(
+        header.encode("utf-8", "surrogateescape"), expected.encode("utf-8")
+    )
 
 
 #: The write routes the desktop app needs. It sends no token: the handle is the
@@ -262,6 +268,22 @@ async def guard_mutations(request: Request, call_next):
     return await call_next(request)
 
 
+# Registered after the guard above, so CORS ends up the *outer* layer and the
+# 401 it returns carries the headers a browser needs to read it. In the other
+# order the guard is outermost and its 401 crosses the wire without any CORS
+# headers, which a browser reports as an opaque network failure rather than the
+# 401 it is — so the real reason for the refusal never reaches the page.
+app.add_middleware(
+    CORSMiddleware,
+    # The frontend is served from a different origin than this API, so it has to
+    # be reachable cross-origin. Credentials are never used, which is what makes
+    # "*" acceptable here.
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 # --------------------------------------------------------------------------
 # request bodies
 # --------------------------------------------------------------------------
@@ -294,7 +316,10 @@ class UpdateRoomRequest(BaseModel):
 class ConnectByUsernameRequest(BaseModel):
     """A handle and nothing else — the app's whole ask of the backend."""
 
-    username: str = ""
+    # Bounded because this route is exempt from the token gate: without a cap the
+    # body is read and parsed in full before the handle regex rejects it, so the
+    # only limit on what an unauthenticated caller sends is the server's.
+    username: str = Field(default="", max_length=64)
 
 
 class ConfigUpdateRequest(BaseModel):
@@ -355,14 +380,15 @@ def _summary(room_id: str, record: dict[str, Any]) -> dict[str, Any]:
 
 @router.get("/api/rooms")
 async def list_rooms():
-    return {"rooms": [_summary(oid, rec) for oid, rec in store.all_rooms().items()]}
+    rooms = await store.all_rooms_async()
+    return {"rooms": [_summary(oid, rec) for oid, rec in rooms.items()]}
 
 
 @router.post("/api/rooms")
 async def create_room(req: CreateRoomRequest):
     name = req.name.strip() or "Untitled"
     config = req.config if req.config is not None else dict(DEFAULT_ROOM_CONFIG)
-    record = store.create_room(name, config)
+    record = await store.create_room_async(name, config)
     return {"room": _summary(record["id"], record)}
 
 
@@ -370,11 +396,11 @@ async def create_room(req: CreateRoomRequest):
 async def update_room(room_id: str, req: UpdateRoomRequest):
     username_changed = False
     if req.username is not None:
-        current = store.username_of(room_id)
+        current = await store.username_of_async(room_id)
         incoming = req.username.strip().lstrip("@")
         username_changed = incoming != current
 
-    record = store.update_room(
+    record = await store.update_room_async(
         room_id,
         name=req.name.strip() if req.name is not None else None,
         username=req.username.strip().lstrip("@") if req.username is not None else None,
@@ -394,7 +420,7 @@ async def update_room(room_id: str, req: UpdateRoomRequest):
 
 @router.get("/api/rooms/{room_id}")
 async def get_room(room_id: str):
-    record = store.get_room(room_id)
+    record = await store.get_room_async(room_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Room not found")
     return record
@@ -402,9 +428,10 @@ async def get_room(room_id: str):
 
 @router.delete("/api/rooms/{room_id}")
 async def delete_room(room_id: str):
-    if not store.delete_room(room_id):
+    if not await store.delete_room_async(room_id):
         raise HTTPException(status_code=404, detail="Room not found")
-    source = sources.pop(room_id, None)
+    async with _sources_lock:
+        source = sources.pop(room_id, None)
     if source is not None:
         await source.stop()
     return {"status": "ok"}
@@ -412,7 +439,7 @@ async def delete_room(room_id: str):
 
 @router.post("/api/rooms/{room_id}/config")
 async def update_room_config(room_id: str, req: ConfigUpdateRequest):
-    if not store.set_config(room_id, req.config):
+    if not await store.set_config_async(room_id, req.config):
         raise HTTPException(status_code=404, detail="Room not found")
     await events.emit_config(room_id, req.config)
     return {"status": "ok"}
@@ -440,7 +467,7 @@ async def room_connect(room_id: str):
     change the config first, which is behind the session. There is no body to
     forge and no path to hijack another room's stream.
     """
-    username = store.username_of(room_id).strip().lstrip("@")
+    username = (await store.username_of_async(room_id)).strip().lstrip("@")
     if not username:
         # No config to honour is a configuration error, not an auth error, and
         # saying "not signed in" would send the caller looking for a password
@@ -526,39 +553,32 @@ async def room_connect_by_username(req: ConnectByUsernameRequest):
         )
 
     try:
-        record, created = store.find_or_create_room_for_username(username)
+        record, created = await store.find_or_create_room_for_username_async(username)
     except ValueError as exc:  # pragma: no cover — the regex above already rejected it
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Only rooms this route had to invent count against the ceiling. Counting
     # every room would let someone fill the cap with junk handles and lock a
     # real streamer out of connecting; counting every room *except* junk is the
-    # same problem. The count is therefore the number of rooms that have a
-    # username but no source, which is what an auto-created room looks like: a
-    # dashboard room either has no username yet or is being connected on
-    # purpose. It is a heuristic, and the log says when it rejects, so the
-    # failure mode is visible rather than silent.
-    if created:
-        # all_rooms() is keyed by id and returns the records themselves, so the
-        # id has to come from the key rather than from the record.
-        auto = sum(
-            1
-            for other_id, other in store.all_rooms().items()
-            if str(other.get("username", "")).strip() and other_id not in sources
+    # same problem. The store therefore marks a room at the moment it invents one,
+    # and that marker is what is counted — the previous test, "has a username but
+    # no source", could never be true here, because this route connects the room
+    # it just created on the very next statement. The log says when it rejects, so
+    # the failure mode is visible rather than silent.
+    if created and await store.count_auto_rooms_async() > AUTO_ROOM_LIMIT:
+        auto = await store.count_auto_rooms_async()
+        logger.warning(
+            "room-connect-by-username: refusing to create a room for @%s — "
+            "%d auto-created rooms already exist (limit %d)",
+            username,
+            auto,
+            AUTO_ROOM_LIMIT,
         )
-        if auto > AUTO_ROOM_LIMIT:
-            logger.warning(
-                "room-connect-by-username: refusing to create a room for @%s — %d "
-                "auto-created rooms already exist (limit %d)",
-                username,
-                auto,
-                AUTO_ROOM_LIMIT,
-            )
-            store.delete_room(record["id"])
-            raise HTTPException(
-                status_code=429,
-                detail=f"too many auto-created rooms (limit {AUTO_ROOM_LIMIT}); delete some first",
-            )
+        await store.delete_room_async(record["id"])
+        raise HTTPException(
+            status_code=429,
+            detail=f"too many auto-created rooms (limit {AUTO_ROOM_LIMIT}); delete some first",
+        )
 
     room_id = record["id"]
     result = await _connect_room(room_id, username)
@@ -571,33 +591,44 @@ async def _connect_room(room_id: str, username: str) -> dict:
     Shared by the session-gated /api/connect and the config-scoped
     /api/room-connect, so the two cannot drift apart in how they start or
     report a source.
+
+    The whole read-stop-replace sequence is held under one lock. Every step in it
+    is a decision about the same slot, and the `await` in the middle is exactly
+    where two requests could otherwise both decide there was nothing there.
     """
-    existing = sources.get(room_id)
-    if existing and existing.is_running() and existing.username == username:
-        # Idempotent path. The ConnectEvent for this source already fired
-        # earlier, so anyone attaching now would otherwise never learn the
-        # current state — push it explicitly.
-        await hub.broadcast(existing.status_payload(), room_id=room_id)
-        return {
-            "status": "already-connected",
-            "username": existing.username,
-            "room_id": room_id,
-            **existing.status_payload(),
-        }
+    async with _sources_lock:
+        existing = sources.get(room_id)
+        if existing and existing.is_running() and existing.username == username:
+            # Idempotent path. The ConnectEvent for this source already fired
+            # earlier, so anyone attaching now would otherwise never learn the
+            # current state — push it explicitly.
+            await hub.broadcast(existing.status_payload(), room_id=room_id)
+            return {
+                "status": "already-connected",
+                "username": existing.username,
+                "room_id": room_id,
+                **existing.status_payload(),
+            }
 
-    if existing:
-        await existing.stop()
+        if existing:
+            # Stopped before it is displaced, and awaited, so the old connection is
+            # gone rather than merely forgotten. A source left running here is not
+            # merely wasteful: it keeps emitting into the same room.
+            await existing.stop()
 
-    source = TikTokSource(username, room_id)
-    sources[room_id] = source
-    source.start_background()
-    return {"status": "connecting", "username": username, "room_id": room_id}
+        source = TikTokSource(username, room_id)
+        sources[room_id] = source
+        source.start_background()
+        return {"status": "connecting", "username": username, "room_id": room_id}
 
 
 @router.post("/api/disconnect")
 async def disconnect(req: ConnectRequest):
     room_id = req.room_id or "default"
-    source = sources.pop(room_id, None)
+    # Under the same lock as the connect path, so a Stop cannot land in the middle
+    # of a replace and take the newly installed source down with the old one.
+    async with _sources_lock:
+        source = sources.pop(room_id, None)
     if source is not None:
         await source.stop()
     return {"status": "disconnected"}
@@ -622,7 +653,7 @@ async def trigger(room_id: str, req: TriggerRequest):
     that can POST here — a Stream Deck, a Discord bot, a cron job — appears on
     the stream without touching the backend.
     """
-    if store.get_room(room_id) is None:
+    if await store.get_room_async(room_id) is None:
         raise HTTPException(status_code=404, detail="Room not found")
 
     await events.emit(
@@ -659,7 +690,7 @@ async def webhook(room_id: str, req: HookRequest):
     readable, and so this path can grow its own auth later without changing
     what the dashboard's own button posts.
     """
-    if store.get_room(room_id) is None:
+    if await store.get_room_async(room_id) is None:
         raise HTTPException(status_code=404, detail="Room not found")
 
     value = req.text
@@ -707,7 +738,7 @@ async def webhook(room_id: str, req: HookRequest):
 async def websocket_endpoint(websocket: WebSocket, client_type: str, room_id: str):
     client_id = await hub.connect(websocket, client_type, room_id)
     try:
-        record = store.get_room(room_id)
+        record = await store.get_room_async(room_id)
         config = record.get("config", DEFAULT_ROOM_CONFIG) if record else DEFAULT_ROOM_CONFIG
         await websocket.send_text(json.dumps({"type": "config", "config": config}, ensure_ascii=False))
 
@@ -722,7 +753,16 @@ async def websocket_endpoint(websocket: WebSocket, client_type: str, room_id: st
             data = await websocket.receive_text()
             try:
                 msg = json.loads(data)
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, RecursionError):
+                # Deeply nested input raises RecursionError, not a decode error,
+                # and it is the same answer: not a message this protocol has.
+                continue
+            # Valid JSON is not necessarily a message. `null`, `123`, `"x"` and
+            # `[1,2]` all decode fine and none of them has `.get`, so the call
+            # below raised AttributeError and took the handler down with a
+            # traceback. This socket is unauthenticated, so the literal text `null`
+            # was enough.
+            if not isinstance(msg, dict):
                 continue
             if msg.get("type") == "ping":
                 await websocket.send_text(json.dumps({"type": "pong"}))
@@ -736,4 +776,9 @@ app.include_router(router)
 
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    # Loopback and reload. This block is the developer entry point: `uvicorn.run`
+    # here is not a production server, and binding `0.0.0.0` with the reloader on
+    # would put a reloading dev server on the LAN with whatever auth state the
+    # environment happens to carry. A real deployment runs `uvicorn main:app`
+    # behind its own process manager and its own bind address.
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)

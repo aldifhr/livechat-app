@@ -382,6 +382,83 @@ try:
 finally:
     os.environ.pop("STREAMKIT_TOKEN", None)
 
+print("a hostile token header is a 401, not a 500")
+# `secrets.compare_digest` raises TypeError on a str holding any non-ASCII code
+# point, and headers arrive decoded as latin-1 — so one byte above 0x80 in the
+# token header was a traceback from inside the auth check, on an unauthenticated
+# request. It must come back as the same 401 as any other wrong token.
+os.environ["STREAMKIT_TOKEN"] = "s3cret"
+try:
+    with TestClient(main.app) as nasty:
+        # Sent as raw bytes on purpose. httpx refuses to put a non-ASCII str in a
+        # header, which is why this goes through the transport directly: what has
+        # to be exercised is a header that *arrives* holding a byte above 0x80,
+        # because that is what Starlette decodes and hands to the auth check.
+        r = nasty.request(
+            "POST",
+            "/api/rooms",
+            content=json.dumps({"name": "HighBytes"}).encode("utf-8"),
+            headers={
+                "content-type": "application/json",
+                # Bytes, so the header genuinely arrives holding a non-ASCII code
+                # point after latin-1 decoding rather than being refused client-side.
+                "x-streamkit-token": "ÿþ".encode("latin-1"),
+            },
+        )
+        check("a non-ASCII token is refused, not fatal", r.status_code == 401, f"got {r.status_code}")
+finally:
+    os.environ.pop("STREAMKIT_TOKEN", None)
+
+print("the 401 a browser sees is a 401, not an opaque CORS failure")
+# CORS has to be the outer layer. With the auth guard outermost, its 401 crosses
+# the wire without any CORS headers and a browser reports an opaque network
+# failure — so the reason for the refusal never reaches the page that has to act
+# on it.
+os.environ["STREAMKIT_TOKEN"] = "s3cret"
+try:
+    with TestClient(main.app) as browser:
+        r = browser.post(
+            "/api/rooms",
+            json={"name": "CrossOrigin"},
+            headers={"Origin": "https://example.test", "X-StreamKit-Token": "wrong"},
+        )
+        check("the refusal is a 401", r.status_code == 401, f"got {r.status_code}")
+        check(
+            "and it carries the header that lets the page read it",
+            r.headers.get("access-control-allow-origin") is not None,
+            f"headers={dict(r.headers)}",
+        )
+finally:
+    os.environ.pop("STREAMKIT_TOKEN", None)
+
+print("a junk websocket frame does not take the handler down")
+# `null`, `123`, `"x"` and `[1,2]` are all valid JSON and none of them has `.get`,
+# so the handler used to raise AttributeError and die with a traceback on an
+# unauthenticated socket. The socket must survive them and still answer a ping.
+with TestClient(main.app) as socket_client:
+    with socket_client.websocket_connect("/ws/room/test-room") as ws:
+        handshake_ok = True
+        reply = {}
+        try:
+            # The handshake sends config and status first; drain them so the pong
+            # is the next thing on the wire.
+            ws.receive_json()
+            ws.receive_json()
+            for junk in ("null", "123", '"x"', "[1,2]"):
+                ws.send_text(junk)
+            ws.send_text(json.dumps({"type": "ping"}))
+            # Several junk frames may each have produced nothing; the pong is the
+            # first non-junk frame to come back.
+            for _ in range(4):
+                reply = ws.receive_json()
+                if reply.get("type") == "pong":
+                    break
+        except Exception as exc:  # noqa: BLE001 — a dead socket is the failure
+            handshake_ok = False
+            reply = {"error": str(exc)}
+        check("the socket survived every non-object frame", handshake_ok, json.dumps(reply))
+        check("and still answers a ping", reply.get("type") == "pong", json.dumps(reply))
+
 print()
 if failures:
     print(f"{len(failures)} FAILED: {failures}")

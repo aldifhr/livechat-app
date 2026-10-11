@@ -99,7 +99,13 @@ class Hub:
 
     async def _writer(self, client_id: str, ws: WebSocket) -> None:
         """Drain one client's queue, on that client's own clock."""
-        queue = self._queues[client_id]
+        # Taken with a default rather than indexed: `connect` creates the task and
+        # this coroutine does not run until it is scheduled, so a `disconnect` in
+        # between has already popped the queue and this line raised KeyError from
+        # a task nobody was awaiting.
+        queue = self._queues.get(client_id)
+        if queue is None:
+            return
 
         async def send(payload: dict[str, Any]) -> None:
             # Serialised on the way out, not on the way in: a viewer count held

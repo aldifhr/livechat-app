@@ -119,7 +119,15 @@ class LivenessWatchdog:
         task, self._heartbeat_task = self._heartbeat_task, None
         if task is not None:
             task.cancel()
-        self._thread = None
+        thread, self._thread = self._thread, None
+        if thread is not None and thread.is_alive():
+            # Joined before the reference is dropped. `stop()` used to clear
+            # `_thread` without joining, and `start()` then cleared the same
+            # event — so a thread already past its `wait()` saw a cleared flag and
+            # ran on, giving one watchdog per reload, which is the exact thing
+            # this singleton exists to prevent. Bounded so a wedged thread cannot
+            # hang shutdown.
+            thread.join(timeout=1.0)
 
 
 def sys_frames() -> list[str]:

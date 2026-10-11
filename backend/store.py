@@ -8,8 +8,10 @@ file is now read once and mutated in place behind a lock, and each write is
 atomic so a crash mid-save cannot leave a truncated file behind.
 """
 
+import asyncio
 import copy
 import json
+import logging
 import os
 import threading
 import time
@@ -17,8 +19,14 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+logger = logging.getLogger(__name__)
+
 BASE_DIR = Path(__file__).parent
-CONFIG_DIR = BASE_DIR / "config"
+# Where rooms.json lives. `STREAMKIT_CONFIG_DIR` moves it, which is what a deploy
+# pointing at a persistent volume needs: with the directory inside the source
+# tree, a rebuild throws every room away. Read at import, so it is set once by the
+# process rather than changing under a cached store.
+CONFIG_DIR = Path(os.environ.get("STREAMKIT_CONFIG_DIR") or (BASE_DIR / "config"))
 ROOMS_FILE = CONFIG_DIR / "rooms.json"
 
 # A plain lock, not asyncio.Lock: every critical section below is synchronous
@@ -39,6 +47,14 @@ def _data() -> dict[str, Any]:
                 # aside so it can be inspected instead of silently overwritten.
                 broken = ROOMS_FILE.with_suffix(".json.corrupt")
                 os.replace(ROOMS_FILE, broken)
+                _cache = {}
+            except (OSError, UnicodeDecodeError) as exc:
+                # A file that cannot be *read* — permissions, a bad sector, a
+                # half-written file that is not even valid UTF-8 — is the same
+                # situation as a corrupt one from the caller's side, because every
+                # route touches the store. Not caught here, one unreadable file
+                # takes the whole API down with a 500.
+                logger.warning("could not read %s (%s); starting empty", ROOMS_FILE, exc)
                 _cache = {}
         else:
             _cache = {}
@@ -175,7 +191,83 @@ def find_or_create_room_for_username(username: str, config: dict[str, Any] | Non
             "username": username.strip().lstrip("@"),
             "config": config or {},
             "createdAt": time.time(),
+            # Marked at birth, because "did this route invent it?" is the only
+            # question the ceiling needs answered. It used to be inferred from the
+            # room holding a username but no live source, which is unreachable in
+            # practice: the route that creates a room connects it on the next
+            # statement, so the room is never source-less by the time anyone
+            # counts. The cap therefore never fired.
+            "autoCreated": True,
         }
         data[room_id] = record
         _flush()
         return {"id": room_id, **copy.deepcopy(record)}, True
+
+
+def count_auto_rooms() -> int:
+    """How many rooms the by-username route has invented.
+
+    Counted from the marker written at creation rather than from the absence of a
+    source, because a source is present for as long as anyone is watching and
+    gone once the stream ends — so a source-based count would also forget rooms
+    whose stream had stopped, and let the cap refill without bound.
+    """
+    with _lock:
+        return sum(1 for record in _data().values() if record.get("autoCreated"))
+
+
+# --------------------------------------------------------------------------
+# async wrappers
+# --------------------------------------------------------------------------
+#
+# Everything above is synchronous, and a `write_text` of the whole store plus an
+# `os.replace` is exactly the kind of blocking call that stalls an event loop —
+# every other coroutine, including the websocket fan-out, waits for it. These
+# wrappers hand the work to a thread so the loop keeps running. The lock is a
+# threading lock precisely so this is safe: the work still happens under it, just
+# not on the loop's thread.
+#
+# The synchronous versions stay for the callers that are not on the loop (the
+# tests, and the restore path at startup).
+
+async def all_rooms_async() -> dict[str, Any]:
+    return await asyncio.to_thread(all_rooms)
+
+
+async def get_room_async(room_id: str) -> dict[str, Any] | None:
+    return await asyncio.to_thread(get_room, room_id)
+
+
+async def create_room_async(name: str, config: dict[str, Any]) -> dict[str, Any]:
+    return await asyncio.to_thread(create_room, name, config)
+
+
+async def update_room_async(
+    room_id: str,
+    *,
+    name: str | None = None,
+    username: str | None = None,
+) -> dict[str, Any] | None:
+    return await asyncio.to_thread(update_room, room_id, name=name, username=username)
+
+
+async def delete_room_async(room_id: str) -> bool:
+    return await asyncio.to_thread(delete_room, room_id)
+
+
+async def set_config_async(room_id: str, config: dict[str, Any]) -> bool:
+    return await asyncio.to_thread(set_config, room_id, config)
+
+
+async def username_of_async(room_id: str) -> str:
+    return await asyncio.to_thread(username_of, room_id)
+
+
+async def find_or_create_room_for_username_async(
+    username: str, config: dict[str, Any] | None = None
+) -> tuple[dict[str, Any], bool]:
+    return await asyncio.to_thread(find_or_create_room_for_username, username, config)
+
+
+async def count_auto_rooms_async() -> int:
+    return await asyncio.to_thread(count_auto_rooms)

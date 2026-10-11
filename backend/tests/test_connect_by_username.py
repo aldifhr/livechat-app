@@ -127,11 +127,16 @@ def main_run():
         ("..", "dots only"),
         ("...", "three dots"),
         ("na;rm -rf", "a shell fragment"),
-        ("emoji\U0001f600", "an emoji"),
-        ("a" * 2000, "absurdly long"),
+("emoji\U0001f600", "an emoji"),
     ):
         r = client.post("/api/room-connect-by-username", json={"username": bad})
         check(f"{why} is 400", r.status_code == 400, f"got {r.status_code}")
+
+    # Longer than the field allows, so the body model rejects it before the route
+    # runs. 422 rather than 400 for that reason — both are refusals, and what
+    # matters is that it does not reach the connection attempt.
+    r = client.post("/api/room-connect-by-username", json={"username": "a" * 2000})
+    check("absurdly long is refused", r.status_code in (400, 422), f"got {r.status_code}")
     check("nothing was connected while they were refused",
           len(started) == connected_before,
           f"{connected_before} -> {len(started)}")
@@ -163,23 +168,19 @@ def main_run():
           sum(1 for rec in store.all_rooms().values() if rec.get("username") == "raced") == 1)
 
     print("the ceiling rejects a flood and rolls the room back")
-    # Auto-created rooms are the ones holding a handle and no source, which is
-    # what a room invented by this route looks like. Fill the store past the
-    # ceiling with that shape, then ask for one more.
+    # Filled by asking for the handles, rather than by hand-building records in
+    # the store. The old version manufactured "a room with a username and no
+    # source", which is a state this route cannot leave behind — it connects what
+    # it creates on the next statement — so the filler rooms it built were not the
+    # shape the cap counts, and the test passed against a cap that was never
+    # actually enforcing anything.
     reserved = {"bittersweetbynajla", "someone_else", "raced"}
     main.sources.clear()
 
-    def auto_rooms() -> int:
-        return sum(
-            1
-            for rec in store.all_rooms().values()
-            if str(rec.get("username", "")).strip() and rec["name"] not in reserved
-        )
-
     for i in range(main.AUTO_ROOM_LIMIT + 2):
-        filler = store.create_room(f"filler{i}", {})
-        store.update_room(filler["id"], username=f"filler{i}")
-    check("the store is past the ceiling", auto_rooms() > main.AUTO_ROOM_LIMIT, str(auto_rooms()))
+        store.find_or_create_room_for_username(f"filler{i}")
+    check("the store is past the ceiling", store.count_auto_rooms() > main.AUTO_ROOM_LIMIT,
+          str(store.count_auto_rooms()))
 
     rooms_before = len(store.all_rooms())
     r = client.post("/api/room-connect-by-username", json={"username": "one_too_many"})
@@ -198,6 +199,64 @@ def main_run():
     print("the old route still works, unchanged")
     r = client.post(f"/api/room-connect/{made['id']}")
     check("room-connect/{id} is intact", r.status_code == 200, f"got {r.status_code}")
+
+    print("two connects at once do not orphan a source")
+    # `_connect_room` has to await the old source's stop() before installing its
+    # replacement, and an await in the middle of that is a hole two requests fall
+    # through: both read "no source", both build one, and the second assignment
+    # silently orphans the first — whose task and socket then stay live, emitting a
+    # duplicate of every event into the same room. The route reaching this is
+    # unauthenticated, so the race is remotely triggerable.
+    #
+    # Driven as coroutines rather than threads: the bug is about where the await
+    # lands in the event loop, and threads cannot express that.
+    import asyncio
+
+    real_source = main.TikTokSource
+    built: list[FakeSource] = []
+
+    class CountingSource(FakeSource):
+        async def stop(self):
+            # A real await inside stop() — the gap the lock has to cover.
+            await asyncio.sleep(0)
+            await super().stop()
+
+    def counting_factory():
+        def make(username, room_id):
+            source = CountingSource(username, room_id)
+            built.append(source)
+            return source
+        return make
+
+    main.TikTokSource = counting_factory()
+    try:
+        async def both():
+            # Same room, different handles, so neither takes the idempotent path.
+            await asyncio.gather(
+                main._connect_room("raceroom", "one"),
+                main._connect_room("raceroom", "two"),
+            )
+
+        asyncio.run(both())
+        installed = main.sources.get("raceroom")
+        check("exactly one source is installed", installed is not None)
+        check("both connects got as far as building one", len(built) == 2, f"built {len(built)}")
+        # The point of the lock: exactly one of them is still running. The second
+        # replaced the first, and the first was stopped rather than dropped — an
+        # orphaned source keeps emitting a duplicate of every event.
+        still_running = [s for s in built if s.is_running()]
+        check(
+            "the displaced source was stopped, not orphaned",
+            len(still_running) == 1,
+            f"{len(still_running)} of {len(built)} still running",
+        )
+        check(
+            "and the one that is running is the one installed",
+            still_running and installed is still_running[0],
+        )
+    finally:
+        main.TikTokSource = real_source
+        main.sources.clear()
 
     main.TikTokSource = getattr(sys.modules["sources"], "TikTokSource")
     main.sources.clear()

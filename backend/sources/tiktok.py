@@ -396,7 +396,14 @@ class TikTokSource:
             self._task.cancel()
             try:
                 await self._task
-            except (asyncio.CancelledError, Exception):
+            except asyncio.CancelledError:
+                # The cancellation of *this* task is the expected ending and is
+                # deliberately absorbed. A cancellation aimed at the caller — a
+                # shutdown, say — used to be swallowed here too, because the one
+                # except clause caught both, so `stop()` returned normally with
+                # `self._client` still set and the teardown half-finished.
+                pass
+            except Exception:
                 pass
         self._client = None
         self._task = None
