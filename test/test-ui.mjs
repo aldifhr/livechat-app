@@ -136,14 +136,19 @@ check('and the handle without its @', remembered?.args?.config?.username === 'my
 console.log('connecting asks the host for the right thing')
 await click(connectButton())
 const asked = fake.lastCommand('backend_connect')
+// The address and the handle are the point; the overlay styling rides along too,
+// so the backend can store it on the room and the overlay link can be a bare
+// `?room=<id>`. Asserted field by field rather than as one exact blob, so a field
+// added to the payload later does not read as a regression in the connect itself.
 check(
   'with the built-in address and the typed handle',
-  JSON.stringify(asked) ===
-    JSON.stringify({
-      command: 'backend_connect',
-      args: { config: { baseUrl: DEFAULT_BACKEND, username: 'mybasic.indonesia' } },
-    }),
+  asked?.args?.config?.baseUrl === DEFAULT_BACKEND && asked?.args?.config?.username === 'mybasic.indonesia',
   JSON.stringify(asked),
+)
+check(
+  'and the overlay styling, so the link can name the room by id',
+  typeof asked?.args?.config?.overlay === 'object' && asked.args.config.overlay.overlaySize === 22,
+  JSON.stringify(asked?.args?.config?.overlay),
 )
 
 console.log('frames drive the feed')

@@ -149,7 +149,19 @@ export function Toolbar({
     setDisconnected(false)
     onClearChat()
     try {
-      await host.backendConnect({ baseUrl: backendUrl(backend), username: wanted })
+      // The overlay styling rides along with the connect, so the backend stores it
+      // on the room and the overlay link can be a bare `?room=<id>` — the room
+      // carries the look, the link only names it.
+      const overlay = {
+        overlaySize: settings.overlaySize,
+        overlayNameColour: settings.overlayNameColour,
+        overlayTextColour: settings.overlayTextColour,
+        overlayBg: settings.overlayBg,
+        overlayMax: settings.overlayMax,
+        overlayDelay: settings.overlayDelay,
+        overlayFont: settings.overlayFont,
+      }
+      await host.backendConnect({ baseUrl: backendUrl(backend), username: wanted, overlay })
       savedHandle.current = wanted
     } catch {
       // The host's rejection says why in words — no room for that handle, the URL

@@ -494,14 +494,13 @@ fn backend_disconnect(state: State<'_, AppState>, app: tauri::AppHandle) {
 /// `base` is left out entirely when it is the default, because a link with a
 /// parameter in it that everybody has is a link nobody reads.
 ///
-/// `room_id`, when given, wins over the handle and produces a bare `?room=<id>`
-/// link with nothing else in it. A link that names the room by id is one nothing
-/// has to look up and nothing can drift: the handle is what the page would have
-/// to resolve, and a room id is already the room. The styling is left at the
-/// page's defaults, which is the point — the link stays a single readable
-/// parameter instead of eight.
+/// `room_id` is accepted but not used: a bare `?room=<id>` link depends on the
+/// styling having been stored on the room, and when it has not, the link renders
+/// at the page's defaults — a different overlay from the one configured. The
+/// handle link carries the look in itself, so it is right either way. Kept in the
+/// signature so the command's shape does not churn for the page that calls it.
 #[tauri::command]
-fn overlay_url(app: tauri::AppHandle, username: String, style: OverlayStyle, room_id: Option<String>) -> String {
+fn overlay_url(app: tauri::AppHandle, username: String, style: OverlayStyle, _room_id: Option<String>) -> String {
     let config = backend::read_config(&app);
     let base = normalise_base(&config.base_url);
     // Served from the backend, not from this app's loopback port. The overlay page
@@ -512,18 +511,16 @@ fn overlay_url(app: tauri::AppHandle, username: String, style: OverlayStyle, roo
     let mut url = format!("{}/overlay/", base.trim_end_matches('/'));
 
     let mut query: Vec<String> = Vec::new();
-    // A room id in hand beats a handle for the `room` value: the page opens that
-    // room directly with no resolve step. The styling still travels — a link that
-    // dropped it would render at the page's defaults, which is a different overlay
-    // from the one configured, and the whole point of the settings is that the link
-    // shows what was set.
-    if let Some(id) = room_id.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-        query.push(format!("room={}", encode_component(id)));
-    } else {
-        let handle = username.trim().trim_start_matches('@').to_string();
-        if !handle.is_empty() {
-            query.push(format!("room={}", encode_component(&handle)));
-        }
+    // The handle names the room and the styling travels with it — a link that is
+    // one readable line describing exactly what is on screen. The room id is not
+    // used here: a bare `?room=<id>` link depends on the styling having been
+    // stored on the room, and when it has not, the link renders at the page's
+    // defaults — which is a different overlay from the one configured. The handle
+    // link carries the look in itself, so it is right whether or not anything was
+    // stored.
+    let handle = username.trim().trim_start_matches('@').to_string();
+    if !handle.is_empty() {
+        query.push(format!("room={}", encode_component(&handle)));
     }
     if base != backend::DEFAULT_BASE_URL {
         query.push(format!("base={}", encode_component(&base)));

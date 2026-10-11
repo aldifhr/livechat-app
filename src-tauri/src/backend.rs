@@ -92,11 +92,23 @@ pub struct BackendConfig {
     /// resolved — but nobody should have to read a UUID out of a dashboard to
     /// watch a stream, and the lookup is a plain read that needs no token.
     pub username: String,
+    /// The overlay styling to remember on the room, as a JSON object.
+    ///
+    /// Sent with the connect so the backend can store it on the room, which is
+    /// what lets the overlay link be a bare `?room=<id>` — the room carries the
+    /// look and the link only names it. Empty means "send nothing", and the
+    /// backend then stores no styling.
+    #[serde(default)]
+    pub overlay: serde_json::Value,
 }
 
 impl Default for BackendConfig {
     fn default() -> Self {
-        Self { base_url: DEFAULT_BASE_URL.to_string(), username: String::new() }
+        Self {
+            base_url: DEFAULT_BASE_URL.to_string(),
+            username: String::new(),
+            overlay: serde_json::Value::Null,
+        }
     }
 }
 
@@ -226,7 +238,11 @@ fn shorten(text: &str, fallback: &str) -> String {
 ///
 /// Asking the user to create a room by hand would be the other option, and it was
 /// worse: it made the one thing they came here to do depend on a second tool.
-pub async fn resolve_and_start(base: &str, username: &str) -> Result<String, String> {
+pub async fn resolve_and_start(
+    base: &str,
+    username: &str,
+    overlay: &serde_json::Value,
+) -> Result<String, String> {
     let wanted = normalise_username(username);
     let url = endpoint(base, "api/room-connect-by-username");
 
@@ -241,7 +257,7 @@ pub async fn resolve_and_start(base: &str, username: &str) -> Result<String, Str
         .build()
         .map_err(|e| e.to_string())?;
 
-    let body = post_connect(&client, &url, &wanted).await?;
+    let body = post_connect(&client, &url, &wanted, overlay).await?;
     let parsed: Value =
         serde_json::from_str(&body).map_err(|e| format!("{url} did not answer with JSON: {e}"))?;
 
@@ -262,6 +278,7 @@ async fn post_connect(
     client: &reqwest::Client,
     start: &str,
     username: &str,
+    overlay: &serde_json::Value,
 ) -> Result<String, String> {
     let mut url = start.to_string();
     // A loop rather than a recursive call, and a flag rather than a counter: one
@@ -270,9 +287,19 @@ async fn post_connect(
     let mut followed = false;
 
     loop {
+        // The overlay styling rides along when there is any, so the backend can
+        // store it on the room and the overlay link can be a bare `?room=<id>`.
+        // Left out entirely when empty, so an app that never set styling up sends
+        // exactly the body it always did.
+        let mut body = json!({ "username": username });
+        if let (Some(obj), Some(extra)) = (body.as_object_mut(), overlay.as_object()) {
+            if !extra.is_empty() {
+                obj.insert("overlay".to_string(), overlay.clone());
+            }
+        }
         let response = client
             .post(&url)
-            .json(&json!({ "username": username }))
+            .json(&body)
             .send()
             .await
             .map_err(|e| format!("could not reach {url}: {e}"))?;
@@ -495,7 +522,7 @@ pub async fn pump(
     // Resolved once, outside the retry loop: which room a username means does not
     // change because the network blipped, and re-asking on every attempt would
     // turn a five-second hiccup into five round trips and five error messages.
-    let room_id = match resolve_and_start(&config.base_url, &config.username).await {
+    let room_id = match resolve_and_start(&config.base_url, &config.username, &config.overlay).await {
         Ok(id) => id,
         Err(why) => {
             report(&app, format!("Backend: {why}"));
@@ -909,11 +936,11 @@ mod tests {
         assert_eq!(BackendConfig::default().describe_missing(), Some("a username"));
         let no_user = BackendConfig { base_url: "https://kit.example".into(), ..Default::default() };
         assert_eq!(no_user.describe_missing(), Some("a username"));
-        let ready = BackendConfig { base_url: "https://kit.example".into(), username: "a".into() };
+        let ready = BackendConfig { base_url: "https://kit.example".into(), username: "a".into(), ..Default::default() };
         assert_eq!(ready.describe_missing(), None);
         // Only reachable if someone deliberately blanks the field, and the saved
         // value then has to fall back rather than leave the app with no address.
-        let blanked = BackendConfig { base_url: "  ".into(), username: "a".into() };
+        let blanked = BackendConfig { base_url: "  ".into(), username: "a".into(), ..Default::default() };
         assert_eq!(blanked.describe_missing(), Some("a backend URL"));
     }
 
@@ -951,7 +978,11 @@ mod tests {
     fn the_socket_to_a_real_backend_opens_and_frames_arrive() {
         const LIVE: &str = "https://kit-backend.aldifhr.my.id";
 
-        let room = tauri::async_runtime::block_on(resolve_and_start(LIVE, "mybasic.indonesia"))
+        let room = tauri::async_runtime::block_on(resolve_and_start(
+            LIVE,
+            "mybasic.indonesia",
+            &serde_json::Value::Null,
+        ))
             .expect("should resolve a room for a live handle");
         let url = socket_url(LIVE, &room);
 
