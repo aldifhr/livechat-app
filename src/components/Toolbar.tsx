@@ -80,6 +80,12 @@ export function Toolbar({
     savedHandle.current = saved
   }, [backend.username])
 
+  // Set when a Stop lands, cleared when a new connect starts. It exists only to
+  // make the note beside the field stop naming a room that is no longer being
+  // read: the field keeps the handle so reconnecting is one click, but "@handle via
+  // backend" beside a Disconnected status reads as a connection that never stopped.
+  const [disconnected, setDisconnected] = useState(false)
+
   const isConnecting = busy || room.status === 'connecting'
   const isConnected = room.status === 'connected'
   const wanted = normaliseUsername(handle)
@@ -101,6 +107,12 @@ export function Toolbar({
     if (!wanted || wanted === savedHandle.current) return
     const timer = setTimeout(() => {
       savedHandle.current = wanted
+      // The raw field, not the resolved address. Writing `backendUrl(backend)` here
+      // would substitute the built-in default into a config the user never chose,
+      // and from then on the app could not tell "they never set one" from "they set
+      // this one" — a different address would look like a change they made. The host
+      // applies the same default when it reads the field back, so an empty value
+      // connects identically and stays honest about where it came from.
       host.backendConfigSave({ baseUrl: backend.baseUrl, username: wanted }).catch(() => {})
     }, 400)
     return () => clearTimeout(timer)
@@ -108,6 +120,7 @@ export function Toolbar({
 
   async function connect() {
     setBusy(true)
+    setDisconnected(false)
     onClearChat()
     try {
       await host.backendConnect({ baseUrl: backendUrl(backend), username: wanted })
@@ -126,6 +139,11 @@ export function Toolbar({
     setBusy(true)
     try {
       await host.backendDisconnect()
+      // The handle stays in the field — it is what makes reconnecting one click —
+      // but the note beside it stops naming a room the app is no longer reading.
+      // Leaving it there reads as a connection that is still live, which is the
+      // one thing a Stop button must never appear to have failed to do.
+      setDisconnected(true)
     } finally {
       setBusy(false)
     }
@@ -168,12 +186,19 @@ export function Toolbar({
           </button>
         )}
         <span className="source-note">
-          {wanted ? (
+          {!wanted ? (
+            'Type the handle to start'
+          ) : disconnected ? (
+            // Stopped. The handle is still in the field, so it is still named here
+            // — but as a handle, not as a room being read, and the backend is not
+            // mentioned at all because the app is not talking to it.
+            <>
+              <strong>@{wanted}</strong> — stopped
+            </>
+          ) : (
             <>
               <strong>@{wanted}</strong> via {backendUrl(backend).replace(/^https?:\/\//, '')}
             </>
-          ) : (
-            'Type the handle to start'
           )}
         </span>
 

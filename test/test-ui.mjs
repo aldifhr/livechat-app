@@ -320,12 +320,33 @@ check(
 )
 
 console.log('stopping closes the reader')
+// Before the stop: the note names the room being read, and the backend it reads it
+// from. That is the state the assertions below compare against.
+check('while connected it names the room and the backend', /@mybasic\.indonesia via/.test($('.source-note')?.textContent ?? ''), $('.source-note')?.textContent)
 await click('.room-row .btn-danger')
 check(
   'the host was asked to stop',
   JSON.stringify(fake.lastCommand('backend_disconnect')) === JSON.stringify({ command: 'backend_disconnect' }),
   JSON.stringify(fake.lastCommand('backend_disconnect')),
 )
+// The status line goes quiet because the host says so, exactly as it does live —
+// the app does not assume a stop worked, it waits to be told.
+await act(async () => {
+  fake.emit({ platform: 'tiktok', type: 'status', connected: false, message: 'Disconnected' })
+})
+// The handle stays in the field so reconnecting is one click, but the note stops
+// naming a live room. Leaving "@handle via backend" beside a Disconnected status
+// reads as a connection that never stopped, which is the one thing a Stop button
+// must never appear to have failed to do.
+check('the handle is still there to reconnect with', $('.handle-input')?.value === '@mybasic.indonesia', $('.handle-input')?.value)
+check('and the field is editable again', $('.handle-input')?.disabled === false, String($('.handle-input')?.disabled))
+check('and the note no longer claims a live room', /stopped/.test($('.source-note')?.textContent ?? ''), $('.source-note')?.textContent)
+check('it stops naming the backend too', !/via/.test($('.source-note')?.textContent ?? ''), $('.source-note')?.textContent)
+check('and the status line agrees it is disconnected', /Disconnected/.test($('.room-status')?.textContent ?? ''), $('.room-status')?.textContent)
+// Connecting again clears the stopped note, so the room is named as live once more.
+await click($$('.room-row .btn').find((b) => b.textContent.trim() === 'Connect'))
+check('connecting names the room again', /via/.test($('.source-note')?.textContent ?? ''), $('.source-note')?.textContent)
+check('and no longer says stopped', !/stopped/.test($('.source-note')?.textContent ?? ''), $('.source-note')?.textContent)
 
 console.log('failures are shown, not swallowed')
 await act(async () => {
