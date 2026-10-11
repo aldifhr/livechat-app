@@ -84,19 +84,22 @@ Semua write butuh `X-StreamKit-Token`. Semua response JSON.
 | `POST` | `/api/rooms/{id}/config` | token | Simpan config |
 | `GET` | `/api/rooms/{id}/status` | — | Status koneksi |
 | `POST` | `/api/connect` | token | Sambungkan ke room |
+| `POST` | `/api/room-connect/{id}` | — | Sambungkan room yang sudah punya username |
+| `POST` | `/api/room-connect-by-username` | — | Room dibuat otomatis dari handle |
 | `POST` | `/api/disconnect` | token | Putuskan |
 | `POST` | `/api/rooms/{id}/trigger` | token | Trigger manual (test gift) |
 | `POST` | `/api/hooks/{id}` | token | Webhook untuk integrasi luar |
-| `GET` | `/api/polls/{id}` | — | Baca poll |
-| `GET` | `/api/polls/{id}/vote` | — | Vote (`?choice=N`) |
-| `POST` | `/api/polls/{id}` | token | Buat/ganti poll |
-| `DELETE` | `/api/polls/{id}` | token | Hapus poll |
 | `WS` | `/ws/{client_type}/{id}` | — | Stream event |
 
 ### Auth
 
-Semua write butuh header `X-StreamKit-Token` yang cocok dengan `STREAMKIT_TOKEN`,
-atau `?token=` di query string (fallback untuk OBS yang tidak bisa kirim header).
+Semua write butuh header `X-StreamKit-Token` yang cocok dengan `STREAMKIT_TOKEN`.
+
+Token **hanya** lewat header. `?token=` di query string sudah dihapus: query string
+masuk ke access log, `Referer`, dan riwayat browser, jadi token yang lewat sana
+adalah token yang bocor ke mana-mana. Kalau sebuah client tidak bisa kirim header,
+itu alasan untuk memakai route yang di-exempt, bukan alasan untuk menambah jalur
+kedua.
 
 **Gate fail closed.** Kalau `STREAMKIT_TOKEN` tidak di-set, setiap write di-refuse
 dengan 401 — bukan dibuka. Ini berbeda dari versi sebelumnya yang menerima semua
@@ -107,10 +110,17 @@ bahwa semua write terbuka.
 
 Read dan WebSocket tetap terbuka — OBS Browser Source tidak bisa bawa kredensial.
 
-Satu-satunya write yang di-exempt adalah `POST /api/room-connect/{id}`, karena OBS
-memuat halaman room tanpa header dan username-nya diambil dari config room yang
-tersimpan, bukan dari caller. Dicocokkan per segment path, bukan `startswith`, jadi
-route dengan nama lebih panjang tidak mewarisi exemption itu.
+Dua write yang di-exempt:
+
+- `POST /api/room-connect/{id}` — username diambil dari config room yang tersimpan,
+  bukan dari caller, jadi tidak ada yang bisa dipalsukan.
+- `POST /api/room-connect-by-username` — handle adalah satu-satunya yang diminta.
+  Route ini membuat room bila belum ada, dan itulah yang dibatasi `AUTO_ROOM_LIMIT`
+  (default 20 room auto-created) supaya UNAUTHENTICATED caller tidak bisa
+  mengaburkan resource.
+
+Keduanya dicocokkan per segment path, bukan `startswith`, jadi route dengan nama
+lebih panjang (`/api/room-connect-admin`) tidak mewarisi exemption itu.
 
 ### Env
 
