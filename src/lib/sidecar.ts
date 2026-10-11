@@ -518,9 +518,16 @@ export const host = {
    * copy in the frontend, and a link pointing at a different backend than the app
    * is reading is a link that shows an empty chat for reasons nobody can see.
    */
-  overlayUrl: async (username: string, style: OverlayStyle): Promise<string> => {
+  overlayUrl: async (
+    username: string,
+    style: OverlayStyle,
+    roomId?: string,
+  ): Promise<string> => {
     const resolved = await resolve()
-    const url = await resolved.invoke('overlay_url', { username, style })
+    // `roomId` makes the link a bare `?room=<id>`: the host emits just that when a
+    // room id is in hand, because naming the room by id is one nothing has to
+    // resolve and nothing can drift away from.
+    const url = await resolved.invoke('overlay_url', { username, style, roomId: roomId ?? null })
     return typeof url === 'string' ? url : ''
   },
   /**

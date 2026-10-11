@@ -146,6 +146,10 @@ export function useChat({ collapseWindowMs, collapseThreshold }: UseChatOptions)
             ...previous,
             status: 'connected',
             target: event.username,
+            // Kept so the overlay link can name the room by id — one parameter
+            // nothing has to resolve — rather than by the handle the page would
+            // have to turn into an id each time.
+            id: event.roomId,
             title: event.title,
           }))
           logPush('info', `tiktok: room ${event.roomId} is open for ${event.username}`)

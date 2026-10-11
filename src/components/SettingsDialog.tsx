@@ -110,6 +110,8 @@ interface Props {
    * shows somebody else's chat on somebody's stream.
    */
   roomTarget?: string
+  /** The connected room's id, so the overlay link can name it directly. */
+  roomId?: string
   onClose: () => void
 }
 
@@ -178,7 +180,7 @@ const ALERT_TOGGLES: {
   },
 ]
 
-export function SettingsDialog({ open, settings, roomTarget = '', onClose }: Props) {
+export function SettingsDialog({ open, settings, roomTarget = '', roomId = '', onClose }: Props) {
   const [config, setConfig] = useState<LlmConfig>(EMPTY_CONFIG)
   // What is actually on disk, so a test can say whether it is testing the fields
   // in front of the user or the settings the features will really use.
@@ -453,7 +455,10 @@ setConfig(EMPTY_CONFIG)
   async function copyOverlayLink() {
     setOverlayStatus({ kind: 'busy', text: 'Building the link…' })
     try {
-      const url = await host.overlayUrl(roomTarget, overlayStyle())
+      // Pass the room id when there is one: the link becomes a bare `?room=<id>`,
+      // which is one parameter nothing has to resolve. Falls back to the handle
+      // when there is no id yet (not connected), which the page resolves itself.
+      const url = await host.overlayUrl(roomTarget, overlayStyle(), roomId || undefined)
       if (!alive.current) return
       setOverlayUrl(url)
       try {

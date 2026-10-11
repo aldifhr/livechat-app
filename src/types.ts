@@ -111,6 +111,14 @@ export interface RoomState {
   message: string
   /** The streamer handle, as TikTok spells it. */
   target: string
+  /**
+   * The backend's id for this room, once it is known.
+   *
+   * Empty until a room frame arrives. The overlay link prefers it over the handle:
+   * a link naming the room by id is one parameter nothing has to resolve, where a
+   * handle is something the page turns into an id on every load.
+   */
+  id: string
   title: string
   viewers: number
 }
@@ -119,6 +127,7 @@ export const IDLE_ROOM: RoomState = {
   status: 'idle',
   message: '',
   target: '',
+  id: '',
   title: '',
   viewers: 0,
 }

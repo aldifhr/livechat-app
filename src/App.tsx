@@ -252,6 +252,7 @@ export default function App() {
         open={settingsOpen}
         settings={settings}
         roomTarget={room.target || typedHandle}
+        roomId={room.id}
         onClose={() => setSettingsOpen(false)}
       />
 

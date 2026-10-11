@@ -1052,6 +1052,10 @@ await act(async () => {
 })
 await click(copyBtn)
 check('but the open room wins over it', overlayRequests.at(-1)?.username === 'findidntsleep', overlayRequests.at(-1)?.username)
+// And it names the room by id, so the link is a bare `?room=<id>` the page opens
+// directly — one parameter nothing has to resolve, rather than a handle the page
+// turns into an id on every load.
+check('and carries the room id so the link can be just ?room=<id>', overlayRequests.at(-1)?.roomId === 'r-1', overlayRequests.at(-1)?.roomId)
 
 check('and the styling is one object on the way out', overlayRequests.at(-1)?.style?.size === 22 && overlayRequests.at(-1)?.style?.max === 8, JSON.stringify(overlayRequests.at(-1)?.style))
 // Shown as well as copied: the clipboard is a permission a webview can be refused.

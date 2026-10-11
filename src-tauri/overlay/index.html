@@ -386,6 +386,16 @@
     return new WebSocket(url)
   }
 
+  // A room id, as opposed to a handle. Recognised by shape — eight, four, four,
+  // four, twelve hex digits with dashes — because the backend mints ids in exactly
+  // that form and a handle can never contain a dash-run like it. Passing a room id
+  // straight through skips the resolve step: the link already names the room, so
+  // there is no handle to turn into one, and a link that is just `?room=<id>` is
+  // one nothing has to look up first.
+  function looksLikeRoomId(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+  }
+
   function connect() {
     if (config.username === '') {
       // Said out loud, unlike everything below. This one is a wrong link rather
@@ -397,6 +407,13 @@
       return
     }
     document.body.classList.remove('unconfigured')
+
+    // Already a room id: open it directly. No handle to resolve, no request to
+    // make, and the link stays a bare `?room=<id>`.
+    if (looksLikeRoomId(config.username)) {
+      open(config.username)
+      return
+    }
 
     fetch(config.baseUrl + '/api/room-connect-by-username', {
       method: 'POST',
