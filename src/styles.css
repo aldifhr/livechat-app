@@ -926,6 +926,24 @@ select.input option {
   white-space: nowrap;
 }
 
+/* The name is a button, not an anchor — the webview cannot navigate — but it
+   should read as one: a pointer, and an underline only on hover, so a resting
+   chat is not a page of links. Reset so it inherits the row's own colours and
+   spacing rather than the browser's button defaults. */
+.nickname-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.nickname-link:hover {
+  text-decoration: underline;
+}
+
 .time {
   flex: 0 0 auto;
   color: var(--muted);

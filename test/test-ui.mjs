@@ -307,6 +307,15 @@ check('a join row appeared', Boolean(joinRow), $$('.row').map((r) => r.className
 check('it shows an avatar slot like any chat row', Boolean(joinRow?.querySelector('.avatar')))
 check('it names the viewer', /Faray/.test(joinRow?.querySelector('.nickname')?.textContent ?? ''), joinRow?.textContent)
 check('it reads "joined the stream"', /joined the stream/.test(joinRow?.textContent ?? ''), joinRow?.textContent)
+// The name is a link to the viewer's profile — the one thing on a chat row worth
+// following up on. Opened through the host, because the webview cannot navigate.
+await click(joinRow?.querySelector('.nickname-link'))
+check(
+  'clicking a name asks the host to open their TikTok profile',
+  /open_stream/.test(JSON.stringify(fake.lastCommand('open_stream'))) &&
+    /tiktok\.com\/@/.test(JSON.stringify(fake.lastCommand('open_stream'))),
+  JSON.stringify(fake.lastCommand('open_stream')),
+)
 check('and it is not tagged either', !joinRow?.querySelector('.room-tag'))
 // A join used to be an unnamed "1 joined" system line. Nothing like that may remain.
 check('no nameless join rows exist', !$$('.row').some((r) => /\d+ joined/.test(r.textContent ?? '')))

@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { kindLabel } from '../hooks/useFeed'
 import { mentionsMe } from '../lib/mentions'
+import { host } from '../lib/sidecar'
 import type { FeedItem } from '../types'
 
 /**
@@ -63,7 +64,30 @@ function FeedRowImpl({ item, isLast, myNames }: Props) {
 
       <div className="row-body">
         <div className="row-head">
-          <span className="nickname">{item.nickname || 'Room'}</span>
+          {/* The name is a link to the viewer's TikTok profile — the one thing on a
+              chat row worth following up on. Opened through the host, not a plain
+              anchor: the webview's content security policy will not navigate, so an
+              <a href> would do nothing. The stable handle builds the URL; the
+              display name is the fallback when there is no handle. */}
+          <button
+            type="button"
+            className="nickname nickname-link"
+            title={`Open @${item.id || item.nickname} on TikTok`}
+            onClick={() => {
+              const handle = (item.id || item.nickname || '').trim()
+              if (handle) {
+                void host
+                  .openStream(`https://www.tiktok.com/@${encodeURIComponent(handle)}`)
+                  .catch(() => {
+                    // The host refuses anything but TikTok, and a profile URL is
+                    // TikTok — so a failure here is the browser, not the rule, and
+                    // there is nothing the row can do about it.
+                  })
+              }
+            }}
+          >
+            {item.nickname || 'Room'}
+          </button>
           {item.isModerator && (
             <span className="badge-mod" title="Room moderator">
               MOD
