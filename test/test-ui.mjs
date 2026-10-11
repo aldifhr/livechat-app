@@ -451,9 +451,12 @@ const tokenInput = webhookSection()?.querySelector('input[type="password"], inpu
 check('the token is hidden by default', tokenInput?.type === 'password', tokenInput?.type)
 // The test button is the only call whose result the user sees — "saved" is not
 // evidence a URL was right.
-const testBtn = $$('.modal-settings .btn').find((b) => /test/i.test(b.textContent))
-check('the test button is enabled once there is a url', testBtn?.disabled === false, String(testBtn?.disabled))
-await click(testBtn)
+// Scoped to its own section, because the Model section now has a "Test model"
+// button of its own and `/test/i` across the whole dialog matches whichever came
+// first in the document rather than whichever was meant.
+const webhookTestBtn = $$('[data-section="webhook"] .btn').find((b) => /test/i.test(b.textContent))
+check('the test button is enabled once there is a url', webhookTestBtn?.disabled === false, String(webhookTestBtn?.disabled))
+await click(webhookTestBtn)
 check(
   'testing reports what came back',
   /Sent/.test($('.modal-settings')?.textContent ?? ''),
@@ -473,6 +476,78 @@ await act(async () => {
 })
 check('the error reached the log', /not live/.test(doc.body.textContent ?? ''))
 check('the error badge appeared', !!$('.log-badge'), $('.log-badge')?.textContent ?? 'none')
+
+console.log('whether the model works at all')
+// The question the app had no answer for. Fetching the model list proves the
+// address and the key; a completion is a different request, and a proxy that
+// lists models and then refuses to answer them passes one and fails the other.
+// With the ask panel gone, nothing else showed a model saying anything.
+await click('.settings-btn')
+
+const savedNow = { baseUrl: 'https://h/v1', apiKey: 'sk-live', model: 'cx/gpt' }
+let llmAnswers = 'ok  (0.9s)'
+fake.transport.invoke = async (command, args) => {
+  fake.commands.push({ command, args })
+  if (command === 'llm_config_save') {
+    savedNow.baseUrl = args.config.baseUrl
+    savedNow.apiKey = args.config.apiKey
+    savedNow.model = args.config.model
+    return undefined
+  }
+  if (command === 'llm_config_get') return savedNow
+  if (command === 'llm_test') return llmAnswers
+  return undefined
+}
+// Reopening is what makes the saved settings load, which is when the fields and
+// what is on disk first agree.
+await click($('.modal-close'))
+await click('.settings-btn')
+await flush()
+
+const testBtn = () => $$('.modal-settings .btn').find((b) => /Test model/.test(b.textContent))
+check('there is a button that asks the model', Boolean(testBtn()))
+await click(testBtn())
+await flush()
+check('which asks the host', Boolean(fake.lastCommand('llm_test')), JSON.stringify(fake.commands.at(-1)))
+check('and shows what came back', /The saved model answered: ok/.test(doc.body.textContent ?? ''), $('.modal-status')?.textContent)
+check('with how long it took', /\(0\.9s\)/.test($('.modal-status')?.textContent ?? ''), $('.modal-status')?.textContent)
+
+// A model that answers with nothing is a failure wearing a success's shape.
+llmAnswers = '   '
+await click(testBtn())
+await flush()
+check('an empty answer says so rather than looking fine', /answered with nothing/.test($('.modal-status')?.textContent ?? ''), $('.modal-status')?.textContent)
+
+// And a model that does not answer at all, with the reason it gave.
+fake.transport.invoke = async (command, args) => {
+  fake.commands.push({ command, args })
+  if (command === 'llm_test') throw new Error('could not reach https://h/v1: connection refused')
+  if (command === 'llm_config_get') return savedNow
+  return undefined
+}
+await click(testBtn())
+await flush()
+check('a failure says so, and repeats why', /did not answer/.test($('.modal-status')?.textContent ?? '') && /connection refused/.test($('.modal-status')?.textContent ?? ''), $('.modal-status')?.textContent)
+
+// The most misleading thing this button could do: say yes while the user is
+// looking at a key they have not saved. It tests the saved settings, because
+// that is what moderation and AI answers will use — so it has to say when the
+// two differ rather than quietly answering a different question.
+await act(async () => {
+  const input = $$('.modal-settings input').find((i) => i.type === 'password')
+  const setter = Object.getOwnPropertyDescriptor(harness.dom.window.HTMLInputElement.prototype, 'value').set
+  setter.call(input, 'sk-not-saved-yet')
+  input.dispatchEvent(new harness.dom.window.Event('input', { bubbles: true }))
+})
+fake.transport.invoke = async (command, args) => {
+  fake.commands.push({ command, args })
+  if (command === 'llm_test') return 'ok  (0.4s)'
+  if (command === 'llm_config_get') return savedNow
+  return undefined
+}
+await click(testBtn())
+await flush()
+check('an unsaved key is flagged, not silently ignored', /unsaved changes/.test($('.modal-status')?.textContent ?? ''), $('.modal-status')?.textContent)
 
 console.log('reading preferences')
 // The look and feed preferences moved behind the gear, so this opens the dialog

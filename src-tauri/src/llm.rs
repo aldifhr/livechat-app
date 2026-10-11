@@ -222,10 +222,26 @@ pub async fn chat(
     model: &str,
     messages: &[Turn],
 ) -> Result<String, EndpointError> {
+    chat_within(base, api_key, model, messages, 120).await
+}
+
+/// The same request, with a ceiling of its own on how long to wait.
+///
+/// Split out because the ceiling is the only thing that differs between "a question
+/// worth waiting two minutes for" and "a check that should fail fast". A wrapper
+/// with a parameter would do; a second function does not put a caller in the
+/// position of passing a smaller number to the wrong call.
+pub async fn chat_within(
+    base: &str,
+    api_key: &str,
+    model: &str,
+    messages: &[Turn],
+    timeout_secs: u64,
+) -> Result<String, EndpointError> {
     let url = endpoint(base, "chat/completions");
 
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_secs(timeout_secs))
         .build()
         .map_err(|e| EndpointError::Unreachable(e.to_string()))?;
 

@@ -114,6 +114,7 @@ type HostCommand =
   | 'llm_models'
   | 'llm_moderate'
   | 'llm_autoreply'
+  | 'llm_test'
   | 'llm_config_get'
   | 'llm_config_save'
   | 'llm_config_clear'
@@ -434,6 +435,23 @@ export const host = {
     // answers with one of the two, but the two must not collapse into each other
     // here: posting an empty row is worse than posting nothing.
     return typeof reply === 'string' && reply.trim() !== '' ? reply.trim() : null
+  },
+  /**
+   * Asks the model one trivial question and returns what it said.
+   *
+   * The check for whether the LLM works, which nothing else in the app answers.
+   * Fetching the model list proves the address and the key; a completion is a
+   * different request, and a proxy that lists models and then refuses to answer
+   * them passes one check and fails the other.
+   *
+   * The endpoint, the key and the model are read host-side for the same reason as
+   * everywhere else: a credential should not be handed back to the page in order
+   * to be used.
+   */
+  llmTest: async (): Promise<string> => {
+    const resolved = await resolve()
+    const answer = await resolved.invoke('llm_test')
+    return typeof answer === 'string' ? answer : ''
   },
   llmConfigGet: async (): Promise<LlmConfig> => {
     const resolved = await resolve()

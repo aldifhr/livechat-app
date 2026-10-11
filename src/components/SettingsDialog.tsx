@@ -180,6 +180,9 @@ const ALERT_TOGGLES: {
 
 export function SettingsDialog({ open, settings, roomTarget = '', onClose }: Props) {
   const [config, setConfig] = useState<LlmConfig>(EMPTY_CONFIG)
+  // What is actually on disk, so a test can say whether it is testing the fields
+  // in front of the user or the settings the features will really use.
+  const [savedModel, setSavedModel] = useState<LlmConfig>(EMPTY_CONFIG)
   const [models, setModels] = useState<string[]>([])
   const [status, setStatus] = useState<Status>({ kind: 'idle', text: '' })
   const [revealKey, setRevealKey] = useState(false)
@@ -223,6 +226,7 @@ const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
       .then((saved) => {
         if (!active) return
         setConfig(saved)
+            setSavedModel(saved)
         setModels(saved.model ? [saved.model] : [])
         setStatus({ kind: 'idle', text: '' })
       })
@@ -308,14 +312,64 @@ const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
   }
 
   async function saveModel() {
+    const saved = { ...config, baseUrl: normaliseBaseUrl(config.baseUrl), apiKey: config.apiKey.trim() }
     setStatus({ kind: 'busy', text: 'Saving…' })
     try {
-      await host.llmConfigSave({ ...config, baseUrl: normaliseBaseUrl(config.baseUrl), apiKey: config.apiKey.trim() })
+      await host.llmConfigSave(saved)
       if (!alive.current) return
+      // Kept in step with the fields, because "Test model" compares the two to say
+      // whether it is testing what is on screen or what is on disk. A copy left
+      // behind here would have it report unsaved changes forever.
+      setConfig(saved)
+      setSavedModel(saved)
       setStatus({ kind: 'ok', text: 'Saved.' })
     } catch (error: unknown) {
       if (!alive.current) return
       setStatus({ kind: 'error', text: message(error) })
+    }
+  }
+
+  /**
+   * Asks the model one trivial question and shows the answer.
+   *
+   * For "is my LLM working", which nothing else in the app answers. Fetching the
+   * model list proves the address and the key; a completion is a different
+   * request, and a proxy that lists models and then refuses to answer them passes
+   * one of those checks and fails the other. With the ask panel gone there was no
+   * way left to see a model say anything without switching a live feature on and
+   * reading the log for it.
+   *
+   * Reads the *saved* settings rather than the fields, because that is what the
+   * features use. Testing what is in the form would answer a different question
+   * from the one being asked, and would say yes while moderation quietly failed
+   * against an unsaved key.
+   *
+   * Says what is missing instead of failing obscurely: the three ways this cannot
+   * work are an unset endpoint, an unset model, and an endpoint that will not
+   * answer, and only the host knows which.
+   */
+  async function testModel() {
+    setStatus({ kind: 'busy', text: 'Asking the model…' })
+    // Said before the call rather than after: someone who has just typed a new key
+    // and pressed this is testing the *old* one, and a green result while they are
+    // looking at the new key is the most misleading thing this dialog can do.
+    const unsaved = normaliseBaseUrl(config.baseUrl) !== savedModel.baseUrl
+      || config.apiKey.trim() !== savedModel.apiKey
+      || config.model !== savedModel.model
+    try {
+      const answer = await host.llmTest()
+      if (!alive.current) return
+      const said = answer.trim() === '' ? 'it answered with nothing' : answer.trim()
+      setStatus({
+        kind: 'ok',
+        text: `The saved model answered: ${said}${unsaved ? ' — but you have unsaved changes above.' : ''}`,
+      })
+    } catch (error: unknown) {
+      if (!alive.current) return
+      setStatus({
+        kind: 'error',
+        text: `The model did not answer — ${message(error)}${unsaved ? ' (it tested the saved settings, not these fields)' : ''}`,
+      })
     }
   }
 
@@ -324,8 +378,9 @@ const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
     try {
       await host.llmConfigClear()
       if (!alive.current) return
-      setConfig(EMPTY_CONFIG)
-      setModels([])
+setConfig(EMPTY_CONFIG)
+          setSavedModel(EMPTY_CONFIG)
+          setModels([])
       setStatus({ kind: 'ok', text: 'Forgotten. The key is gone from disk.' })
     } catch (error: unknown) {
       if (!alive.current) return
@@ -839,6 +894,14 @@ const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
           <div className="modal-actions">
             <button className="btn btn-small" onClick={forgetModel} disabled={status.kind === 'busy'}>
               Forget
+            </button>
+            <button
+              className="btn btn-small"
+              onClick={testModel}
+              disabled={status.kind === 'busy'}
+              title="Ask the model one question and show what it answers"
+            >
+              {status.kind === 'busy' ? 'Working…' : 'Test model'}
             </button>
             <span className="modal-spacer" />
             <button className="btn btn-small" onClick={onClose}>
