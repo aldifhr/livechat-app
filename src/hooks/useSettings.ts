@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { host } from '../lib/sidecar'
-import { clampRows, clampNumber, resolveColour, resolveOverlayFont, OVERLAY_SIZE } from '../lib/overlay'
+import { clampRows, clampNumber, resolveColour, resolveOverlayFont, OVERLAY_DELAY, OVERLAY_SIZE } from '../lib/overlay'
 import { clampSeconds, resolveModeration, type ModerationMode } from '../lib/ai'
 import { resolveDensity, resolveFont, resolveTheme, type DensityId, type FontId, type ThemeId } from '../lib/theme'
 
@@ -111,6 +111,8 @@ export interface ViewSettings {
   overlaySize: number
   /** How many messages are on screen at once. */
   overlayMax: number
+  /** Milliseconds between one message appearing and the next. */
+  overlayDelay: number
   /** 0 is no backdrop at all, 1 is an opaque panel. */
   overlayBg: number
   overlayNameColour: string
@@ -182,6 +184,7 @@ export const DEFAULT_SETTINGS: ViewSettings = {
   aiReplyPersona: '',
   overlaySize: 22,
   overlayMax: 8,
+  overlayDelay: 500,
   overlayBg: 0,
   overlayNameColour: '#ffd76a',
   overlayTextColour: '#ffffff',
@@ -235,6 +238,9 @@ function load(): ViewSettings {
       // to end the value it sits in.
       overlaySize: clampNumber(saved.overlaySize, OVERLAY_SIZE.min, OVERLAY_SIZE.max, DEFAULT_SETTINGS.overlaySize),
       overlayMax: clampRows(saved.overlayMax, DEFAULT_SETTINGS.overlayMax),
+      overlayDelay: Math.round(
+        clampNumber(saved.overlayDelay, OVERLAY_DELAY.min, OVERLAY_DELAY.max, DEFAULT_SETTINGS.overlayDelay),
+      ),
       overlayBg: clampNumber(saved.overlayBg, 0, 1, DEFAULT_SETTINGS.overlayBg),
       overlayNameColour: resolveColour(saved.overlayNameColour, DEFAULT_SETTINGS.overlayNameColour),
       overlayTextColour: resolveColour(saved.overlayTextColour, DEFAULT_SETTINGS.overlayTextColour),

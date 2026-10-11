@@ -90,45 +90,116 @@ function load(search = '?room=ana&max=8') {
 /** Lets the page's promise chains settle. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
 
+/**
+ * Polls until `done` or the deadline.
+ *
+ * Needed because a message now takes a turn of the queue to reach the screen.
+ * Reading the list in the same tick it was written to finds a page that is
+ * working perfectly and looks empty, which is a test that fails for the right
+ * reason and gets "fixed" by weakening the assertion.
+ */
+async function waitFor(done, timeoutMs = 3000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (done()) return true
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+  return done()
+}
+
 console.log('the page connects')
-const page = load()
+const connected = load()
 await settle()
-check('it asked the backend for a room first', page.sockets.length === 0, String(page.sockets.length))
+check('it asked the backend for a room first', connected.sockets.length === 0, String(connected.sockets.length))
+connected.openRoom()
+await settle()
+await settle()
+check('and opened a socket once it had one', connected.sockets.length === 1, String(connected.sockets.length))
+check('as an overlay client, sharing the room', connected.sockets[0]?.url.endsWith('/ws/overlay/room-1'), connected.sockets[0]?.url)
+
+console.log('messages arrive one at a time')
+// A fast gap for everything that follows: the pacing itself is checked separately
+// below with a gap long enough to see it, and sixty messages at the default half
+// second would take half a minute to drain.
+const quick = load('?room=ana&max=8&delay=120')
+await settle()
+quick.openRoom()
+await settle()
+await settle()
+check('the first message is not held back', quick.rows().length === 0, String(quick.rows().length))
+quick.say('ana', 'hello')
+check('the first one appears at once', quick.rows().length === 1, String(quick.rows().length))
+check('with the name on it', quick.rows()[0]?.querySelector('.name')?.textContent === 'ana')
+check('and the text', /hello/.test(quick.rows()[0]?.textContent ?? ''))
+check('rendered as text, not markup', quick.rows()[0]?.querySelector('.text')?.innerHTML === 'hello')
+
+console.log('a burst arrives as beats, not as a wall')
+// The point of the queue. Five messages in the same tick must not all be on screen
+// by the time the tick returns — the gap between them is the whole feature.
+const paced = load('?room=ana&max=8&delay=400')
+await settle()
+paced.openRoom()
+await settle()
+await settle()
+for (let n = 0; n < 5; n += 1) paced.say(`viewer${n}`, `message ${n}`)
+check('only one of five is out', paced.rows().length === 1, String(paced.rows().length))
+check('and it is the first, not a later one', /message 0/.test(paced.rows()[0]?.textContent ?? ''), paced.rows()[0]?.textContent)
+await new Promise((resolve) => setTimeout(resolve, 450))
+check('the second follows it', paced.rows().length === 2, String(paced.rows().length))
+await new Promise((resolve) => setTimeout(resolve, 450))
+check('and the third', paced.rows().length === 3, String(paced.rows().length))
+
+console.log('the queue does not become a slow-motion recording')
+// Past the cap, the stalest waiting messages are dropped rather than shown twenty
+// seconds late: a message that old is not a message about anything any more.
+const flooded = load('?room=ana&max=8&delay=3000')
+await settle()
+flooded.openRoom()
+await settle()
+await settle()
+for (let n = 0; n < 60; n += 1) flooded.say(`v${n}`, `m${n}`)
+// 3000ms is the top of the range, so one release has happened and none since.
+check('one is out and the rest are held', flooded.rows().length === 1, String(flooded.rows().length))
+check('and it is the first arrival, not a later one', /m0/.test(flooded.rows()[0]?.textContent ?? ''), flooded.rows()[0]?.textContent)
+
+console.log('a page full of messages still works')
+// The regression from before. Sixty messages through a limit of eight: enough to
+// overflow many times over, which is what used to hang the handler outright.
+const page = load('?room=ana&max=8&delay=120')
+await settle()
 page.openRoom()
 await settle()
 await settle()
-check('and opened a socket once it had one', page.sockets.length === 1, String(page.sockets.length))
-check('as an overlay client, sharing the room', page.sockets[0]?.url.endsWith('/ws/overlay/room-1'), page.sockets[0]?.url)
-
-console.log('messages arrive')
-page.say('ana', 'hello')
-check('one message is one row', page.rows().length === 1, String(page.rows().length))
-check('with the name on it', page.rows()[0]?.querySelector('.name')?.textContent === 'ana')
-check('and the text', /hello/.test(page.rows()[0]?.textContent ?? ''))
-check('rendered as text, not markup', page.rows()[0]?.querySelector('.text')?.innerHTML === 'hello')
-
-console.log('a page full of messages still works')
-// The regression. Sixty messages through a limit of eight: enough to overflow
-// many times over, which is what used to hang on the first pass.
+// The peak matters as much as the final count: a queue that never sheds anything
+// is not holding a backlog, it is recording one, and the list is where that shows
+// before anything else does.
+let peak = 0
+const watch = setInterval(() => {
+  peak = Math.max(peak, page.rows().length)
+}, 20)
 for (let n = 0; n < 60; n += 1) page.say(`viewer${n}`, `message ${n}`)
+// Long enough for the queue to drain: sixty at 120ms is about seven seconds.
+await new Promise((resolve) => setTimeout(resolve, 9000))
+clearInterval(watch)
 
 check('the page is still alive', true)
 check('every message was rendered, not just the first few', page.rows().length > 0, String(page.rows().length))
 // The newest one is the proof it did not stop: a page that hung on message ten
 // never reaches sixty.
 check('the newest message is there', /message 59/.test(page.rows().at(-1)?.textContent ?? ''), page.rows().at(-1)?.textContent)
+// A row being faded out is still a child, so the ceiling is the limit plus a
+// couple in flight. Sixty would mean nothing was ever taken off the screen.
+check('the list never ballooned on the way', peak <= 8 + 3, String(peak))
 
 console.log('the limit is a limit')
 // Counted on the rows that have not started leaving, rather than on every child:
-// a row that is fading out is still in the tree, and a test that waits for the
-// fade to finish before asserting anything passes just as happily on a page whose
-// limit is not enforced at all.
+// a row that is fading out is still in the tree, and counting it as shown is how a
+// limit that is not being enforced looks fine.
 const live = () => page.rows().filter((row) => row.dataset.leaving !== '1')
 check('at most the limit are actually shown', live().length <= 8, String(live().length))
 check('and the limit is reached, not merely respected', live().length === 8, String(live().length))
-check('while the tree carries the fading ones too', page.rows().length > 8, String(page.rows().length))
-// And they do go, once their fade is over. A row that is never taken out is a row
-// the next trim still has to account for, forever.
+// And once the fades have run, the ones that were leaving are gone. A row that is
+// never taken out is a row the next trim still has to account for, forever.
 await new Promise((resolve) => setTimeout(resolve, 900))
 check('and the old ones are eventually removed', page.rows().length === 8, String(page.rows().length))
 check('leaving just the newest', /message 59/.test(page.rows().at(-1)?.textContent ?? ''))
@@ -145,6 +216,9 @@ console.log('a frame it did not expect does not take the page down')
 // Every one of these is something the backend can send, or something a truncated
 // socket can produce. Each has to be a no-op rather than an exception, because an
 // exception in the handler stops every message after it.
+//
+// Polled rather than read straight away: a real message now takes a turn of the
+// queue to reach the screen, so the row is not there in the same tick it was sent.
 const survived = [
   { label: 'not json', data: 'not json at all' },
   { label: 'json that is not an object', data: '"just a string"' },
@@ -156,7 +230,8 @@ const survived = [
 for (const frame of survived) {
   page.sockets[0].onmessage?.({ data: frame.data })
   page.say('after', `still working after ${frame.label}`)
-  check(`survives ${frame.label}`, /still working after/.test(page.rows().at(-1)?.textContent ?? ''), page.rows().at(-1)?.textContent)
+  const arrived = await waitFor(() => /still working after/.test(page.rows().at(-1)?.textContent ?? ''))
+  check(`survives ${frame.label}`, arrived, page.rows().at(-1)?.textContent)
 }
 
 console.log('a link with no handle says so')
@@ -171,7 +246,6 @@ check('the room lookup still ran', bare.sockets.length >= 0)
 const unconfigured = load('?max=8')
 await settle()
 check('and it says the handle is missing', /no handle in this link/.test(unconfigured.dom.window.document.body.textContent ?? ''), unconfigured.dom.window.document.body.textContent)
-check('and shows nothing on the stream once a message lands', true)
 
 console.log(failures === 0 ? '\nall passed' : `\n${failures} failed`)
 process.exit(failures === 0 ? 0 : 1)

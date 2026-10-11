@@ -463,6 +463,7 @@ fn overlay_url(app: tauri::AppHandle, username: String, style: OverlayStyle) -> 
     for (key, value) in [
         ("size", style.size.to_string()),
         ("max", style.max.to_string()),
+        ("delay", style.delay.to_string()),
         ("bg", format!("{:.2}", style.bg)),
         ("name", encode_component(&style.name_colour)),
         ("color", encode_component(&style.text_colour)),
@@ -508,6 +509,8 @@ pub struct OverlayStyle {
     size: u32,
     #[serde(default = "default_overlay_max")]
     max: u32,
+    #[serde(default = "default_overlay_delay")]
+    delay: u32,
     #[serde(default)]
     bg: f32,
     #[serde(default = "default_name_colour")]
@@ -523,6 +526,9 @@ fn default_overlay_size() -> u32 {
 }
 fn default_overlay_max() -> u32 {
     8
+}
+fn default_overlay_delay() -> u32 {
+    500
 }
 fn default_name_colour() -> String {
     "#ffd76a".into()

@@ -19,6 +19,16 @@ export interface OverlayStyle {
   size: number
   /** How many messages are on screen at once. */
   max: number
+  /**
+   * Milliseconds between one message appearing and the next.
+   *
+   * Not a decoration setting. Rendered straight through, a busy room puts its last
+   * eight messages on screen in a tenth of a second and the viewer sees a wall; at
+   * this pace the same eight arrive as eight readable beats. Which is right depends
+   * on how fast the room talks and how much of the screen the chat takes, so it is
+   * the one styling value here that a streamer is expected to change.
+   */
+  delay: number
   /** 0 is no backdrop at all, 1 is an opaque panel. */
   bg: number
   /** The sender's name. */
@@ -32,6 +42,7 @@ export interface OverlayStyle {
 export const OVERLAY_DEFAULT_STYLE: OverlayStyle = {
   size: 22,
   max: 8,
+  delay: 500,
   bg: 0,
   nameColour: '#ffd76a',
   textColour: '#ffffff',
@@ -48,6 +59,14 @@ export const OVERLAY_DEFAULT_STYLE: OverlayStyle = {
  */
 export const OVERLAY_SIZE = { min: 8, max: 96 }
 export const OVERLAY_MAX_ROWS = { min: 1, max: 50 }
+/**
+ * The bounds on the gap between two messages.
+ *
+ * The same numbers the page enforces. Twelve hundredths of a second is as fast as
+ * it reads as anything other than one block of text; three seconds is a single
+ * message sitting alone long enough for the room to have moved on.
+ */
+export const OVERLAY_DELAY = { min: 120, max: 3000 }
 
 /** The port the host serves the overlay on. Mirrors `overlay::PORT`. */
 export const OVERLAY_PORT = 4319
@@ -137,6 +156,7 @@ export function resolveStyle(saved: Partial<OverlayStyle> | null | undefined): O
   return {
     size: clampNumber(saved?.size, OVERLAY_SIZE.min, OVERLAY_SIZE.max, OVERLAY_DEFAULT_STYLE.size),
     max: clampRows(saved?.max, OVERLAY_DEFAULT_STYLE.max),
+    delay: Math.round(clampNumber(saved?.delay, OVERLAY_DELAY.min, OVERLAY_DELAY.max, OVERLAY_DEFAULT_STYLE.delay)),
     bg: clampNumber(saved?.bg, 0, 1, OVERLAY_DEFAULT_STYLE.bg),
     nameColour: resolveColour(saved?.nameColour, OVERLAY_DEFAULT_STYLE.nameColour),
     textColour: resolveColour(saved?.textColour, OVERLAY_DEFAULT_STYLE.textColour),

@@ -4,6 +4,7 @@ import { EMPTY_CONFIG, EXAMPLE_BASE_URL, isReady, modelOptions, normaliseBaseUrl
 import {
   clampNumber,
   clampRows,
+  OVERLAY_DELAY,
   OVERLAY_MAX_ROWS,
   OVERLAY_PORT,
   OVERLAY_SIZE,
@@ -298,6 +299,7 @@ const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
     return {
       size: settings.overlaySize,
       max: settings.overlayMax,
+      delay: settings.overlayDelay,
       bg: settings.overlayBg,
       nameColour: settings.overlayNameColour,
       textColour: settings.overlayTextColour,
@@ -879,6 +881,25 @@ const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
                 value={settings.overlayMax}
                 onChange={(e) => settings.set('overlayMax', clampRows(e.target.value, 8))}
               />
+            </label>
+
+            <label className="field">
+              <span className="field-label">Time between messages</span>
+              <input
+                className="input"
+                type="number"
+                min={OVERLAY_DELAY.min}
+                max={OVERLAY_DELAY.max}
+                step={50}
+                value={settings.overlayDelay}
+                onChange={(e) =>
+                  settings.set('overlayDelay', Math.round(clampNumber(e.target.value, OVERLAY_DELAY.min, OVERLAY_DELAY.max, 500)))
+                }
+              />
+              <span className="field-note">
+                {settings.overlayDelay} ms between each message. A busy room talks faster than anyone
+                reads, so without this the last eight messages land together and read as a wall.
+              </span>
             </label>
 
             <label className="field">

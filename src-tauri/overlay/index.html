@@ -195,6 +195,14 @@
     textColour: param('color', '#ffffff'),
     background: number('bg', 0, 0, 1),
     max: Math.round(number('max', 8, 1, 50)),
+    // How long between one message appearing and the next.
+    //
+    // A floor rather than a setting with a right answer: at a fifth of a second a
+    // busy room keeps up and reads as fast enough; at two seconds a single message
+    // sits alone for an age before anything follows it. The value is read once
+    // here rather than per message, so a badly chosen number cannot retime a
+    // message already on screen.
+    delay: number('delay', 500, 120, 3000),
     font: param('font', '"Segoe UI", system-ui, sans-serif'),
     debug: param('debug', '') !== '',
     // The default background is fully transparent. `?bg=1` is an opaque black
@@ -224,7 +232,53 @@
 
   var list = document.getElementById('chat')
 
-  function addComment(user, text) {
+  /**
+   * Messages waiting to be shown, and whether one is on its way in.
+   *
+   * A queue rather than rendering each frame as it lands, because a room under
+   * load arrives faster than anyone reads. Rendered straight through, the last
+   * eight messages stack up in a tenth of a second and the viewer sees a wall —
+   * which is what a chat looks like on a phone, and is unreadable on a stream
+   * where it is competing with whatever is actually happening. Shown one at a
+   * time, the same eight arrive as eight readable beats.
+   *
+   * So: incoming messages go on the queue, and `pump` releases one every
+   * `config.delay`. The first is released the moment it arrives rather than after
+   * a delay, because there is nothing to pace it against — the room was silent.
+   */
+  var queue = []
+  var showing = false
+
+  /**
+   * How far behind the room the overlay is allowed to get.
+   *
+   * A queue with no cap is a slow-motion recording of a busy room: at a half
+   * second each, a backlog of forty is a message appearing twenty seconds after
+   * it was said, which is not a message about anything any more. Past this the
+   * oldest waiting ones are dropped — they are the stalest, and showing a quarter
+   * of a minute old chat is worse than not showing it.
+   */
+  var MAX_QUEUE = 20
+
+  function enqueue(user, text) {
+    queue.push({ user: user, text: text })
+    if (queue.length > MAX_QUEUE) queue.splice(0, queue.length - MAX_QUEUE)
+    pump()
+  }
+
+  function pump() {
+    if (showing) return
+    var next = queue.shift()
+    if (!next) return
+    showing = true
+    render(next.user, next.text)
+    setTimeout(function () {
+      showing = false
+      pump()
+    }, config.delay)
+  }
+
+  function render(user, text) {
     var body = String(text == null ? '' : text).trim()
     if (body === '') return
 
@@ -386,7 +440,7 @@
       // and connection status, and an overlay that showed them would be a
       // dashboard rather than a chat.
       if (!frame || frame.type !== 'comment') return
-      addComment(frame.user, frame.text)
+      enqueue(frame.user, frame.text)
     }
 
     socket.onclose = function () {

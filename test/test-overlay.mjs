@@ -55,6 +55,7 @@ const {
   clampNumber,
   clampRows,
   isSafeColour,
+  OVERLAY_DELAY,
   OVERLAY_DEFAULT_STYLE,
   OVERLAY_MAX_ROWS,
   OVERLAY_PORT,
@@ -119,6 +120,22 @@ check('null is the default too', clampNumber(null, 8, 96, 22) === 22)
 check('infinity is the default', clampNumber(Number.POSITIVE_INFINITY, 8, 96, 22) === 22)
 check('a numeric string is read as a number', clampNumber('30', 8, 96, 22) === 30)
 check('and whitespace around one still is', clampNumber(' 30 ', 8, 96, 22) === 30)
+
+console.log('the gap between messages')
+check('a value in range is kept', resolveStyle({ delay: 250 }).delay === 250)
+check('rounded, because a fractional timer is not a thing', resolveStyle({ delay: 249.6 }).delay === 250)
+// Below the floor the messages come faster than anyone reads them, which is the
+// wall of text this setting exists to stop.
+check('below the floor is raised', resolveStyle({ delay: 10 }).delay === OVERLAY_DELAY.min)
+check('past the ceiling is lowered', resolveStyle({ delay: 99_999 }).delay === OVERLAY_DELAY.max)
+// A number field passes `NaN` through halfway through an edit, and a gap that is
+// not a number is a message that appears at some unpredictable time or never.
+check('NaN is the default', resolveStyle({ delay: Number.NaN }).delay === 500)
+check('a blank field is the default', resolveStyle({ delay: '' }).delay === 500)
+check('nothing at all is the default', resolveStyle({}).delay === 500)
+// And the default has to be one the page would also accept, or the link in the
+// settings and the page that serves it disagree about the same number.
+check('the default is inside its own bounds', resolveStyle({ delay: OVERLAY_DEFAULT_STYLE.delay }).delay === OVERLAY_DEFAULT_STYLE.delay)
 
 console.log('rows are whole numbers')
 check('a whole number is kept', clampRows(8, 8) === 8)
