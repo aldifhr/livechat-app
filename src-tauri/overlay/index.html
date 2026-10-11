@@ -127,6 +127,47 @@
     to   { opacity: 1; transform: none; }
   }
 
+  /* The leaderboard, pinned to the top-left apart from the scrolling chat. Absolute
+     so it never pushes the chat or takes part in its alignment — the chat keeps
+     growing from its own edge whether the board is showing or not. */
+  #board {
+    position: absolute;
+    top: 24px;
+    left: 24px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-width: 40%;
+  }
+
+  #board li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5em;
+    color: var(--text-colour);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  }
+
+  .board-rank {
+    color: var(--name-colour);
+    font-weight: 700;
+    min-width: 1.2em;
+    text-align: right;
+  }
+
+  .board-name {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .board-count {
+    color: var(--name-colour);
+    font-variant-numeric: tabular-nums;
+    margin-left: auto;
+  }
+
   /* No motion asked for: no animation, and no fade. The rows still appear and
      still expire, they just do it all at once. */
   @media (prefers-reduced-motion: reduce) {
@@ -183,6 +224,13 @@
 <ul id="chat" aria-live="polite" aria-relevant="additions"></ul>
 <div id="unconfigured">no handle in this link — add <code>?room=yourhandle</code></div>
 <div id="status"></div>
+
+<!-- The leaderboard: the chattiest viewers this session. Its own panel at the top,
+     apart from the scrolling chat, because it is a standing board rather than a
+     message — it changes slowly and is read at a glance, not followed live. Hidden
+     until the first ranking arrives, so an overlay with no board configured does
+     not reserve space for an empty box. -->
+<ol id="board" hidden></ol>
 
 <script>
 (function () {
@@ -276,6 +324,45 @@
   // ---- the feed ------------------------------------------------------------
 
   var list = document.getElementById('chat')
+  var board = document.getElementById('board')
+
+  /**
+   * Draws the leaderboard: the chattiest viewers, most messages first.
+   *
+   * Rebuilt each poll rather than updated in place — ten rows on a five-second
+   * beat is cheaper to redraw than to diff. Names go in as text, never markup, for
+   * the same reason chat does. The panel is shown only once there is a ranking, so
+   * an overlay with nobody talking yet reserves no space for an empty board.
+   */
+  function renderBoard(chatters) {
+    if (!chatters || chatters.length === 0) {
+      board.hidden = true
+      return
+    }
+    board.hidden = false
+    board.textContent = ''
+    for (var i = 0; i < chatters.length; i++) {
+      var c = chatters[i]
+      var row = document.createElement('li')
+
+      var rank = document.createElement('span')
+      rank.className = 'board-rank'
+      rank.textContent = String(i + 1)
+      row.appendChild(rank)
+
+      var name = document.createElement('span')
+      name.className = 'board-name'
+      name.textContent = String(c.nickname || c.id || 'Someone')
+      row.appendChild(name)
+
+      var count = document.createElement('span')
+      count.className = 'board-count'
+      count.textContent = String(c.messages || 0)
+      row.appendChild(count)
+
+      board.appendChild(row)
+    }
+  }
 
   /**
    * Messages waiting to be shown, and whether one is on its way in.
@@ -580,6 +667,13 @@
         return
       }
       if (!frame) return
+      // The leaderboard, asked for and answered. Rebuilt from scratch each time
+      // rather than diffed: it is ten rows on a slow beat, and re-rendering ten
+      // rows is cheaper than the bookkeeping to update them in place.
+      if (frame.type === 'topChatters') {
+        renderBoard(frame.chatters || [])
+        return
+      }
       // A gift is shown at once, not paced through the chat queue: it is an event,
       // not a message in a conversation, and holding it behind twenty queued
       // comments would bury the one thing everyone looks up for.
@@ -594,7 +688,22 @@
       enqueue(frame.user, frame.text, frame.userId)
     }
 
+    // Ask for the leaderboard on a slow beat. Asked for rather than pushed by the
+    // backend on every comment, because a ranking changes slowly and a board polled
+    // every few seconds is current enough without a frame per message.
+    function pollBoard() {
+      try {
+        socket.send(JSON.stringify({ type: 'topChatters' }))
+      } catch (error) {
+        // A socket mid-close throws on send; the close handler reconnects and the
+        // next open schedules the poll again.
+      }
+    }
+    pollBoard()
+    var boardTimer = setInterval(pollBoard, 5000)
+
     socket.onclose = function () {
+      clearInterval(boardTimer)
       say('socket closed, retrying')
       setTimeout(connect, 3000)
     }

@@ -123,6 +123,33 @@ for bad in [None, "", {}, []]:
     capture(lambda b=bad: eventlog.record("comment", user=b or "", text=b or ""))
 check("odd values survive", True)
 
+print("the leaderboard ranks by messages, and only comments count")
+eventlog.set_connected(True, "@chan")
+for name, n in [("ana", 3), ("budi", 5), ("citra", 1)]:
+    for _ in range(n):
+        eventlog.record("comment", user=name, text="hi", user_id=name)
+# A gift is not someone talking, so it must not climb the board.
+eventlog.record("gift", user="ana", text="Rose", meta={"count": 1})
+top = eventlog.top_chatters()
+check("ranked most messages first", [c["nickname"] for c in top] == ["budi", "ana", "citra"], str(top))
+check("the counts are right", top[0]["messages"] == 5 and top[1]["messages"] == 3, str(top))
+check("a gift did not add to the chatter's count", top[1]["messages"] == 3, str(top))
+
+print("one person is one row however the display name is spelled")
+# Keyed on the stable handle: the same account showing two nicknames is one
+# chatter, not two, or the leaderboard splits them and undercounts both.
+eventlog.set_connected(True, "@chan")
+eventlog.record("comment", user="Ana", text="a", user_id="u1")
+eventlog.record("comment", user="anaaa", text="b", user_id="u1")
+top = eventlog.top_chatters()
+check("one row for the stable id", len(top) == 1 and top[0]["messages"] == 2, str(top))
+
+print("the board is capped at ten")
+eventlog.set_connected(True, "@chan")
+for i in range(15):
+    eventlog.record("comment", user=f"user{i}", text="hi", user_id=f"user{i}")
+check("at most ten are ranked", len(eventlog.top_chatters()) == 10, str(len(eventlog.top_chatters())))
+
 print()
 if failed:
     print("FAILED")

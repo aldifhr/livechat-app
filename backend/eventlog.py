@@ -49,6 +49,16 @@ _last_user: dict[str, str] = {}
 _viewers: int | None = None
 _viewers_at = 0.0
 
+#: Per-chatter message counts for the current connection, and the last avatar seen
+#: for each. The overlay's leaderboard reads this; it is kept here because this is
+#: the one place every comment already passes through, keyed on the stable handle
+#: so a display-name change does not split one person into two.
+_chatter_counts: dict[str, int] = {}
+_chatter_names: dict[str, str] = {}
+
+#: How many names the leaderboard ranks and shows.
+TOP_N = 10
+
 
 def is_connected() -> bool:
     return _connected
@@ -62,13 +72,21 @@ def set_connected(connected: bool, detail: str = "") -> None:
         _totals.clear()
         _repeats.clear()
         _last_user.clear()
+        _chatter_counts.clear()
+        _chatter_names.clear()
         log.info("connected %s", detail or "")
     else:
         summary = ", ".join(f"{k}={v}" for k, v in sorted(_totals.items())) or "no events"
         log.info("disconnected %s (%s)", detail or "", summary)
 
 
-def record(kind: str, user: str = "", text: str = "", meta: dict[str, Any] | None = None) -> None:
+def record(
+    kind: str,
+    user: str = "",
+    text: str = "",
+    meta: dict[str, Any] | None = None,
+    user_id: str = "",
+) -> None:
     """One line per event, with a per-kind running count."""
     if kind == "viewers":
         global _viewers, _viewers_at
@@ -84,6 +102,14 @@ def record(kind: str, user: str = "", text: str = "", meta: dict[str, Any] | Non
     if user and _last_user.get(kind) == user:
         _repeats[kind] = _repeats.get(kind, 0) + 1
     _last_user[kind] = user or _last_user.get(kind, "")
+
+    # Count this message against the chatter, keyed on the stable handle so one
+    # person is one row however their display name is spelled. Only comments count
+    # toward the leaderboard — a gift or a join is not someone talking.
+    if kind == "comment" and user:
+        key = user_id or user
+        _chatter_counts[key] = _chatter_counts.get(key, 0) + 1
+        _chatter_names[key] = user
 
     # A greeting that is long enough to be a sentence and short enough to stay
     # on one line. Comment text is capped by the widget at 44 characters anyway,
@@ -108,6 +134,19 @@ def error(message: str) -> None:
     log.error("%s", message)
 
 
+def top_chatters(limit: int = TOP_N) -> list[dict[str, Any]]:
+    """The chattiest viewers this connection, most messages first.
+
+    By message count only — a gift is not someone talking. Ties broken by name so
+    the order is stable between polls rather than shuffling on every refresh.
+    """
+    ranked = sorted(_chatter_counts.items(), key=lambda kv: (-kv[1], _chatter_names.get(kv[0], "")))
+    return [
+        {"id": key, "nickname": _chatter_names.get(key, key), "messages": count}
+        for key, count in ranked[:limit]
+    ]
+
+
 def snapshot() -> dict[str, Any]:
     """The current counters, for a status endpoint or a test."""
     return {
@@ -116,4 +155,5 @@ def snapshot() -> dict[str, Any]:
         "repeats": dict(_repeats),
         "viewers": _viewers,
         "viewers_age": round(time.time() - _viewers_at, 1) if _viewers_at else None,
+        "topChatters": top_chatters(),
     }

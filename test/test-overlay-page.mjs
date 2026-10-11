@@ -227,6 +227,33 @@ await new Promise((resolve) => setTimeout(resolve, 50))
 check('a like is ignored', page.rows().length === afterGift, String(page.rows().length))
 check('a viewer count is ignored', !/100/.test(page.dom.window.document.body.textContent.replace(/20/g, '')), 'viewer count leaked')
 
+console.log('the leaderboard renders from the frame it is sent')
+// The board is its own panel, apart from the chat, and hidden until a ranking
+// arrives — an overlay with nobody talking yet reserves no space for an empty box.
+const doc = page.dom.window.document
+const board = () => doc.querySelector('#board')
+check('the board starts hidden', board()?.hidden === true, String(board()?.hidden))
+page.frame({
+  type: 'topChatters',
+  chatters: [
+    { id: 'b', nickname: 'budi', messages: 5 },
+    { id: 'a', nickname: 'ana', messages: 3 },
+    { id: 'c', nickname: 'citra', messages: 1 },
+  ],
+})
+await new Promise((resolve) => setTimeout(resolve, 50))
+check('a ranking shows the board', board()?.hidden === false, String(board()?.hidden))
+const boardRows = () => [...doc.querySelectorAll('#board li')]
+check('one row per chatter', boardRows().length === 3, String(boardRows().length))
+check('ranked in the order sent', boardRows().map((r) => r.querySelector('.board-name')?.textContent).join(',') === 'budi,ana,citra', boardRows().map((r) => r.textContent).join(' | '))
+check('the count is shown beside the name', /5/.test(boardRows()[0]?.textContent ?? ''), boardRows()[0]?.textContent)
+check('names go in as text, not markup', boardRows()[0]?.querySelector('.board-name')?.textContent === 'budi', boardRows()[0]?.innerHTML)
+check('the board is not part of the chat list', doc.querySelectorAll('#chat li').length === page.rows().length, 'board leaked into chat')
+// An empty ranking hides the board again rather than leaving a stale one up.
+page.frame({ type: 'topChatters', chatters: [] })
+await new Promise((resolve) => setTimeout(resolve, 50))
+check('an empty ranking hides the board', board()?.hidden === true, String(board()?.hidden))
+
 console.log('a frame it did not expect does not take the page down')
 // Every one of these is something the backend can send, or something a truncated
 // socket can produce. Each has to be a no-op rather than an exception, because an

@@ -161,7 +161,9 @@ async def emit(room_id: str, event: Event) -> None:
     #
     # Outside the broadcast on purpose. The log has to keep working when every
     # client has gone — a quiet log is exactly when it is needed.
-    eventlog.record(event.kind, user=event.user, text=event.value, meta=event.meta)
+    eventlog.record(
+        event.kind, user=event.user, text=event.value, meta=event.meta, user_id=event.user_id
+    )
     await hub.broadcast(to_wire(event), room_id=room_id)
 
 

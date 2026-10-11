@@ -22,6 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
+import eventlog
 import events
 import store
 from watchdog import LivenessWatchdog
@@ -1078,23 +1079,38 @@ async def websocket_endpoint(websocket: WebSocket, client_type: str, room_id: st
         payload = source.status_payload() if source else {"type": "status", "connected": False, "message": "Offline"}
         await websocket.send_text(json.dumps(payload, ensure_ascii=False))
 
+        # The leaderboard, sent to this socket only — never fanned out to the room.
+        # It is asked for, not pushed on a timer: a periodic room-wide broadcast
+        # would interleave with the event stream every client reads frame by frame,
+        # and a leaderboard is something an overlay polls when it wants the current
+        # ranking, not a firehose. Recomputed here rather than kept per comment,
+        # because a busy room produces comments faster than anyone reads a ranking.
+        async def send_leaderboard() -> None:
+            await websocket.send_text(
+                json.dumps(
+                    {"type": "topChatters", "chatters": eventlog.top_chatters()},
+                    ensure_ascii=False,
+                )
+            )
+
         while True:
             data = await websocket.receive_text()
             try:
                 msg = json.loads(data)
             except (json.JSONDecodeError, RecursionError):
-                # Deeply nested input raises RecursionError, not a decode error,
-                # and it is the same answer: not a message this protocol has.
+                # Deeply nested input raises RecursionError, not a decode error, and it
+                # is the same answer: not a message this protocol has.
                 continue
-            # Valid JSON is not necessarily a message. `null`, `123`, `"x"` and
-            # `[1,2]` all decode fine and none of them has `.get`, so the call
-            # below raised AttributeError and took the handler down with a
-            # traceback. This socket is unauthenticated, so the literal text `null`
-            # was enough.
+            # Valid JSON is not necessarily a message. `null`, `123`, `"x"` and `[1,2]`
+            # all decode fine and none of them has `.get`, so the call below raised
+            # AttributeError and took the handler down with a traceback. This socket is
+            # unauthenticated, so the literal text `null` was enough.
             if not isinstance(msg, dict):
                 continue
             if msg.get("type") == "ping":
                 await websocket.send_text(json.dumps({"type": "pong"}))
+            elif msg.get("type") == "topChatters":
+                await send_leaderboard()
     except WebSocketDisconnect:
         pass
     finally:
