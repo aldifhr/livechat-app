@@ -504,6 +504,22 @@ pub async fn pump(
     };
     let url = socket_url(&config.base_url, &room_id);
 
+    // Tell the page which room this is, by id. The overlay link prefers the id
+    // over the handle — a link naming the room by id is one parameter nothing has
+    // to resolve — and the page has no other way to learn it: the backend never
+    // sends a `room` frame, so without this the id is only ever known here, inside
+    // the host, and the link falls back to the handle.
+    let _ = app.emit(
+        EVENT,
+        json!({
+            "type": "room",
+            "platform": "bridge",
+            "username": config.username,
+            "roomId": room_id,
+            "title": "",
+        }),
+    );
+
     let mut delay = Duration::from_secs(BACKOFF_START_SECS);
     for attempt in 1..=ATTEMPTS {
         if state.current() != generation {

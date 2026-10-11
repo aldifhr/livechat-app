@@ -1057,6 +1057,18 @@ check('but the open room wins over it', overlayRequests.at(-1)?.username === 'fi
 // turns into an id on every load.
 check('and carries the room id so the link can be just ?room=<id>', overlayRequests.at(-1)?.roomId === 'r-1', overlayRequests.at(-1)?.roomId)
 
+// The id also arrives from the bridge, which is the only place the page learns it:
+// the backend sends no room frame, so the host announces the resolved room by id
+// the moment it connects. That bridge announcement must fill the id without
+// touching the room's live state, which the room's own frames own.
+await act(async () => {
+  fake.emit({ platform: 'bridge', type: 'room', username: 'x', roomId: 'bridge-room-9', title: '' })
+})
+await click(copyBtn)
+check('a bridge room announcement also supplies the id', overlayRequests.at(-1)?.roomId === 'bridge-room-9', overlayRequests.at(-1)?.roomId)
+// It did not disturb the connected state the room's own frames established.
+check('and left the live room state alone', $('.room-status')?.textContent?.includes('Live A') === true || /connected|Live/i.test($('.room-status')?.textContent ?? ''), $('.room-status')?.textContent)
+
 check('and the styling is one object on the way out', overlayRequests.at(-1)?.style?.size === 22 && overlayRequests.at(-1)?.style?.max === 8, JSON.stringify(overlayRequests.at(-1)?.style))
 // Shown as well as copied: the clipboard is a permission a webview can be refused.
 check('and the link is shown, not only copied', Boolean($('.overlay-url')), $('.overlay-url')?.textContent)

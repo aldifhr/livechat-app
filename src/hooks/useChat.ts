@@ -141,6 +141,18 @@ export function useChat({ collapseWindowMs, collapseThreshold }: UseChatOptions)
           break
         }
         case 'room':
+          // The bridge announces which room it resolved, by id, the moment it
+          // connects. This is the only place the id reaches the page — the backend
+          // sends no room frame of its own — and the overlay link needs it to be a
+          // bare `?room=<id>`. It only fills the id; the room's live state (target,
+          // title, connected) comes from the room's own frames, so this must not
+          // overwrite them.
+          if (event.platform === 'bridge') {
+            if (event.roomId) {
+              setRoom((previous) => ({ ...previous, id: event.roomId }))
+            }
+            break
+          }
           if (!inRoom) break
           setRoom((previous) => ({
             ...previous,
