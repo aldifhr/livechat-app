@@ -28,6 +28,11 @@ export default function App() {
   const settings = useSettings()
   const { nudgeFontScale } = settings
   const [collapse, setCollapse] = useState(true)
+  // Mirrors the toolbar's handle field. The toolbar owns the field and this only
+  // watches it, so the overlay link can carry a handle the user has typed but not
+  // yet connected to — which is the normal state when someone is setting the
+  // overlay up before a stream.
+  const [typedHandle, setTypedHandle] = useState('')
 
   useGiftSound({
     enabled: settings.giftSound,
@@ -198,6 +203,7 @@ export default function App() {
         onCollapseChange={setCollapse}
         onClearChat={clear}
         onOpenSettings={() => setSettingsOpen(true)}
+        onHandleChange={setTypedHandle}
       />
 
       <div className="feed-wrap">
@@ -245,7 +251,7 @@ export default function App() {
       <SettingsDialog
         open={settingsOpen}
         settings={settings}
-        roomTarget={room.target}
+        roomTarget={room.target || typedHandle}
         onClose={() => setSettingsOpen(false)}
       />
 

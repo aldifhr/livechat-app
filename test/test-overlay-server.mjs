@@ -61,6 +61,20 @@ check('the row scrim is behind the setting', backgrounds.includes('rgba(0, 0, 0,
 check('the only other one is the debug badge', backgrounds.includes('rgba(0, 0, 0, 0.6)'))
 check('and that is hidden unless asked for', /#status \{ display: none; \}/.test(style) && /body\.debug #status/.test(style))
 
+console.log('a wrong link says so, and a failed one does not')
+// The distinction the page is built on. A link with no handle is a link somebody
+// built wrong, and the only way it reaches a stream is if they pasted it into OBS
+// without checking — which is exactly when they need to see it. A backend that is
+// down is transient, and a message about that belongs on nobody's broadcast.
+check('an unconfigured link is visible', /body\.unconfigured #unconfigured \{ display: block/.test(style))
+check('and says what is missing', /no handle in this link/.test(page))
+check('and disappears once a real message arrives', /body\.ready #unconfigured \{ display: none/.test(style))
+check('a link with a handle is not marked unconfigured', page.includes("document.body.classList.remove('unconfigured')"))
+check('but a failure still only speaks under debug', /if \(!config\.debug\) return/.test(page))
+// And it is not confused with "still connecting", which is a different state and
+// has its own quiet placeholder.
+check('and is not confused with connecting', /body:not\(.ready\):not\(.unconfigured\) #chat::after/.test(style))
+
 console.log('the page asks for what it needs')
 check('it reads the query string', /URLSearchParams/.test(page))
 check('it talks to the backend itself', /room-connect-by-username/.test(page))

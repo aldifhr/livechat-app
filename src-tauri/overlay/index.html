@@ -109,7 +109,13 @@
 
   /* A connection problem is the one thing this page must not announce. A red box
      in the corner of somebody's stream is worse than no chat at all, so failures
-     are silent by default and `?debug=1` is how you go looking for them. */
+     are silent by default and `?debug=1` is how you go looking for them.
+
+     The exception is a link with no handle in it. That is not a transient
+     failure, it is a link that was built wrong, and the only way it can reach a
+     stream is if somebody pasted it into OBS without checking — which is exactly
+     when they need to see it. It shows before anything has been received and is
+     gone the instant a real message arrives. */
   #status { display: none; }
   body.debug #status {
     display: block;
@@ -125,10 +131,20 @@
     overflow-wrap: anywhere;
   }
 
+  #unconfigured {
+    display: none;
+    color: #ffffff;
+    opacity: 0.6;
+    font-size: var(--size);
+  }
+  body.unconfigured #unconfigured { display: block; }
+  /* Anything real, and it goes away. */
+  body.ready #unconfigured { display: none; }
+
   /* A preview of the whole page while the socket is still resolving, so the
      source is not a blank rectangle for the first second of a stream. Hidden as
      soon as anything real arrives. */
-  body:not(.ready) #chat::after {
+  body:not(.ready):not(.unconfigured) #chat::after {
     content: "connecting…";
     color: #ffffff;
     opacity: 0.35;
@@ -138,6 +154,7 @@
 </head>
 <body>
 <ul id="chat" aria-live="polite" aria-relevant="additions"></ul>
+<div id="unconfigured">no handle in this link — add <code>?room=yourhandle</code></div>
 <div id="status"></div>
 
 <script>
@@ -269,9 +286,15 @@
 
   function connect() {
     if (config.username === '') {
+      // Said out loud, unlike everything below. This one is a wrong link rather
+      // than a failed connection, and a streamer testing the link before a stream
+      // is looking at a blank rectangle with no way to tell it apart from a
+      // working one that has simply not seen a message yet.
+      document.body.classList.add('unconfigured')
       say('no handle — add ?room=yourhandle to the URL')
       return
     }
+    document.body.classList.remove('unconfigured')
 
     fetch(config.baseUrl + '/api/room-connect-by-username', {
       method: 'POST',

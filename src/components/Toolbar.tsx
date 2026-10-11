@@ -23,6 +23,18 @@ interface Props {
   onCollapseChange: (enabled: boolean) => void
   onClearChat: () => void
   onOpenSettings: () => void
+  /**
+   * Reports whatever is in the handle field, as it changes.
+   *
+   * The field's state stays here, where it belongs with the logic around it, and
+   * this is the one thing outside that needs to know what it says: the overlay
+   * link. Lifting the state instead would put the debounced save and the
+   * seed-once-from-saved logic in the app for one consumer's benefit.
+   *
+   * `wanted`, not the raw field, so the app gets the same normalised handle
+   * Connect would use rather than something that has to be normalised again.
+   */
+  onHandleChange?: (handle: string) => void
 }
 
 const TOGGLES: { key: keyof ViewSettings; label: string; hint: string }[] = [
@@ -57,6 +69,7 @@ export function Toolbar({
   onCollapseChange,
   onClearChat,
   onOpenSettings,
+  onHandleChange,
 }: Props) {
   const spec = PLATFORMS[PLATFORM]
   const [busy, setBusy] = useState(false)
@@ -94,6 +107,15 @@ export function Toolbar({
   const isConnected = room.status === 'connected' && !disconnected
   const wanted = normaliseUsername(handle)
   const canConnect = wanted !== '' && !isConnecting
+
+  // Reported as it changes rather than read back on demand: the overlay link is
+  // built in the settings dialog, which has no way to ask this component what is
+  // in the field, and a handle copied before Connect is pressed is exactly the
+  // one a streamer wants on their overlay.
+  useEffect(() => {
+    onHandleChange?.(wanted)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wanted])
 
   /*
     Remembered as soon as it stops changing, not on connect: being made to

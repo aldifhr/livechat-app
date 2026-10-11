@@ -898,24 +898,18 @@ check('a cancelled pick leaves the settings alone', /No file/.test(soundNote('Cu
 
 
 console.log('the stream overlay')
-// The room the app is reading, named here rather than inherited from whatever an
-// earlier section left behind: the overlay is pointed at whatever this window is
-// pointed at, and that is the thing under test.
-await act(async () => {
-  fake.emit({ platform: 'tiktok', type: 'room', username: 'findidntsleep', roomId: 'r-1', title: 'ranked grind' })
-})
-// A link for OBS. Built host-side because two of its parts are not the page's —
+// A link for OBS. Built host-side because two of its parts are not the page's -
 // the backend address is a file on disk and the handle is whatever is in the
-// toolbar — and asserting on the arguments is how we know the styling got there
+// toolbar - and asserting on the arguments is how we know the styling got there
 // rather than only that a button was pressed.
 const overlayRequests = []
 fake.transport.invoke = async (command, args) => {
   fake.commands.push({ command, args })
   if (command === 'overlay_url') {
     overlayRequests.push(args)
-    return 'http://127.0.0.1:4319/?room=findidntsleep&size=22&max=8'
+    return 'http://127.0.0.1:4319/?size=22&max=8'
   }
-  if (command === 'overlay_running') return true
+if (command === 'overlay_running') return true
   return undefined
 }
 check('there is a section for it', Boolean($('[data-section="overlay"]')))
@@ -924,13 +918,28 @@ check('the size has a sensible bound', $('[data-section="overlay"] input[type="n
 
 const copyBtn = $$('[data-section="overlay"] .btn').find((b) => /Copy link/.test(b.textContent))
 check('there is a button to copy it', Boolean(copyBtn))
+// The link has to carry a handle the user has typed but not yet connected to.
+// Setting an overlay up is something done before a stream, and at that point the
+// room is not open — so a link built only from the connected room comes out with
+// no handle in it and shows nothing. That is what it did.
+await act(async () => {
+  const input = $('.handle-input')
+  const setter = Object.getOwnPropertyDescriptor(harness.dom.window.HTMLInputElement.prototype, 'value').set
+  setter.call(input, 'typedbutnotconnected')
+  input.dispatchEvent(new harness.dom.window.Event('input', { bubbles: true }))
+})
 await click(copyBtn)
-check('the host was asked to build it', overlayRequests.length === 1, JSON.stringify(overlayRequests))
-// The room comes from the toolbar, not from a field of its own: an overlay
-// pointed at a different room than the app is showing is a link that puts the
-// wrong chat on the stream.
-check('and it was told which room', overlayRequests[0]?.username === 'findidntsleep', overlayRequests[0]?.username)
-check('with the styling as one object', overlayRequests[0]?.style?.size === 22 && overlayRequests[0]?.style?.max === 8, JSON.stringify(overlayRequests[0]?.style))
+check('the link carries the handle that was typed', overlayRequests.at(-1)?.username === 'typedbutnotconnected', overlayRequests.at(-1)?.username)
+
+// And the room actually being read still wins, because an overlay pointed at some
+// other handle is a link showing somebody else's chat on somebody's stream.
+await act(async () => {
+  fake.emit({ platform: 'tiktok', type: 'room', username: 'findidntsleep', roomId: 'r-1', title: 'ranked grind' })
+})
+await click(copyBtn)
+check('but the open room wins over it', overlayRequests.at(-1)?.username === 'findidntsleep', overlayRequests.at(-1)?.username)
+
+check('and the styling is one object on the way out', overlayRequests.at(-1)?.style?.size === 22 && overlayRequests.at(-1)?.style?.max === 8, JSON.stringify(overlayRequests.at(-1)?.style))
 // Shown as well as copied: the clipboard is a permission a webview can be refused.
 check('and the link is shown, not only copied', Boolean($('.overlay-url')), $('.overlay-url')?.textContent)
 
