@@ -14,6 +14,7 @@ mod backend;
 mod llm;
 mod sound;
 mod speech;
+mod webhook;
 
 use std::sync::Arc;
 
@@ -234,6 +235,62 @@ async fn speak(text: String) -> Result<String, String> {
     Ok(base64::engine::general_purpose::STANDARD.encode(audio))
 }
 
+/// The stored webhook settings.
+#[tauri::command]
+fn webhook_config_get(app: tauri::AppHandle) -> webhook::WebhookConfig {
+    webhook::read_config(&app)
+}
+
+/// Saves them.
+#[tauri::command]
+fn webhook_config_save(app: tauri::AppHandle, config: webhook::WebhookConfig) -> Result<(), String> {
+    webhook::write_config(&app, &config)
+}
+
+/// Sends one test gift to the configured URL, and reports what came back.
+///
+/// The only webhook call whose result the user sees. Everything else fires on a gift
+/// and logs quietly, because a failed integration must not be able to interrupt a
+/// stream — but a URL typed into a settings box has no other way to find out whether
+/// it was right, and "saved" is not evidence of anything.
+#[tauri::command]
+async fn webhook_test(app: tauri::AppHandle) -> Result<String, String> {
+    let config = webhook::read_config(&app);
+    if config.url.trim().is_empty() {
+        return Err("no webhook URL configured".into());
+    }
+
+    let gift = webhook::GiftPayload {
+        nickname: "Test".into(),
+        user_id: "test".into(),
+        gift_name: "Rose".into(),
+        count: 1,
+        diamonds: 1,
+        timestamp: backend::now_ms(),
+    };
+
+    webhook::send_gift(&config, &gift)
+        .await
+        .map(|()| "Sent. The receiving app should have it now.".to_string())
+        .map_err(|e| e.to_string())
+}
+
+/// Sends one gift to the configured webhook.
+///
+/// The gift arrives from the page, but the URL and the token do not: they are read
+/// from disk here. That split is the point — a credential handed to the page in
+/// order to be used is a credential the page can leak.
+#[tauri::command]
+async fn webhook_send(app: tauri::AppHandle, gift: webhook::GiftPayload) -> Result<(), String> {
+    let config = webhook::read_config(&app);
+    if !config.enabled {
+        return Ok(());
+    }
+    webhook::send_gift(&config, &gift)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// The stored backend settings, or an empty one on first launch.
 #[tauri::command]
 fn backend_config_get(app: tauri::AppHandle) -> backend::BackendConfig {
@@ -373,6 +430,10 @@ fn main() {
         open_stream,
         speak,
         pick_sound_file,
+        webhook_config_get,
+        webhook_config_save,
+        webhook_test,
+        webhook_send,
         backend_config_get,
         backend_config_save,
         backend_connect,

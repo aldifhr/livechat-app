@@ -8,6 +8,7 @@
  */
 
 import type { LlmConfig } from './llm'
+import type { WebhookConfig, WebhookGift } from './webhook'
 import type { BackendConfig } from './backend'
 
 type EventHandler = (event: SidecarEvent) => void
@@ -102,6 +103,10 @@ type HostCommand =
   | 'open_stream'
   | 'speak'
   | 'pick_sound_file'
+  | 'webhook_config_get'
+  | 'webhook_config_save'
+  | 'webhook_test'
+  | 'webhook_send'
   | 'llm_models'
   | 'llm_chat'
   | 'llm_config_get'
@@ -285,6 +290,47 @@ export const host = {
     const resolved = await resolve()
     const encoded = await resolved.invoke('speak', { text })
     return typeof encoded === 'string' && encoded !== '' ? `data:audio/mpeg;base64,${encoded}` : ''
+  },
+  /**
+   * The stored webhook settings.
+   *
+   * Read from disk rather than sent in, so the token travels from the config file
+   * to the socket and never through the page that asked for the send.
+   */
+  webhookConfigGet: async (): Promise<WebhookConfig> => {
+    const resolved = await resolve()
+    const config = (await resolved.invoke('webhook_config_get')) as Partial<WebhookConfig> | null | undefined
+    return {
+      enabled: config?.enabled === true,
+      url: typeof config?.url === 'string' ? config.url : '',
+      token: typeof config?.token === 'string' ? config.token : '',
+    }
+  },
+  webhookConfigSave: async (config: WebhookConfig): Promise<void> => {
+    const resolved = await resolve()
+    await resolved.invoke('webhook_config_save', { config })
+  },
+  /**
+   * Sends one test gift and reports what came back.
+   *
+   * The only webhook call whose result the user sees — "saved" is not evidence a URL
+   * was right, and there is no other way to find out from a settings box.
+   */
+  webhookTest: async (): Promise<string> => {
+    const resolved = await resolve()
+    const said = await resolved.invoke('webhook_test')
+    return typeof said === 'string' ? said : 'Sent.'
+  },
+  /**
+   * Sends one gift to the configured webhook.
+   *
+   * The gift is the argument; the URL and the token are not. They are read from disk
+   * in the host, so a credential handed to the page in order to be used is a
+   * credential the page can leak.
+   */
+  webhookSend: async (gift: WebhookGift): Promise<void> => {
+    const resolved = await resolve()
+    await resolved.invoke('webhook_send', { gift })
   },
   /**
    * Opens a file picker and returns the chosen sound file's path.

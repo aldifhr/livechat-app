@@ -630,7 +630,12 @@ async fn run_once(
     }
 }
 
-fn now_ms() -> i64 {
+/// Milliseconds since the epoch, for a frame that needs to say when it happened.
+///
+/// Public so the host commands stamp their own frames with the same clock the reader
+/// uses — a gift arriving and the status closing out its connect should not be
+/// timestamps from two different eras.
+pub fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)

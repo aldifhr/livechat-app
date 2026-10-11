@@ -34,6 +34,9 @@ export interface ViewSettings {
   giftSound: boolean
   /** Raise a desktop toast when a gift arrives. */
   giftNotice: boolean
+  /** Post each gift to the configured webhook. Off by default: it sends data about
+   *  the room to a third party, and that has to be asked for. */
+  webhook: boolean
   /** Show the session stats panel at the bottom of the window. */
   showStats: boolean
   /** Show the in-app log panel at the bottom of the window. */
@@ -92,6 +95,7 @@ export const DEFAULT_SETTINGS: ViewSettings = {
   alwaysOnTop: false,
   giftSound: true,
   giftNotice: true,
+  webhook: false,
   showStats: true,
   showLog: true,
   showAsk: true,

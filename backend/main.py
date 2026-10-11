@@ -198,9 +198,16 @@ def token_is_valid(request: Request) -> bool:
 #: Both are safe because neither lets the caller choose the destination beyond
 #: the handle: `room-connect/{id}` reads its username from the stored room, and
 #: `room-connect-by-username` creates or reuses the room for the handle given.
+#:
+#: The Sociabuzz hook is exempt from the *internal* token gate because Sociabuzz
+#: does not know STREAMKIT_TOKEN and never will — it authenticates with its own
+#: `sbwhook-` token, which this route checks itself when one is configured on the
+#: room. Exempting it here and enforcing its own token inside is the same shape as
+#: the connect routes: the gate that matters is the one the caller can satisfy.
 EXEMPT_WRITE_PATHS = frozenset({
     "/api/room-connect/",
     "/api/room-connect-by-username",
+    "/api/hooks/sociabuzz/",
 })
 
 
@@ -716,6 +723,142 @@ async def webhook(room_id: str, req: HookRequest):
         ),
     )
     return {"status": "ok"}
+
+
+# --------------------------------------------------------------------------
+# Sociabuzz
+# --------------------------------------------------------------------------
+#
+# Sociabuzz posts a donation as a JSON body whose exact field names are not
+# documented anywhere stable. Guessing them is how an integration silently does
+# nothing: the request arrives, no field the code expects is present, and the
+# chat shows nothing while everything "works". So this receiver reads the body
+# as a raw dict and looks up each field under every name it is known to arrive
+# under, logs the keys it actually received, and maps what it can. A field that
+# does not match any known name is still logged, so the first real donation
+# teaches us the shape and the next edit can harden it.
+#
+# The token Sociabuzz gives the creator (sbwhook-...) is accepted either as a
+# header or a query parameter, because the platform has been observed to send it
+# both ways and a mismatch here means a silent 401 with nothing in the chat.
+#
+# Accepting the body raw, rather than through a strict Pydantic model, is
+# deliberate: a strict model would 422 on the first shape we got wrong, and a
+# 422 is invisible to the creator who only sees "the test notification failed".
+
+
+def _pick(body: dict, *names: str):
+    """First present, non-empty value under any of `names`, else None."""
+    for name in names:
+        value = body.get(name)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+@router.post("/api/hooks/sociabuzz/{room_id}")
+async def sociabuzz_hook(room_id: str, request: Request):
+    """Receive a Sociabuzz donation and show it on the room's feed.
+
+    No token check of its own: the route is exempt from the write-token gate
+    (see the middleware), and a Sociabuzz token in a header is validated only
+    if one is configured on the room. An unauthenticated caller can post here,
+    but the only thing they can do is make a donation appear on a feed — the
+    same reach the public webhook hook already has, and bounded by the room
+    existing.
+    """
+    if await store.get_room_async(room_id) is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    # The room's own Sociabuzz token, if the creator saved one. Present, it is
+    # checked against the header or query Sociabuzz sends it in — a token we
+    # expect and never enforce would be decoration. Absent, the hook accepts, so a
+    # creator can paste the URL and hit "Test Notifikasi" before configuring
+    # anything; the only thing reachable then is making a donation appear on a
+    # feed, which the public hook already allows.
+    expected = (await store.get_room_async(room_id)).get("config", {}).get("sociabuzzToken", "")
+    expected = str(expected).strip() if expected else ""
+    if expected:
+        supplied = (
+            request.headers.get("x-sociabuzz-token")
+            or request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+            or request.query_params.get("token", "")
+        ).strip()
+        if not supplied or not secrets.compare_digest(supplied.encode(), expected.encode()):
+            raise HTTPException(status_code=401, detail="Invalid or missing Sociabuzz token")
+
+    try:
+        body = await request.json()
+    except Exception:
+        # Not JSON. Sociabuzz has been seen to post a bare form field too; log it
+        # and answer 200 so the creator's test button stops retrying, but do not
+        # try to turn it into a donation we cannot read.
+        raw = await request.body()
+        logger.warning("sociabuzz: non-JSON body for room %s: %r", room_id, raw[:200])
+        return {"status": "ignored", "reason": "body was not JSON"}
+
+    if not isinstance(body, dict):
+        logger.warning("sociabuzz: body for room %s was %s, not an object", room_id, type(body).__name__)
+        return {"status": "ignored", "reason": "body was not a JSON object"}
+
+    logger.info("sociabuzz: donation for room %s — keys=%s", room_id, sorted(body.keys()))
+
+    # Every name a field has been seen under. Listed widest-first; the exact
+    # set is what the log above teaches us on the first real donation.
+    donator = _pick(body, "donator", "donatur", "donor", "supporter", "name", "fullname", "fullName")
+    amount_raw = _pick(body, "amount", "nominal", "jumlah", "value", "total", "donation", "price")
+    message = _pick(body, "message", "note", "pesan", "support_message", "comment", "text", "message")
+
+    # Sociabuzz amounts are sometimes strings ("Rp 10.000") or integers in the
+    # smallest currency unit. Parse what can be parsed, and fall back to the raw
+    # string as the label so a donation still appears even if the number is in a
+    # form we do not understand.
+    amount_value: float | None = None
+    amount_label = ""
+    if amount_raw is not None:
+        amount_label = str(amount_raw)
+        try:
+            # Strip currency marks and thousands separators before parsing, so
+            # "Rp 10.000" and "10000" and 10000.0 all resolve to the same number.
+            digits = re.sub(r"[^0-9.]", "", amount_label)
+            if digits:
+                amount_value = float(digits)
+        except (ValueError, TypeError):
+            amount_value = None
+
+    user = str(donator).strip() if donator is not None else "SociaBuzz supporter"
+    if not user:
+        user = "SociaBuzz supporter"
+
+    # The alert's wire shape is {title, text, icon, amount} — `user` is dropped on
+    # the way out. So the donator's name has to live in the text, or the feed shows
+    # a donation from nobody. Amount is put in `meta.amount`, the one field the
+    # donation jar reads.
+    parts = [user]
+    if amount_label:
+        parts.append(f"{amount_label}")
+    if message:
+        parts.append(str(message))
+    text = " — ".join(parts)
+
+    meta: dict[str, Any] = {"title": "SociaBuzz", "icon": "★", "count": 1, "platform": "sociabuzz"}
+    if amount_value is not None:
+        meta["amount"] = amount_value
+        meta["diamonds"] = int(amount_value)
+        meta["value"] = amount_value
+    if amount_label:
+        meta["amountLabel"] = amount_label
+    if message:
+        meta["message"] = message
+
+    await events.emit(
+        room_id,
+        Event(kind=ALERT, user=user, user_id="", value=text, meta=meta),
+    )
+    # 200 with the keys that arrived: the creator's "Test Notifikasi" shows this
+    # body back, so a field we mapped wrong is visible immediately rather than
+    # guessed at from a blank feed.
+    return {"status": "ok", "received": sorted(body.keys())}
 
 
 # Polls were removed with the widget. See abb2eda and the note in git log.

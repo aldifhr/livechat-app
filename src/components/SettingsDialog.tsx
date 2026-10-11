@@ -3,7 +3,8 @@ import { host } from '../lib/sidecar'
 import { EMPTY_CONFIG, EXAMPLE_BASE_URL, isReady, modelOptions, normaliseBaseUrl, type LlmConfig } from '../lib/llm'
 import { DENSITIES, FONTS, THEMES } from '../lib/theme'
 import { TEMPLATES } from '../lib/templates'
-import { invalidateCustomSound, playSound, releaseAudio, resolveAudio } from '../lib/player'
+import { invalidateCustomSound, playSound, resolveAudio, releaseAudio } from '../lib/player'
+import { EMPTY_WEBHOOK, EXAMPLE_WEBHOOK_URL, isWebhookReady, type WebhookConfig } from '../lib/webhook'
 import type { UseSettingsResult, ViewSettings } from '../hooks/useSettings'
 
 /**
@@ -81,6 +82,8 @@ export function SettingsDialog({ open, settings, onClose }: Props) {
   const [models, setModels] = useState<string[]>([])
   const [status, setStatus] = useState<Status>({ kind: 'idle', text: '' })
   const [revealKey, setRevealKey] = useState(false)
+  const [webhook, setWebhook] = useState<WebhookConfig>(EMPTY_WEBHOOK)
+  const [revealToken, setRevealToken] = useState(false)
   // A preview context, separate from the one the alerts use, so previewing a
   // sound does not compete with a gift that fires while the dialog is open.
   const previewContextRef = useRef<AudioContext | null>(null)
@@ -125,9 +128,57 @@ export function SettingsDialog({ open, settings, onClose }: Props) {
     }
   }, [open])
 
+  // The webhook is read on its own, so a save takes effect on the next gift without
+  // reopening the dialog and without a restart.
+  useEffect(() => {
+    if (!open) return
+    let active = true
+    host
+      .webhookConfigGet()
+      .then((saved) => {
+        if (!active) return
+        setWebhook(saved)
+      })
+      .catch(() => {
+        // An unconfigured webhook is the default state, not a fault.
+      })
+    return () => {
+      active = false
+    }
+  }, [open])
+
   const setConfigField = useCallback(<K extends keyof LlmConfig>(key: K, value: LlmConfig[K]) => {
     setConfig((previous) => ({ ...previous, [key]: value }))
   }, [])
+
+  const setWebhookField = useCallback(<K extends keyof WebhookConfig>(key: K, value: WebhookConfig[K]) => {
+    setWebhook((previous) => ({ ...previous, [key]: value }))
+  }, [])
+
+  // Saved as it is typed rather than behind a Save button, like every other setting
+  // in this dialog — the host reads the config at send time, so a change lands on
+  // the next gift with nothing to press.
+  useEffect(() => {
+    if (!open) return
+    void host.webhookConfigSave(webhook).catch(() => {
+      // A read-only config directory is not worth interrupting the dialog over; the
+      // test button will say the send failed if it comes to that.
+    })
+  }, [open, webhook])
+
+  async function testWebhook() {
+    setStatus({ kind: 'busy', text: 'Sending a test gift…' })
+    try {
+      const said = await host.webhookTest()
+      if (!alive.current) return
+      setStatus({ kind: 'ok', text: said })
+    } catch (error: unknown) {
+      if (!alive.current) return
+      // The host's message verbatim: "404" and "401" are fixed differently, and the
+      // user can only fix the one they are told about.
+      setStatus({ kind: 'error', text: message(error) })
+    }
+  }
 
   async function fetchModels() {
     setStatus({ kind: 'busy', text: 'Asking the endpoint what it has…' })
@@ -412,6 +463,80 @@ export function SettingsDialog({ open, settings, onClose }: Props) {
                 ? settings.customSoundPath.split(/[\\/]/).pop()
                 : 'No file — the templates above are used.'}
             </span>
+          </div>
+        </section>
+
+        <section className="settings-section" data-section="webhook">
+          <h3 className="settings-heading">Webhook</h3>
+          <p className="modal-hint">
+            When a gift arrives, its details are posted to the URL below so another app can react — an
+            overlay, an alert, a bot. The token is stored on this machine and sent from the app&rsquo;s host,
+            never from this window.
+          </p>
+
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={webhook.enabled}
+              onChange={(e) => setWebhookField('enabled', e.target.checked)}
+            />
+            <span>Send gifts to a webhook</span>
+          </label>
+
+          <label className="field">
+            <span className="field-label">Webhook URL</span>
+            <input
+              className="input"
+              placeholder={EXAMPLE_WEBHOOK_URL}
+              value={webhook.url}
+              onChange={(e) => setWebhookField('url', e.target.value)}
+              spellCheck={false}
+              autoComplete="off"
+              disabled={!webhook.enabled}
+            />
+            <span className="field-note">
+              Where the gift is posted. Left empty, nothing is sent even when the toggle is on.
+            </span>
+          </label>
+
+          <label className="field">
+            <span className="field-label">Webhook token</span>
+            <span className="field-row">
+              <input
+                className="input"
+                type={revealToken ? 'text' : 'password'}
+                placeholder="optional"
+                value={webhook.token}
+                onChange={(e) => setWebhookField('token', e.target.value)}
+                spellCheck={false}
+                autoComplete="off"
+                disabled={!webhook.enabled}
+              />
+              <button
+                type="button"
+                className="btn btn-small"
+                onClick={() => setRevealToken((v) => !v)}
+                disabled={!webhook.enabled}
+              >
+                {revealToken ? 'Hide' : 'Show'}
+              </button>
+            </span>
+            <span className="field-note">
+              Sent as an Authorization header, not in the URL — a token in a query string ends up in the
+              receiving server&rsquo;s access log. Leave empty to send no header.
+            </span>
+          </label>
+
+          <div className="modal-actions">
+            <span className="modal-spacer" />
+            <button
+              className="btn btn-small"
+              onClick={testWebhook}
+              disabled={!webhook.enabled || !isWebhookReady(webhook) || status.kind === 'busy'}
+              title="Send one test gift and show what came back"
+            >
+              HTTP test
+            </button>
           </div>
         </section>
 

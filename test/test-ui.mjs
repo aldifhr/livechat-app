@@ -28,6 +28,9 @@ const fake = fakeTransport({
   // Answers the one command that needs a real payload for the settings dialog to
   // have anything to show.
   llm_config_get: { baseUrl: '', apiKey: '', model: '' },
+  // The webhook starts unconfigured, as it does on first launch.
+  webhook_config_get: { enabled: false, url: '', token: '' },
+  webhook_test: 'Sent.',
 })
 setTransport(fake.transport)
 
@@ -379,6 +382,44 @@ check(
   $$('.log-line').filter((l) => /Disconnected/.test(l.textContent ?? '')).map((l) => l.className).join(' | '),
 )
 await click('.log-toggle')
+
+console.log('the webhook is configured and tested')
+// The settings live behind the gear, so the dialog is opened to reach them.
+await click('.settings-btn')
+// Off by default: this posts data about the room to a third party, and that has to
+// be asked for rather than switched on by a fresh install.
+const webhookSection = () => $('[data-section="webhook"]')
+check('the webhook section is there', Boolean(webhookSection()))
+const webhookToggle = webhookSection()?.querySelector('.toggle input')
+check('and it starts off', webhookToggle?.checked === false, String(webhookToggle?.checked))
+// With it off the URL, token and test button are all inert — a half-configured
+// webhook must not be able to send.
+const webhookUrl = webhookSection()?.querySelector('input[type="url"], input:not([type])')
+check('the url field is disabled while off', webhookUrl?.disabled === true, String(webhookUrl?.disabled))
+await click(webhookToggle)
+check('turning it on enables the url field', webhookUrl?.disabled === false, String(webhookUrl?.disabled))
+await type(webhookUrl, 'https://example.com/hook')
+// The token is a credential, so it is hidden until asked for and sent as a header
+// rather than in the URL, where it would end up in an access log.
+const tokenInput = webhookSection()?.querySelector('input[type="password"], input[type="text"]')
+check('the token is hidden by default', tokenInput?.type === 'password', tokenInput?.type)
+// The test button is the only call whose result the user sees — "saved" is not
+// evidence a URL was right.
+const testBtn = $$('.modal-settings .btn').find((b) => /test/i.test(b.textContent))
+check('the test button is enabled once there is a url', testBtn?.disabled === false, String(testBtn?.disabled))
+await click(testBtn)
+check(
+  'testing reports what came back',
+  /Sent/.test($('.modal-settings')?.textContent ?? ''),
+  $('.modal-settings')?.textContent?.slice(0, 120),
+)
+// The host was actually asked, with a real gift payload rather than an empty one.
+check(
+  'the host sent the test gift',
+  Boolean(fake.lastCommand('webhook_test')),
+  JSON.stringify(fake.lastCommand('webhook_test')),
+)
+await click($('.modal-close'))
 
 console.log('failures are shown, not swallowed')
 await act(async () => {
