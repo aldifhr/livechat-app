@@ -102,7 +102,16 @@ export default function Rooms({ onOpenOverlay }: { onOpenOverlay: () => void }) 
       await api.deleteRoom(room.id)
       await load()
     } catch (cause) {
-      setError(cause instanceof ApiError ? cause.message : 'The room could not be deleted')
+      // Same treatment as create: a refused token and a backend that is down are
+      // different problems, and the raw "Invalid or missing STREAMKIT_TOKEN" says
+      // nothing about which one happened or what to do about it.
+      setError(
+        cause instanceof ApiError && isAuthFailure(cause.status)
+          ? 'The token was refused. Check it above and try again.'
+          : cause instanceof ApiError
+            ? cause.message
+            : 'The room could not be deleted',
+      )
     } finally {
       setBusy(false)
     }
