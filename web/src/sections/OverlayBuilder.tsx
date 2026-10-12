@@ -1,14 +1,16 @@
 /**
- * The overlay builder: styling on the left, the live overlay on the right.
+ * Two customizers, one per overlay.
  *
- * The controls write into the overlay's own query string rather than saving a
- * style anywhere, so the URL below them is not a summary of the settings — it is
- * the settings. What is copied into OBS is exactly what is being previewed, which
- * is the only way to be sure the two have not drifted.
+ * Deliberately not one panel with a switch, and not one style object shared
+ * between both: the chat overlay and the top-chatters board read different
+ * parameters. The board ignores the message gap entirely and carries a title the
+ * chat overlay has no place for; the chat overlay has no board to name. One shared
+ * style meant a delay slider that did nothing on the board and a link for the chat
+ * overlay that quietly carried the board's row count.
  *
- * The numbers come from shared/, so the bounds enforced here are the same ones the
- * page enforces. A field that let you save a value the page would clamp would
- * show one number in this dashboard and a different one in OBS.
+ * Each side reads and writes its own query string through shared/, so the bounds
+ * the customizer enforces are the same ones the page enforces. What is copied into
+ * OBS is exactly what the controls describe.
  */
 
 'use client'
@@ -16,68 +18,238 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  clampRows,
-  isSafeColour,
+  chatStyleFromQuery,
+  chatStyleToQuery,
+  boardStyleFromQuery,
+  boardStyleToQuery,
+  BOARD_DEFAULT_STYLE,
   OVERLAY_DEFAULT_STYLE,
   OVERLAY_DELAY,
   OVERLAY_MAX_ROWS,
   OVERLAY_SIZE,
-  resolveOverlayFont,
+  OVERLAY_TITLE_MAX,
+  type BoardStyle,
   type OverlayStyle,
 } from '@shared/overlay'
 import { api, type Room } from '../lib/client'
 
-/** Pull a style back out of a saved URL, so opening the builder on a link that
- *  was shared with somebody shows their overlay rather than the defaults. */
-function styleFromQuery(search: string): OverlayStyle {
-  const q = new URLSearchParams(search)
-  const num = (key: string) => (q.has(key) ? Number(q.get(key)) : undefined)
-  const raw = {
-    size: num('size'),
-    max: num('max'),
-    delay: num('delay'),
-    bg: num('bg'),
-    nameColour: q.get('name'),
-    textColour: q.get('color'),
-    font: q.get('font'),
-  }
-  return {
-    size: clamp(Number.isFinite(raw.size) ? (raw.size as number) : OVERLAY_DEFAULT_STYLE.size, OVERLAY_SIZE.min, OVERLAY_SIZE.max, OVERLAY_DEFAULT_STYLE.size),
-    max: clampRows(raw.max, OVERLAY_DEFAULT_STYLE.max),
-    delay: Math.round(clamp(Number.isFinite(raw.delay) ? (raw.delay as number) : OVERLAY_DEFAULT_STYLE.delay, OVERLAY_DELAY.min, OVERLAY_DELAY.max, OVERLAY_DEFAULT_STYLE.delay)),
-    bg: clamp(Number.isFinite(raw.bg) ? (raw.bg as number) : OVERLAY_DEFAULT_STYLE.bg, 0, 1, OVERLAY_DEFAULT_STYLE.bg),
-    nameColour: safeColour(raw.nameColour, OVERLAY_DEFAULT_STYLE.nameColour),
-    textColour: safeColour(raw.textColour, OVERLAY_DEFAULT_STYLE.textColour),
-    font: resolveOverlayFont(raw.font),
-  }
+/** The room picker both customizers share — the room is what an overlay points at. */
+function RoomPicker({
+  rooms,
+  selected,
+  onChange,
+}: {
+  rooms: Room[]
+  selected: string
+  onChange: (id: string) => void
+}) {
+  return (
+    <div className="field">
+      <label htmlFor="room">Room</label>
+      <select id="room" value={selected} onChange={(event) => onChange(event.target.value)}>
+        <option value="">Choose a room…</option>
+        {rooms.map((room) => (
+          <option key={room.id} value={room.id}>
+            {room.name}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
 }
 
-function clamp(value: number, min: number, max: number, fallback: number): number {
-  if (!Number.isFinite(value)) return fallback
-  return Math.min(max, Math.max(min, value))
+/** A read-only link with a copy button — the thing that ends up in OBS. */
+function CopyLink({ label, hint, url }: { label: string; hint: string; url: string }) {
+  const [copied, setCopied] = useState(false)
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // Clipboard access is refused in some contexts and there is no honest way to
+      // paste on the operator's behalf; the field is selectable, so they can.
+    }
+  }
+  return (
+    <div className="panel" style={{ margin: 0 }}>
+      <h3>{label}</h3>
+      <div className="copy-row">
+        <input readOnly value={url} onFocus={(e) => e.target.select()} aria-label={label} />
+        <button onClick={() => void copy()} disabled={!url}>
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      {hint && <p className="faint" style={{ margin: 0 }}>{hint}</p>}
+    </div>
+  )
 }
 
-function safeColour(value: string | null, fallback: string): string {
-  return value !== null && isSafeColour(value) ? value.trim() : fallback
+// ---- the chat customizer --------------------------------------------------
+
+function ChatCustomizer({ roomId, style, onChange }: {
+  roomId: string
+  style: OverlayStyle
+  onChange: (change: Partial<OverlayStyle>) => void
+}) {
+  const chatUrl = useMemo(
+    () => (roomId ? api.chatOverlay(roomId, chatStyleToQuery(style)) : ''),
+    [roomId, style],
+  )
+  const preview = `/admin/live-preview?${new URLSearchParams({ room: roomId, ...chatStyleToQuery(style) }).toString()}`
+
+  return (
+    <>
+      <div className="panel" style={{ margin: 0 }}>
+        <h3>Style</h3>
+
+        <div className="field">
+          <label>Text size <span className="value">{style.size}px</span></label>
+          <input type="range" min={OVERLAY_SIZE.min} max={OVERLAY_SIZE.max} value={style.size} onChange={(e) => onChange({ size: Number(e.target.value) })} />
+        </div>
+
+        <div className="field">
+          <label>Messages on screen <span className="value">{style.max}</span></label>
+          <input type="range" min={OVERLAY_MAX_ROWS.min} max={OVERLAY_MAX_ROWS.max} value={style.max} onChange={(e) => onChange({ max: Number(e.target.value) })} />
+        </div>
+
+        <div className="field">
+          <label>Gap between messages <span className="value">{style.delay}ms</span></label>
+          <input type="range" min={OVERLAY_DELAY.min} max={OVERLAY_DELAY.max} step={20} value={style.delay} onChange={(e) => onChange({ delay: Number(e.target.value) })} />
+        </div>
+
+        <div className="field">
+          <label>Background <span className="value">{Math.round(style.bg * 100)}%</span></label>
+          <input type="range" min={0} max={1} step={0.05} value={style.bg} onChange={(e) => onChange({ bg: Number(e.target.value) })} />
+        </div>
+
+        <div className="field-row">
+          <div className="field">
+            <label>Name colour</label>
+            <input type="color" value={style.nameColour} onChange={(e) => onChange({ nameColour: e.target.value })} />
+          </div>
+          <div className="field">
+            <label>Text colour</label>
+            <input type="color" value={style.textColour} onChange={(e) => onChange({ textColour: e.target.value })} />
+          </div>
+        </div>
+
+        <div className="field">
+          <label htmlFor="chat-font">Font</label>
+          <input id="chat-font" value={style.font} onChange={(e) => onChange({ font: e.target.value })} />
+        </div>
+
+        <button onClick={() => onChange(OVERLAY_DEFAULT_STYLE)}>Reset to defaults</button>
+      </div>
+
+      <div>
+        <CopyLink
+          label="Chat overlay link"
+          hint="Add this as a browser source in OBS, sized to your canvas."
+          url={chatUrl}
+        />
+        <Link className="btn" href={preview} style={{ marginTop: '1rem' }}>
+          Open live preview
+        </Link>
+      </div>
+    </>
+  )
 }
+
+// ---- the board customizer -------------------------------------------------
+
+function BoardCustomizer({ roomId, style, onChange }: {
+  roomId: string
+  style: BoardStyle
+  onChange: (change: Partial<BoardStyle>) => void
+}) {
+  const boardUrl = useMemo(
+    () => (roomId ? api.topChatterOverlay(roomId, boardStyleToQuery(style)) : ''),
+    [roomId, style],
+  )
+  const preview = `/admin/live-preview?${new URLSearchParams({ room: roomId, ...boardStyleToQuery(style) }).toString()}`
+
+  return (
+    <>
+      <div className="panel" style={{ margin: 0 }}>
+        <h3>Style</h3>
+
+        <div className="field">
+          <label htmlFor="board-title">Title</label>
+          <input
+            id="board-title"
+            value={style.title}
+            maxLength={OVERLAY_TITLE_MAX}
+            placeholder="Top Yapping"
+            onChange={(e) => onChange({ title: e.target.value })}
+          />
+        </div>
+
+        <div className="field">
+          <label>Text size <span className="value">{style.size}px</span></label>
+          <input type="range" min={OVERLAY_SIZE.min} max={OVERLAY_SIZE.max} value={style.size} onChange={(e) => onChange({ size: Number(e.target.value) })} />
+        </div>
+
+        <div className="field">
+          <label>Chatters listed <span className="value">{style.max}</span></label>
+          <input type="range" min={OVERLAY_MAX_ROWS.min} max={OVERLAY_MAX_ROWS.max} value={style.max} onChange={(e) => onChange({ max: Number(e.target.value) })} />
+        </div>
+
+        <div className="field">
+          <label>Panel background <span className="value">{Math.round(style.bg * 100)}%</span></label>
+          <input type="range" min={0} max={1} step={0.05} value={style.bg} onChange={(e) => onChange({ bg: Number(e.target.value) })} />
+        </div>
+
+        <div className="field-row">
+          <div className="field">
+            <label>Accent colour</label>
+            <input type="color" value={style.nameColour} onChange={(e) => onChange({ nameColour: e.target.value })} />
+          </div>
+          <div className="field">
+            <label>Text colour</label>
+            <input type="color" value={style.textColour} onChange={(e) => onChange({ textColour: e.target.value })} />
+          </div>
+        </div>
+
+        <div className="field">
+          <label htmlFor="board-font">Font</label>
+          <input id="board-font" value={style.font} onChange={(e) => onChange({ font: e.target.value })} />
+        </div>
+
+        <button onClick={() => onChange(BOARD_DEFAULT_STYLE)}>Reset to defaults</button>
+      </div>
+
+      <div>
+        <CopyLink label="Top chatters link" hint="" url={boardUrl} />
+        <Link className="btn" href={preview} style={{ marginTop: '1rem' }}>
+          Open live preview
+        </Link>
+      </div>
+    </>
+  )
+}
+
+// ---- the page -------------------------------------------------------------
+
+type Which = 'chat' | 'board'
 
 export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }) {
   const [rooms, setRooms] = useState<Room[]>([])
-  // A room named by the Rooms tab wins over the URL, because a tab switch is a
-  // more recent instruction than a link somebody pasted earlier.
   const [roomId, setRoomId] = useState(
     () => initialRoom || new URLSearchParams(window.location.search).get('room') || '',
   )
-  const [style, setStyle] = useState<OverlayStyle>(() => styleFromQuery(window.location.search))
-  const [copied, setCopied] = useState('')
+  // Each overlay keeps its own style: the board's row count and the chat's message
+  // gap are unrelated, and sharing one object would let one overwrite the other's
+  // meaning whenever the tab switched.
+  const [chatStyle, setChatStyle] = useState<OverlayStyle>(() => chatStyleFromQuery(window.location.search))
+  const [boardStyle, setBoardStyle] = useState<BoardStyle>(() => boardStyleFromQuery(window.location.search))
+  const [which, setWhich] = useState<Which>('chat')
 
   useEffect(() => {
     api
       .rooms()
       .then(({ rooms: found }) => {
         setRooms(found)
-        // With no room chosen, pick the first rather than leaving the field blank
-        // and the preview pointed at nothing.
         setRoomId((current) => current || (found[0]?.id ?? ''))
       })
       .catch(() => {
@@ -87,32 +259,20 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
       })
   }, [])
 
-  const patch = useCallback((change: Partial<OverlayStyle>) => setStyle((current) => ({ ...current, ...change })), [])
-
-  // A room named by the query string only counts once it has been confirmed to
-  // exist. A stale or wrong id in the address would otherwise produce a
-  // complete-looking overlay link that points at a room nobody is watching —
-  // the worst kind of wrong, because it looks exactly like a working one.
-  const known = rooms.some((room) => room.id === roomId)
-  const selected = known ? roomId : rooms[0]?.id ?? ''
-
-  const chatUrl = useMemo(() => (selected ? api.chatOverlay(selected, styleToQuery(style)) : ''), [selected, style])
-  const boardUrl = useMemo(
-    () => (selected ? api.topChatterOverlay(selected, { max: String(style.max) }) : ''),
-    [selected, style.max],
+  const patchChat = useCallback(
+    (change: Partial<OverlayStyle>) => setChatStyle((current) => ({ ...current, ...change })),
+    [],
+  )
+  const patchBoard = useCallback(
+    (change: Partial<BoardStyle>) => setBoardStyle((current) => ({ ...current, ...change })),
+    [],
   )
 
-  const copy = async (label: string, url: string) => {
-    try {
-      await navigator.clipboard.writeText(url)
-      setCopied(label)
-      window.setTimeout(() => setCopied(''), 1500)
-    } catch {
-      // Clipboard access is refused in some contexts and there is no honest way to
-      // paste on the operator's behalf; the field is selectable, so they can.
-      setCopied('')
-    }
-  }
+  // A room named by the query string only counts once it has been confirmed to
+  // exist, so a stale id produces a fallback rather than a link pointing at a
+  // room nobody is watching.
+  const known = rooms.some((room) => room.id === roomId)
+  const selected = known ? roomId : rooms[0]?.id ?? ''
 
   return (
     <>
@@ -120,125 +280,30 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
         <div>
           <h2>Overlay builder</h2>
           <p className="muted" style={{ margin: 0 }}>
-            Style the overlay, then paste the link into OBS as a browser source.
+            Style each overlay, then paste its link into OBS as a browser source.
           </p>
-          {/* The preview moved to its own page: a browser source is a fixed
-              rectangle, and seeing whether the overlay fits it needs the whole
-              screen. The style travels in the query string, so this opens on
-              exactly what the link below produces. */}
-          <Link
-            className="btn"
-            href={`/admin/live-preview?room=${encodeURIComponent(selected)}&${new URLSearchParams(styleToQuery(style)).toString()}`}
-          >
-            Open live preview
-          </Link>
         </div>
       </div>
 
       <div className="panel">
-        <div className="field">
-          <label htmlFor="room">Room</label>
-          <select id="room" value={selected} onChange={(event) => setRoomId(event.target.value)}>
-            <option value="">Choose a room…</option>
-            {rooms.map((room) => (
-              <option key={room.id} value={room.id}>
-                {room.name}
-              </option>
-            ))}
-          </select>
+        <RoomPicker rooms={rooms} selected={selected} onChange={setRoomId} />
+        <div className="seg" style={{ marginTop: '0.75rem' }}>
+          <button className={which === 'chat' ? 'on' : ''} onClick={() => setWhich('chat')}>
+            Chat overlay
+          </button>
+          <button className={which === 'board' ? 'on' : ''} onClick={() => setWhich('board')}>
+            Top chatters
+          </button>
         </div>
       </div>
 
       <div className="builder">
-        <div className="panel" style={{ margin: 0 }}>
-          <h3>Style</h3>
-
-          <div className="field">
-            <label>
-              Text size <span className="value">{style.size}px</span>
-            </label>
-            <input type="range" min={OVERLAY_SIZE.min} max={OVERLAY_SIZE.max} value={style.size} onChange={(e) => patch({ size: Number(e.target.value) })} />
-          </div>
-
-          <div className="field">
-            <label>
-              Messages on screen <span className="value">{style.max}</span>
-            </label>
-            <input type="range" min={OVERLAY_MAX_ROWS.min} max={OVERLAY_MAX_ROWS.max} value={style.max} onChange={(e) => patch({ max: Number(e.target.value) })} />
-          </div>
-
-          <div className="field">
-            <label>
-              Gap between messages <span className="value">{style.delay}ms</span>
-            </label>
-            <input type="range" min={OVERLAY_DELAY.min} max={OVERLAY_DELAY.max} step={20} value={style.delay} onChange={(e) => patch({ delay: Number(e.target.value) })} />
-          </div>
-
-          <div className="field">
-            <label>
-              Background <span className="value">{Math.round(style.bg * 100)}%</span>
-            </label>
-            <input type="range" min={0} max={1} step={0.05} value={style.bg} onChange={(e) => patch({ bg: Number(e.target.value) })} />
-          </div>
-
-          <div className="field-row">
-            <div className="field">
-              <label>Name colour</label>
-              <input type="color" value={style.nameColour} onChange={(e) => patch({ nameColour: e.target.value })} />
-            </div>
-            <div className="field">
-              <label>Text colour</label>
-              <input type="color" value={style.textColour} onChange={(e) => patch({ textColour: e.target.value })} />
-            </div>
-          </div>
-
-          <div className="field">
-            <label htmlFor="font">Font</label>
-            <input id="font" value={style.font} onChange={(e) => patch({ font: e.target.value })} />
-          </div>
-
-          <button onClick={() => setStyle(OVERLAY_DEFAULT_STYLE)}>Reset to defaults</button>
-        </div>
-
-        <div>
-          <div className="panel" style={{ marginBottom: '1rem' }}>
-            <h3>Chat overlay link</h3>
-            <div className="copy-row">
-              <input readOnly value={chatUrl} onFocus={(e) => e.target.select()} aria-label="Chat overlay link" />
-              <button onClick={() => void copy('chat', chatUrl)} disabled={!chatUrl}>
-                {copied === 'chat' ? 'Copied' : 'Copy'}
-              </button>
-            </div>
-            <p className="faint" style={{ margin: 0 }}>
-              Add this as a browser source in OBS, sized to your canvas.
-            </p>
-          </div>
-
-          <div className="panel" style={{ marginBottom: '1rem' }}>
-            <h3>Top chatters link</h3>
-            <div className="copy-row">
-              <input readOnly value={boardUrl} onFocus={(e) => e.target.select()} aria-label="Top chatters link" />
-              <button onClick={() => void copy('board', boardUrl)} disabled={!boardUrl}>
-                {copied === 'board' ? 'Copied' : 'Copy'}
-              </button>
-            </div>
-          </div>
-
-        </div>
+        {which === 'chat' ? (
+          <ChatCustomizer roomId={selected} style={chatStyle} onChange={patchChat} />
+        ) : (
+          <BoardCustomizer roomId={selected} style={boardStyle} onChange={patchBoard} />
+        )}
       </div>
     </>
   )
-}
-
-/** The overlay's styling, as the query parameters it reads. */
-function styleToQuery(style: OverlayStyle): Record<string, string> {
-  return {
-    size: String(style.size),
-    max: String(style.max),
-    delay: String(style.delay),
-    bg: String(style.bg),
-    name: style.nameColour,
-    color: style.textColour,
-    font: style.font,
-  }
 }

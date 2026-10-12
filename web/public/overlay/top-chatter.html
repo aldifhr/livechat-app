@@ -156,7 +156,7 @@
 </head>
 <body>
 <div id="panel" hidden>
-  <p id="caption">Top Yapping</p>
+  <p id="caption"></p>
   <ol id="board" aria-live="polite"></ol>
 </div>
 <div id="unconfigured">no handle in this link — add <code>?room=yourhandle</code></div>
@@ -198,6 +198,13 @@
     return Math.min(max, Math.max(min, raw))
   }
 
+  // The heading's own bound, mirrored here so the page decides for itself rather
+  // than trusting the link. 40 characters is one line in a panel sized for one.
+  function resolveTitle(value) {
+    var text = String(value == null ? '' : value).trim()
+    return text === '' || text.length > 40 ? 'Top Yapping' : text
+  }
+
   var config = {
     // Defaults to this page's own origin. The page and its websocket are served
     // by the same vhost, so an overlay link names one host and nothing has to be
@@ -219,7 +226,12 @@
     // busy stream can tighten it without a redeploy.
     poll: number('poll', 5, 2, 60) * 1000,
     align: param('align', 'top'),
-    debug: param('debug', '') !== ''
+    debug: param('debug', '') !== '',
+    // The heading above the ranking. Read from the link rather than baked into
+    // the page, so a streamer calls their board whatever fits the channel. A
+    // blank or an overlong value falls back to the default rather than being
+    // cut mid-word, so the heading is always a complete title.
+    title: resolveTitle(param('title', baked.title || 'Top Yapping'))
   }
 
   document.documentElement.style.setProperty('--size', config.size + 'px')
@@ -234,6 +246,9 @@
     '--align',
     config.align === 'bottom' ? 'flex-end' : 'flex-start'
   )
+  // As text, never markup: it comes from a query string the operator controls but
+  // which is still a string on the wire.
+  document.getElementById('caption').textContent = config.title
 
   var status = document.getElementById('status')
   function say(message) {

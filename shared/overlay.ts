@@ -143,6 +143,131 @@ export function resolveOverlayFont(value: unknown): string {
   return text
 }
 
+/**
+ * A chat style read out of a query string.
+ *
+ * Here rather than in each customizer because the customizer and the page are two
+ * readers of one string: a value one of them accepts and the other clamps would
+ * show one number in the dashboard and a different one in OBS. An absent parameter
+ * is missing, not zero — `clampNumber` treats a null from `URLSearchParams.get` as
+ * absent, which is what stops a cleared field arriving as a size of zero.
+ */
+export function chatStyleFromQuery(search: string): OverlayStyle {
+  const q = new URLSearchParams(search)
+  const raw = (key: string) => q.get(key)
+  return {
+    size: clampNumber(raw('size'), OVERLAY_SIZE.min, OVERLAY_SIZE.max, OVERLAY_DEFAULT_STYLE.size),
+    max: clampRows(raw('max'), OVERLAY_DEFAULT_STYLE.max),
+    delay: Math.round(
+      clampNumber(raw('delay'), OVERLAY_DELAY.min, OVERLAY_DELAY.max, OVERLAY_DEFAULT_STYLE.delay),
+    ),
+    bg: clampNumber(raw('bg'), 0, 1, OVERLAY_DEFAULT_STYLE.bg),
+    nameColour: resolveColour(raw('name'), OVERLAY_DEFAULT_STYLE.nameColour),
+    textColour: resolveColour(raw('color'), OVERLAY_DEFAULT_STYLE.textColour),
+    font: resolveOverlayFont(raw('font')),
+  }
+}
+
+/** A chat style as the query parameters the page reads. */
+export function chatStyleToQuery(style: OverlayStyle): Record<string, string> {
+  return {
+    size: String(style.size),
+    max: String(style.max),
+    delay: String(style.delay),
+    bg: String(style.bg),
+    name: style.nameColour,
+    color: style.textColour,
+    font: style.font,
+  }
+}
+
+// --------------------------------------------------------------------------
+// the top-chatters board
+// --------------------------------------------------------------------------
+
+/** The title printed above the ranking. */
+export const OVERLAY_DEFAULT_TITLE = 'Top Yapping'
+
+/**
+ * The bound on that title.
+ *
+ * The page drops it into the DOM as text, so there is no markup to guard against —
+ * the reason for a cap is that a run of whitespace or a sentence would wrap the
+ * heading out of a panel sized for one line. A value over the cap falls back rather
+ * than being truncated mid-word, so what is on screen is always a complete title.
+ */
+export const OVERLAY_TITLE_MAX = 40
+
+/** A title, or the default. */
+export function resolveTitle(value: unknown): string {
+  if (typeof value !== 'string') return OVERLAY_DEFAULT_TITLE
+  const text = value.trim()
+  return text === '' || text.length > OVERLAY_TITLE_MAX ? OVERLAY_DEFAULT_TITLE : text
+}
+
+/**
+ * The board's styling.
+ *
+ * Its own type rather than `OverlayStyle`, because the two pages read different
+ * parameters: the board ignores the message gap entirely and carries a title the
+ * chat overlay has no place for. Reusing one type would mean a delay slider that
+ * does nothing and a title field on the wrong customizer.
+ */
+export interface BoardStyle {
+  /** Text size in px. */
+  size: number
+  /** How many chatters are listed. */
+  max: number
+  /** How opaque the gray panel is. */
+  bg: number
+  /** The rank numbers and the message counts. */
+  nameColour: string
+  /** The names. */
+  textColour: string
+  /** A CSS font stack, quoted names and all. */
+  font: string
+  /** The heading above the ranking. */
+  title: string
+}
+
+export const BOARD_DEFAULT_STYLE: BoardStyle = {
+  size: 28,
+  max: 10,
+  bg: 0.9,
+  nameColour: OVERLAY_DEFAULT_STYLE.nameColour,
+  textColour: OVERLAY_DEFAULT_STYLE.textColour,
+  font: OVERLAY_DEFAULT_STYLE.font,
+  title: OVERLAY_DEFAULT_TITLE,
+}
+
+/** A board style read out of a query string — the mirror of `chatStyleFromQuery`. */
+export function boardStyleFromQuery(search: string): BoardStyle {
+  const q = new URLSearchParams(search)
+  const raw = (key: string) => q.get(key)
+  return {
+    size: clampNumber(raw('size'), OVERLAY_SIZE.min, OVERLAY_SIZE.max, BOARD_DEFAULT_STYLE.size),
+    max: clampRows(raw('max'), BOARD_DEFAULT_STYLE.max),
+    bg: clampNumber(raw('bg'), 0, 1, BOARD_DEFAULT_STYLE.bg),
+    nameColour: resolveColour(raw('name'), BOARD_DEFAULT_STYLE.nameColour),
+    textColour: resolveColour(raw('color'), BOARD_DEFAULT_STYLE.textColour),
+    font: resolveOverlayFont(raw('font')),
+    title: resolveTitle(raw('title')),
+  }
+}
+
+/** A board style as the query parameters the page reads. */
+export function boardStyleToQuery(style: BoardStyle): Record<string, string> {
+  return {
+    size: String(style.size),
+    max: String(style.max),
+    bg: String(style.bg),
+    name: style.nameColour,
+    color: style.textColour,
+    font: style.font,
+    title: style.title,
+  }
+}
+
 /** A styling read out of storage, with anything unusable replaced. */
 export function resolveStyle(saved: Partial<OverlayStyle> | null | undefined): OverlayStyle {
   return {

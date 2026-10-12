@@ -8,71 +8,39 @@
  * of. And a preview is what you leave on a second monitor while you talk to chat;
  * that is a window you navigate to, not a panel inside a form.
  *
- * The room and the style arrive in the query string, so this page reads exactly
- * what the builder wrote and shows exactly what OBS will load. There is no second
- * copy of the settings that could drift from the link being previewed.
+ * The room, the style and which overlay to show arrive in the query string, so this
+ * page reads exactly what the customizer wrote and shows exactly what OBS will
+ * load. There is no second copy of the settings that could drift from the link
+ * being previewed.
+ *
+ * The bounds come from shared/ rather than being restated here, so a value this
+ * page accepts is one the overlay page will actually render.
  */
 
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
 import {
-  clampRows,
-  isSafeColour,
-  OVERLAY_DEFAULT_STYLE,
-  OVERLAY_DELAY,
-  OVERLAY_SIZE,
-  resolveOverlayFont,
-  type OverlayStyle,
+  chatStyleFromQuery,
+  chatStyleToQuery,
+  boardStyleFromQuery,
+  boardStyleToQuery,
 } from '@shared/overlay'
 import { api, type Room } from '@/lib/client'
-
-/**
- * The same bounds the builder enforces, read from shared/ rather than restated —
- * a preview that accepted a value the page would clamp would show one number here
- * and a different one in OBS.
- */
-function styleFromQuery(search: string): OverlayStyle {
-  const q = new URLSearchParams(search)
-  const num = (key: string) => (q.has(key) ? Number(q.get(key)) : undefined)
-  const raw = {
-    size: num('size'),
-    max: num('max'),
-    delay: num('delay'),
-    bg: num('bg'),
-    nameColour: q.get('name'),
-    textColour: q.get('color'),
-    font: q.get('font'),
-  }
-  return {
-    size: clamp(Number.isFinite(raw.size) ? (raw.size as number) : OVERLAY_DEFAULT_STYLE.size, OVERLAY_SIZE.min, OVERLAY_SIZE.max, OVERLAY_DEFAULT_STYLE.size),
-    max: clampRows(raw.max, OVERLAY_DEFAULT_STYLE.max),
-    delay: Math.round(clamp(Number.isFinite(raw.delay) ? (raw.delay as number) : OVERLAY_DEFAULT_STYLE.delay, OVERLAY_DELAY.min, OVERLAY_DELAY.max, OVERLAY_DEFAULT_STYLE.delay)),
-    bg: clamp(Number.isFinite(raw.bg) ? (raw.bg as number) : OVERLAY_DEFAULT_STYLE.bg, 0, 1, OVERLAY_DEFAULT_STYLE.bg),
-    nameColour: safeColour(raw.nameColour, OVERLAY_DEFAULT_STYLE.nameColour),
-    textColour: safeColour(raw.textColour, OVERLAY_DEFAULT_STYLE.textColour),
-    font: resolveOverlayFont(raw.font),
-  }
-}
-
-function clamp(value: number, min: number, max: number, fallback: number): number {
-  if (!Number.isFinite(value)) return fallback
-  return Math.min(max, Math.max(min, value))
-}
-
-function safeColour(value: string | null, fallback: string): string {
-  return value !== null && isSafeColour(value) ? value.trim() : fallback
-}
 
 export default function LivePreview() {
   const [rooms, setRooms] = useState<Room[]>([])
   const [roomId, setRoomId] = useState('')
+  const [which, setWhich] = useState<'chat' | 'board'>('chat')
 
   // Read once, on mount. A preview that followed the query string as you typed in
   // another tab would reload under you; this is a thing you navigate to and watch.
   useEffect(() => {
-    const fromQuery = new URLSearchParams(window.location.search).get('room') || ''
-    setRoomId(fromQuery)
+    const q = new URLSearchParams(window.location.search)
+    setRoomId(q.get('room') || '')
+    // A link from the board customizer carries a title; that is how the preview
+    // knows which overlay to show, without a separate flag on the wire.
+    if (q.has('title')) setWhich('board')
   }, [])
 
   useEffect(() => {
@@ -95,21 +63,20 @@ export default function LivePreview() {
   // nothing.
   const known = rooms.some((room) => room.id === roomId)
   const selected = known ? roomId : rooms[0]?.id ?? ''
-  const style = useMemo(
-    () => styleFromQuery(typeof window === 'undefined' ? '' : window.location.search),
-    [],
-  )
+  const search = typeof window === 'undefined' ? '' : window.location.search
+
+  const chatStyle = useMemo(() => chatStyleFromQuery(search), [search])
+  const boardStyle = useMemo(() => boardStyleFromQuery(search), [search])
 
   const chatUrl = useMemo(
-    () => (selected ? api.chatOverlay(selected, styleToQuery(style)) : ''),
-    [selected, style],
+    () => (selected ? api.chatOverlay(selected, chatStyleToQuery(chatStyle)) : ''),
+    [selected, chatStyle],
   )
   const boardUrl = useMemo(
-    () => (selected ? api.topChatterOverlay(selected, { max: String(style.max) }) : ''),
-    [selected, style.max],
+    () => (selected ? api.topChatterOverlay(selected, boardStyleToQuery(boardStyle)) : ''),
+    [selected, boardStyle],
   )
 
-  const [which, setWhich] = useState<'chat' | 'board'>('chat')
   const shown = which === 'chat' ? chatUrl : boardUrl
 
   return (
@@ -169,17 +136,4 @@ export default function LivePreview() {
       )}
     </>
   )
-}
-
-/** The overlay's styling, as the query parameters it reads. */
-function styleToQuery(style: OverlayStyle): Record<string, string> {
-  return {
-    size: String(style.size),
-    max: String(style.max),
-    delay: String(style.delay),
-    bg: String(style.bg),
-    name: style.nameColour,
-    color: style.textColour,
-    font: style.font,
-  }
 }
