@@ -8,6 +8,8 @@ sidecar/
 # no leading path so they are ignored wherever a part puts them.
 node_modules/
 dist/
+.next/
+out/
 app/src-tauri/target/
 app/src-tauri/gen/
 

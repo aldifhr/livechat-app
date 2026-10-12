@@ -66,6 +66,41 @@ a:hover {
   text-decoration: underline;
 }
 
+/* A link that looks like a button. The landing page ships no JavaScript, so
+   these have to be links rather than buttons that navigate on click — a real
+   anchor is the only thing here that can be bookmarked or middle-clicked. */
+.cta {
+  display: inline-block;
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  color: var(--text);
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--radius-sm);
+  line-height: 1.4;
+}
+
+.cta:hover {
+  text-decoration: none;
+  border-color: var(--accent-dim);
+}
+
+.cta.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.cta.primary:hover {
+  background: #ffe089;
+  border-color: #ffe089;
+}
+
+.hero-actions .cta {
+  padding: 0.7rem 1.4rem;
+  font-size: 1rem;
+}
+
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

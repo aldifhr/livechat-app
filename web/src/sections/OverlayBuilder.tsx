@@ -11,6 +11,8 @@
  * show one number in this dashboard and a different one in OBS.
  */
 
+'use client'
+
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   clampRows,
@@ -22,7 +24,7 @@ import {
   resolveOverlayFont,
   type OverlayStyle,
 } from '@shared/overlay'
-import { api, type Room } from '../lib/api'
+import { api, type Room } from '../lib/client'
 
 /** Pull a style back out of a saved URL, so opening the builder on a link that
  *  was shared with somebody shows their overlay rather than the defaults. */
@@ -58,9 +60,13 @@ function safeColour(value: string | null, fallback: string): string {
   return value !== null && isSafeColour(value) ? value.trim() : fallback
 }
 
-export default function OverlayBuilder() {
+export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }) {
   const [rooms, setRooms] = useState<Room[]>([])
-  const [roomId, setRoomId] = useState(() => new URLSearchParams(window.location.search).get('room') ?? '')
+  // A room named by the Rooms tab wins over the URL, because a tab switch is a
+  // more recent instruction than a link somebody pasted earlier.
+  const [roomId, setRoomId] = useState(
+    () => initialRoom || new URLSearchParams(window.location.search).get('room') || '',
+  )
   const [style, setStyle] = useState<OverlayStyle>(() => styleFromQuery(window.location.search))
   const [copied, setCopied] = useState('')
 
@@ -82,12 +88,9 @@ export default function OverlayBuilder() {
 
   const patch = useCallback((change: Partial<OverlayStyle>) => setStyle((current) => ({ ...current, ...change })), [])
 
-  const chatUrl = useMemo(
-    () => (roomId ? api.overlayUrl(roomId, styleToQuery(style)) : ''),
-    [roomId, style],
-  )
+  const chatUrl = useMemo(() => (roomId ? api.chatOverlay(roomId, styleToQuery(style)) : ''), [roomId, style])
   const boardUrl = useMemo(
-    () => (roomId ? api.topChatterUrl(roomId, { max: String(style.max) }) : ''),
+    () => (roomId ? api.topChatterOverlay(roomId, { max: String(style.max) }) : ''),
     [roomId, style.max],
   )
 

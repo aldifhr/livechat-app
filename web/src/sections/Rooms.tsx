@@ -6,17 +6,21 @@
  * room, and a room is what connects to TikTok in the first place.
  */
 
+'use client'
+
 import { useCallback, useEffect, useState } from 'react'
-import { api, ApiError, isAuthFailure, type Room } from '../lib/api'
+import { api, ApiError, isAuthFailure, type Room } from '../lib/client'
 
 /** How often to ask about a room's live state. Long enough to be quiet, short
  *  enough that going offline is noticed while somebody is watching. */
 const POLL_MS = 15_000
 
-export default function Rooms({ onOpenOverlay }: { onOpenOverlay: () => void }) {
+export default function Rooms({ onStyleOverlay }: { onStyleOverlay: (roomId: string) => void }) {
   const [rooms, setRooms] = useState<Room[]>([])
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
+  const [newHandle, setNewHandle] = useState('')
   const [newName, setNewName] = useState('')
   const [live, setLive] = useState<Record<string, boolean>>({})
 
@@ -73,6 +77,54 @@ export default function Rooms({ onOpenOverlay }: { onOpenOverlay: () => void }) 
     }
   }, [rooms])
 
+  /**
+   * Connect a handle, which creates its room if needed.
+   *
+   * Connecting rather than creating is the whole point: a room nothing is
+   * connected to is a row in a list, not a chat. An existing room for the same
+   * handle is reused, so a second visit keeps its config instead of making a
+   * twin that says the same thing.
+   */
+  const connect = async () => {
+    const handle = newHandle.trim().replace(/^@/, '')
+    if (handle === '') return
+    setBusy(true)
+    try {
+      // The label is applied afterwards rather than sent with the connect, so a
+      // label typed for one stream does not end up naming the next one when the
+      // backend reuses an existing room instead of making a new one.
+      const room = await api.connectHandle(handle)
+      const label = newName.trim()
+      if (label && label !== room.name) {
+        try {
+          await api.updateRoom(room.id, { name: label })
+        } catch {
+          // The stream is connected either way; a label that would not save is
+          // not a reason to tell the operator the connect failed.
+        }
+      }
+      setNewHandle('')
+      setNewName('')
+      setError('')
+      setNotice(`Connected to @${handle}.`)
+      // A room that was just created is not in the list yet, so this cannot
+      // wait for the next poll to show the streamer's own room.
+      setRooms((current) => (current.some((r) => r.id === room.id) ? current : [room, ...current]))
+    } catch (cause) {
+      setNotice('')
+      setError(
+        cause instanceof ApiError && isAuthFailure(cause.status)
+          ? 'Your login was refused. Reload the page and sign in again.'
+          : cause instanceof ApiError
+            ? cause.message
+            : 'The handle could not be connected',
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** Create a room with no handle yet — for a stream that is not live. */
   const create = async () => {
     if (newName.trim() === '') return
     setBusy(true)
@@ -81,11 +133,10 @@ export default function Rooms({ onOpenOverlay }: { onOpenOverlay: () => void }) 
       setNewName('')
       await load()
     } catch (cause) {
-      // The token being wrong and the room name being taken are different
-      // problems, so the message has to say which one this was.
+      setNotice('')
       setError(
         cause instanceof ApiError && isAuthFailure(cause.status)
-          ? 'The token was refused. Check it above and try again.'
+          ? 'Your login was refused. Reload the page and sign in again.'
           : cause instanceof ApiError
             ? cause.message
             : 'The room could not be created',
@@ -107,7 +158,7 @@ export default function Rooms({ onOpenOverlay }: { onOpenOverlay: () => void }) 
       // nothing about which one happened or what to do about it.
       setError(
         cause instanceof ApiError && isAuthFailure(cause.status)
-          ? 'The token was refused. Check it above and try again.'
+          ? 'Your login was refused. Reload the page and sign in again.'
           : cause instanceof ApiError
             ? cause.message
             : 'The room could not be deleted',
@@ -134,27 +185,57 @@ export default function Rooms({ onOpenOverlay }: { onOpenOverlay: () => void }) 
       </div>
 
       {error && <div className="notice error">{error}</div>}
+      {notice && <div className="notice ok">{notice}</div>}
 
       <div className="panel">
+        <h3>Connect a stream</h3>
         <div className="row">
           <input
             className="grow"
-            placeholder="New room name"
+            placeholder="TikTok username — with or without the @"
+            value={newHandle}
+            onChange={(event) => setNewHandle(event.target.value)}
+            onKeyDown={(event) => event.key === 'Enter' && void connect()}
+            aria-label="TikTok username"
+          />
+          <input
+            placeholder="Label (optional)"
+            value={newName}
+            onChange={(event) => setNewName(event.target.value)}
+            aria-label="Room label"
+          />
+          <button className="primary" onClick={() => void connect()} disabled={busy || newHandle.trim() === ''}>
+            Connect
+          </button>
+        </div>
+        <p className="faint" style={{ margin: '0.4rem 0 0' }}>
+          The room is created for you and starts watching straight away. Connecting a handle that already has
+          a room reuses it and keeps its styling.
+        </p>
+      </div>
+
+      <div className="panel">
+        <h3>Add an empty room</h3>
+        <div className="row">
+          <input
+            className="grow"
+            placeholder="Room name"
             value={newName}
             onChange={(event) => setNewName(event.target.value)}
             onKeyDown={(event) => event.key === 'Enter' && void create()}
+            aria-label="Room name"
           />
-          <button className="primary" onClick={() => void create()} disabled={busy || newName.trim() === ''}>
+          <button onClick={() => void create()} disabled={busy || newName.trim() === ''}>
             Add room
           </button>
         </div>
         <p className="faint" style={{ margin: '0.4rem 0 0' }}>
-          Needs the API token above. Reading this list does not.
+          For a stream that is not live yet — nothing is watched until a handle is connected.
         </p>
       </div>
 
       {rooms.length === 0 ? (
-        <div className="empty">No rooms yet. Add one above, then connect it to a handle in the desktop app.</div>
+        <div className="empty">No rooms yet. Connect a username above and its room appears here.</div>
       ) : (
         rooms.map((room) => (
           <div className="panel" key={room.id}>
@@ -165,7 +246,7 @@ export default function Rooms({ onOpenOverlay }: { onOpenOverlay: () => void }) 
                 </div>
                 <div className="faint mono">{room.username || 'no handle connected yet'}</div>
               </div>
-              <button onClick={onOpenOverlay}>Style the overlay</button>
+              <button onClick={() => onStyleOverlay(room.id)}>Style the overlay</button>
               <button
                 className="danger"
                 onClick={() => void remove(room)}
