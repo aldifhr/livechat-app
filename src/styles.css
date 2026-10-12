@@ -500,10 +500,6 @@ body {
   margin-left: 14px;
 }
 
-.llm-btn {
-  margin-left: 14px;
-}
-
 /* Dialog */
 
 .modal-scrim {
@@ -563,13 +559,6 @@ body {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.5;
-}
-
-/* A hint that is a warning, not a description — "this needs a model first". Said
-   in the accent colour so it is read before the toggle it sits above is reached. */
-.modal-hint-warn {
-  color: var(--accent, #e0a449);
-  margin: 6px 0 0;
 }
 
 .field {
@@ -1119,33 +1108,7 @@ select.input option {
   letter-spacing: 0.04em;
 }
 
-/* A message the model flagged, left in the feed for the streamer to act on. The
-   amber is the mention highlight's rather than the accent's on purpose: this is a
-   "look at this", not an error, and it should not read as the same red a blocked
-   row would have been. */
-.row-flagged .text {
-  background: rgba(245, 196, 81, 0.1);
-  border-radius: 4px;
-  padding: 1px 4px;
-  margin-left: -4px;
-}
 
-.badge-flag {
-  flex: 0 0 auto;
-  max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 1px 5px;
-  border-radius: 4px;
-  /* Amber background, themed text. A fixed amber label would be unreadable on the
-     light theme, where `--muted` and `--text` both go dark. */
-  background: rgba(245, 196, 81, 0.28);
-  color: var(--text);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
 
 /* A note in the streamer's own words: the settings' rules and persona fields. A
    textarea rather than an input because both are the kind of thing people write

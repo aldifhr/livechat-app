@@ -1,13 +1,11 @@
 import { useState } from 'react'
 import type { UseSettingsResult } from '../../hooks/useSettings'
-import { useLlmConfig } from './useLlmConfig'
 import type { Status } from './shared'
 import { LookSection } from './LookSection'
 import { PanelsSection } from './PanelsSection'
 import { FeedSection } from './FeedSection'
 import { SoundsSection } from './SoundsSection'
 import { WebhookSection } from './WebhookSection'
-import { ModelSection } from './ModelSection'
 import { OverlaySection } from './OverlaySection'
 
 /**
@@ -54,10 +52,8 @@ interface Props {
 }
 
 export function SettingsDialog({ open, settings, roomTarget = '', roomId = '', onClose }: Props) {
-  // Shared by sounds, webhook and the model: all three are answers to "did that
-  // work", and the Model section — open by default — is where they are shown.
+  // Shared by sounds and webhook: both are answers to "did that work".
   const [status, setStatus] = useState<Status>({ kind: 'idle', text: '' })
-  const llm = useLlmConfig(open, setStatus)
 
   if (!open) return null
 
@@ -87,19 +83,6 @@ export function SettingsDialog({ open, settings, roomTarget = '', roomId = '', o
         <FeedSection settings={settings} set={settings.set} />
         <SoundsSection settings={settings} set={settings.set} status={status} setStatus={setStatus} />
         <WebhookSection status={status} setStatus={setStatus} />
-        <ModelSection
-          config={llm.config}
-          savedModel={llm.savedModel}
-          models={llm.models}
-          setConfigField={llm.setConfigField}
-          setSaved={llm.setSaved}
-          forget={llm.forget}
-          setModelList={llm.setModelList}
-          status={status}
-          setStatus={setStatus}
-          ready={llm.ready}
-          onClose={onClose}
-        />
         <OverlaySection settings={settings} set={settings.set} roomTarget={roomTarget} roomId={roomId} />
       </div>
     </div>

@@ -11,7 +11,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod backend;
-mod llm;
 mod overlay;
 mod sound;
 mod speech;
@@ -54,119 +53,33 @@ fn notify(app: tauri::AppHandle, title: String, body: String) {
     let _ = app.notification().builder().title(title).body(body).show();
 }
 
-/// The models an OpenAI-compatible endpoint offers.
+/// Whether a URL is one this app is willing to hand to the OS.
 ///
-/// Returns the ids, already sorted and de-duplicated, so the frontend has a
-/// dropdown rather than something to clean up. Errors come back as a message
-/// worth reading: "wrong host" and "wrong key" are the two things that actually go
-/// wrong, and the user can only fix whichever one they are told about.
-#[tauri::command]
-async fn llm_models(base_url: String, api_key: String) -> Result<Vec<String>, String> {
-    match llm::list_models(&base_url, &api_key).await {
-        Ok(ids) => Ok(ids),
-        Err(llm::EndpointError::Unreachable(why)) => Err(format!("could not reach {base_url}: {why}")),
-        Err(llm::EndpointError::Refused(why)) => Err(why),
-    }
-}
-
-/// The stored endpoint settings, or a reason there are none.
-///
-/// Shared by both AI commands because the credential is the reason this side owns
-/// the request at all: the endpoint, the key and the model are read from disk here
-/// rather than sent in by the page, so a key never travels anywhere but the config
-/// file and the socket. The three checks are the same for every caller, and a
-/// feature that answered "no endpoint configured" in one shape and "set one up
-/// first" in another is a feature whose error message cannot be quoted.
-fn configured_llm(app: &tauri::AppHandle) -> Result<llm::LlmConfig, String> {
-    let config = llm::read_config(app);
-    if config.base_url.trim().is_empty() || config.api_key.trim().is_empty() {
-        return Err("no endpoint configured — set one up under Model first".into());
-    }
-    if config.model.trim().is_empty() {
-        return Err("no model selected — pick one under Model first".into());
-    }
-    Ok(config)
-}
-
-/// Asks the configured model one trivial question, and returns what it said.
-///
-/// The check for "does my LLM work", which until now had no answer anywhere in
-/// the app. Fetching the model list proves the address and the key; it says
-/// nothing about whether a completion comes back, which is a different failure —
-/// a proxy that lists models and then refuses to answer, a model name the
-/// endpoint accepts in a list and not in a request, a quota that ran out.
-///
-/// What it returns is the model's own words. "OK" is the prompt, not the answer:
-/// any model can be asked to say one word, and the reply is whatever the
-/// endpoint actually produced, so a reply that is empty or an error message is
-/// visible rather than inferred.
-///
-/// Deliberately not given a token limit. `max_tokens` is the obvious way to make
-/// this cheap and it is not portable — providers disagree about whether it is
-/// accepted, and some want the newer name instead — so a check that failed on
-/// the parameter would be reporting a problem with the check. One word in, one
-/// word out, is a few hundredth of a cent whichever way the provider spells it.
-#[tauri::command]
-async fn llm_test(app: tauri::AppHandle) -> Result<String, String> {
-    let config = configured_llm(&app)?;
-
-    let messages = vec![
-        llm::Turn::system("Answer with one word and nothing else."),
-        llm::Turn::user("Reply with exactly this word: ok"),
-    ];
-
-    // Twenty seconds, not the two minutes a real question gets. This is a check,
-    // and a check that hangs for two minutes is worse than one that gives up: the
-    // person pressing it is waiting to find out whether to go live.
-    let started = std::time::Instant::now();
-    match llm::chat_within(&config.base_url, &config.api_key, &config.model, &messages, 20).await {
-        Ok(answer) => {
-            let took = started.elapsed().as_secs_f32();
-            // Timed in the answer rather than returned separately: the elapsed
-            // time is only ever read next to what was said, and a caller that has
-            // to hold both in step is a caller that will eventually show one
-            // without the other.
-            Ok(format!("{answer}  ({took:.1}s)"))
-        }
-        Err(llm::EndpointError::Unreachable(why)) => {
-            Err(format!("could not reach {}: {why}", config.base_url))
-        }
-        Err(llm::EndpointError::Refused(why)) => Err(why),
-    }
-}
-
-/// The stored endpoint settings, or an empty one on first launch.
-#[tauri::command]
-fn llm_config_get(app: tauri::AppHandle) -> llm::LlmConfig {
-    llm::read_config(&app)
-}
-
-/// Saves the endpoint settings.
-///
-/// The API key is one of the three fields, and it is here rather than in the
-/// page's storage for that reason: `localStorage` is readable by whatever script
-/// ends up running in the webview, and this is a credential.
-#[tauri::command]
-fn llm_config_save(app: tauri::AppHandle, config: llm::LlmConfig) -> Result<(), String> {
-    llm::write_config(&app, &config)
-}
-
-/// Forgets the key, the model and the URL alike.
-#[tauri::command]
-fn llm_config_clear(app: tauri::AppHandle) -> Result<(), String> {
-    llm::clear_config(&app)
+/// The frontend builds this string, but the frontend is not trusted with it: an
+/// opener that will take any string is an opener that will launch whatever a
+/// compromised page asks for. Checked here instead, where the rule cannot be
+/// edited from the page.
+fn is_watchable(url: &str) -> bool {
+    let rest = match url.strip_prefix("https://") {
+        Some(rest) => rest,
+        None => return false,
+    };
+    let host = rest.split(['/', '?', '#']).next().unwrap_or("");
+    // `www.` included because that is the form the UI produces, and the check is
+    // on the whole host rather than a suffix so `eviltiktok.com` cannot pass.
+    host.eq_ignore_ascii_case("tiktok.com") || host.eq_ignore_ascii_case("www.tiktok.com")
 }
 
 /// Opens the stream in the default browser.
 ///
 /// Refused by host rather than by the page: the webview is what asks, and an
 /// opener that takes whatever it is given is an opener that will eventually be
-/// handed something worse. `llm::is_watchable` is the whole rule, and it lives
-/// beside the rest of the code the page cannot edit.
+/// handed something worse. `is_watchable` is the whole rule, and it lives beside
+/// the rest of the code the page cannot edit.
 #[tauri::command]
 fn open_stream(app: tauri::AppHandle, url: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt as _;
-    if !llm::is_watchable(&url) {
+    if !is_watchable(&url) {
         return Err(format!("refusing to open {url}"));
     }
     app.opener()
@@ -613,11 +526,6 @@ fn main() {
         minimize_to_tray,
         set_always_on_top,
         notify,
-        llm_models,
-        llm_test,
-        llm_config_get,
-        llm_config_save,
-        llm_config_clear,
         open_stream,
         speak,
         pick_sound_file,

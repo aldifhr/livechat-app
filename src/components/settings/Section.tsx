@@ -15,7 +15,7 @@ import type { ReactNode } from 'react'
  * triangle all work without a line of code, and there is no `openSection` state to
  * keep in step.
  *
- * `defaultOpen` keeps the two groups people return to — Look and the model — in the
+ * `defaultOpen` keeps the group people return to — Look — in the
  * state most useful on open, while the rarely-touched ones stay shut.
  *
  * The `<summary>` has to stay an immediate child of the `<details>`: the chevron

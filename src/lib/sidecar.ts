@@ -23,7 +23,6 @@
  * `?` and the check will not demand the host always send it.
  */
 
-import type { LlmConfig } from './llm'
 import type { WebhookConfig, WebhookGift } from './webhook'
 import type { OverlayStyle } from './overlay'
 import type { BackendConfig } from './backend'
@@ -128,11 +127,6 @@ type HostCommand =
   | 'webhook_config_save'
   | 'webhook_test'
   | 'webhook_send'
-  | 'llm_models'
-  | 'llm_test'
-  | 'llm_config_get'
-  | 'llm_config_save'
-  | 'llm_config_clear'
   | 'backend_config_get'
   | 'backend_config_save'
   | 'backend_connect'
@@ -390,55 +384,6 @@ export const host = {
     const resolved = await resolve()
     const path = await resolved.invoke('pick_sound_file')
     return typeof path === 'string' ? path : ''
-  },
-  /**
-   * The models an OpenAI-compatible endpoint offers.
-   *
-   * Outbound requests are the host's job: the webview's content security policy
-   * forbids it from reaching any other origin, which is exactly right for a key
-   * that must not end up in the page.
-   */
-  llmModels: async (baseUrl: string, apiKey: string): Promise<string[]> => {
-    const resolved = await resolve()
-    const models = await resolved.invoke('llm_models', { baseUrl, apiKey })
-    return Array.isArray(models) ? models.filter((m): m is string => typeof m === 'string') : []
-  },
-  /**
-   * Asks the model one trivial question and returns what it said.
-   *
-   * The check for whether the LLM works, which nothing else in the app answers.
-   * Fetching the model list proves the address and the key; a completion is a
-   * different request, and a proxy that lists models and then refuses to answer
-   * them passes one check and fails the other.
-   *
-   * The endpoint, the key and the model are read host-side for the same reason as
-   * everywhere else: a credential should not be handed back to the page in order
-   * to be used.
-   */
-  llmTest: async (): Promise<string> => {
-    const resolved = await resolve()
-    const answer = await resolved.invoke('llm_test')
-    return typeof answer === 'string' ? answer : ''
-  },
-  llmConfigGet: async (): Promise<LlmConfig> => {
-    const resolved = await resolve()
-    // `invoke` is typed `unknown` because it is the transport, not this contract;
-    // every field is narrowed before use so a host that answered with something
-    // else entirely yields an empty config rather than a crash.
-    const config = (await resolved.invoke('llm_config_get')) as Partial<LlmConfig> | null | undefined
-    return {
-      baseUrl: typeof config?.baseUrl === 'string' ? config.baseUrl : '',
-      apiKey: typeof config?.apiKey === 'string' ? config.apiKey : '',
-      model: typeof config?.model === 'string' ? config.model : '',
-    }
-  },
-  llmConfigSave: async (config: LlmConfig): Promise<void> => {
-    const resolved = await resolve()
-    await resolved.invoke('llm_config_save', { config })
-  },
-  llmConfigClear: async (): Promise<void> => {
-    const resolved = await resolve()
-    await resolved.invoke('llm_config_clear')
   },
   /**
    * The stored backend settings.
