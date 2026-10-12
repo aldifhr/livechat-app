@@ -16,6 +16,13 @@
   handle itself and opens its own socket to the StreamKit backend, so it works
   whether or not the app is running, and the app is only involved in building the
   URL.
+
+  This file is the only copy. The backend serves it over HTTP and the desktop host
+  embeds the very same file with include_str!, which is why it lives here and not
+  under src-tauri/: the backend is deployed to a VPS with only the backend/
+  directory, so this is the half that has to stand alone. Do not add a second
+  copy — that is what let the two versions drift apart once already, with OBS and
+  the app serving different overlays and no test failing over it.
 -->
 <style>
   :root {
@@ -684,6 +691,13 @@
       // Comments only beyond this. The rest of the wire — likes, joins, view
       // counts, connection status — is not chat, and an overlay that showed it
       // would be a dashboard rather than a chat.
+      //
+      // These are the backend's own field names, read straight off the socket. The
+      // desktop app does not do this: the Rust host remaps every frame to
+      // `nickname`/`id` first. So this page is a second consumer of the Python wire
+      // format with no host in between, and a rename in backend/events.py reaches
+      // it directly — `user` here would become `nickname` and every row would go
+      // blank with no error. test/test-overlay-page.mjs pins these names.
       if (frame.type !== 'comment') return
       enqueue(frame.user, frame.text, frame.userId)
     }

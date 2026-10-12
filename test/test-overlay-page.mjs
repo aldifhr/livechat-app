@@ -30,7 +30,9 @@ function check(name, condition, detail = '') {
   }
 }
 
-const PAGE = readFileSync(`${pkgRoot}src-tauri/overlay/index.html`, 'utf8')
+// The same file the backend serves and the host embeds, so this exercises the
+// page that actually ships rather than a copy of it.
+const PAGE = readFileSync(`${pkgRoot}backend/static/overlay.html`, 'utf8')
 
 /**
  * Loads the page with a socket and a fetch it can be driven through.

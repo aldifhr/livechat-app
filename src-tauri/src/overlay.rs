@@ -246,7 +246,15 @@ async fn handle(socket: &mut tokio::net::TcpStream, defaults: &OverlayDefaults) 
     let _ = socket.flush().await;
 }
 
-const PAGE: &str = include_str!("../overlay/index.html");
+// The one copy of the overlay page, embedded here at compile time.
+//
+// It lives in `backend/static/` because that is the half that has to stand alone:
+// the backend is deployed to a VPS with only the `backend/` directory, and serves
+// this same page over HTTP for OBS. Keeping a second copy under `src-tauri/` meant
+// an edit had to be made twice, and once was not made — `e315a72` changed this
+// page and left the backend serving the previous one, so OBS and the app showed
+// different overlays with nothing failing. One file, both readers.
+const PAGE: &str = include_str!("../../backend/static/overlay.html");
 
 /// Whether a URL is this server's own page.
 ///

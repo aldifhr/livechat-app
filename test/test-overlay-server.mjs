@@ -26,7 +26,9 @@ console.log('the overlay page is a complete page')
 // had been renamed.
 const { readFileSync } = await import('node:fs')
 const { fileURLToPath } = await import('node:url')
-const page = readFileSync(fileURLToPath(new URL('../src-tauri/overlay/index.html', import.meta.url)), 'utf8')
+// The one copy of the page, the same file the backend serves and the host
+// embeds. There is no second copy to fall out of step any more.
+const page = readFileSync(fileURLToPath(new URL('../backend/static/overlay.html', import.meta.url)), 'utf8')
 
 check('it is a document', /^\s*<!doctype html>/i.test(page))
 check('it has a charset', /<meta charset="utf-8">/i.test(page))
@@ -35,6 +37,26 @@ check('it needs no second file', !/<link\b/.test(page) && !/<script[^>]*\ssrc=/.
 check('it carries the token the host replaces', page.includes('__OVERLAY_CONFIG__'))
 check('exactly once', page.split('__OVERLAY_CONFIG__').length === 2, String(page.split('__OVERLAY_CONFIG__').length))
 check('the token is inside a json script block', /<script id="overlay-config" type="application\/json">/.test(page))
+
+console.log('there is only one of it')
+// The page used to be kept in two places — here and under `src-tauri/overlay/` —
+// with the host embedding one and the backend serving the other. Nothing compared
+// them, so an edit to either side was picked up on one path and not the other: a
+// streamer pointing OBS at the backend got a different overlay from the one the
+// app was built against. The host now embeds this same file, so there is nothing
+// left to fall out of step.
+const { existsSync } = await import('node:fs')
+check(
+  'the host has no overlay copy of its own',
+  !existsSync(fileURLToPath(new URL('../src-tauri/overlay', import.meta.url))),
+  'src-tauri/overlay/ is gone; src-tauri/src/overlay.rs includes backend/static/overlay.html',
+)
+const embedded = readFileSync(fileURLToPath(new URL('../src-tauri/src/overlay.rs', import.meta.url)), 'utf8')
+check(
+  'and it embeds this file',
+  embedded.includes('../../backend/static/overlay.html'),
+  'the include_str! path is what ties the two readers to one file',
+)
 
 console.log('nothing in the page paints over the video')
 // Scanned out of the `<style>` block rather than the whole file: `background`
