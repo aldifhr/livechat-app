@@ -217,6 +217,25 @@ export default function App() {
             // Reaching the bottom by hand counts as having seen everything.
             if (atBottom) setUnseen(0)
           }}
+          // Pause on hover: pointing at a message to read it must not be undone by
+          // the next one arriving. The feed freezes while the pointer is over it and
+          // resumes when it leaves — but only if it was still at the bottom, so
+          // hovering a feed the streamer had already scrolled up does not yank it
+          // back down. The same freeze scrolling up triggers, for the reader who
+          // never touches the wheel.
+          onMouseEnter={() => {
+            pinned.current = false
+          }}
+          onMouseLeave={(e) => {
+            const node = e.currentTarget
+            const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 40
+            // Resume following only from the bottom; a feed left scrolled up stays
+            // put rather than jumping to the newest message on the way out.
+            if (atBottom) {
+              pinned.current = true
+              setUnseen(0)
+            }
+          }}
         >
           {visible.length === 0 ? (
             <div className="empty">
