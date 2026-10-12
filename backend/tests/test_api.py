@@ -36,6 +36,7 @@ store.ROOMS_FILE = _tmp / "rooms.json"
 from fastapi.testclient import TestClient  # noqa: E402
 
 import main  # noqa: E402
+import eventlog  # noqa: E402
 from events import ALERT, Event, to_wire  # noqa: E402
 
 def as_entries():
@@ -458,6 +459,53 @@ with TestClient(main.app) as socket_client:
             reply = {"error": str(exc)}
         check("the socket survived every non-object frame", handshake_ok, json.dumps(reply))
         check("and still answers a ping", reply.get("type") == "pong", json.dumps(reply))
+
+print("two rooms on one server each get their own leaderboard")
+# The event log kept one set of counters for the whole process, so a second room
+# connecting cleared the first one's, the leaderboard became a mixture of both
+# rooms' viewers, and the same handle posting in either room read as a repeat of
+# itself. Driven over real sockets because the leaderboard is answered per
+# connection from the room the socket is in.
+with TestClient(main.app) as boards:
+    with boards.websocket_connect("/ws/room/alpha-board") as a_ws, \
+         boards.websocket_connect("/ws/room/beta-board") as b_ws:
+        for socket in (a_ws, b_ws):
+            socket.receive_json()  # config
+            socket.receive_json()  # status
+        eventlog.set_connected("alpha-board", True, "@alpha")
+        eventlog.record("alpha-board", "comment", user="Ana", text="a1", user_id="ana")
+        eventlog.record("alpha-board", "comment", user="Ana", text="a2", user_id="ana")
+        eventlog.set_connected("beta-board", True, "@beta")
+        eventlog.record("beta-board", "comment", user="Citra", text="b1", user_id="citra")
+
+        def board(socket):
+            socket.send_text(json.dumps({"type": "topChatters"}))
+            while True:
+                frame = socket.receive_json()
+                if frame.get("type") == "topChatters":
+                    return frame["chatters"]
+
+        a_board = board(a_ws)
+        b_board = board(b_ws)
+        check(
+            "alpha's board holds only alpha's viewers",
+            [(c["nickname"], c["messages"]) for c in a_board] == [("Ana", 2)],
+            json.dumps(a_board),
+        )
+        check(
+            "beta's board holds only beta's viewers",
+            [(c["nickname"], c["messages"]) for c in b_board] == [("Citra", 1)],
+            json.dumps(b_board),
+        )
+
+        # A room that never produced anything answers empty rather than handing
+        # back somebody else's ranking, which is what a shared board did.
+        with boards.websocket_connect("/ws/room/quiet-board") as q_ws:
+            q_ws.receive_json()
+            q_ws.receive_json()
+            check("a quiet room gets an empty board", board(q_ws) == [], json.dumps(board(q_ws)))
+eventlog.forget("alpha-board")
+eventlog.forget("beta-board")
 
 
 print("the overlay page, served from the backend")

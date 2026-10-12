@@ -9,6 +9,16 @@ whichever source happened to produce it.
 The wire format for the pre-existing kinds is unchanged from the original
 single-file server, so a frontend on the old build keeps working against a
 server on this one.
+
+These dicts are read in three places, and only the first is a Python caller:
+the Rust host maps them in `src-tauri/src/backend.rs` (`to_app_event`), the app
+reads whatever that host emits through the `SidecarEvent` union in
+`src/lib/sidecar.ts`, and `static/overlay.html` consumes this format directly
+without going through the host at all. So renaming a key here is not contained:
+the host will quietly emit `undefined` for the renamed field, and the overlay
+will read the old name and show nothing. `backend/tests/test_api.py` pins the
+Python side and `test/test-wire.mjs` pins the other two against each other —
+run both after changing a key.
 """
 
 import asyncio
@@ -162,7 +172,7 @@ async def emit(room_id: str, event: Event) -> None:
     # Outside the broadcast on purpose. The log has to keep working when every
     # client has gone — a quiet log is exactly when it is needed.
     eventlog.record(
-        event.kind, user=event.user, text=event.value, meta=event.meta, user_id=event.user_id
+        room_id, event.kind, user=event.user, text=event.value, meta=event.meta, user_id=event.user_id
     )
     await hub.broadcast(to_wire(event), room_id=room_id)
 
@@ -178,8 +188,8 @@ async def emit_status(
     # A snapshot sent at the start of a session is connecting=True, not a state
     # change, and treating it as a disconnect would reset the counters before
     # there is anything to count.
-    if not connecting and eventlog.is_connected() != connected:
-        eventlog.set_connected(connected, message)
+    if not connecting and eventlog.is_connected(room_id) != connected:
+        eventlog.set_connected(room_id, connected, message)
     payload: dict[str, Any] = {"type": "status", "connected": connected, "message": message}
     if connecting:
         payload["connecting"] = True

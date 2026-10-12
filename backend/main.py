@@ -490,6 +490,10 @@ async def delete_room(room_id: str):
         source = sources.pop(room_id, None)
     if source is not None:
         await source.stop()
+    # Its counters go with it. Left behind, a deleted room would still answer a
+    # leaderboard request with the viewers it used to have, which is a room
+    # answering for a room that no longer exists.
+    eventlog.forget(room_id)
     return {"status": "ok"}
 
 
@@ -1088,7 +1092,7 @@ async def websocket_endpoint(websocket: WebSocket, client_type: str, room_id: st
         async def send_leaderboard() -> None:
             await websocket.send_text(
                 json.dumps(
-                    {"type": "topChatters", "chatters": eventlog.top_chatters()},
+                    {"type": "topChatters", "chatters": eventlog.top_chatters(room_id)},
                     ensure_ascii=False,
                 )
             )

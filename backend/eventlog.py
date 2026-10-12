@@ -25,91 +25,138 @@ Viewers is deliberately not counted as an event. It is state, not activity — i
 arrives on its own interval and would bury everything else at a count per
 second. Its latest value is printed instead, since that is the number people
 actually want.
+
+Every one of these counters belongs to a room, so they are kept per room rather
+than in one set of module globals. Two rooms can be live at once — the app
+connects by handle, and nothing stops a streamer watching two streams side by
+side — and with shared state the second room to connect cleared the first one's
+counters, the leaderboard became a mixture of both rooms' viewers, and the same
+handle posting in either room read as a repeat of itself. Every entry point here
+therefore takes a room id and reads or writes only that room's state.
+
+Reading does not create state. The WebSocket is unauthenticated and the room id
+arrives in the URL, so an entry created on read would be one an anonymous caller
+could allocate by guessing.
 """
 
 import logging
 import time
+from dataclasses import dataclass, field
 from typing import Any
 
 log = logging.getLogger("streamkit.events")
 
-#: Set while a room is connected, so the log can tell "quiet room" from "not
-#: connected", which look identical in a stream of lines.
-_connected = False
 
-#: Per-kind totals for the current connection, and how many of those were the
-#: same person arriving twice — the shape of a chatty room differs from the
-#: shape of a broken one.
-_totals: dict[str, int] = {}
-_repeats: dict[str, int] = {}
-_last_user: dict[str, str] = {}
+@dataclass
+class RoomLog:
+    """What one room has sent, since it last connected."""
 
-#: The most recent viewer count, and when it was seen, so a stalled room is
-#: distinguishable from a room that is simply empty.
-_viewers: int | None = None
-_viewers_at = 0.0
+    #: Set while the room is connected, so the log can tell "quiet room" from
+    #: "not connected", which look identical in a stream of lines.
+    connected: bool = False
 
-#: Per-chatter message counts for the current connection, and the last avatar seen
-#: for each. The overlay's leaderboard reads this; it is kept here because this is
-#: the one place every comment already passes through, keyed on the stable handle
-#: so a display-name change does not split one person into two.
-_chatter_counts: dict[str, int] = {}
-_chatter_names: dict[str, str] = {}
+    #: Per-kind totals for this room, and how many of those were the same person
+    #: arriving twice — the shape of a chatty room differs from the shape of a
+    #: broken one.
+    totals: dict[str, int] = field(default_factory=dict)
+    repeats: dict[str, int] = field(default_factory=dict)
+    last_user: dict[str, str] = field(default_factory=dict)
+
+    #: The most recent viewer count for this room, and when it was seen, so a
+    #: stalled room is distinguishable from a room that is simply empty.
+    viewers: int | None = None
+    viewers_at: float = 0.0
+
+    #: Per-chatter message counts and the last avatar seen for each. The overlay's
+    #: leaderboard reads this; it is kept here because this is the one place
+    #: every comment already passes through, keyed on the stable handle so a
+    #: display-name change does not split one person into two.
+    chatter_counts: dict[str, int] = field(default_factory=dict)
+    chatter_names: dict[str, str] = field(default_factory=dict)
+
+    def reset(self) -> None:
+        """Forget this connection's events, keeping the connected flag's caller
+        to set. A reconnect is a new session and its counters start again."""
+        self.totals.clear()
+        self.repeats.clear()
+        self.last_user.clear()
+        self.chatter_counts.clear()
+        self.chatter_names.clear()
+
 
 #: How many names the leaderboard ranks and shows.
 TOP_N = 10
 
+#: One entry per room that has connected. Rooms are removed again by `forget`.
+_rooms: dict[str, RoomLog] = {}
 
-def is_connected() -> bool:
-    return _connected
+
+def _room(room_id: str) -> RoomLog:
+    """This room's state, created if it is the first thing we hear about it."""
+    room = _rooms.get(room_id)
+    if room is None:
+        room = _rooms[room_id] = RoomLog()
+    return room
 
 
-def set_connected(connected: bool, detail: str = "") -> None:
-    """Note the room's state. A disconnect resets the counters."""
-    global _connected
-    _connected = connected
+def is_connected(room_id: str) -> bool:
+    room = _rooms.get(room_id)
+    return bool(room and room.connected)
+
+
+def set_connected(room_id: str, connected: bool, detail: str = "") -> None:
+    """Note one room's state. A reconnect resets that room's counters."""
+    room = _room(room_id)
+    room.connected = connected
     if connected:
-        _totals.clear()
-        _repeats.clear()
-        _last_user.clear()
-        _chatter_counts.clear()
-        _chatter_names.clear()
-        log.info("connected %s", detail or "")
+        room.reset()
+        log.info("[%s] connected %s", room_id, detail or "")
     else:
-        summary = ", ".join(f"{k}={v}" for k, v in sorted(_totals.items())) or "no events"
-        log.info("disconnected %s (%s)", detail or "", summary)
+        summary = ", ".join(f"{k}={v}" for k, v in sorted(room.totals.items())) or "no events"
+        log.info("[%s] disconnected %s (%s)", room_id, detail or "", summary)
+
+
+def forget(room_id: str) -> None:
+    """Drop a room's counters entirely.
+
+    Called when a room is deleted, so a room that no longer exists cannot still be
+    holding a leaderboard and answering a snapshot for someone asking about it.
+    """
+    _rooms.pop(room_id, None)
 
 
 def record(
+    room_id: str,
     kind: str,
     user: str = "",
     text: str = "",
     meta: dict[str, Any] | None = None,
     user_id: str = "",
 ) -> None:
-    """One line per event, with a per-kind running count."""
+    """One line per event, with a per-kind running count for that room."""
+    room = _room(room_id)
+
     if kind == "viewers":
-        global _viewers, _viewers_at
         count = int((meta or {}).get("count") or 0)
-        _viewers = count
-        _viewers_at = time.time()
-        log.info("viewers=%d", count)
+        room.viewers = count
+        room.viewers_at = time.time()
+        log.info("[%s] viewers=%d", room_id, count)
         return
 
-    n = _totals.get(kind, 0) + 1
-    _totals[kind] = n
+    n = room.totals.get(kind, 0) + 1
+    room.totals[kind] = n
 
-    if user and _last_user.get(kind) == user:
-        _repeats[kind] = _repeats.get(kind, 0) + 1
-    _last_user[kind] = user or _last_user.get(kind, "")
+    if user and room.last_user.get(kind) == user:
+        room.repeats[kind] = room.repeats.get(kind, 0) + 1
+    room.last_user[kind] = user or room.last_user.get(kind, "")
 
     # Count this message against the chatter, keyed on the stable handle so one
     # person is one row however their display name is spelled. Only comments count
     # toward the leaderboard — a gift or a join is not someone talking.
     if kind == "comment" and user:
         key = user_id or user
-        _chatter_counts[key] = _chatter_counts.get(key, 0) + 1
-        _chatter_names[key] = user
+        room.chatter_counts[key] = room.chatter_counts.get(key, 0) + 1
+        room.chatter_names[key] = user
 
     # A greeting that is long enough to be a sentence and short enough to stay
     # on one line. Comment text is capped by the widget at 44 characters anyway,
@@ -122,7 +169,7 @@ def record(
         parts.append(snippet)
     if meta and meta.get("count") and kind != "viewers":
         parts.append(f"x{meta['count']}")
-    log.info("%s", " · ".join(parts))
+    log.info("[%s] %s", room_id, " · ".join(parts))
 
 
 def note(message: str) -> None:
@@ -134,26 +181,42 @@ def error(message: str) -> None:
     log.error("%s", message)
 
 
-def top_chatters(limit: int = TOP_N) -> list[dict[str, Any]]:
-    """The chattiest viewers this connection, most messages first.
+def top_chatters(room_id: str, limit: int = TOP_N) -> list[dict[str, Any]]:
+    """The chattiest viewers in one room, most messages first.
 
     By message count only — a gift is not someone talking. Ties broken by name so
     the order is stable between polls rather than shuffling on every refresh.
     """
-    ranked = sorted(_chatter_counts.items(), key=lambda kv: (-kv[1], _chatter_names.get(kv[0], "")))
+    room = _rooms.get(room_id)
+    if room is None:
+        return []
+    ranked = sorted(
+        room.chatter_counts.items(),
+        key=lambda kv: (-kv[1], room.chatter_names.get(kv[0], "")),
+    )
     return [
-        {"id": key, "nickname": _chatter_names.get(key, key), "messages": count}
+        {"id": key, "nickname": room.chatter_names.get(key, key), "messages": count}
         for key, count in ranked[:limit]
     ]
 
 
-def snapshot() -> dict[str, Any]:
-    """The current counters, for a status endpoint or a test."""
+def snapshot(room_id: str) -> dict[str, Any]:
+    """One room's counters, for a status endpoint or a test."""
+    room = _rooms.get(room_id)
+    if room is None:
+        return {
+            "connected": False,
+            "totals": {},
+            "repeats": {},
+            "viewers": None,
+            "viewers_age": None,
+            "topChatters": [],
+        }
     return {
-        "connected": _connected,
-        "totals": dict(_totals),
-        "repeats": dict(_repeats),
-        "viewers": _viewers,
-        "viewers_age": round(time.time() - _viewers_at, 1) if _viewers_at else None,
-        "topChatters": top_chatters(),
+        "connected": room.connected,
+        "totals": dict(room.totals),
+        "repeats": dict(room.repeats),
+        "viewers": room.viewers,
+        "viewers_age": round(time.time() - room.viewers_at, 1) if room.viewers_at else None,
+        "topChatters": top_chatters(room_id),
     }
