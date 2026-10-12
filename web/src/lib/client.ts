@@ -90,7 +90,6 @@ function overlayUrl(path: string, id: string, params?: Query): string {
 export const api = {
   rooms: () => request<{ rooms: Room[] }>('GET', '/rooms'),
   status: (id: string) => request<RoomStatus>('GET', `/rooms/${id}/status`),
-  createRoom: (name: string) => request<Room>('POST', '/rooms', { name }),
   connectHandle: (username: string) => request<Room>('POST', '/room-connect-by-username', { username }),
   connectRoom: (id: string) => request<Room>('POST', `/room-connect/${id}`),
   updateRoom: (id: string, change: { name?: string; username?: string }) =>

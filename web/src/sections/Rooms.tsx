@@ -21,7 +21,7 @@ export default function Rooms({ onStyleOverlay }: { onStyleOverlay: (roomId: str
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
   const [newHandle, setNewHandle] = useState('')
-  const [newName, setNewName] = useState('')
+  const [label, setLabel] = useState('')
   const [live, setLive] = useState<Record<string, boolean>>({})
 
   const load = useCallback(async () => {
@@ -94,17 +94,17 @@ export default function Rooms({ onStyleOverlay }: { onStyleOverlay: (roomId: str
       // label typed for one stream does not end up naming the next one when the
       // backend reuses an existing room instead of making a new one.
       const room = await api.connectHandle(handle)
-      const label = newName.trim()
-      if (label && label !== room.name) {
+      const wanted = label.trim()
+      if (wanted && wanted !== room.name) {
         try {
-          await api.updateRoom(room.id, { name: label })
+          await api.updateRoom(room.id, { name: wanted })
         } catch {
           // The stream is connected either way; a label that would not save is
           // not a reason to tell the operator the connect failed.
         }
       }
       setNewHandle('')
-      setNewName('')
+      setLabel('')
       setError('')
       setNotice(`Connected to @${handle}.`)
       // A room that was just created is not in the list yet, so this cannot
@@ -118,28 +118,6 @@ export default function Rooms({ onStyleOverlay }: { onStyleOverlay: (roomId: str
           : cause instanceof ApiError
             ? cause.message
             : 'The handle could not be connected',
-      )
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  /** Create a room with no handle yet — for a stream that is not live. */
-  const create = async () => {
-    if (newName.trim() === '') return
-    setBusy(true)
-    try {
-      await api.createRoom(newName.trim())
-      setNewName('')
-      await load()
-    } catch (cause) {
-      setNotice('')
-      setError(
-        cause instanceof ApiError && isAuthFailure(cause.status)
-          ? 'Your login was refused. Reload the page and sign in again.'
-          : cause instanceof ApiError
-            ? cause.message
-            : 'The room could not be created',
       )
     } finally {
       setBusy(false)
@@ -200,8 +178,8 @@ export default function Rooms({ onStyleOverlay }: { onStyleOverlay: (roomId: str
           />
           <input
             placeholder="Label (optional)"
-            value={newName}
-            onChange={(event) => setNewName(event.target.value)}
+            value={label}
+            onChange={(event) => setLabel(event.target.value)}
             aria-label="Room label"
           />
           <button className="primary" onClick={() => void connect()} disabled={busy || newHandle.trim() === ''}>
@@ -209,28 +187,9 @@ export default function Rooms({ onStyleOverlay }: { onStyleOverlay: (roomId: str
           </button>
         </div>
         <p className="faint" style={{ margin: '0.4rem 0 0' }}>
-          The room is created for you and starts watching straight away. Connecting a handle that already has
-          a room reuses it and keeps its styling.
-        </p>
-      </div>
-
-      <div className="panel">
-        <h3>Add an empty room</h3>
-        <div className="row">
-          <input
-            className="grow"
-            placeholder="Room name"
-            value={newName}
-            onChange={(event) => setNewName(event.target.value)}
-            onKeyDown={(event) => event.key === 'Enter' && void create()}
-            aria-label="Room name"
-          />
-          <button onClick={() => void create()} disabled={busy || newName.trim() === ''}>
-            Add room
-          </button>
-        </div>
-        <p className="faint" style={{ margin: '0.4rem 0 0' }}>
-          For a stream that is not live yet — nothing is watched until a handle is connected.
+          The room is created for you and starts watching straight away — a stream that is not live yet is fine,
+          it connects when it goes live. Connecting a handle that already has a room reuses it and keeps its
+          styling.
         </p>
       </div>
 
@@ -242,7 +201,12 @@ export default function Rooms({ onStyleOverlay }: { onStyleOverlay: (roomId: str
             <div className="row">
               <div className="grow">
                 <div className="name">
-                  {room.name} <span className={live[room.id] ? 'badge live' : 'badge off'}>{live[room.id] ? 'live' : 'not connected'}</span>
+                  {/* A room connected without a label has an empty name, and an
+                      empty heading beside the status badge reads as broken data
+                      rather than as "nobody named this". The handle is the thing
+                      the streamer will recognise, so it stands in. */}
+                  {room.name || room.username || 'unnamed room'}{' '}
+                  <span className={live[room.id] ? 'badge live' : 'badge off'}>{live[room.id] ? 'live' : 'not connected'}</span>
                 </div>
                 <div className="faint mono">{room.username || 'no handle connected yet'}</div>
               </div>
