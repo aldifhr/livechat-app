@@ -1,6 +1,6 @@
 # LiveChat App
 
-Desktop app (Tauri + React) untukmonitor TikTok live chat.
+Desktop app (Tauri + React) untuk monitor TikTok live chat.
 
 App ini **tidak bicara dengan TikTok sendiri**. Ia membaca backend di repo ini
 lewat `WS /ws/room/{id}`, lalu menerjemahkan frame-nya ke format yang sama dengan
