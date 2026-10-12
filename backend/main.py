@@ -896,6 +896,8 @@ async def _render_overlay(name: str, request: Request) -> HTMLResponse:
 
 @app.get("/overlay/", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/overlay", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/overlay/chat-overlay", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/overlay/chat-overlay/", response_class=HTMLResponse, include_in_schema=False)
 async def overlay_page(request: Request) -> HTMLResponse:
     """Serve the chat overlay, baking in the named room's saved styling.
 
@@ -908,12 +910,19 @@ async def overlay_page(request: Request) -> HTMLResponse:
 
 @app.get("/topchatter/", response_class=HTMLResponse, include_in_schema=False)
 @app.get("/topchatter", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/overlay/top-chatter", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/overlay/top-chatter/", response_class=HTMLResponse, include_in_schema=False)
 async def topchatter_page(request: Request) -> HTMLResponse:
     """Serve the standalone top-chatters board — the leaderboard and nothing else.
 
     Its own source for OBS, so a stream can put "who is talking most" in its own
     scene rather than as a corner of the chat overlay. Same `?room=` and same
     baked styling as the chat overlay; the difference is only which page it is.
+
+    Also served at `/overlay/top-chatter`, which is where the frontend puts it:
+    one address per overlay so a customiser or a scene collection points at one
+    page and not a directory. Both domains answer both spellings, so a link
+    pasted from either still works.
     """
     return await _render_overlay("topchatter.html", request)
 

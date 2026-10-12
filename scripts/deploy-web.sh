@@ -33,9 +33,12 @@ echo "==> staging the overlay pages for nginx"
 # Served from disk rather than through Next: OBS loads them as a canvas-sized
 # browser source where a framework runtime is dead weight, and they must keep
 # working while the dashboard is restarting.
-sudo mkdir -p "$WEBROOT/overlay" "$WEBROOT/topchatter"
-sudo cp "$APP/public/overlay/index.html" "$WEBROOT/overlay/index.html"
-sudo cp "$APP/public/topchatter/index.html" "$WEBROOT/topchatter/index.html"
+# One URL each, under overlay/, so a customiser or a scene collection points at
+# exactly one page. nginx maps the address to the file — see
+# snippets/streamtools-overlays.conf.
+sudo mkdir -p "$WEBROOT/overlay"
+sudo rm -f "$WEBROOT/overlay/"*.html
+sudo cp "$APP/public/overlay/"*.html "$WEBROOT/overlay/"
 sudo chown -R root:www-data "$WEBROOT"
 
 echo "==> restarting the service"

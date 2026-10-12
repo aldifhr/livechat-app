@@ -96,6 +96,9 @@ export const api = {
   updateRoom: (id: string, change: { name?: string; username?: string }) =>
     request<Room>('PATCH', `/rooms/${id}`, change),
   deleteRoom: (id: string) => request<null>('DELETE', `/rooms/${id}`),
-  chatOverlay: (id: string, params?: Query) => overlayUrl('/overlay/', id, params),
-  topChatterOverlay: (id: string, params?: Query) => overlayUrl('/topchatter/', id, params),
+  // One URL per overlay so a customiser or a scene collection points at
+  // exactly one page. The bare /overlay path still redirects, for links pasted
+  // before the split.
+  chatOverlay: (id: string, params?: Query) => overlayUrl('/overlay/chat-overlay', id, params),
+  topChatterOverlay: (id: string, params?: Query) => overlayUrl('/overlay/top-chatter', id, params),
 }

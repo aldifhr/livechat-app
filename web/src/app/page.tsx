@@ -59,7 +59,7 @@ export default function Landing() {
             <Link className="cta primary" href="/admin">
               Build an overlay
             </Link>
-            <a className="cta" href="/overlay/" target="_blank" rel="noreferrer">
+            <a className="cta" href="/overlay/chat-overlay" target="_blank" rel="noreferrer">
               See a live overlay
             </a>
           </div>

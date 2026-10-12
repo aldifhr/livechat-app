@@ -20,8 +20,8 @@ export default function About({ backend }: { backend?: string }) {
 
   const addresses = [
     { label: 'This dashboard', value: origin },
-    { label: 'Chat overlay (paste into OBS)', value: `${origin}/overlay/` },
-    { label: 'Top chatters overlay', value: `${origin}/topchatter/` },
+    { label: 'Chat overlay (paste into OBS)', value: `${origin}/overlay/chat-overlay` },
+    { label: 'Top chatters overlay', value: `${origin}/overlay/top-chatter` },
   ]
   if (backend) addresses.push({ label: 'Backend API', value: backend })
 
