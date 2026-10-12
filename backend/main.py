@@ -24,7 +24,6 @@ from pydantic import BaseModel, Field
 
 import eventlog
 import events
-import sociabuzz
 import store
 from watchdog import LivenessWatchdog
 from events import ALERT, Event
@@ -202,15 +201,9 @@ def token_is_valid(request: Request) -> bool:
 #: the handle: `room-connect/{id}` reads its username from the stored room, and
 #: `room-connect-by-username` creates or reuses the room for the handle given.
 #:
-#: The Sociabuzz hook is exempt from the *internal* token gate because Sociabuzz
-#: does not know STREAMKIT_TOKEN and never will — it authenticates with its own
-#: `sbwhook-` token, which this route checks itself when one is configured on the
-#: room. Exempting it here and enforcing its own token inside is the same shape as
-#: the connect routes: the gate that matters is the one the caller can satisfy.
 EXEMPT_WRITE_PATHS = frozenset({
     "/api/room-connect/",
     "/api/room-connect-by-username",
-    "/api/hooks/sociabuzz/",
 })
 
 
@@ -789,15 +782,7 @@ async def webhook(room_id: str, req: HookRequest):
     return {"status": "ok"}
 
 
-# --------------------------------------------------------------------------
-# Sociabuzz
-# --------------------------------------------------------------------------
-#
-# Moved to `sociabuzz.py`. It was the one integration here that has to guess at
-# the body it is sent — a third party's undocumented JSON — and that guessing
-# needs its reasoning kept in one place rather than threaded through a file whose
-# subject is routing. The route itself is registered below, after this router,
-# which keeps it where it was in the route table.
+
 
 
 # Polls were removed with the widget. See abb2eda and the note in git log.
@@ -965,12 +950,6 @@ async def websocket_endpoint(websocket: WebSocket, client_type: str, room_id: st
 
 
 app.include_router(router)
-# After the router above, not before: it holds `/api/hooks/sociabuzz/{room_id}`,
-# which sits under the same `/api/hooks/` prefix as the generic `{room_id}` hook
-# further down. The two cannot collide today — one has a room id where the other
-# has a literal — but registration order is what decides it if that ever changes,
-# and it was the later one before.
-app.include_router(sociabuzz.router)
 
 
 if __name__ == "__main__":
