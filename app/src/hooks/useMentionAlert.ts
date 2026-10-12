@@ -66,7 +66,9 @@ export function useMentionAlert({ myHandle, sound, voice }: Options): void {
 
     if (voice) {
       const who = event.nickname.trim() || 'Someone'
-      say(`${who} menyebut kamu`)
+      // Urgent: someone naming you is the news, and it takes the voice rather
+      // than waiting behind whatever chat line is still being read.
+      say(`${who} menyebut kamu`, true)
     }
   }, [mine.join(','), sound, voice])
 

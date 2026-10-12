@@ -17,8 +17,9 @@
     "test:backend": "node test/test-backend.mjs",
     "test:sound": "node test/test-sound.mjs",
     "test:templates": "node test/test-templates.mjs",
-    "test:mentions": "node test/test-mentions.mjs",
-"test:wire": "node test/test-wire.mjs",
+    "test:mentions": "node test/test-mentions.mjs && npm run test:wire && npm run test:voice",
+    "test:wire": "node test/test-wire.mjs",
+    "test:voice": "node test/test-voice.mjs",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"

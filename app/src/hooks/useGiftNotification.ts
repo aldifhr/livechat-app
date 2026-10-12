@@ -53,7 +53,9 @@ export function useGiftNotification({ notice, voice }: Options): void {
     }
 
     if (voice) {
-      say(giftAnnouncement(event.nickname, event.giftName, count, diamonds))
+      // Urgent: a gift is the news, and it takes the voice rather than waiting
+      // behind whatever chat line is still being read.
+      say(giftAnnouncement(event.nickname, event.giftName, count, diamonds), true)
     }
   }, [notice, voice])
 
