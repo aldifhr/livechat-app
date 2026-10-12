@@ -53,7 +53,7 @@ function FeedRowImpl({ item, isLast, myNames }: Props) {
   const mentioned = mentionsSomebody(item, myNames ?? [])
 
   return (
-    <div className={`row row-${item.kind}${isLast ? ' row-new' : ''}${item.moderation ? ' row-flagged' : ''}`}>
+    <div className={`row row-${item.kind}${isLast ? ' row-new' : ''}`}>
       {item.avatar ? (
         <img className="avatar" src={item.avatar} alt="" loading="lazy" referrerPolicy="no-referrer" />
       ) : (
@@ -101,16 +101,6 @@ function FeedRowImpl({ item, isLast, myNames }: Props) {
 {item.isBot && (
             <span className="badge-bot" title="Automatic reply">
               auto
-            </span>
-          )}
-          {/* The model's reason in the tooltip, because a badge with a category
-              and no explanation invites a click that then says nothing. */}
-          {item.moderation && (
-            <span
-              className="badge-flag"
-              title={item.moderation.reason || `Flagged: ${item.moderation.label}`}
-            >
-              {item.moderation.label}
             </span>
           )}
           <span className="time">{formatTime(item.timestamp)}</span>
@@ -174,10 +164,6 @@ export const FeedRow = memo(
     previous.item.isModerator === next.item.isModerator &&
     previous.item.isFiltered === next.item.isFiltered &&
     // Compared by identity: `mark` replaces the object rather than editing one, so
-    // this sees a new mark. Compared by value, a row re-flagged with the same
-    // reason would repaint without changing — and a row marked after it was last
-    // painted would not, which is the half that matters.
-    previous.item.moderation === next.item.moderation &&
     previous.item.emotes === next.item.emotes &&
     // The highlight, not the row: without this, editing "My handles" in settings
     // left every already-painted row showing the old answer, so the highlight

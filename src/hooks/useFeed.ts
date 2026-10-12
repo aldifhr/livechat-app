@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import type { FeedItem, FeedKind, ModerationMark } from '../types'
+import type { FeedItem, FeedKind } from '../types'
 
 /**
  * One item per live event, plus the derived counters.
@@ -24,9 +24,7 @@ export interface UseFeedResult {
    */
   post: (item: FeedInput) => void
   /** Takes rows out of the feed by key. How strict moderation blocks a message. */
-  remove: (keys: ReadonlySet<string>) => void
-  /** Attaches a verdict to rows that are already there. How flagging marks one. */
-  mark: (entries: readonly { key: string; moderation: ModerationMark }[]) => void
+
   clear: () => void
   /** Total events received this session, including ones the cap has dropped. */
   totalReceived: number
@@ -89,39 +87,9 @@ export function useFeed(collapse: CollapseOptions): UseFeedResult {
     setTotalReceived(0)
   }, [])
 
-  const remove = useCallback((keys: ReadonlySet<string>) => {
-    if (keys.size === 0) return
-    setItems((previous) => {
-      const kept = previous.filter((item) => !keys.has(item.key))
-      // The previous array back when nothing matched. Returning a fresh one that
-      // happens to hold the same rows is a new reference, and the feed re-renders
-      // every row in it — so a model that flagged a message already gone would
-      // repaint five hundred rows to change nothing.
-      return kept.length === previous.length ? previous : kept
-    })
-  }, [])
-
-  const mark = useCallback((entries: readonly { key: string; moderation: ModerationMark }[]) => {
-    if (entries.length === 0) return
-    const byKey = new Map(entries.map((entry) => [entry.key, entry.moderation]))
-    setItems((previous) => {
-      let changed = false
-      const marked = previous.map((item) => {
-        const moderation = byKey.get(item.key)
-        // Skipped when there is nothing to say or something has already been said:
-        // a row keeps the verdict it was first given rather than the last one to
-        // arrive, so a message cannot be re-labelled by a later pass.
-        if (!moderation || item.moderation) return item
-        changed = true
-        return { ...item, moderation }
-      })
-      return changed ? marked : previous
-    })
-  }, [])
-
   return useMemo(
-    () => ({ items, push, post: push, remove, mark, clear, totalReceived }),
-    [items, push, remove, mark, clear, totalReceived],
+    () => ({ items, push, post: push, clear, totalReceived }),
+    [items, push, clear, totalReceived],
   )
 }
 

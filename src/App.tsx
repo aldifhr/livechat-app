@@ -4,7 +4,7 @@ import { LogPanel } from './components/LogPanel'
 import { SettingsDialog } from './components/settings/SettingsDialog'
 import { StatsPanel } from './components/StatsPanel'
 import { Toolbar } from './components/Toolbar'
-import { useAiReply } from './hooks/useAiReply'
+
 import { useAutoReply } from './hooks/useAutoReply'
 import { useChat } from './hooks/useChat'
 import { useChatAlerts } from './hooks/useChatAlerts'
@@ -12,11 +12,10 @@ import { useGiftNotification } from './hooks/useGiftNotification'
 import { useGiftSound } from './hooks/useGiftSound'
 import { useJoinSound } from './hooks/useJoinSound'
 import { useMentionAlert } from './hooks/useMentionAlert'
-import { useModeration } from './hooks/useModeration'
+
 import { useWebhook } from './hooks/useWebhook'
 import { useSettings } from './hooks/useSettings'
 import { useKindCounts, useVisibleItems, type FeedFilters } from './hooks/useVisibleItems'
-import { streamTopic } from './lib/ai'
 import { EMPTY_BACKEND, type BackendConfig } from './lib/backend'
 import { myHandles } from './lib/mentions'
 import { host } from './lib/sidecar'
@@ -64,36 +63,11 @@ export default function App() {
     customPath: settings.customSoundPath,
   })
 
-  const { room, items, totalReceived, clear, post, remove, mark, log, health, stats } = useChat({
+  const { room, items, totalReceived, clear, log, health, stats } = useChat({
     collapseWindowMs: 2500,
     // Only worth collapsing when a spam wave is actually running; two identical
     // messages in a row are usually just someone repeating themselves.
     collapseThreshold: collapse ? 2 : 0,
-  })
-
-  // Both AI passes are gated on the room being open. Both are paid for per call,
-  // and neither has anything to read once the stream has ended — a moderation
-  // batch drawn from a dead room's backlog would spend the same money to judge
-  // messages the streamer has already seen.
-  const live = room.status === 'connected'
-
-  useModeration({
-    mode: live ? settings.moderation : 'off',
-    rules: settings.moderationRules,
-    items,
-    remove,
-    mark,
-    log: log.push,
-  })
-
-  useAiReply({
-    enabled: live && settings.aiReply,
-    seconds: settings.aiReplySeconds,
-    persona: settings.aiReplyPersona,
-    topic: streamTopic(room),
-    items,
-    post,
-    log: log.push,
   })
 
   // One filter, shared by the feed and the counters: what you see is what the

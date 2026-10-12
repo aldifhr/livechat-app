@@ -10,7 +10,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { host } from '../lib/sidecar'
 import { clampRows, clampNumber, resolveColour, resolveOverlayFont, OVERLAY_DELAY, OVERLAY_SIZE } from '../lib/overlay'
-import { clampSeconds, resolveModeration, type ModerationMode } from '../lib/ai'
 import { resolveDensity, resolveFont, resolveTheme, type DensityId, type FontId, type ThemeId } from '../lib/theme'
 
 export interface ViewSettings {
@@ -54,48 +53,6 @@ export interface ViewSettings {
   showStats: boolean
   /** Show the in-app log panel at the bottom of the window. */
   showLog: boolean
-  /**
-   * What the model does with a message it thinks is harmful.
-   *
-   * Not a checkbox because the two useful answers are opposites: `flag` leaves the
-   * streamer in charge and `block` takes the decision away from them. Which of
-   * those someone wants depends on the room and on how much they are watching, so
-   * it is a choice rather than a preference.
-   *
-   * Off by default. Moderation costs a request every few seconds, and a feature
-   * that silently starts sending someone's chat to a paid endpoint the first time
-   * the app is opened is not one anybody asked for.
-   */
-  moderation: ModerationMode
-  /**
-   * The streamer's own rules for this room, in their words.
-   *
-   * Appended to the model's judgement rather than replacing it, so "swearing is
-   * fine here" corrects the default instead of leaving the model with nothing to
-   * go on. Empty means the defaults alone.
-   */
-  moderationRules: string
-  /**
-   * Let the model answer viewers in the chat without being asked.
-   *
-   * Named apart from `autoReply` above, and that is not a naming preference. There
-   * are two things in here that talk to the room and they are not the same
-   * feature: `autoReply` answers a greeting with a fixed line the instant it sees
-   * one, costs nothing and is never wrong, while this asks a model on a timer and
-   * lets it decide it has nothing to say. Sharing a setting would mean one switch
-   * silently controlling both, and turning it off for one would turn it off for
-   * the other.
-   */
-  aiReply: boolean
-  /**
-   * The shortest gap between two of the model's own answers.
-   *
-   * A floor, not a schedule: the model is told it may stay quiet, and usually
-   * does. What this controls is the ceiling on how often it *can* speak.
-   */
-  aiReplySeconds: number
-  /** How the model should behave, in the streamer's words. Empty means the defaults. */
-  aiReplyPersona: string
   /**
    * How the OBS overlay looks.
    *
@@ -177,11 +134,6 @@ export const DEFAULT_SETTINGS: ViewSettings = {
   autoReply: false,
   showStats: true,
   showLog: true,
-  moderation: 'off',
-  moderationRules: '',
-  aiReply: false,
-  aiReplySeconds: 60,
-  aiReplyPersona: '',
   overlaySize: 22,
   overlayMax: 8,
   overlayDelay: 500,
@@ -222,16 +174,6 @@ function load(): ViewSettings {
       theme: resolveTheme(saved.theme),
       font: resolveFont(saved.font),
       density: resolveDensity(saved.density),
-      // The AI settings are resolved rather than merged for the same reason. A
-      // moderation mode a previous build offered and this one dropped would reach
-      // the selector as a value nothing answers to, leaving the dropdown blank and
-      // — because `off` is the only safe reading of a mode nobody picked — the
-      // feature silently stopped.
-      moderation: resolveModeration(saved.moderation),
-      // And the interval, which arrives from a number field as text and can be
-      // `NaN` halfway through an edit. `setInterval` with that would stop the
-      // feature for the rest of the session over one keystroke.
-      aiReplySeconds: clampSeconds(Number(saved.aiReplySeconds ?? DEFAULT_SETTINGS.aiReplySeconds)),
       // And the overlay's styling, for the same reason. These end up in a URL
       // that the host pastes into a query string, so a size of `NaN` would become
       // a link that renders nothing and a font of anything at all would be a way

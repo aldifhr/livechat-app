@@ -4,7 +4,7 @@ import { useFeed, type FeedInput } from './useFeed'
 import { useHealth } from './useHealth'
 import { useLog } from './useLog'
 import { createStats, type StatsRecorder } from './useStats'
-import { IDLE_ROOM, type FeedItem, type ModerationMark, type RoomState } from '../types'
+import { IDLE_ROOM, type FeedItem, type RoomState } from '../types'
 
 export interface UseChatOptions {
   collapseWindowMs: number
@@ -25,10 +25,6 @@ export interface UseChatResult {
    * would list a bot.
    */
   post: (item: FeedInput) => void
-  /** Takes rows out of the feed by key. How strict moderation blocks a message. */
-  remove: (keys: ReadonlySet<string>) => void
-  /** Attaches a verdict to rows already on screen. How flagging marks one. */
-  mark: (entries: readonly { key: string; moderation: ModerationMark }[]) => void
   log: ReturnType<typeof useLog>
   /** Whether the room is still talking. */
   health: ReturnType<typeof useHealth>['health']
@@ -47,8 +43,6 @@ export function useChat({ collapseWindowMs, collapseThreshold }: UseChatOptions)
     items,
     push,
     post,
-    remove,
-    mark,
     clear: clearFeed,
     totalReceived,
   } = useFeed({
@@ -277,8 +271,8 @@ export function useChat({ collapseWindowMs, collapseThreshold }: UseChatOptions)
   }, [])
 
   return useMemo(
-    () => ({ room, items, totalReceived, clear, post, remove, mark, health, log: { ...log, tallies }, stats }),
-    [room, items, totalReceived, clear, post, remove, mark, health, log, tallies, stats],
+    () => ({ room, items, totalReceived, clear, post, health, log: { ...log, tallies }, stats }),
+    [room, items, totalReceived, clear, post, health, log, tallies, stats],
   )
 }
 

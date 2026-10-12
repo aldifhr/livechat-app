@@ -9,20 +9,6 @@
 export type FeedKind = 'chat' | 'gift' | 'like' | 'follow' | 'share' | 'join' | 'answer'
 
 /**
- * What the model said about a message it flagged.
- *
- * Carried on the row rather than in a side table keyed by message, so a flagged
- * row survives the feed's own window the same way its text does. `label` is the
- * category on the badge and is never empty — an empty badge reads as a bug —
- * while `reason` is the model's one-line explanation and is optional, because
- * not every answer carries one.
- */
-export interface ModerationMark {
-  label: string
-  reason: string
-}
-
-/**
  * Which room a row came from.
  *
  * Duplicated from the bridge's type rather than imported: `types.ts` is the
@@ -65,15 +51,6 @@ export interface FeedItem extends Viewer {
    * never mistaken for a viewer saying something.
    */
   isBot?: boolean
-  /**
-   * Set once the model has judged this message.
-   *
-   * Absent both when nothing has judged it yet and in `block` mode, where the
-   * judged row is taken out of the feed instead. That the two are indistinguishable
-   * on a row is the point: a row's presence is the answer, and the mark is only
-   * there for the case where the answer is "still here, look at it".
-   */
-  moderation?: ModerationMark
   /** Absent on chat events. */
   text?: string
   giftName?: string

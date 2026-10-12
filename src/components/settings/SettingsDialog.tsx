@@ -8,8 +8,6 @@ import { FeedSection } from './FeedSection'
 import { SoundsSection } from './SoundsSection'
 import { WebhookSection } from './WebhookSection'
 import { ModelSection } from './ModelSection'
-import { ModerationSection } from './ModerationSection'
-import { AnswersSection } from './AnswersSection'
 import { OverlaySection } from './OverlaySection'
 
 /**
@@ -102,8 +100,6 @@ export function SettingsDialog({ open, settings, roomTarget = '', roomId = '', o
           ready={llm.ready}
           onClose={onClose}
         />
-        <ModerationSection settings={settings} set={settings.set} />
-        <AnswersSection settings={settings} set={settings.set} ready={llm.ready} />
         <OverlaySection settings={settings} set={settings.set} roomTarget={roomTarget} roomId={roomId} />
       </div>
     </div>
