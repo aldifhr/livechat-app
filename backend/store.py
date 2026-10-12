@@ -63,7 +63,14 @@ def _data() -> dict[str, Any]:
 
 def _flush() -> None:
     data = _data()
-    CONFIG_DIR.mkdir(exist_ok=True)
+    # `parents=True` because STREAMKIT_CONFIG_DIR is a path a deploy chose, and
+    # `exist_ok=True` alone only creates the last component. A setting of
+    # `/var/lib/myapp/streamkit/config` on a volume that is mounted empty failed
+    # the first write with FileNotFoundError, which surfaced as a 500 on the
+    # request that created the room rather than as a configuration problem.
+    # The default, `backend/config`, already exists, so this changes nothing for
+    # a checkout and only rescues the deploy that set the variable.
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     tmp = ROOMS_FILE.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
     os.replace(tmp, ROOMS_FILE)

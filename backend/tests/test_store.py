@@ -194,6 +194,47 @@ check("delete twice is False", store.delete_room(oid) is False)
 print("username_of is safe on a missing id")
 check("missing id gives an empty string", store.username_of("nope") == "")
 
+print("a config directory that does not exist yet is created whole")
+# STREAMKIT_CONFIG_DIR is a path the deploy chose, and it is the sort of path that
+# arrives several levels deep and empty — a persistent volume mounted at
+# /var/lib/myapp. `mkdir(exist_ok=True)` creates only the last component, so the
+# first write raised FileNotFoundError and the request that created the room
+# failed with a 500 that said nothing about a directory. The default
+# `backend/config` already exists, which is why a checkout never saw it.
+deep = _tmp / "var" / "lib" / "myapp" / "streamkit" / "config"
+store.CONFIG_DIR = deep
+store.ROOMS_FILE = deep / "rooms.json"
+store._cache = None
+check("the parent really is missing first", not deep.parent.exists())
+
+made = store.create_room("on a fresh volume", {"theme": "deep"})
+check("creating a room works", bool(made["id"]))
+check("the whole path was created", deep.is_dir(), str(deep))
+check("the file landed in it", (deep / "rooms.json").exists())
+check(
+    "the room is on disk",
+    made["id"] in json.loads((deep / "rooms.json").read_text(encoding="utf-8")),
+)
+
+# A second write, because the first one only has to create the directory; the
+# update is what proves the store is usable rather than merely writable.
+store.set_config(made["id"], {"theme": "changed"})
+store.update_room(made["id"], name="renamed on a fresh volume")
+
+# Reloaded from disk with the cache dropped, so this is what a process restart
+# would see rather than what this process happens to still be holding.
+store._cache = None
+reloaded = store.get_room(made["id"])
+check("the update survived a reload", reloaded is not None and reloaded["config"] == {"theme": "changed"},
+      json.dumps(reloaded))
+check("the rename survived a reload", reloaded is not None and reloaded["name"] == "renamed on a fresh volume")
+check("a second room also writes", bool(store.create_room("second", {})["id"]))
+
+# Back to the shared directory for anything that follows.
+store.CONFIG_DIR = _tmp
+store.ROOMS_FILE = _tmp / "rooms.json"
+store._cache = None
+
 print()
 if failures:
     print(f"{len(failures)} FAILED: {failures}")
