@@ -5,7 +5,6 @@ import {
   clampRows,
   OVERLAY_DELAY,
   OVERLAY_MAX_ROWS,
-  OVERLAY_PORT,
   OVERLAY_SIZE,
   type OverlayStyle,
 } from '../../lib/overlay'
@@ -88,11 +87,12 @@ export function OverlaySection({ settings, set, roomTarget, roomId }: Props) {
   }
 
   /**
-   * Asks the host whether the overlay server is answering.
+   * Asks whether the backend is actually serving the overlay.
    *
-   * Offered as a button rather than shown as a standing status because the two
-   * failures it distinguishes — not running, and something else holding the port
-   * — need different answers, and only this can tell them apart.
+   * The overlay lives on the backend, so the question is "will OBS get the page
+   * when it fetches this link" — answered by the backend answering, not by any
+   * local server. A button rather than a standing status, because the answer
+   * changes with the network and is worth checking right before a stream.
    */
   async function checkOverlay() {
     setStatus({ kind: 'busy', text: 'Checking…' })
@@ -101,10 +101,10 @@ export function OverlaySection({ settings, set, roomTarget, roomId }: Props) {
       if (!stillMounted.current) return
       setStatus(
         running
-          ? { kind: 'ok', text: `Serving on port ${OVERLAY_PORT}.` }
+          ? { kind: 'ok', text: 'The overlay is live on the backend — OBS will get it.' }
           : {
               kind: 'error',
-              text: `Nothing is answering on port ${OVERLAY_PORT} — either this app could not bind it, or something else already has it.`,
+              text: 'The backend is not serving the overlay. Check the backend URL, or that the backend is up.',
             },
       )
     } catch (error: unknown) {

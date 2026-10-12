@@ -357,17 +357,20 @@ fn overlay_open(app: tauri::AppHandle, url: String) -> Result<(), String> {
         .map_err(|e| format!("could not open a browser: {e}"))
 }
 
-/// Whether the overlay server is actually answering.
+/// Whether the overlay is actually being served.
 ///
-/// A poll rather than a flag, because "the port is bound" and "the port is mine"
-/// are different claims: something else on the machine can hold 4319, and a
-/// streamer who has been told the overlay is ready and then watches nothing is
-/// worse off than one who is told it is not.
+/// The overlay lives on the backend, not on a loopback port, so this asks the
+/// backend's own overlay route rather than a local server: the thing a streamer
+/// needs to know before a stream is "will OBS get the page when it fetches this
+/// link", and that is answered by the backend answering, full stop. A poll rather
+/// than a flag for the same reason it always was — "configured" and "reachable"
+/// are different claims, and a green light over a dead link is worse than none.
 #[tauri::command]
-async fn overlay_running() -> bool {
-    let url = format!("http://127.0.0.1:{}/health", overlay::PORT);
+async fn overlay_running(app: tauri::AppHandle) -> bool {
+    let base = normalise_base(&backend::read_config(&app).base_url);
+    let url = format!("{}/overlay/", base.trim_end_matches('/'));
     match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(2))
+        .timeout(std::time::Duration::from_secs(5))
         .build()
     {
         Ok(client) => matches!(client.get(url).send().await, Ok(response) if response.status().is_success()),
@@ -552,35 +555,11 @@ fn main() {
             // custom sound would stop playing after a restart.
             sound::regrant(app.handle());
 
-            // The overlay server, started whether or not anybody is going to use
-            // it — the URL a streamer copies has to be true at the moment they
-            // copy it, and asking them to start it first is a step that gets
-            // forgotten until the stream is about to begin.
-            //
-            // Spawned rather than awaited, and a failure is reported rather than
-            // propagated: a port already in use is something the streamer needs to
-            // know about and can fix, and it must not be the reason the app does
-            // not open.
-            let handle_for_overlay = app.handle().clone();
-            let overlay_config = backend::read_config(app.handle());
-            tauri::async_runtime::spawn(async move {
-                let defaults = overlay::OverlayDefaults {
-                    base_url: normalise_base(&overlay_config.base_url),
-                    username: overlay_config.username,
-                    port: overlay::PORT,
-                };
-                if let Err(why) = overlay::serve(defaults).await {
-                    let _ = handle_for_overlay.emit(
-                        overlay::EVENT,
-                        serde_json::json!({
-                            "type": "log",
-                            "platform": "bridge",
-                            "level": "warn",
-                            "message": format!("chat overlay is not serving: {why}")
-                        }),
-                    );
-                }
-            });
+            // No local overlay server. The overlay is served by the backend and
+            // the link handed out points there, so OBS fetches the page from the
+            // backend whether or not this app is running. A loopback server here
+            // would be a second copy of the page that only works on this machine —
+            // the exact thing the backend-hosted overlay exists to replace.
 
             let handle = app.handle().clone();
             if let Some(window) = app.get_webview_window("main") {
@@ -651,11 +630,13 @@ mod overlay_url_tests {
         ] {
             query.push(format!("{key}={value}"));
         }
-        let url = format!("http://127.0.0.1:{}/?{}", overlay::PORT, query.join("&"));
+        // The overlay is served by the backend, so the URL is the backend's
+        // overlay path rather than a loopback port — there is no local server.
+        let url = format!("https://kit-backend.aldifhr.my.id/overlay/?{}", query.join("&"));
         every_field_is_in(&url);
         // And the host is willing to open what it built, which is the preview's
         // own rule — so this also checks the URL is one it considers its own.
-        assert!(overlay::is_own_page(&url, ""), "{url}");
+        assert!(overlay::is_own_page(&url, "https://kit-backend.aldifhr.my.id/overlay/"), "{url}");
     }
 
     #[test]
