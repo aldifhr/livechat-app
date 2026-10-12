@@ -20,7 +20,8 @@ import { usePathname } from 'next/navigation'
  */
 const ITEMS = [
   { href: '/admin', label: 'Rooms', hint: 'Streams on the backend', exact: true },
-  { href: '/admin/overlay', label: 'Overlay builder', hint: 'Style and preview', exact: false },
+  { href: '/admin/overlay', label: 'Overlay builder', hint: 'Style and get the link', exact: false },
+  { href: '/admin/live-preview', label: 'Live preview', hint: 'Watch it at OBS size', exact: false },
   { href: '/admin/about', label: 'About', hint: 'Addresses and account', exact: false },
 ]
 

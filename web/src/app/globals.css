@@ -587,3 +587,62 @@ code,
   padding: 3rem 1rem;
   color: var(--text-faint);
 }
+
+/* The live preview's own stage: the overlay at its real proportions, filling the
+   screen, rather than the scaled-down box beside the builder's controls. A
+   browser source is a fixed rectangle, and the only way to see whether the
+   overlay actually fits it is to show it at that shape and nothing else. */
+.preview-stage {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #000;
+  aspect-ratio: 16 / 9;
+  position: relative;
+}
+
+.preview-stage .preview-frame {
+  border: 0;
+  border-radius: 0;
+  aspect-ratio: auto;
+  width: 100%;
+  height: 100%;
+}
+
+.preview-stage .preview-frame iframe {
+  width: 100%;
+  height: 100%;
+  transform: none;
+}
+
+/* The chat / top-chatters switch: two things you want to look at one at a time,
+   not a dropdown that hides one behind a click. */
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.seg button {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-faint);
+  padding: 0.4rem 0.8rem;
+  cursor: pointer;
+}
+
+.seg button + button {
+  border-left: 1px solid var(--line);
+}
+
+.seg button.on {
+  background: var(--accent);
+  color: #fff;
+}
+
+.seg button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

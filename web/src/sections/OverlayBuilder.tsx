@@ -13,6 +13,7 @@
 
 'use client'
 
+import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   clampRows,
@@ -121,6 +122,16 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
           <p className="muted" style={{ margin: 0 }}>
             Style the overlay, then paste the link into OBS as a browser source.
           </p>
+          {/* The preview moved to its own page: a browser source is a fixed
+              rectangle, and seeing whether the overlay fits it needs the whole
+              screen. The style travels in the query string, so this opens on
+              exactly what the link below produces. */}
+          <Link
+            className="btn"
+            href={`/admin/live-preview?room=${encodeURIComponent(selected)}&${new URLSearchParams(styleToQuery(style)).toString()}`}
+          >
+            Open live preview
+          </Link>
         </div>
       </div>
 
@@ -213,17 +224,6 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
             </div>
           </div>
 
-          <div className="panel" style={{ padding: 0, overflow: 'hidden', margin: 0 }}>
-            <div className="preview-frame">
-              {/* The page itself, not a picture of it, so what is tuned here is
-                  exactly what OBS will load. */}
-              {chatUrl && <iframe src={chatUrl} title="Overlay preview" />}
-            </div>
-            <div className="preview-hint">
-              Live preview — the real overlay, at the size OBS will show it. Comments appear as the room
-              produces them.
-            </div>
-          </div>
         </div>
       </div>
     </>
