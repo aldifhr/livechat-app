@@ -24,7 +24,7 @@
  */
 
 import type { WebhookConfig, WebhookGift } from './webhook'
-import type { OverlayStyle } from './overlay'
+import type { OverlayStyle } from '@shared/overlay'
 import type { BackendConfig } from './backend'
 
 type EventHandler = (event: SidecarEvent) => void

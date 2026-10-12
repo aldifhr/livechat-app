@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -5,6 +6,13 @@ import react from '@vitejs/plugin-react'
 // dist/. Do not change this without updating devUrl in tauri.conf.json.
 export default defineConfig({
   plugins: [react()],
+  // shared/ is a sibling of app/, not a part of it, so it needs a name rather
+  // than a relative path that would climb out of the package on every import.
+  resolve: {
+    alias: {
+      '@shared': fileURLToPath(new URL('../shared', import.meta.url)),
+    },
+  },
   clearScreen: false,
   server: {
     port: 5183,

@@ -16,7 +16,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+// The app package root, and the repository root above it: the module under test
+// lives in shared/, a sibling of the app rather than a part of it.
 const pkgRoot = fileURLToPath(new URL('..', import.meta.url))
+const repoRoot = fileURLToPath(new URL('../..', import.meta.url))
 
 let failures = 0
 function check(name, condition, detail = '') {
@@ -36,9 +39,9 @@ const tsc = spawnSync(
   process.execPath,
   [
     tscBin,
-    join(pkgRoot, 'src', 'lib', 'overlay.ts'),
+    join(repoRoot, 'shared', 'overlay.ts'),
     '--outDir', dir,
-    '--rootDir', join(pkgRoot, 'src'),
+    '--rootDir', repoRoot,
     '--module', 'esnext',
     '--target', 'es2020',
     '--moduleResolution', 'bundler',
@@ -58,22 +61,11 @@ const {
   OVERLAY_DELAY,
   OVERLAY_DEFAULT_STYLE,
   OVERLAY_MAX_ROWS,
-  OVERLAY_PORT,
   OVERLAY_SIZE,
-  overlayOrigin,
   resolveColour,
   resolveOverlayFont,
   resolveStyle,
-} = await import(pathToFileURL(join(dir, 'lib', 'overlay.js')).href)
-
-console.log('the address OBS is pointed at')
-check('it is loopback', overlayOrigin().startsWith('http://127.0.0.1:'), overlayOrigin())
-check('on the port the host binds', overlayOrigin().includes(String(OVERLAY_PORT)), overlayOrigin())
-check('with a trailing slash, so a query string can follow', overlayOrigin().endsWith('/'))
-// Not localhost: it resolves through a hosts file that does not always point
-// anywhere sensible, and an overlay that works in a browser and not in OBS is a
-// bad afternoon.
-check('not localhost, which is a hosts file away from working', !overlayOrigin().includes('localhost'))
+} = await import(pathToFileURL(join(dir, 'shared', 'overlay.js')).href)
 
 console.log('a colour that is only a colour')
 check('a hex triplet', isSafeColour('#f0a'))

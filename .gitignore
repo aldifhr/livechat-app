@@ -1,10 +1,15 @@
-node_modules/
-dist/
-src-tauri/target/
-src-tauri/gen/
 *.log
 
 # The bridge was a build artifact once; it is gone. The app reads a backend now.
+sidecar/
+
+# The repo root is a container now. Each part builds from its own directory and
+# the root has no manifest of its own. node_modules/ and dist/ are written with
+# no leading path so they are ignored wherever a part puts them.
+node_modules/
+dist/
+app/src-tauri/target/
+app/src-tauri/gen/
 
 # Credentials are typed into the app at runtime and read from Tauri's config
 # directory, never from here. Ignored anyway so a stray file cannot be committed

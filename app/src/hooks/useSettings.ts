@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { host } from '../lib/sidecar'
-import { clampRows, clampNumber, resolveColour, resolveOverlayFont, OVERLAY_DELAY, OVERLAY_SIZE } from '../lib/overlay'
+import { clampRows, clampNumber, resolveColour, resolveOverlayFont, OVERLAY_DELAY, OVERLAY_SIZE } from '@shared/overlay'
 import { resolveDensity, resolveFont, resolveTheme, type DensityId, type FontId, type ThemeId } from '../lib/theme'
 
 export interface ViewSettings {

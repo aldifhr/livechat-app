@@ -68,14 +68,6 @@ export const OVERLAY_MAX_ROWS = { min: 1, max: 50 }
  */
 export const OVERLAY_DELAY = { min: 120, max: 3000 }
 
-/** The port the host serves the overlay on. Mirrors `overlay::PORT`. */
-export const OVERLAY_PORT = 4319
-
-/** The address a streamer actually pastes into OBS. */
-export function overlayOrigin(): string {
-  return `http://127.0.0.1:${OVERLAY_PORT}/`
-}
-
 /**
  * A colour, or nothing.
  *

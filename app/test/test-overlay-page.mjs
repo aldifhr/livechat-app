@@ -19,7 +19,9 @@ import { JSDOM } from 'jsdom'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-const pkgRoot = fileURLToPath(new URL('..', import.meta.url))
+// The repo root, one level above app/: this test drives the pages the backend
+// serves, and the backend is a sibling of the app, not a part of it.
+const pkgRoot = fileURLToPath(new URL('../..', import.meta.url))
 
 let failures = 0
 function check(name, condition, detail = '') {

@@ -7,7 +7,7 @@ import {
   OVERLAY_MAX_ROWS,
   OVERLAY_SIZE,
   type OverlayStyle,
-} from '../../lib/overlay'
+} from '@shared/overlay'
 import type { ViewSettings } from '../../hooks/useSettings'
 import { message, useStillMounted, type SetSetting, type Status } from './shared'
 import { Section } from './Section'

@@ -1,0 +1,554 @@
+/*
+ * One stylesheet for both pages.
+ *
+ * Values live in custom properties on :root rather than being repeated, because
+ * the landing page and the admin console are read side by side and a colour that
+ * drifts between them reads as two products rather than one. No framework: the
+ * whole thing is a landing page and a console, and the CSS that would come with a
+ * framework is larger than everything it would style.
+ */
+
+:root {
+  color-scheme: dark;
+
+  --bg: #0b0d12;
+  --bg-raised: #12151d;
+  --bg-sunken: #080a0e;
+  --line: #232838;
+  --line-soft: #1a1e29;
+
+  --text: #e8eaf0;
+  --text-dim: #99a0b3;
+  --text-faint: #6b7387;
+
+  --accent: #ffd76a;
+  --accent-dim: #b8952f;
+  --accent-ink: #1a1405;
+
+  --good: #5dd39e;
+  --bad: #ff7b72;
+
+  --radius: 10px;
+  --radius-sm: 6px;
+
+  --sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, 'Cascadia Code', Consolas, monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---- shared bits ---- */
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  color: var(--text);
+  padding: 0.5rem 0.9rem;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent-dim);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+button.primary:hover:not(:disabled) {
+  background: #ffe089;
+  border-color: #ffe089;
+}
+
+button.danger:hover:not(:disabled) {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+input,
+select {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.6rem;
+  min-width: 0;
+}
+
+input:focus,
+select:focus {
+  border-color: var(--accent-dim);
+}
+
+code,
+.mono {
+  font-family: var(--mono);
+  font-size: 0.9em;
+}
+
+.muted {
+  color: var(--text-dim);
+}
+
+.faint {
+  color: var(--text-faint);
+  font-size: 0.86rem;
+}
+
+/* ---- landing ---- */
+
+.landing {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem clamp(1rem, 5vw, 3rem);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.wordmark {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.wordmark span {
+  color: var(--accent);
+}
+
+.topbar nav {
+  margin-left: auto;
+  display: flex;
+  gap: 1.25rem;
+  align-items: center;
+}
+
+.hero {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: clamp(2rem, 8vw, 5rem) clamp(1rem, 5vw, 3rem);
+  text-align: center;
+}
+
+.hero h1 {
+  font-size: clamp(2rem, 6vw, 3.4rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin: 0 0 1rem;
+  max-width: 18ch;
+}
+
+.hero p {
+  color: var(--text-dim);
+  font-size: clamp(1rem, 2vw, 1.15rem);
+  max-width: 56ch;
+  margin: 0 auto 2rem;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.hero-actions button {
+  padding: 0.7rem 1.4rem;
+  font-size: 1rem;
+}
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  padding: 0 clamp(1rem, 5vw, 3rem) clamp(2rem, 6vw, 4rem);
+  max-width: 1100px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.feature {
+  background: var(--bg-raised);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+}
+
+.feature h3 {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+}
+
+.feature p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.92rem;
+}
+
+.footer {
+  border-top: 1px solid var(--line-soft);
+  padding: 1.25rem clamp(1rem, 5vw, 3rem);
+  color: var(--text-faint);
+  font-size: 0.85rem;
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+/* ---- admin ---- */
+
+.admin {
+  display: grid;
+  grid-template-columns: 232px 1fr;
+  min-height: 100%;
+}
+
+/* The sidebar collapses to a horizontal bar rather than disappearing: on a narrow
+   screen the navigation still has to be reachable, and a hamburger that hides the
+   only way back is worse than a scroller. */
+@media (max-width: 720px) {
+  .admin {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    position: static !important;
+    height: auto !important;
+  }
+
+  .sidebar nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    overflow-x: auto;
+  }
+}
+
+.sidebar {
+  border-right: 1px solid var(--line);
+  background: var(--bg-sunken);
+  padding: 1.25rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.sidebar .wordmark {
+  font-size: 1.05rem;
+}
+
+.sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* Buttons, not links: the sections are views of one page. Reset to a text
+   button so only the selected item carries an accent. */
+.sidebar nav .side-item {
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: 0;
+  color: var(--text-dim);
+  padding: 0.45rem 0.6rem;
+}
+
+.sidebar nav .side-item:hover {
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+.sidebar nav .side-item[aria-current='page'] {
+  color: var(--accent);
+  background: var(--bg-raised);
+  border-left-color: var(--accent);
+}
+
+.sidebar .side-note {
+  margin-top: auto;
+  font-size: 0.8rem;
+  color: var(--text-faint);
+}
+
+.content {
+  padding: clamp(1.25rem, 3vw, 2.25rem);
+  max-width: 1000px;
+  width: 100%;
+}
+
+.content h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.5rem;
+  letter-spacing: -0.01em;
+}
+
+.content h3 {
+  margin: 2rem 0 0.75rem;
+  font-size: 1.05rem;
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+
+.page-head .actions {
+  margin-left: auto;
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* ---- panels, lists ---- */
+
+.panel {
+  background: var(--bg-raised);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.panel > h3:first-child,
+.panel > h4:first-child {
+  margin-top: 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--line-soft);
+  flex-wrap: wrap;
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.row .grow {
+  flex: 1;
+  min-width: 180px;
+}
+
+.row .name {
+  font-weight: 600;
+}
+
+.badge {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.badge.live {
+  color: var(--good);
+  border-color: color-mix(in srgb, var(--good) 40%, transparent);
+}
+
+.badge.off {
+  color: var(--text-faint);
+}
+
+/* ---- notices ---- */
+
+.notice {
+  padding: 0.7rem 0.9rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  margin-bottom: 1rem;
+  font-size: 0.92rem;
+}
+
+.notice.error {
+  border-color: color-mix(in srgb, var(--bad) 45%, transparent);
+  color: #ffb3ad;
+  background: color-mix(in srgb, var(--bad) 8%, transparent);
+}
+
+.notice.ok {
+  border-color: color-mix(in srgb, var(--good) 45%, transparent);
+  color: #a8e9cb;
+  background: color-mix(in srgb, var(--good) 8%, transparent);
+}
+
+.token-bar {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.token-bar input {
+  flex: 1;
+  min-width: 200px;
+  font-family: var(--mono);
+}
+
+/* ---- overlay builder ---- */
+
+.builder {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .builder {
+    grid-template-columns: 1fr;
+  }
+}
+
+.field {
+  margin-bottom: 0.9rem;
+}
+
+.field label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  margin-bottom: 0.3rem;
+}
+
+.field input[type='range'] {
+  width: 100%;
+  padding: 0;
+  accent-color: var(--accent);
+  background: transparent;
+  border: none;
+}
+
+.field input[type='color'] {
+  width: 100%;
+  height: 2.2rem;
+  padding: 0.15rem;
+  cursor: pointer;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.value {
+  float: right;
+  font-family: var(--mono);
+  color: var(--text-faint);
+  font-size: 0.8rem;
+}
+
+.copy-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.6rem;
+}
+
+.copy-row input {
+  flex: 1;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+}
+
+/* The preview is the overlay itself in a box, at the size it will actually be:
+   a scaled-down screenshot would hide the thing being tuned, which is how the
+   text size and the row count end up looking fine here and wrong in OBS. */
+.preview-frame {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #000;
+  aspect-ratio: 16 / 9;
+  position: relative;
+}
+
+.preview-frame iframe {
+  width: 200%;
+  height: 200%;
+  border: 0;
+  transform: scale(0.5);
+  transform-origin: top left;
+  pointer-events: none;
+}
+
+.preview-hint {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  color: var(--text-faint);
+  border-top: 1px solid var(--line-soft);
+}
+
+.empty {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--text-faint);
+}
