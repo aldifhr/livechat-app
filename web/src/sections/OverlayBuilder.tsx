@@ -72,15 +72,15 @@ function CopyLink({ label, hint, url }: { label: string; hint: string; url: stri
     }
   }
   return (
-    <div className="panel" style={{ margin: 0 }}>
+    <div className="panel">
       <h3>{label}</h3>
       <div className="copy-row">
-        <input readOnly value={url} onFocus={(e) => e.target.select()} aria-label={label} />
+        <textarea readOnly value={url} onFocus={(e) => e.target.select()} aria-label={label} rows={2} />
         <button onClick={() => void copy()} disabled={!url}>
           {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
-      {hint && <p className="faint" style={{ margin: 0 }}>{hint}</p>}
+      {hint && <p className="faint">{hint}</p>}
     </div>
   )
 }
@@ -100,7 +100,7 @@ function ChatCustomizer({ roomId, style, onChange }: {
 
   return (
     <>
-      <div className="panel" style={{ margin: 0 }}>
+      <div className="panel">
         <h3>Style</h3>
 
         <div className="field">
@@ -148,7 +148,7 @@ function ChatCustomizer({ roomId, style, onChange }: {
           hint="Add this as a browser source in OBS, sized to your canvas."
           url={chatUrl}
         />
-        <Link className="btn" href={preview} style={{ marginTop: '1rem' }}>
+        <Link className="btn stack-top" href={preview}>
           Open live preview
         </Link>
       </div>
@@ -171,7 +171,7 @@ function BoardCustomizer({ roomId, style, onChange }: {
 
   return (
     <>
-      <div className="panel" style={{ margin: 0 }}>
+      <div className="panel">
         <h3>Style</h3>
 
         <div className="field">
@@ -221,7 +221,7 @@ function BoardCustomizer({ roomId, style, onChange }: {
 
       <div>
         <CopyLink label="Top chatters link" hint="" url={boardUrl} />
-        <Link className="btn" href={preview} style={{ marginTop: '1rem' }}>
+        <Link className="btn stack-top" href={preview}>
           Open live preview
         </Link>
       </div>
@@ -279,7 +279,7 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
       <div className="page-head">
         <div>
           <h2>Overlay builder</h2>
-          <p className="muted" style={{ margin: 0 }}>
+          <p className="muted">
             Style each overlay, then paste its link into OBS as a browser source.
           </p>
         </div>
@@ -287,7 +287,7 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
 
       <div className="panel">
         <RoomPicker rooms={rooms} selected={selected} onChange={setRoomId} />
-        <div className="seg" style={{ marginTop: '0.75rem' }}>
+        <div className="seg stack-top">
           <button className={which === 'chat' ? 'on' : ''} onClick={() => setWhich('chat')}>
             Chat overlay
           </button>

@@ -152,7 +152,7 @@ export default function Rooms() {
       <div className="page-head">
         <div>
           <h2>Rooms</h2>
-          <p className="muted" style={{ margin: 0 }}>
+          <p className="muted">
             Every stream the backend is watching. A room is what an overlay link points at.
           </p>
         </div>
@@ -187,7 +187,7 @@ export default function Rooms() {
             Connect
           </button>
         </div>
-        <p className="faint" style={{ margin: '0.4rem 0 0' }}>
+        <p className="faint tight-caption">
           The room is created for you and starts watching straight away — a stream that is not live yet is fine,
           it connects when it goes live. Connecting a handle that already has a room reuses it and keeps its
           styling.

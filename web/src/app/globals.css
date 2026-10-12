@@ -11,22 +11,28 @@
 :root {
   color-scheme: dark;
 
-  --bg: #0b0d12;
-  --bg-raised: #12151d;
-  --bg-sunken: #080a0e;
-  --line: #232838;
-  --line-soft: #1a1e29;
+  /* Greyscale, deliberately: the product shows overlays whose colours the
+     operator chooses, and a chrome in colour competes with the art it is
+     styling. White is the accent — emphasis is carried by weight, border and
+     position rather than by a hue. */
+  --bg: #0a0a0a;
+  --bg-raised: #141414;
+  --bg-sunken: #000000;
+  --line: #2a2a2a;
+  --line-soft: #1c1c1c;
 
-  --text: #e8eaf0;
-  --text-dim: #99a0b3;
-  --text-faint: #6b7387;
+  --text: #f2f2f2;
+  --text-dim: #a8a8a8;
+  --text-faint: #6e6e6e;
 
-  --accent: #ffd76a;
-  --accent-dim: #b8952f;
-  --accent-ink: #1a1405;
+  /* The one "accent" is white. Anything that used to be gold is now the
+     strongest contrast in the frame, which is what gold was doing anyway. */
+  --accent: #ffffff;
+  --accent-dim: #b4b4b4;
+  --accent-ink: #0a0a0a;
 
-  --good: #5dd39e;
-  --bad: #ff7b72;
+  --good: #e8e8e8;
+  --bad: #d0d0d0;
 
   --radius: 10px;
   --radius-sm: 6px;
@@ -42,8 +48,7 @@
 }
 
 html,
-body,
-#root {
+body {
   height: 100%;
 }
 
@@ -92,8 +97,8 @@ a:hover {
 }
 
 .cta.primary:hover {
-  background: #ffe089;
-  border-color: #ffe089;
+  background: var(--accent-dim);
+  border-color: var(--accent-dim);
 }
 
 .hero-actions .cta {
@@ -136,8 +141,8 @@ button.primary {
 }
 
 button.primary:hover:not(:disabled) {
-  background: #ffe089;
-  border-color: #ffe089;
+  background: var(--accent-dim);
+  border-color: var(--accent-dim);
 }
 
 button.danger:hover:not(:disabled) {
@@ -237,11 +242,6 @@ code,
   gap: 0.75rem;
   justify-content: center;
   flex-wrap: wrap;
-}
-
-.hero-actions button {
-  padding: 0.7rem 1.4rem;
-  font-size: 1rem;
 }
 
 .features {
@@ -462,29 +462,19 @@ code,
   font-size: 0.92rem;
 }
 
+/* In a greyscale UI, status is carried by the border and weight, not hue: an
+   error is a full-weight border, a notice is a quieter one. */
 .notice.error {
-  border-color: color-mix(in srgb, var(--bad) 45%, transparent);
-  color: #ffb3ad;
-  background: color-mix(in srgb, var(--bad) 8%, transparent);
+  border-color: var(--text);
+  color: var(--text);
+  background: var(--bg-sunken);
+  font-weight: 500;
 }
 
 .notice.ok {
-  border-color: color-mix(in srgb, var(--good) 45%, transparent);
-  color: #a8e9cb;
-  background: color-mix(in srgb, var(--good) 8%, transparent);
-}
-
-.token-bar {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.token-bar input {
-  flex: 1;
-  min-width: 200px;
-  font-family: var(--mono);
+  border-color: var(--line);
+  color: var(--text-dim);
+  background: var(--bg-sunken);
 }
 
 /* ---- overlay builder ---- */
@@ -541,6 +531,24 @@ code,
   font-size: 0.8rem;
 }
 
+/* Small utilities that were inline styles, moved here so the spacing lives in one
+   place and stays consistent across sections. */
+.flush {
+  margin: 0;
+}
+
+.flush-top {
+  margin-top: 0;
+}
+
+.stack-top {
+  margin-top: 1rem;
+}
+
+.tight-caption {
+  margin: 0.4rem 0 0;
+}
+
 .copy-row {
   display: flex;
   gap: 0.5rem;
@@ -548,38 +556,32 @@ code,
   margin-bottom: 0.6rem;
 }
 
-.copy-row input {
+/* The link is ~200 characters and the whole point is that reading it tells you
+   what OBS was pointed at — so it wraps across lines rather than being a 426px
+   window onto 1621px of text. One line scrolled would defeat the promise that
+   the link is the configuration, readable at a glance. */
+.copy-row {
+  align-items: flex-start;
+}
+
+/* A textarea, not an input: an <input> is always one line no matter the CSS, so a
+   ~200-character overlay link would be a 426px window onto 1621px of text. The
+   link is the whole configuration — reading it tells you what OBS was pointed at
+   — so it has to wrap and be readable, not just copyable. */
+.copy-row textarea {
   flex: 1;
+  min-width: 0;
   font-family: var(--mono);
   font-size: 0.82rem;
-}
-
-/* The preview is the overlay itself in a box, at the size it will actually be:
-   a scaled-down screenshot would hide the thing being tuned, which is how the
-   text size and the row count end up looking fine here and wrong in OBS. */
-.preview-frame {
+  line-height: 1.5;
+  padding: 0.6rem;
+  resize: vertical;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  background: var(--bg-sunken);
+  color: var(--text);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
-  overflow: hidden;
-  background: #000;
-  aspect-ratio: 16 / 9;
-  position: relative;
-}
-
-.preview-frame iframe {
-  width: 200%;
-  height: 200%;
-  border: 0;
-  transform: scale(0.5);
-  transform-origin: top left;
-  pointer-events: none;
-}
-
-.preview-hint {
-  padding: 0.5rem 0.75rem;
-  font-size: 0.8rem;
-  color: var(--text-faint);
-  border-top: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
 }
 
 .empty {
@@ -599,20 +601,6 @@ code,
   background: #000;
   aspect-ratio: 16 / 9;
   position: relative;
-}
-
-.preview-stage .preview-frame {
-  border: 0;
-  border-radius: 0;
-  aspect-ratio: auto;
-  width: 100%;
-  height: 100%;
-}
-
-.preview-stage .preview-frame iframe {
-  width: 100%;
-  height: 100%;
-  transform: none;
 }
 
 /* The chat / top-chatters switch: two things you want to look at one at a time,

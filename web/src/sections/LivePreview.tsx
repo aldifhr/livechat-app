@@ -84,7 +84,7 @@ export default function LivePreview() {
       <div className="page-head">
         <div>
           <h2>Live preview</h2>
-          <p className="muted" style={{ margin: 0 }}>
+          <p className="muted">
             The real overlay, at the size OBS will show it. Comments appear as the room produces them.
           </p>
         </div>

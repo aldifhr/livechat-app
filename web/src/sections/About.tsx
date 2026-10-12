@@ -30,7 +30,7 @@ export default function About({ backend }: { backend?: string }) {
       <div className="page-head">
         <div>
           <h2>About</h2>
-          <p className="muted" style={{ margin: 0 }}>
+          <p className="muted">
             One domain for everything you paste, and the backend behind it. The overlays are served from here
             too, so a stream keeps them even when this dashboard is closed.
           </p>
@@ -51,7 +51,7 @@ export default function About({ backend }: { backend?: string }) {
 
       <div className="panel">
         <h3>Who can write what</h3>
-        <p className="muted" style={{ marginTop: 0 }}>
+        <p className="muted">
           This dashboard is behind a password, and its own server attaches the backend's credential to the
           calls it forwards. The token is read from the server's environment at request time — it is not in
           the page, not in the bundle, and not in any NEXT_PUBLIC_ variable, so nothing here can be read by
