@@ -1070,7 +1070,7 @@ check('and the link is shown, not only copied', Boolean($('.overlay-url')), $('.
 const checkBtn = $$('[data-section="overlay"] .btn').find((b) => /Check server/.test(b.textContent))
 check('the server can be asked whether it is up', Boolean(checkBtn))
 await click(checkBtn)
-check('and answers yes when it is', /Serving on port/.test($('[data-section="overlay"] .field-note:last-of-type')?.textContent ?? '') || /Serving on port/.test(doc.body.textContent ?? ''), $('[data-section="overlay"] .field-note:last-of-type')?.textContent)
+check('and answers yes when it is', /live on the backend/.test(doc.body.textContent ?? ''), $('[data-section="overlay"] .field-note:last-of-type')?.textContent)
 
 // The preview. Through the host, because the page cannot open a window itself
 // under the app's content security policy — and a button that silently does
@@ -1093,7 +1093,7 @@ fake.transport.invoke = async (command, args) => {
   return undefined
 }
 await click(checkBtn)
-check('and no when it is not', /Nothing is answering/.test(doc.body.textContent ?? ''), $('[data-section="overlay"] .field-note:last-of-type')?.textContent)
+check('and no when it is not', /not serving the overlay/.test(doc.body.textContent ?? ''), $('[data-section="overlay"] .field-note:last-of-type')?.textContent)
 
 
 console.log('teardown')
