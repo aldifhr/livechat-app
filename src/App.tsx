@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { FeedRow } from './components/FeedRow'
 import { LogPanel } from './components/LogPanel'
-import { SettingsDialog } from './components/SettingsDialog'
+import { SettingsDialog } from './components/settings/SettingsDialog'
 import { StatsPanel } from './components/StatsPanel'
 import { Toolbar } from './components/Toolbar'
 import { useAiReply } from './hooks/useAiReply'
