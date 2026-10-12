@@ -8,6 +8,7 @@
 
 'use client'
 
+import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError, isAuthFailure, type Room } from '../lib/client'
 
@@ -15,7 +16,7 @@ import { api, ApiError, isAuthFailure, type Room } from '../lib/client'
  *  enough that going offline is noticed while somebody is watching. */
 const POLL_MS = 15_000
 
-export default function Rooms({ onStyleOverlay }: { onStyleOverlay: (roomId: string) => void }) {
+export default function Rooms() {
   const [rooms, setRooms] = useState<Room[]>([])
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -210,7 +211,14 @@ export default function Rooms({ onStyleOverlay }: { onStyleOverlay: (roomId: str
                 </div>
                 <div className="faint mono">{room.username || 'no handle connected yet'}</div>
               </div>
-              <button onClick={() => onStyleOverlay(room.id)}>Style the overlay</button>
+              {/* A link, not a button: the builder's address is the style, and a
+                  style you cannot send to somebody is not much of a style. The
+                  room travels in the query string rather than in state, so the
+                  back button comes back here rather than to the tab that happened
+                  to be open. */}
+              <Link className="btn" href={`/admin/overlay?room=${encodeURIComponent(room.id)}`}>
+                Style the overlay
+              </Link>
               <button
                 className="danger"
                 onClick={() => void remove(room)}

@@ -88,10 +88,17 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
 
   const patch = useCallback((change: Partial<OverlayStyle>) => setStyle((current) => ({ ...current, ...change })), [])
 
-  const chatUrl = useMemo(() => (roomId ? api.chatOverlay(roomId, styleToQuery(style)) : ''), [roomId, style])
+  // A room named by the query string only counts once it has been confirmed to
+  // exist. A stale or wrong id in the address would otherwise produce a
+  // complete-looking overlay link that points at a room nobody is watching —
+  // the worst kind of wrong, because it looks exactly like a working one.
+  const known = rooms.some((room) => room.id === roomId)
+  const selected = known ? roomId : rooms[0]?.id ?? ''
+
+  const chatUrl = useMemo(() => (selected ? api.chatOverlay(selected, styleToQuery(style)) : ''), [selected, style])
   const boardUrl = useMemo(
-    () => (roomId ? api.topChatterOverlay(roomId, { max: String(style.max) }) : ''),
-    [roomId, style.max],
+    () => (selected ? api.topChatterOverlay(selected, { max: String(style.max) }) : ''),
+    [selected, style.max],
   )
 
   const copy = async (label: string, url: string) => {
@@ -120,7 +127,7 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
       <div className="panel">
         <div className="field">
           <label htmlFor="room">Room</label>
-          <select id="room" value={roomId} onChange={(event) => setRoomId(event.target.value)}>
+          <select id="room" value={selected} onChange={(event) => setRoomId(event.target.value)}>
             <option value="">Choose a room…</option>
             {rooms.map((room) => (
               <option key={room.id} value={room.id}>
