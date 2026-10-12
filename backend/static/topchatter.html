@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Top chatters overlay</title>
+<!--
+  One file, on purpose — the same rule the chat overlay follows.
+
+  This page is a standalone source for OBS: it shows only the leaderboard, the
+  chattiest viewers of the session, so it can sit in its own scene beside the chat
+  overlay rather than sharing one rectangle with it. It talks to the very same
+  StreamKit backend and the very same websocket the chat overlay does, and asks
+  for the ranking the same way — a `topChatters` request, answered back to this
+  socket only. Nothing here is new on the wire; it is a second view of a board the
+  backend already keeps.
+
+  What it deliberately does not do is show chat. That is the whole point: a stream
+  that wants "who is talking most" as its own graphic, not as a corner of the chat.
+  It also does not talk to the desktop app — it resolves the handle itself and
+  opens its own socket, exactly like the chat overlay, so it works whether or not
+  the app is running.
+
+  Do not add a second copy. The backend serves this file over HTTP and the desktop
+  host would embed it with include_str! if it used it; keep it here so there is one
+  source of truth.
+-->
+<style>
+  :root {
+    /* Replaced from the query string, each with a default so a bare URL renders. */
+    --size: 28px;
+    --name-colour: #ffd76a;
+    --text-colour: #ffffff;
+    --background: 0.35;
+    --font: "Segoe UI", system-ui, sans-serif;
+    --align: flex-start;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: transparent;
+    /* OBS composites the source; an opaque body would hide the video behind it. */
+    overflow: hidden;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    justify-content: var(--align);
+    align-items: stretch;
+    padding: 24px;
+    font-family: var(--font);
+    font-size: var(--size);
+    line-height: 1.3;
+  }
+
+  /* The board fills the width the source is given and grows downward from its
+     aligned edge — top by default, so a leaderboard reads from the top of the
+     frame the way a scoreboard does. */
+  #board {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    width: 100%;
+  }
+
+  #board li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6em;
+    /* A scrim behind each row so the text survives a bright part of the video.
+       Transparent at the default 0 so a clean scene shows nothing but type. */
+    background: rgba(0, 0, 0, var(--background));
+    border-radius: 8px;
+    padding: 0.25em 0.6em;
+    margin-bottom: 0.2em;
+    color: var(--text-colour);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  }
+
+  .board-rank {
+    color: var(--name-colour);
+    font-weight: 800;
+    min-width: 1.4em;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .board-name {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .board-count {
+    color: var(--name-colour);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    margin-left: auto;
+  }
+
+  /* A tiny caption above the board, so a leaderboard floating on its own says what
+     it is rather than being ten unexplained rows. Hidden with the board until the
+     first ranking arrives. */
+  #caption {
+    color: var(--name-colour);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: 0.6em;
+    opacity: 0.85;
+    margin: 0 0 0.4em 0.1em;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  }
+
+  /* The one failure worth saying out loud: a wrong link. Unlike everything else,
+     this is not a connection that might recover — it is a URL that will never
+     work, and a streamer testing it before going live is looking at a blank
+     rectangle with no way to tell it from a working source that has seen nothing
+     yet. */
+  #unconfigured {
+    display: none;
+    color: var(--text-colour);
+    font-size: 0.7em;
+    opacity: 0.9;
+  }
+  body.unconfigured #unconfigured { display: block; }
+
+  /* Only ever visible under ?debug=1. The failure mode of an overlay is silence,
+     and a status line burned into a stream is worse than no diagnosis at all. */
+  #status {
+    display: none;
+    position: fixed;
+    left: 8px;
+    bottom: 6px;
+    color: #8f8;
+    font-size: 12px;
+    opacity: 0.6;
+  }
+  body.debug #status { display: block; }
+</style>
+</head>
+<body>
+<ol id="board" hidden aria-live="polite"></ol>
+<p id="caption" hidden>Top chatters</p>
+<div id="unconfigured">no handle in this link — add <code>?room=yourhandle</code></div>
+<div id="status"></div>
+
+<!-- Baked in by the host at request time. Must come before the script that reads
+     it, because that script parses it the moment it runs. -->
+<script id="overlay-config" type="application/json">__OVERLAY_CONFIG__</script>
+
+<script>
+(function () {
+  'use strict'
+
+  // ---- configuration -------------------------------------------------------
+
+  // Baked in by the host at request time; the query string wins over it, so a
+  // bare `?room=<id>` link renders the configured board and a hand-edited link
+  // still works. Same contract as the chat overlay.
+  var baked = (function () {
+    try { return JSON.parse(document.getElementById('overlay-config').textContent) || {} }
+    catch (e) { return {} }
+  })()
+
+  var query = new URLSearchParams(location.search)
+
+  function param(name, fallback) {
+    var found = query.get(name)
+    return found === null || found === '' ? fallback : found
+  }
+
+  function number(name, fallback, min, max) {
+    var given = param(name, '')
+    // An absent parameter is not a number and must fall back, not clamp. The trap
+    // is `Number('') === 0`: 0 is finite, so an isFinite check alone passes it and
+    // then clamps up to min. Empty is treated as absent before it is ever a number.
+    if (given === '') return fallback
+    var raw = Number(given)
+    if (!isFinite(raw)) return fallback
+    return Math.min(max, Math.max(min, raw))
+  }
+
+  var config = {
+    baseUrl: String(param('base', baked.baseUrl || 'https://kit-backend.aldifhr.my.id')).replace(/\/+$/, ''),
+    username: String(param('room', baked.username || '')).replace(/^@/, '').trim(),
+    size: number('size', typeof baked.size === 'number' ? baked.size : 28, 8, 120),
+    nameColour: param('name', baked.nameColour || '#ffd76a'),
+    textColour: param('color', baked.textColour || '#ffffff'),
+    background: number('bg', typeof baked.background === 'number' ? baked.background : 0.35, 0, 1),
+    // How many chatters to show. Ten is the ranking the backend keeps; asking for
+    // more than it has simply shows all of them.
+    max: Math.round(number('max', typeof baked.max === 'number' ? baked.max : 10, 1, 50)),
+    font: param('font', baked.font || '"Segoe UI", system-ui, sans-serif'),
+    // Seconds between ranking refreshes. A ranking changes slowly; five seconds is
+    // current enough and cheap. Pushed as `poll` rather than a fixed beat so a
+    // busy stream can tighten it without a redeploy.
+    poll: number('poll', 5, 2, 60) * 1000,
+    align: param('align', 'top'),
+    debug: param('debug', '') !== ''
+  }
+
+  document.documentElement.style.setProperty('--size', config.size + 'px')
+  document.documentElement.style.setProperty('--name-colour', config.nameColour)
+  document.documentElement.style.setProperty('--text-colour', config.textColour)
+  document.documentElement.style.setProperty('--background', String(config.background))
+  document.documentElement.style.setProperty('--font', config.font)
+  // `top` grows the board downward from the top of the frame (a scoreboard);
+  // `bottom` pins it to the bottom. Anything else is top, rather than a value the
+  // flex model would silently ignore.
+  document.documentElement.style.setProperty(
+    '--align',
+    config.align === 'bottom' ? 'flex-end' : 'flex-start'
+  )
+
+  var status = document.getElementById('status')
+  function say(message) {
+    if (config.debug) status.textContent = message
+  }
+
+  // ---- the board -----------------------------------------------------------
+
+  var board = document.getElementById('board')
+  var caption = document.getElementById('caption')
+
+  /**
+   * Draws the leaderboard: the chattiest viewers, most messages first.
+   *
+   * Rebuilt each poll rather than diffed — ten rows on a slow beat is cheaper to
+   * redraw than to keep in place. Names go in as text, never markup, because a
+   * nickname is user input rendered on a stream. The board and its caption are
+   * hidden until the first ranking arrives, so an overlay for a room nobody has
+   * talked in yet reserves no space for an empty box.
+   */
+  function renderBoard(chatters) {
+    if (!chatters || chatters.length === 0) {
+      board.hidden = true
+      caption.hidden = true
+      return
+    }
+    board.hidden = false
+    caption.hidden = false
+    board.textContent = ''
+    for (var i = 0; i < chatters.length; i++) {
+      var c = chatters[i]
+      var row = document.createElement('li')
+
+      var rank = document.createElement('span')
+      rank.className = 'board-rank'
+      rank.textContent = String(i + 1)
+      row.appendChild(rank)
+
+      var name = document.createElement('span')
+      name.className = 'board-name'
+      name.textContent = String(c.nickname || c.id || 'Someone')
+      row.appendChild(name)
+
+      var count = document.createElement('span')
+      count.className = 'board-count'
+      count.textContent = String(c.messages || 0)
+      row.appendChild(count)
+
+      board.appendChild(row)
+    }
+  }
+
+  // ---- the connection ------------------------------------------------------
+
+  // The same two steps the chat overlay takes: name a handle, get a room id. The
+  // board reads the identical `topChatters` frame the chat overlay already knows,
+  // so this is a second view of a board the backend keeps, not a new feature on
+  // the wire.
+  function socketFor(base, roomId) {
+    var url = base.replace(/^http/, 'ws') + '/ws/overlay/' + encodeURIComponent(roomId)
+    return new WebSocket(url)
+  }
+
+  // A room id, recognised by shape — eight, four, four, four, twelve hex digits
+  // with dashes — because the backend mints ids in exactly that form and a handle
+  // can never contain a dash-run like it. Passing one straight through skips the
+  // resolve step.
+  function looksLikeRoomId(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+  }
+
+  var socket = null
+  var pollTimer = null
+
+  function pollBoard() {
+    try {
+      socket.send(JSON.stringify({ type: 'topChatters' }))
+    } catch (error) {
+      // A socket mid-close throws on send; the close handler reconnects and the
+      // next open schedules the poll again.
+    }
+  }
+
+  function open(roomId) {
+    document.body.classList.remove('unconfigured')
+    try {
+      socket = socketFor(config.baseUrl, roomId)
+    } catch (error) {
+      say('bad backend URL: ' + error.message)
+      setTimeout(connect, 5000)
+      return
+    }
+
+    socket.onopen = function () {
+      say('connected to ' + roomId)
+      pollBoard()
+      pollTimer = setInterval(pollBoard, config.poll)
+    }
+
+    socket.onmessage = function (event) {
+      var frame
+      try {
+        frame = JSON.parse(event.data)
+      } catch (error) {
+        return
+      }
+      if (!frame) return
+      // The ranking, asked for and answered. Everything else on the wire — chat,
+      // gifts, joins, likes, viewer counts — is not a leaderboard and is ignored:
+      // this source shows the board and nothing else.
+      if (frame.type === 'topChatters') {
+        renderBoard(frame.chatters || [])
+      }
+    }
+
+    socket.onclose = function () {
+      clearInterval(pollTimer)
+      say('socket closed, retrying')
+      setTimeout(connect, 3000)
+    }
+  }
+
+  function connect() {
+    if (config.username === '') {
+      document.body.classList.add('unconfigured')
+      say('no handle — add ?room=yourhandle to the URL')
+      return
+    }
+
+    if (looksLikeRoomId(config.username)) {
+      open(config.username)
+      return
+    }
+
+    fetch(config.baseUrl + '/api/room-connect-by-username', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: config.username })
+    })
+      .then(function (response) {
+        if (!response.ok) throw new Error('HTTP ' + response.status)
+        return response.json()
+      })
+      .then(function (room) {
+        if (!room || !room.room_id) throw new Error('no room id in the answer')
+        open(room.room_id)
+      })
+      .catch(function (error) {
+        say('resolve failed: ' + error.message)
+        setTimeout(connect, 5000)
+      })
+  }
+
+  connect()
+})()
+</script>
+</body>
+</html>

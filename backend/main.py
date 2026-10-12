@@ -815,16 +815,20 @@ async def webhook(room_id: str, req: HookRequest):
 # and the room is named in the URL by whoever is watching.
 
 
-def _overlay_page() -> str:
-    """The overlay HTML, from disk.
+def _overlay_page(name: str = "overlay.html") -> str:
+    """An overlay page's HTML, from disk.
 
     Read on each request rather than cached at import so editing the file takes
     effect on reload without a restart — the same reason the desktop overlay
     reads it with `include_str!` only at build. A missing file is a 500, not a
     blank page: a browser source showing nothing is indistinguishable from a
     chat that is merely quiet, which is the one failure nobody can diagnose.
+
+    `name` picks which page: the chat overlay, or the standalone top-chatters
+    board. Both live in the same directory and share the baked-config contract,
+    so they go through the same reader.
     """
-    path = Path(__file__).parent / "static" / "overlay.html"
+    path = Path(__file__).parent / "static" / name
     return path.read_text(encoding="utf-8")
 
 
@@ -862,16 +866,14 @@ async def _baked_config(room_id: str) -> dict[str, Any]:
     return baked
 
 
-@app.get("/overlay/", response_class=HTMLResponse, include_in_schema=False)
-@app.get("/overlay", response_class=HTMLResponse, include_in_schema=False)
-async def overlay_page(request: Request) -> HTMLResponse:
-    """Serve the overlay page, baking in the named room's saved styling.
+async def _render_overlay(name: str, request: Request) -> HTMLResponse:
+    """An overlay page with the named room's saved styling baked in.
 
-    Both with and without the trailing slash, because an OBS browser source is
-    configured once by hand and a redirect on the wrong one is a source that
-    loads nothing for no obvious reason.
+    Shared by the chat overlay and the top-chatters board: both take a `?room=`
+    and both bake the room's config into the same `__OVERLAY_CONFIG__` slot, so
+    the escaping and the room lookup live here once rather than per route.
     """
-    html = _overlay_page()
+    html = _overlay_page(name)
     # Only a room id names a stored room; a handle is resolved by the page itself
     # and has no config to read here.
     room_id = request.query_params.get("room", "").strip()
@@ -889,6 +891,30 @@ async def overlay_page(request: Request) -> HTMLResponse:
             )
             html = html.replace("__OVERLAY_CONFIG__", safe)
     return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/overlay/", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/overlay", response_class=HTMLResponse, include_in_schema=False)
+async def overlay_page(request: Request) -> HTMLResponse:
+    """Serve the chat overlay, baking in the named room's saved styling.
+
+    Both with and without the trailing slash, because an OBS browser source is
+    configured once by hand and a redirect on the wrong one is a source that
+    loads nothing for no obvious reason.
+    """
+    return await _render_overlay("overlay.html", request)
+
+
+@app.get("/topchatter/", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/topchatter", response_class=HTMLResponse, include_in_schema=False)
+async def topchatter_page(request: Request) -> HTMLResponse:
+    """Serve the standalone top-chatters board — the leaderboard and nothing else.
+
+    Its own source for OBS, so a stream can put "who is talking most" in its own
+    scene rather than as a corner of the chat overlay. Same `?room=` and same
+    baked styling as the chat overlay; the difference is only which page it is.
+    """
+    return await _render_overlay("topchatter.html", request)
 
 
 # --------------------------------------------------------------------------

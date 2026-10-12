@@ -32,7 +32,8 @@ function check(name, condition, detail = '') {
 
 // The same file the backend serves and the host embeds, so this exercises the
 // page that actually ships rather than a copy of it.
-const PAGE = readFileSync(`${pkgRoot}backend/static/overlay.html`, 'utf8')
+const CHAT_PAGE = readFileSync(`${pkgRoot}backend/static/overlay.html`, 'utf8')
+const BOARD_PAGE = readFileSync(`${pkgRoot}backend/static/topchatter.html`, 'utf8')
 
 /**
  * Loads the page with a socket and a fetch it can be driven through.
@@ -41,11 +42,11 @@ const PAGE = readFileSync(`${pkgRoot}backend/static/overlay.html`, 'utf8')
  * that connects to something the test does not control is a page the test cannot
  * assert anything about.
  */
-function load(search = '?room=ana&max=8') {
+function load(search = '?room=ana&max=8', source = CHAT_PAGE) {
   const sockets = []
   let resolveRoom = null
 
-  const dom = new JSDOM(PAGE, {
+  const dom = new JSDOM(source, {
     url: `http://127.0.0.1:4319/${search}`,
     runScripts: 'dangerously',
     pretendToBeVisual: true,
@@ -314,7 +315,7 @@ check('background reaches the row scrim', variable('--background') === '0.5', va
 console.log('and the stylesheet is what consumes them')
 // Which rule reads each one. A custom property that nothing reads is the other
 // half of the same bug: correctly written, correctly ignored.
-const style = PAGE.slice(PAGE.indexOf('<style>') + '<style>'.length, PAGE.indexOf('</style>'))
+const style = CHAT_PAGE.slice(CHAT_PAGE.indexOf('<style>') + '<style>'.length, CHAT_PAGE.indexOf('</style>'))
 check('the text size styles the body', /body\s*\{[^}]*font-size:\s*var\(--size\)/.test(style))
 check('the name colour styles the name', /\.name\s*\{[^}]*color:\s*var\(--name-colour\)/.test(style))
 check('the text colour styles the text', /\.text\s*\{[^}]*color:\s*var\(--text-colour\)/.test(style))
@@ -323,7 +324,7 @@ check('the background styles the row', /li\s*\{[^}]*background:\s*rgba\(0,\s*0,\
 // And nothing is given two meanings: the page background must not be set from
 // `bg` as well as the row scrim, or moving the slider changes two things at once
 // and only one of them is the one named on it.
-check('and only the row, so one setting means one thing', !/documentElement\.style\.background\s*=/.test(PAGE))
+check('and only the row, so one setting means one thing', !/documentElement\.style\.background\s*=/.test(CHAT_PAGE))
 
 console.log('and the two limits are honoured through the link, not just read')
 // Not a check that the URL contains the numbers — that would be testing the string
@@ -340,6 +341,51 @@ check(
   styled.rows().filter((row) => row.dataset.leaving !== '1').length === 5,
   String(styled.rows().length),
 )
+
+console.log('the top-chatters board is its own page')
+// A separate source for OBS: the leaderboard and nothing else, reading the same
+// topChatters frame the chat overlay already knows. This is the second view of a
+// board the backend keeps, not a new feature on the wire.
+const boardPage = load('?room=ana', BOARD_PAGE)
+boardPage.openRoom('room-1')
+await settle()
+await settle()
+const boardDoc = boardPage.dom.window.document
+const bboard = () => boardDoc.querySelector('#board')
+check('the board page has no chat list', boardDoc.querySelector('#chat') === null, 'chat list present')
+check('the board starts hidden', bboard()?.hidden === true, String(bboard()?.hidden))
+boardPage.frame({
+  type: 'topChatters',
+  chatters: [
+    { id: 'b', nickname: 'budi', messages: 5 },
+    { id: 'a', nickname: 'ana', messages: 3 },
+  ],
+})
+await settle()
+check('a ranking shows the board', bboard()?.hidden === false, String(bboard()?.hidden))
+const bRows = () => [...boardDoc.querySelectorAll('#board li')]
+check('one row per chatter', bRows().length === 2, String(bRows().length))
+check('ranked in the order sent', bRows().map((r) => r.querySelector('.board-name')?.textContent).join(',') === 'budi,ana', bRows().map((r) => r.textContent).join(' | '))
+check('the count is shown beside the name', /5/.test(bRows()[0]?.textContent ?? ''), bRows()[0]?.textContent)
+check('a caption names what it is', /top chatters/i.test(boardDoc.querySelector('#caption')?.textContent ?? ''), boardDoc.querySelector('#caption')?.textContent)
+// Everything that is not a ranking is ignored: this source shows the board only.
+boardPage.frame({ type: 'comment', user: 'ana', text: 'hi' })
+boardPage.frame({ type: 'gift', user: 'ana', giftName: 'Rose', count: 1 })
+await settle()
+check('chat is not shown on the board page', bRows().length === 2, String(bRows().length))
+// An empty ranking hides the board and its caption rather than leaving a stale one.
+boardPage.frame({ type: 'topChatters', chatters: [] })
+await settle()
+check('an empty ranking hides the board', bboard()?.hidden === true, String(bboard()?.hidden))
+check('and hides the caption with it', boardDoc.querySelector('#caption')?.hidden === true, String(boardDoc.querySelector('#caption')?.hidden))
+
+console.log('the two pages resolve the room the same way')
+// Both name a handle and open a socket for the room id that comes back. Checked
+// here because a board page that skipped the resolve step would be a board for a
+// room that does not exist.
+const chatSockets = boardPage.sockets.length
+check('the board page opens one overlay socket', chatSockets === 1, String(chatSockets))
+check('as an overlay client, sharing the room', boardPage.sockets[0]?.url.endsWith('/ws/overlay/room-1'), boardPage.sockets[0]?.url)
 
 console.log(failures === 0 ? '\nall passed' : `\n${failures} failed`)
 process.exit(failures === 0 ? 0 : 1)
