@@ -5,6 +5,22 @@
  * the other way. Nothing in here reaches the network itself: the webview's content
  * security policy forbids it, and the few things that genuinely need the network —
  * the model list, opening a browser, a desktop toast — are the host's business.
+ *
+ * `SidecarEvent` below is the far side of a seam with nothing spanning it. The
+ * producing half is the hand-written `json!` in `to_app_event`
+ * (`src-tauri/src/backend.rs`), which emits plain JSON; the consuming half is this
+ * union, which claims the shape by casting. No schema, no codegen, no shared type —
+ * so the two can disagree about a field name and nothing will object, because each
+ * one is only ever checked against itself.
+ *
+ * That is not hypothetical: `join` declared `viewerId` here while the host sent
+ * `id`, so every join arrived with no identity and two viewers arriving inside the
+ * collapse window folded into one row. Both sides were tested and both were green.
+ *
+ * `test/test-wire.mjs` reads this file and `backend.rs` and compares them, so a
+ * field added to one without the other fails the suite. Run `npm run test:wire`
+ * after touching either side. Adding a genuinely optional field is fine — mark it
+ * `?` and the check will not demand the host always send it.
  */
 
 import type { LlmConfig } from './llm'
@@ -63,16 +79,18 @@ export type SidecarEvent = Tagged &
     | { type: 'follow'; nickname: string; id: string; avatar: string; timestamp: number }
     | { type: 'share'; nickname: string; id: string; avatar: string; timestamp: number }
     /**
-     * A viewer seen for the first time this session.
+     * A viewer arriving in the room.
      *
-     * TikTok sends no join event — only `memberCount`, a headcount that drifts and
-     * names nobody — so this is built from a first chat message instead.
+     * Carries `id` like every other person-bearing frame. It once declared
+     * `viewerId` instead, which nothing on the producing side ever sent — so every
+     * join arrived with an undefined id, and two different viewers arriving inside
+     * the collapse window folded into one row.
      */
     | {
         type: 'join'
         nickname: string
+        id: string
         avatar: string
-        viewerId: string
         timestamp: number
       }
     | { type: 'viewers'; count: number }

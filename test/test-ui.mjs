@@ -298,7 +298,7 @@ await act(async () => {
     type: 'join',
     nickname: 'Faray',
     avatar: '',
-    viewerId: 'v9',
+    id: 'v9',
     timestamp: 1700000005000,
   })
 })
@@ -602,7 +602,7 @@ await click(dialogToggle('Hide joins'))
 // Emitted fresh: the earlier join row was pushed out by the 500-row cap test,
 // which is the app behaving correctly and leaves nothing here to toggle.
 await act(async () => {
-  fake.emit({ platform: 'tiktok', type: 'join', nickname: 'Latecomer', avatar: '', viewerId: 'v-late', timestamp: 1700000006400 })
+  fake.emit({ platform: 'tiktok', type: 'join', nickname: 'Latecomer', avatar: '', id: 'v-late', timestamp: 1700000006400 })
 })
 check('the toggle actually hides a join row', $$('.row-join').length === 0, String($$('.row-join').length))
 await click(dialogToggle('Hide joins'))

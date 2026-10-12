@@ -232,7 +232,7 @@ export function useChat({ collapseWindowMs, collapseThreshold }: UseChatOptions)
             platform: 'tiktok',
             kind: 'join',
             nickname: event.nickname,
-            id: event.viewerId,
+            id: event.id,
             avatar: event.avatar,
             timestamp: event.timestamp,
           })

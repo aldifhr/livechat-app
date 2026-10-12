@@ -387,6 +387,16 @@ pub fn socket_url(base: &str, room_id: &str) -> String {
 ///
 /// Pure, because this is the whole compatibility surface and a mapping that
 /// quietly drops a field is invisible: the feed just gets sparser.
+///
+/// The far side of this is the `SidecarEvent` union in `src/lib/sidecar.ts`, and
+/// nothing spans the seam — this emits plain JSON and that claims the shape by
+/// casting. A field renamed here is not an error anywhere; it just arrives as
+/// `undefined`. `test/test-wire.mjs` reads this file and that one and compares
+/// them, so add a field to both or the suite says so.
+///
+/// Note the input and output names differ, deliberately: the backend's `user` and
+/// `userId` become `nickname` and `id` here. Renaming one side is how `join` ended
+/// up emitting `id` while the app was reading a `viewerId` that nothing sent.
 pub fn to_app_event(frame: &Value, now_ms: i64) -> Option<Value> {
     let kind = frame.get("type")?.as_str()?;
     // The app's status and error rows say which room they belong to, and every

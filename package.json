@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "npm run typecheck && npm run test:collapse && npm run test:ui && npm run test:stats && npm run test:llm && npm run test:ai && npm run test:overlay && npm run test:backend && npm run test:sound && npm run test:templates && npm run test:mentions",
+    "test": "npm run typecheck && npm run test:collapse && npm run test:ui && npm run test:stats && npm run test:llm && npm run test:ai && npm run test:overlay && npm run test:backend && npm run test:sound && npm run test:templates && npm run test:mentions && npm run test:wire",
     "test:collapse": "node test/test-collapse.mjs",
     "test:ui": "node test/test-ui.mjs",
     "test:stats": "node test/test-stats.mjs",
@@ -20,6 +20,7 @@
     "test:sound": "node test/test-sound.mjs",
     "test:templates": "node test/test-templates.mjs",
     "test:mentions": "node test/test-mentions.mjs",
+"test:wire": "node test/test-wire.mjs",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"
