@@ -19,7 +19,8 @@ from typing import Any
 import uvicorn
 from fastapi import APIRouter, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 import eventlog
@@ -976,6 +977,23 @@ async def websocket_endpoint(websocket: WebSocket, client_type: str, room_id: st
 
 
 app.include_router(router)
+
+
+# --------------------------------------------------------------------------
+# the gift sticker gallery
+# --------------------------------------------------------------------------
+#
+# A browsable page over the downloaded gift stickers. Served as a static mount so
+# the page, gifts.json and every .webp come from one directory with no per-file
+# routing — the page loads gifts.json and each sticker by filename, exactly as it
+# would from any static host. Mounted last so it cannot shadow an API route.
+
+_GIFTS_DIR = Path(__file__).parent / "static" / "gifts"
+
+
+# `html=True` serves index.html at /gifts/ on its own, so no separate route is
+# needed — and adding one would race the mount for the same path.
+app.mount("/gifts", StaticFiles(directory=str(_GIFTS_DIR), html=True), name="gifts")
 
 
 if __name__ == "__main__":
