@@ -778,7 +778,43 @@ await act(async () => {
 // viewer assertions below make. Without it the check races the debounce and reads
 // the previous zero.
 await new Promise((resolve) => setTimeout(resolve, 300))
-check('the collapsed bar still shows the headcount', /1[.,]234/.test($('.stats-glance')?.textContent ?? ''), $('.stats-glance')?.textContent)
+// The count is a rolling number now: the visible digit is one of ten in a column,
+// so its value lives in aria-label rather than in textContent, which reads the
+// whole strip.
+check(
+  'the collapsed bar still shows the headcount',
+  /1[.,]234/.test($('.stats-glance .roll-number')?.getAttribute('aria-label') ?? ''),
+  $('.stats-glance .roll-number')?.getAttribute('aria-label'),
+)
+
+// The roll is per-digit: 186 → 185 moves only the last strip, the others stay put.
+// That is the whole point over re-rendering the number — a digit that did not
+// change must not flicker.
+// Scoped to the viewer count's own number — the glance bar holds two of them.
+const viewerRoll = () => doc.querySelector('.stats-glance .roll-number')
+const rollStrips = () => [...viewerRoll().querySelectorAll('.roll-digit .roll-strip')]
+const rollTransforms = () => rollStrips().map((s) => s.style.transform)
+const rollBefore = rollTransforms()
+// 1234 -> 1235: only the last digit changes, so only its strip should move.
+await act(async () => {
+  fake.emit({ platform: 'tiktok', type: 'viewers', count: 1235 })
+})
+// The stats recorder debounces its change notification by 250ms, so the new value
+// has not reached the panel yet at 50ms — the same wait the viewer tests below make.
+await act(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 300))
+})
+const rollAfter = rollTransforms()
+check('the number is still four digits', rollAfter.length === 4, String(rollAfter.length))
+check(
+  'only the last digit moved',
+  rollAfter[0] === rollBefore[0] &&
+    rollAfter[1] === rollBefore[1] &&
+    rollAfter[2] === rollBefore[2] &&
+    rollAfter[3] !== rollBefore[3],
+  `${rollBefore} -> ${rollAfter}`,
+)
+check('the last strip rolled from 4 to 5', rollAfter[3] === 'translateY(-5em)', rollAfter[3])
 
 await click('.stats-toggle')
 check('it opens', Boolean($('.stats-body')))

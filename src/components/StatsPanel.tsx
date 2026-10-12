@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { sparkPath } from '../lib/stats'
 import { useStats, type StatsRecorder } from '../hooks/useStats'
+import { RollingNumber } from './RollingNumber'
 
 /**
  * The session readout.
@@ -35,7 +36,7 @@ export function StatsPanel({ stats }: Props) {
         {/* Read even while collapsed: the whole point of a collapsed panel is that
             the number is visible without opening it. */}
         <span className="stats-glance" title="Watching now">
-          {snapshot.viewers.toLocaleString()}
+          <RollingNumber value={snapshot.viewers} />
         </span>
         <span className="stats-glance" title="Chat messages per minute">
           {snapshot.messagesPerMinute.toLocaleString()}/min

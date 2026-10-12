@@ -926,6 +926,59 @@ select.input option {
   white-space: nowrap;
 }
 
+/* A number whose digits roll when they change. Each digit is a one-em window with
+   the overflow hidden, holding a ten-row strip of 0–9 that slides by transform —
+   so the animation runs on the compositor, the text stays selectable, and it
+   scales with the surrounding font rather than being a fixed-size image. */
+.roll-number {
+  display: inline-flex;
+  align-items: baseline;
+  font-variant-numeric: tabular-nums;
+}
+
+.roll-slot {
+  display: inline-flex;
+  align-items: baseline;
+}
+
+.roll-digit {
+  display: inline-block;
+  height: 1em;
+  overflow: hidden;
+  /* The window is exactly one line tall; the strip inside is ten. Line-height is
+     pinned so a cell is exactly 1em and the translate lines up digit to digit. */
+  line-height: 1;
+  vertical-align: top;
+}
+
+.roll-strip {
+  display: flex;
+  flex-direction: column;
+  /* The roll. A short ease-out so a digit settles rather than stopping dead. */
+  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.roll-cell {
+  height: 1em;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.roll-comma {
+  display: inline-block;
+}
+
+/* No motion asked for: the digit still shows the right value, it just arrives
+   without the roll. */
+@media (prefers-reduced-motion: reduce) {
+  .roll-strip {
+    transition: none;
+  }
+}
+
 /* The name is a button, not an anchor — the webview cannot navigate — but it
    should read as one: a pointer, and an underline only on hover, so a resting
    chat is not a page of links. Reset so it inherits the row's own colours and
