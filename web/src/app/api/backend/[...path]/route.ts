@@ -34,6 +34,16 @@ const ALLOWED = [
 /** Methods that change something. Reads are forwarded without the token. */
 const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE'])
 
+/**
+ * Reads that carry the token too, because the backend gates them like a write.
+ *
+ * `/api/rooms*` answers with every streamer's handle and overlay config, and the
+ * backend refuses it without the token. The overlay pages never read it — they
+ * open a WebSocket and POST the exempt connect route — so this proxy is the only
+ * reader that has to attach the credential.
+ */
+const SENSITIVE_READ = /^\/api\/rooms(\/|$)/
+
 function allowed(path: string): boolean {
   return ALLOWED.some((pattern) => pattern.test(path))
 }
@@ -51,15 +61,17 @@ async function proxy(request: NextRequest): Promise<Response> {
 
   const method = request.method
   const body = MUTATING.has(method) ? await request.text() : undefined
+  const forwardToken = MUTATING.has(method) || SENSITIVE_READ.test(path)
 
   try {
     const result = await backendFetch(path, {
       method,
       body: body === '' ? undefined : body,
-      // The token rides on the calls that change something. A read does not need
-      // it, and attaching a credential to a call that does not require one is how
-      // a route ends up reachable with it by accident.
-      forwardToken: MUTATING.has(method),
+      // The token rides on the calls that change something, and on the room
+      // reads the backend gates. A read that needs no credential gets none:
+      // attaching one where it is not required is how a route ends up reachable
+      // with it by accident.
+      forwardToken,
     })
     return Response.json(result ?? null)
   } catch (cause) {
