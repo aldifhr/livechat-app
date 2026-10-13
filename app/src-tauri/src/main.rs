@@ -118,12 +118,16 @@ async fn pick_sound_file(app: tauri::AppHandle) -> Result<String, String> {
     // Remembered host-side, because the asset scope is rebuilt empty on every
     // launch and the page's own storage cannot grant itself anything. Without
     // this the chosen sound works until the next restart and then silently stops.
-    sound::write_config(
-        &app,
-        &sound::SoundConfig {
-            path: path.to_string_lossy().into_owned(),
-        },
-    )?;
+    //
+    // Appended to the list, not written over it: the page has a picker per event,
+    // so replacing the record would revoke the grant on every other event's file
+    // the moment this one was chosen. Deduped, so re-picking the same file does
+    // not grow the record, and the newest pick is moved to the end.
+    let mut config = sound::read_config(&app);
+    let picked = path.to_string_lossy().into_owned();
+    config.paths.retain(|existing| existing != &picked);
+    config.paths.push(picked);
+    sound::write_config(&app, &config)?;
     let _ = app.asset_protocol_scope().allow_file(path);
     Ok(chosen.to_string())
 }

@@ -9,24 +9,56 @@
 //! The cost of not wildcarding is that a grant does not survive a restart — the
 //! scope is rebuilt empty every launch, and the page's own `localStorage` is not
 //! consulted because the page is not the thing that grants. So the host keeps its
-//! own record of the last file that was actually chosen through the dialog, and
-//! grants exactly that one file on the way up.
+//! own record of every file that was actually chosen through the dialog, and
+//! grants them all on the way up.
 //!
-//! Only ever a file the user picked in the file dialog. Nothing here widens what
-//! is reachable beyond the single path that dialog already returned.
+//! Every file, not the last one: the page lets the user pick a different file per
+//! event, so a record of one path meant the gift file worked until the chat file
+//! was chosen and then stopped. The record is a set of picks, not a single slot.
+//!
+//! Only ever files the user picked in the file dialog. Nothing here widens what
+//! is reachable beyond the paths that dialog already returned.
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-/// The remembered custom sound.
+/// The remembered custom sounds.
 ///
-/// Only the path is kept. The bytes stay on disk and are read when the sound
+/// Only the paths are kept. The bytes stay on disk and are read when a sound
 /// fires, so a large file is not held in memory for a sound that may never play.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct SoundConfig {
-    /// The absolute path of the chosen file, or empty for "use the templates".
-    pub path: String,
+    /// The absolute paths of every file the user has chosen, in the order they
+    /// were picked. Empty means "use the templates".
+    pub paths: Vec<String>,
+}
+
+/// Reads a record from its JSON, migrating the single-path shape it used to have.
+///
+/// The old file was `{"path": "..."}` because there was one custom sound for the
+/// whole app. There are now up to three, one per event, so a record of one path
+/// silently lost the other two — this reads the old key when the new one is
+/// absent, so a user who had already picked a file keeps it instead of having to
+/// pick again after the upgrade.
+pub fn parse_config(raw: &str) -> SoundConfig {
+    if let Ok(config) = serde_json::from_str::<SoundConfig>(raw) {
+        if !config.paths.is_empty() {
+            return config;
+        }
+    }
+    #[derive(Deserialize)]
+    struct Legacy {
+        path: String,
+    }
+    if let Ok(legacy) = serde_json::from_str::<Legacy>(raw) {
+        if !legacy.path.trim().is_empty() {
+            return SoundConfig {
+                paths: vec![legacy.path],
+            };
+        }
+    }
+    SoundConfig::default()
 }
 
 /// Where the record lives, under the app's own config directory.
@@ -41,7 +73,7 @@ pub fn config_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         .map_err(|e| format!("no config directory: {e}"))
 }
 
-/// Reads the remembered sound.
+/// Reads the remembered sounds.
 ///
 /// A missing or unreadable file is an empty one rather than an error: not having
 /// chosen a file yet is the normal state on first launch.
@@ -49,7 +81,7 @@ pub fn read_config(app: &tauri::AppHandle) -> SoundConfig {
     config_path(app)
         .ok()
         .and_then(|path| std::fs::read_to_string(path).ok())
-        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .map(|raw| parse_config(&raw))
         .unwrap_or_default()
 }
 
@@ -101,18 +133,19 @@ pub fn grantable(path: &str) -> Option<&Path> {
     Some(candidate)
 }
 
-/// Grants the remembered sound to the page's asset scope.
+/// Grants every remembered sound to the page's asset scope.
 ///
-/// Called once at startup so a sound chosen last run still plays without the
-/// user having to pick it again. Fails quietly: a sound that cannot be granted
-/// costs the user their custom sound and nothing else.
+/// Called once at startup so sounds chosen last run still play without the user
+/// having to pick them again. Fails quietly: a sound that cannot be granted costs
+/// the user that one custom sound and nothing else.
 pub fn regrant(app: &tauri::AppHandle) {
     use tauri::Manager as _;
     let config = read_config(app);
-    let Some(path) = grantable(&config.path) else {
-        return;
-    };
-    let _ = app.asset_protocol_scope().allow_file(path);
+    for path in &config.paths {
+        if let Some(path) = grantable(path) {
+            let _ = app.asset_protocol_scope().allow_file(path);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -160,18 +193,44 @@ mod tests {
     #[test]
     fn the_record_survives_a_round_trip() {
         let config = SoundConfig {
-            path: named("chime.mp3"),
+            paths: vec![named("chime.mp3"), named("blip.mp3")],
         };
         let body = serde_json::to_string(&config).expect("serialises");
         // camelCase, to match every other field on this wire.
-        assert!(body.contains("\"path\""));
+        assert!(body.contains("\"paths\""));
         let back: SoundConfig = serde_json::from_str(&body).expect("parses");
-        assert_eq!(back.path, config.path);
+        assert_eq!(back.paths, config.paths);
+    }
+
+    #[test]
+    fn a_single_path_record_is_migrated() {
+        // The shape before this was a list: one file for the whole app. Reading
+        // it as an empty list would drop the file the user had already chosen, so
+        // the old key is read when the new one is absent.
+        let back = parse_config(&format!("{{\"path\": {:?}}}", named("chime.mp3")));
+        assert_eq!(back.paths, vec![named("chime.mp3")]);
+    }
+
+    #[test]
+    fn every_picked_path_is_kept() {
+        // The regression: the record used to hold one path, so picking a second
+        // file for a second event silently dropped the first, and its grant went
+        // with it on the next launch.
+        let back = parse_config(&format!(
+            "{{\"paths\": [{:?}, {:?}]}}",
+            named("gift.mp3"),
+            named("chat.mp3")
+        ));
+        assert_eq!(back.paths.len(), 2);
     }
 
     #[test]
     fn an_empty_file_parses_to_no_sound() {
         let back: SoundConfig = serde_json::from_str("{}").expect("parses");
-        assert_eq!(back.path, "");
+        assert!(back.paths.is_empty());
+        // A record that names nothing is the same as no record at all.
+        assert!(parse_config("{}").paths.is_empty());
+        assert!(parse_config("{\"paths\": []}").paths.is_empty());
+        assert!(parse_config("{\"path\": \"  \"}").paths.is_empty());
     }
 }
