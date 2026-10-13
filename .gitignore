@@ -31,3 +31,12 @@ venv/
 # Runtime state — local room records and usernames, not source.
 backend/config/rooms.json
 backend/config/overlays.json
+
+# The nginx basic-auth hash for the deployed dashboard. It lives only on the
+# server, at /etc/nginx/streamtools.htpasswd, and is never source. Committing a
+# copy put the bcrypt hash of the admin password in a public repository — a hash
+# is offline-crackable, so it is a credential, not a config file. Kept ignored
+# here (and named exactly) so a stray copy at the repo root cannot be committed
+# again.
+streamtools
+.hermes/
