@@ -655,20 +655,25 @@ async def room_connect_by_username(req: ConnectByUsernameRequest):
     # no source", could never be true here, because this route connects the room
     # it just created on the very next statement. The log says when it rejects, so
     # the failure mode is visible rather than silent.
-    if created and await store.count_auto_rooms_async() > AUTO_ROOM_LIMIT:
+    if created:
+        # Counted once. The check and the log line both used to call
+        # count_auto_rooms_async, which is a second full read of the store on a
+        # path an unauthenticated caller can drive — the count cannot change
+        # between the two calls here, so the extra read was pure churn.
         auto = await store.count_auto_rooms_async()
-        logger.warning(
-            "room-connect-by-username: refusing to create a room for @%s — "
-            "%d auto-created rooms already exist (limit %d)",
-            username,
-            auto,
-            AUTO_ROOM_LIMIT,
-        )
-        await store.delete_room_async(record["id"])
-        raise HTTPException(
-            status_code=429,
-            detail=f"too many auto-created rooms (limit {AUTO_ROOM_LIMIT}); delete some first",
-        )
+        if auto > AUTO_ROOM_LIMIT:
+            logger.warning(
+                "room-connect-by-username: refusing to create a room for @%s — "
+                "%d auto-created rooms already exist (limit %d)",
+                username,
+                auto,
+                AUTO_ROOM_LIMIT,
+            )
+            await store.delete_room_async(record["id"])
+            raise HTTPException(
+                status_code=429,
+                detail=f"too many auto-created rooms (limit {AUTO_ROOM_LIMIT}); delete some first",
+            )
 
     room_id = record["id"]
 
@@ -676,8 +681,15 @@ async def room_connect_by_username(req: ConnectByUsernameRequest):
     # the existing config rather than replacing it, so a room configured elsewhere
     # keeps everything else. This is what lets the overlay link be a bare
     # `?room=<id>`: the room carries the look, the link only names it.
+    #
+    # Applied only when this call invented the room. This route is exempt from the
+    # write token, so accepting styling for a room that already exists would let
+    # anyone who knows a room id restyle someone else's overlay without a
+    # credential — an unauthenticated write to a config the dashboard owns. A room
+    # this call just created has no prior config to clobber, and an existing room
+    # keeps the styling set where it was made.
     overlay = _clean_overlay(req.overlay)
-    if overlay:
+    if created and overlay:
         existing = record.get("config") or {}
         await store.set_config_async(room_id, {**existing, **overlay})
 
