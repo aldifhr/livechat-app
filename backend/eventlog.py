@@ -67,6 +67,17 @@ class RoomLog:
     viewers: int | None = None
     viewers_at: float = 0.0
 
+    #: Peak viewer count seen during this session, with the timestamp.
+    peak_viewers: int = 0
+    peak_viewers_at: float = 0.0
+
+    #: Total diamonds (gift value) accumulated this session.
+    total_diamonds: int = 0
+
+    #: Top gifters this session: user_id -> total diamond value.
+    gifters: dict[str, int] = field(default_factory=dict)
+    gifter_names: dict[str, str] = field(default_factory=dict)
+
     #: Per-chatter message counts and the last avatar seen for each. The overlay's
     #: leaderboard reads this; it is kept here because this is the one place
     #: every comment already passes through, keyed on the stable handle so a
@@ -82,6 +93,12 @@ class RoomLog:
         self.last_user.clear()
         self.chatter_counts.clear()
         self.chatter_names.clear()
+        # Session stats — reset on reconnect for accurate per-session tracking
+        self.peak_viewers = 0
+        self.peak_viewers_at = 0.0
+        self.total_diamonds = 0
+        self.gifters.clear()
+        self.gifter_names.clear()
 
 
 #: How many names the leaderboard ranks and shows.
@@ -140,6 +157,10 @@ def record(
         count = int((meta or {}).get("count") or 0)
         room.viewers = count
         room.viewers_at = time.time()
+        # Track peak viewer count for session stats
+        if count > room.peak_viewers:
+            room.peak_viewers = count
+            room.peak_viewers_at = time.time()
         log.info("[%s] viewers=%d", room_id, count)
         return
 
@@ -157,6 +178,14 @@ def record(
         key = user_id or user
         room.chatter_counts[key] = room.chatter_counts.get(key, 0) + 1
         room.chatter_names[key] = user
+
+    # Track gift diamonds and top gifters
+    _diamond_value = (meta or {}).get("value", 0)
+    if kind == "gift" and _diamond_value and user:
+        room.total_diamonds += _diamond_value
+        key = user_id or user
+        room.gifters[key] = room.gifters.get(key, 0) + _diamond_value
+        room.gifter_names[key] = user
 
     # A greeting that is long enough to be a sentence and short enough to stay
     # on one line. Comment text is capped by the widget at 44 characters anyway,
@@ -200,6 +229,21 @@ def top_chatters(room_id: str, limit: int = TOP_N) -> list[dict[str, Any]]:
     ]
 
 
+def top_gifters(room_id: str, limit: int = TOP_N) -> list[dict[str, Any]]:
+    """The top gifters in one room by total diamond value, most first."""
+    room = _rooms.get(room_id)
+    if room is None or not room.gifters:
+        return []
+    ranked = sorted(
+        room.gifters.items(),
+        key=lambda kv: (-kv[1], room.gifter_names.get(kv[0], "")),
+    )
+    return [
+        {"id": key, "nickname": room.gifter_names.get(key, key), "diamonds": diamonds}
+        for key, diamonds in ranked[:limit]
+    ]
+
+
 def snapshot(room_id: str) -> dict[str, Any]:
     """One room's counters, for a status endpoint or a test."""
     room = _rooms.get(room_id)
@@ -218,5 +262,9 @@ def snapshot(room_id: str) -> dict[str, Any]:
         "repeats": dict(room.repeats),
         "viewers": room.viewers,
         "viewers_age": round(time.time() - room.viewers_at, 1) if room.viewers_at else None,
+        "peak_viewers": room.peak_viewers,
+        "peak_viewers_at": round(time.time() - room.peak_viewers_at, 1) if room.peak_viewers_at else None,
+        "total_diamonds": room.total_diamonds,
         "topChatters": top_chatters(room_id),
+        "topGifters": top_gifters(room_id),
     }

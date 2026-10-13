@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
+from typing import Any, AsyncGenerator
 
+from protocols import EventAdapter
 from sources.viewers_count import judge
-from events import COMMENT, FOLLOW, GIFT, JOIN, LIKE, SHARE, VIEWERS, Event, dispatch, emit_error, emit_status
+from events import COMMENT, FOLLOW, GIFT, JOIN, LIKE, SHARE, VIEWERS, Event
 
 # TikTok substitutes these when a viewer's profile is unavailable or deleted.
 # Broadcasting them puts literal "Not found" / "?" on the room, so they are
@@ -97,7 +98,11 @@ def avatar_url(user: Any) -> str:
 logger = logging.getLogger("streamkit.tiktok")
 
 
-class TikTokSource:
+class TikTokAdapter(EventAdapter):
+    """TikTok Live event adapter. Implements the EventAdapter protocol."""
+
+    provider = "tiktok"
+
     def __init__(self, username: str, room_id: str) -> None:
         self.username = username
         self.room_id = room_id
@@ -116,6 +121,12 @@ class TikTokSource:
         # new connect replace this object while its teardown is still running.
         self._live_ended = False
         self._task: asyncio.Task | None = None
+        self._events: asyncio.Queue[Event] = asyncio.Queue()
+        self._event_task: asyncio.Task | None = None
+        # Streak accumulation: user_id -> {gift_id, count, diamond_total}
+        self._gift_streaks: dict[str, dict[str, int]] = {}
+        # Guard: don't create duplicate _run_client tasks
+        self._reconnect_task: asyncio.Task | None = None
 
     def status_payload(self) -> dict[str, Any]:
         if self._connected:
@@ -160,7 +171,8 @@ class TikTokSource:
         """
         self._task = asyncio.create_task(self.start())
 
-    async def start(self) -> None:
+    async def connect(self, **kwargs: Any) -> bool:
+        """Connect to TikTok Live for this username."""
         try:
             from TikTokLive import TikTokLiveClient as Client
             from TikTokLive.events import (
@@ -176,234 +188,311 @@ class TikTokSource:
                 LiveEndEvent,
             )
         except ImportError:
-            await emit_error(
-                self.room_id,
-                "TikTokLive library not installed. Run: pip install TikTokLive",
-            )
-            return
+            logger.error("TikTokLive library not installed. Run: pip install TikTokLive")
+            return False
 
         self._client = Client(unique_id=self.username)
-        self._running = True
+        self._setup_handlers(self._client)
 
-        @self._client.on(ConnectEvent)
+        self._running = True
+        self._connected = False
+        self._live_ended = False
+        self._attempt = 0
+        # Cancel any existing reconnect task before creating new one
+        if self._reconnect_task is not None and not self._reconnect_task.done():
+            self._reconnect_task.cancel()
+            try:
+                await self._reconnect_task
+            except asyncio.CancelledError:
+                pass
+        self._reconnect_task = asyncio.create_task(self._run_client())
+        return True
+
+    def _setup_handlers(self, client: Any) -> None:
+        """Register all TikTokLive event handlers on the given client."""
+        from TikTokLive.events import (
+            ConnectEvent,
+            DisconnectEvent,
+            CommentEvent,
+            LikeEvent,
+            GiftEvent,
+            RoomUserSeqEvent,
+            JoinEvent,
+            FollowEvent,
+            ShareEvent,
+            LiveEndEvent,
+        )
+
+        @client.on(ConnectEvent)
         async def on_connect(_):
             self._connected = True
-            await emit_status(self.room_id, connected=True, message=f"Connected to @{self.username}")
 
-        @self._client.on(DisconnectEvent)
+        @client.on(DisconnectEvent)
         async def on_disconnect(_):
             self._running = False
             self._connected = False
-            await emit_status(self.room_id, connected=False, message="Disconnected")
 
-        @self._client.on(LiveEndEvent)
+        @client.on(LiveEndEvent)
         async def on_live_end(_):
-            """The streamer stopped, as opposed to our socket dropping.
-
-            Both stop delivering events, and from the feed alone they are the
-            same thing. They are not the same thing: a dropped connection is
-            worth reconnecting to, a finished live is not — the user is not
-            going to be there in an hour. Saying which one it was lets the app
-            stop instead of silently retrying against a handle that has gone
-            quiet, which is the failure that looks like a hung app.
-
-            `_running` is left alone. It means "a connection was attempted" and
-            the router reads it to decide whether a room still has a source, so
-            clearing it here would let a new connect replace this object while
-            its own teardown is still running.
-            """
             self._connected = False
             self._live_ended = True
-            await emit_status(
-                self.room_id,
-                connected=False,
-                message=f"@{self.username} is no longer live",
-                live_ended=True,
-            )
 
         @self._client.on(CommentEvent)
         async def on_comment(event):
             name = display_name(event.user)
             if not name:
                 return
-            dispatch(
-                self.room_id,
-                Event(
-                    kind=COMMENT,
-                    user=name,
-                    user_id=display_id(event.user),
-                    avatar=avatar_url(event.user),
-                    value=event.comment,
-                ),
-            )
+            await self._events.put(Event(
+                kind=COMMENT,
+                user=name,
+                user_id=display_id(event.user),
+                avatar=avatar_url(event.user),
+                value=event.comment,
+            ))
 
         @self._client.on(LikeEvent)
         async def on_like(event):
             name = display_name(event.user)
             if not name:
                 return
-            dispatch(
-                self.room_id,
-                Event(
-                    kind=LIKE,
-                    user=name,
-                    user_id=display_id(event.user),
-                    avatar=avatar_url(event.user),
-                    meta={"count": event.count, "totalLikes": event.total},
-                ),
-            )
+            await self._events.put(Event(
+                kind=LIKE,
+                user=name,
+                user_id=display_id(event.user),
+                avatar=avatar_url(event.user),
+                meta={"count": event.count, "totalLikes": event.total},
+            ))
 
-        @self._client.on(GiftEvent)
+        @client.on(GiftEvent)
         async def on_gift(event):
             if event.gift is None:
                 return
             name = display_name(event.user)
             if not name:
                 return
-            dispatch(
-                self.room_id,
-                Event(
-                    kind=GIFT,
-                    user=name,
-                    user_id=display_id(event.user),
-                    avatar=avatar_url(event.user),
-                    meta={
-                        "giftName": event.gift.name or "Gift",
-                        "count": event.repeat_count,
-                        "value": event.gift.diamond_count * event.repeat_count,
-                    },
-                ),
-            )
+            user_id = display_id(event.user)
+            gift_id = event.gift.gift_id or 0
 
-        # JoinEvent is sparse — TikTok batches member messages rather than
-        # sending one per viewer — so treat it as a bonus, not a source of
-        # truth for who is in the room.
+            # TikTok streak handling: repeat_end=0 means streak ongoing,
+            # repeat_end=1 means streak just finished. Accumulate diamonds
+            # during streak, dispatch total when repeat_end=1.
+            if event.repeat_end == 0:
+                # Streak in progress — accumulate
+                streak = self._gift_streaks.get(user_id)
+                if streak is None or streak["gift_id"] != gift_id:
+                    self._gift_streaks[user_id] = {
+                        "gift_id": gift_id,
+                        "count": event.repeat_count,
+                        "diamond_total": event.gift.diamond_count * event.repeat_count,
+                    }
+                else:
+                    streak["count"] += event.repeat_count
+                    streak["diamond_total"] += event.gift.diamond_count * event.repeat_count
+                return  # Don't dispatch yet
+
+            # repeat_end == 1 — streak finished (or single gift)
+            streak = self._gift_streaks.pop(user_id, None)
+            if streak and streak["gift_id"] == gift_id:
+                count = streak["count"]
+                value = streak["diamond_total"]
+            else:
+                count = event.repeat_count
+                value = event.gift.diamond_count * event.repeat_count
+
+            await self._events.put(Event(
+                kind=GIFT,
+                user=name,
+                user_id=user_id,
+                avatar=avatar_url(event.user),
+                meta={
+                    "giftName": event.gift.name or "Gift",
+                    "count": count,
+                    "value": value,
+                    "repeatEnd": event.repeat_end,
+                    "streak": event.streaking if hasattr(event, "streaking") else False,
+                },
+            ))
+
         @self._client.on(JoinEvent)
         async def on_join(event):
             name = display_name(event.user)
             if not name:
                 return
-            dispatch(
-                self.room_id,
-                Event(
-                    kind=JOIN,
-                    user=name,
-                    user_id=display_id(event.user),
-                    avatar=avatar_url(event.user),
-                    meta={"viewers": event.member_count},
-                ),
-            )
+            await self._events.put(Event(
+                kind=JOIN,
+                user=name,
+                user_id=display_id(event.user),
+                avatar=avatar_url(event.user),
+                meta={"viewers": event.member_count},
+            ))
 
         @self._client.on(RoomUserSeqEvent)
         async def on_viewers(event):
-            # `total` is how many people are in the room now. `total_user` is how
-            # many have been in it since the session began, and it only ever
-            # climbs — measured live at 627,555 against 19,682 on `join`, 31.9
-            # times apart, both rising. A city sized from a cumulative total reads
-            # METROPOLIS within minutes of any stream starting and keeps climbing
-            # for as long as it runs, which measures nothing.
-            #
-            # Only `count` goes out. `events._viewers` forwards that one field,
-            # so sending the other three would mean carrying them this far to
-            # drop them there, with nothing on either side reading them.
-            # The decision — in range, implausible, a jump worth reporting —
-            # lives in `viewers_count.judge`, because the handler is a nested
-            # function and nothing could test it where it lived.
             verdict = judge(event.total, self._last_viewers, event.total_user)
             self._last_viewers = verdict.last
             if verdict.warning:
                 logger.warning(verdict.warning)
-            if verdict.count is None:
-                return
-            dispatch(self.room_id, Event(kind=VIEWERS, meta={"count": verdict.count}))
+            if verdict.count is not None:
+                await self._events.put(Event(
+                    kind=VIEWERS,
+                    meta={"count": verdict.count},
+                ))
 
-        # Social events are registered as the concrete subclasses rather than
-        # SocialEvent: TikTokLive matches handlers on the emitted class, and a
-        # parent-class handler would fire again for every follow and share.
         @self._client.on(FollowEvent)
         async def on_follow(event):
             name = display_name(event.user)
             if not name:
                 return
-            dispatch(
-                self.room_id,
-                Event(
-                    kind=FOLLOW,
-                    user=name,
-                    user_id=display_id(event.user),
-                    avatar=avatar_url(event.user),
-                ),
-            )
+            await self._events.put(Event(
+                kind=FOLLOW,
+                user=name,
+                user_id=display_id(event.user),
+                avatar=avatar_url(event.user),
+            ))
 
         @self._client.on(ShareEvent)
         async def on_share(event):
             name = display_name(event.user)
             if not name:
                 return
-            # users_joined parses a display string and is None whenever that
-            # string is absent, so it is optional rather than defaulted to 0.
             joined = event.users_joined
-            dispatch(
-                self.room_id,
-                Event(
-                    kind=SHARE,
-                    user=name,
-                    user_id=display_id(event.user),
-                    avatar=avatar_url(event.user),
-                    meta={"count": joined} if joined else {},
-                ),
-            )
+            await self._events.put(Event(
+                kind=SHARE,
+                user=name,
+                user_id=display_id(event.user),
+                avatar=avatar_url(event.user),
+                meta={"count": joined} if joined else {},
+            ))
 
-        try:
-            await self._client.start()
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            self._running = False
-            self._connected = False
-            await emit_error(self.room_id, f"Connection failed: {e}")
-        finally:
-            self._connected = False
-            # Skipped when the live already ended. This `finally` runs on the way
-            # out of a finished stream too, so without the guard it sent a plain
-            # "Disconnected" a moment after the flagged one and overwrote it — the
-            # app saw the stream end and then, immediately, a generic disconnect,
-            # which is the ambiguity this was added to remove. A deliberate
-            # `stop()` takes the same path, and there the generic message is the
-            # correct one.
-            #
-            # A condition, not a `return`: returning out of a `finally` discards
-            # an in-flight exception, which would swallow a connection failure
-            # that this same block is meant to report.
-            if not self._live_ended:
-                await emit_status(self.room_id, connected=False, message="Disconnected")
-
-    async def stop(self) -> None:
-        self._running = False
+        self._running = True
         self._connected = False
-        # Cleared so a deliberate stop does not leave the object claiming the live
-        # ended, which would make its next status frame report a finished stream
-        # it never saw finish.
         self._live_ended = False
+        self._event_task = asyncio.create_task(self._run_client())
+        return True
+
+    async def disconnect(self) -> None:
+        """Stop connection and cleanup."""
+        self._running = False
+        if self._event_task:
+            self._event_task.cancel()
+            try:
+                await self._event_task
+            except asyncio.CancelledError:
+                pass
+            self._event_task = None
+
         if self._client is not None:
             try:
                 await asyncio.wait_for(self._client.disconnect(), timeout=5)
-            except asyncio.TimeoutError:
+            except (asyncio.TimeoutError, Exception):
                 pass
-            except Exception:
-                pass
+            self._client = None
+
+        self._connected = False
+        self._live_ended = False
+        self._gift_streaks.clear()
+
+    async def observe(self) -> AsyncGenerator[Event, None]:
+        """Yield normalized events from TikTok Live stream."""
+        while self._running or not self._events.empty():
+            event = await self._events.get()
+            yield event
+
+    async def _run_client(self) -> None:
+        """Run the TikTok client with auto-reconnect and exponential backoff.
+
+        Reconnects on transient failures but gives up permanently on:
+        - Streamer's live has ended (no point retrying)
+        - Explicit shutdown via disconnect()
+        - Max retry attempts exceeded
+
+        Backoff sequence: 2s, 4s, 8s, 16s, 32s, capped at 30s.
+        Max retries: 10 attempts before giving up.
+        Includes jitter to prevent thundering herd on multi-room reconnect.
+        """
+        import random
+
+        _max_retries = getattr(self, "_attempt", 0)  # inherit from connect
+        _base_delay = 2.0
+        _max_delay = 30.0
+        _max_retries = 10
+        _attempt = 0
+
+        while self._running and not self._live_ended:
+            try:
+                if self._client is not None:
+                    await self._client.start()
+                else:
+                    logger.warning("No TikTok client to start for @%s", self.username)
+                    break
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                if self._live_ended or not self._running:
+                    break
+                _attempt += 1
+                logger.warning(
+                    "TikTok connection failed for @%s (attempt %d/%d): %s",
+                    self.username, _attempt, _max_retries, e,
+                )
+                if _attempt >= _max_retries:
+                    logger.error(
+                        "Max reconnect attempts reached for @%s — giving up",
+                        self.username,
+                    )
+                    self._running = False
+                    break
+
+                delay = min(_base_delay * (2 ** (_attempt - 1)), _max_delay)
+                # Add jitter (±50%) to prevent thundering herd
+                delay = delay * (0.5 + random.random())
+                logger.info(
+                    "Reconnecting to @%s in %.1fs", self.username, delay,
+                )
+                await asyncio.sleep(delay)
+                # Re-create client on retry
+                try:
+                    from TikTokLive import TikTokLiveClient as Client
+                    self._client = Client(unique_id=self.username)
+                    self._setup_handlers(self._client)
+                except Exception as retry_err:
+                    logger.error("Failed to recreate client on retry: %s", retry_err)
+                    self._running = False
+                    break
+            else:
+                # Connection ended normally (not via exception)
+                break
+
+        self._connected = False
+
+    def _register_handlers(self) -> None:
+        """Register event handlers on current client."""
+        # Use _setup_handlers instead — kept for backward compat
+        if self._client is not None:
+            self._setup_handlers(self._client)
+
+    # --- Backward compatibility helpers ---
+
+    def start_background(self) -> None:
+        """Run connect() as a task owned by this adapter."""
+        self._task = asyncio.create_task(self.connect())
+
+    async def start(self) -> None:
+        """Legacy alias for connect()."""
+        await self.connect()
+
+    async def stop(self) -> None:
+        """Legacy alias for disconnect()."""
+        await self.disconnect()
         if self._task is not None and not self._task.done():
             self._task.cancel()
             try:
                 await self._task
             except asyncio.CancelledError:
-                # The cancellation of *this* task is the expected ending and is
-                # deliberately absorbed. A cancellation aimed at the caller — a
-                # shutdown, say — used to be swallowed here too, because the one
-                # except clause caught both, so `stop()` returned normally with
-                # `self._client` still set and the teardown half-finished.
                 pass
-            except Exception:
-                pass
-        self._client = None
-        self._task = None
+            self._task = None
+
+
+# Register adapter with provider registry
+from protocols import registry as _registry
+_registry.register("tiktok", TikTokAdapter)
