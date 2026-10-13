@@ -312,9 +312,32 @@ print("token guard")
 os.environ["STREAMKIT_TOKEN"] = "s3cret"
 try:
     with TestClient(main.app) as guarded:
-        # Reading has to stay open: the room page is loaded by OBS, which
-        # cannot send a header, and it needs the list and the stream to render.
-        check("read is open with a token set", guarded.get("/api/rooms").status_code == 200)
+        # The room list answers with every streamer's handle and overlay config,
+        # so it needs the token like a write does. The overlay pages never read
+        # it (they open a WebSocket and POST the exempt connect route), and the
+        # dashboard goes through its Next proxy, which holds the token.
+        check("room list without a token is 401", guarded.get("/api/rooms").status_code == 401)
+        check(
+            "one room without a token is 401",
+            guarded.get("/api/rooms/00000000-0000-0000-0000-000000000000").status_code == 401,
+        )
+        check(
+            "room status without a token is 401",
+            guarded.get("/api/rooms/00000000-0000-0000-0000-000000000000/status").status_code == 401,
+        )
+        check(
+            "the room list with the token works",
+            guarded.get("/api/rooms", headers={"x-streamkit-token": "s3cret"}).status_code == 200,
+        )
+        # The health probe stays open for an orchestrator, but must not carry the
+        # per-room map (each entry names a handle) to an unauthenticated caller.
+        open_health = guarded.get("/health")
+        check("health is open with a token set", open_health.status_code == 200)
+        check("health does not leak the room map", "rooms" not in open_health.json(), str(open_health.json()))
+        check("health still reports the counts", "activeRooms" in open_health.json(), str(open_health.json()))
+        authed_health = guarded.get("/health", headers={"x-streamkit-token": "s3cret"}).json()
+        check("health carries the room map to the token holder", "rooms" in authed_health, str(authed_health))
+        # The WebSocket attach must stay open: OBS cannot send a header.
         check(
             "socket attach is open with a token set",
             _socket_attaches(guarded),
@@ -394,7 +417,13 @@ try:
             "and a query param does not open it either",
             sealed.post("/api/rooms?token=anything", json={"name": "Guessed"}).status_code == 401,
         )
-        check("read still open", sealed.get("/api/rooms").status_code == 200)
+        check(
+            "a room read with no token configured is refused too",
+            sealed.get("/api/rooms").status_code == 401,
+        )
+        # The probe stays open even here — an orchestrator must be able to tell
+        # "up" from "down" without a credential.
+        check("health stays open with no token configured", sealed.get("/health").status_code == 200)
 
     os.environ["STREAMKIT_AUTH_DISABLED"] = "true"
     with TestClient(main.app) as opened:
@@ -489,8 +518,13 @@ try:
 
         # An origin that is not on the allowlist gets no grant. `*` used to be
         # returned here, which let any page on the internet read this API's
-        # responses from a victim's browser.
-        r = browser.get("/api/rooms", headers={"Origin": "https://evil.example"})
+        # responses from a victim's browser. The token is sent so the request
+        # reaches the app rather than stopping at the auth gate — this is about
+        # the CORS layer, not the token layer.
+        r = browser.get(
+            "/api/rooms",
+            headers={"Origin": "https://evil.example", "X-StreamKit-Token": "s3cret"},
+        )
         check(
             "an origin off the allowlist gets no CORS grant",
             r.headers.get("access-control-allow-origin") is None,
@@ -612,7 +646,13 @@ made = client.post(
 )
 check("the connect still succeeds", made.status_code == 200, str(made.status_code))
 styled_id = made.json()["room_id"]
-saved = client.get(f"/api/rooms/{styled_id}").json()["config"]
+# This read is gated like a write now, and the auth env was reset earlier in the
+# file, so it carries the token explicitly.
+os.environ["STREAMKIT_TOKEN"] = "s3cret"
+try:
+    saved = client.get(f"/api/rooms/{styled_id}", headers=auth()).json()["config"]
+finally:
+    os.environ.pop("STREAMKIT_TOKEN", None)
 check("the size was stored", saved.get("overlaySize") == 30, json.dumps(saved))
 check("the name colour was stored", saved.get("overlayNameColour") == "#abcdef", json.dumps(saved))
 check("the background was stored", saved.get("overlayBg") == 0.2, json.dumps(saved))

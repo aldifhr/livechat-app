@@ -257,6 +257,27 @@ def is_exempt_write_path(path: str) -> bool:
     return False
 
 
+#: Reads that expose room data — names, handles, stored config — and so need the
+#: token like a write does. `/api/rooms` and anything under it is the whole set:
+#: the list, one room's record, and its status.
+#:
+#: The overlay pages never call these. An overlay opens a WebSocket and, for a
+#: bare handle, POSTs to the exempt connect route; it never reads the room list.
+#: The dashboard reaches them through its Next proxy, which holds the token, and
+#: the desktop app talks to the backend for `/api/room-connect` alone. So gating
+#: them costs no working caller anything, and it closes a list of every streamer
+#: and their overlay settings to anyone who finds the host.
+#:
+#: `/health` and `/metrics` are deliberately NOT here: an orchestrator probes them
+#: without a credential. `/health` no longer carries the per-room map to an
+#: unauthenticated caller (see the handler) — it leaked the handles.
+SENSITIVE_READ_PREFIX = "/api/rooms"
+
+
+def is_sensitive_read_path(path: str) -> bool:
+    return path == SENSITIVE_READ_PREFIX or path.startswith(SENSITIVE_READ_PREFIX + "/")
+
+
 def warn_if_auth_unsatisfiable() -> None:
     """Say so at boot, once, in the log a deploy actually reads.
 
@@ -282,12 +303,18 @@ def warn_if_auth_unsatisfiable() -> None:
 
 @app.middleware("http")
 async def guard_mutations(request: Request, call_next):
-    """Reject unauthenticated writes.
+    """Reject unauthenticated writes, and unauthenticated reads of room data.
 
     A method check rather than a path list, so a new mutating route is protected
     the moment it is added instead of the day someone remembers to add it. The
     WebSocket path is exempt because it is not an HTTP request in the first
     place.
+
+    `/api/rooms*` reads carry the same token: they answer with every streamer's
+    handle and overlay config, and no working caller reads them without a
+    credential (see `is_sensitive_read_path`). `/health` and `/metrics` stay open
+    for an orchestrator, but `/health` withholds the per-room map from an
+    unauthenticated caller.
 
     /api/room-connect/{id} is exempt because the username comes from the room's
     own stored config — not from the caller — so there is nothing to forge.
@@ -296,7 +323,11 @@ async def guard_mutations(request: Request, call_next):
     middleware is not routed through the exception handlers, so it would surface
     as an unhandled error instead of a 401.
     """
-    if request.method in ("POST", "PATCH", "PUT", "DELETE"):
+    method = request.method
+    guarded = method in ("POST", "PATCH", "PUT", "DELETE") or (
+        method == "GET" and is_sensitive_read_path(request.url.path)
+    )
+    if guarded:
         # room-connect is config-scoped (username from the stored room, never
         # from the caller) — exempt it from the token gate.
         if not is_exempt_write_path(request.url.path) and not token_is_valid(request):
@@ -1116,24 +1147,26 @@ app.mount("/gifts", StaticFiles(directory=str(_GIFTS_DIR), html=True), name="gif
 # know they exist. Route declarations belong with the other routes.
 
 @app.get("/health")
-async def health() -> dict[str, Any]:
+async def health(request: Request) -> dict[str, Any]:
     """Aggregate liveness probe for the backend.
 
-    Returns uptime, active room count, total WebSocket connections, and
-    per-room provider status. Used by orchestrators and load balancers.
+    Returns uptime, active room count, total WebSocket connections, and — to a
+    caller holding the token — per-room provider status. Used by orchestrators
+    and load balancers, which probe without a credential; the per-room map is
+    withheld from them because each entry names the streamer's handle, and this
+    endpoint is open. The counts are what a probe acts on and they stay.
     """
     import time
     uptime_s = int(time.time() - getattr(app.state, "started_at", time.time()))
-    room_status = {}
-    for room_id, source in sources.items():
-        room_status[room_id] = source.status_payload()
-    return {
+    body: dict[str, Any] = {
         "status": "ok",
         "uptimeSeconds": uptime_s,
         "activeRooms": len(sources),
         "totalConnections": len(hub.active),
-        "rooms": room_status,
     }
+    if token_is_valid(request):
+        body["rooms"] = {room_id: source.status_payload() for room_id, source in sources.items()}
+    return body
 
 
 @app.get("/metrics")
