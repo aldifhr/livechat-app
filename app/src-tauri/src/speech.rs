@@ -155,25 +155,55 @@ pub async fn say(text: &str, pace: &str) -> Result<Vec<u8>, SpeechError> {
 
 /// Splits text into pieces the endpoint will each accept, on whitespace.
 ///
-/// Never splits a word: a piece is built up word by word until the next word would
-/// cross the limit, so each piece is whole words and the join is seamless. A word
-/// longer than the limit on its own is its own piece rather than dropped.
+/// Built up word by word until the next word would cross the limit, so each piece
+/// is whole words and the join is seamless. A word longer than the limit on its
+/// own cannot be left whole — the endpoint answers 400 for a query past the limit
+/// rather than truncating, so one unbroken run of letters would refuse the entire
+/// sentence — so such a word is cut into `GOOGLE_MAX_CHARS`-sized pieces first.
 fn split_for_google(text: &str) -> Vec<String> {
     let mut pieces: Vec<String> = Vec::new();
     let mut current = String::new();
     for word in text.split_whitespace() {
-        if !current.is_empty() && current.chars().count() + 1 + word.chars().count() > GOOGLE_MAX_CHARS {
-            pieces.push(std::mem::take(&mut current));
+        for chunk in hard_chunks(word, GOOGLE_MAX_CHARS) {
+            if !current.is_empty() && current.chars().count() + 1 + chunk.chars().count() > GOOGLE_MAX_CHARS {
+                pieces.push(std::mem::take(&mut current));
+            }
+            if !current.is_empty() {
+                current.push(' ');
+            }
+            current.push_str(chunk);
         }
-        if !current.is_empty() {
-            current.push(' ');
-        }
-        current.push_str(word);
     }
     if !current.is_empty() {
         pieces.push(current);
     }
     pieces
+}
+
+/// Cuts a word into pieces of at most `limit` characters.
+///
+/// By characters, not bytes: the endpoint's limit is on characters, and slicing
+/// by byte would split a multi-byte character in half and produce invalid UTF-8.
+/// A word that already fits is returned whole, so the common case is unchanged.
+fn hard_chunks(word: &str, limit: usize) -> Vec<&str> {
+    if limit == 0 || word.chars().count() <= limit {
+        return vec![word];
+    }
+    let mut chunks: Vec<&str> = Vec::new();
+    let mut start = 0;
+    let mut count = 0;
+    for (idx, _) in word.char_indices() {
+        if count == limit {
+            chunks.push(&word[start..idx]);
+            start = idx;
+            count = 0;
+        }
+        count += 1;
+    }
+    if start < word.len() {
+        chunks.push(&word[start..]);
+    }
+    chunks
 }
 
 /// Speaks text with Google's read-aloud endpoint, returning MP3 bytes.
@@ -298,6 +328,46 @@ mod tests {
         for piece in &pieces {
             assert!(piece.chars().count() <= GOOGLE_MAX_CHARS, "{piece}");
         }
+    }
+
+    #[test]
+    fn a_word_longer_than_the_limit_is_cut_up() {
+        // Spam with no spaces, or one very long token: left whole it is over the
+        // limit on its own, and the endpoint answers 400 — which refused the
+        // whole utterance, so the readable words beside it went unsaid too.
+        let spam = "w".repeat(500);
+        let pieces = split_for_google(&spam);
+        assert!(pieces.len() >= 3, "got {}", pieces.len());
+        for piece in &pieces {
+            assert!(piece.chars().count() <= GOOGLE_MAX_CHARS, "{piece}");
+        }
+        // Nothing lost: the characters survive, in order, and the pieces of a
+        // single word carry no separator between them.
+        assert_eq!(pieces.join("").chars().count(), 500);
+    }
+
+    #[test]
+    fn a_long_word_does_not_take_the_words_around_it() {
+        let text = format!("halo {} dunia", "x".repeat(400));
+        let pieces = split_for_google(&text);
+        for piece in &pieces {
+            assert!(piece.chars().count() <= GOOGLE_MAX_CHARS, "{piece}");
+        }
+        let rejoined = pieces.join(" ");
+        assert!(rejoined.starts_with("halo "), "{rejoined}");
+        assert!(rejoined.ends_with(" dunia"), "{rejoined}");
+    }
+
+    #[test]
+    fn chunking_never_splits_a_multibyte_character() {
+        // The limit is characters, and these are multi-byte ones; a byte slice
+        // here would panic on a char boundary or emit invalid UTF-8.
+        let text = "é".repeat(400);
+        let pieces = split_for_google(&text);
+        for piece in &pieces {
+            assert!(piece.chars().count() <= GOOGLE_MAX_CHARS);
+        }
+        assert_eq!(pieces.join("").chars().count(), 400);
     }
 
     #[test]
