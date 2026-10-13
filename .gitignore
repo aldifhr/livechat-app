@@ -46,3 +46,7 @@ streamtools
 # no credential — the vhost only says who to ask, never what the password is.
 !deploy/nginx/sites-available/streamtools
 .hermes/
+
+# TypeScript incremental build cache — rewritten by every web build, so it is
+# noise in a diff, not source.
+web/tsconfig.tsbuildinfo
