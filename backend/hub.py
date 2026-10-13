@@ -73,6 +73,11 @@ class Hub:
         # the count in a slot of its own is O(1), cannot reorder the queue, and
         # cannot block: the newest number is simply the one that gets sent.
         self._held_viewers: dict[str, dict[str, Any]] = {}
+        # Counted rather than logged: `/metrics` used to read a `_disconnection_log`
+        # attribute that never existed, so `getattr(..., [])` fell through to an
+        # empty list and the metric reported a permanent zero. A counter that is
+        # actually incremented is the smallest thing that makes the number true.
+        self.disconnected_clients_count = 0
 
     async def connect(self, websocket: WebSocket, client_type: str, room_id: str | None = None) -> str:
         await websocket.accept()
@@ -87,6 +92,11 @@ class Hub:
         return client_id
 
     def disconnect(self, client_id: str) -> None:
+        # Only a client that was actually connected counts. `disconnect` is called
+        # from the socket teardown, and a duplicate call for an id already gone
+        # would otherwise inflate the total.
+        if client_id in self.active:
+            self.disconnected_clients_count += 1
         self.active.pop(client_id, None)
         self.room_clients.pop(client_id, None)
         self.customizer_clients.discard(client_id)

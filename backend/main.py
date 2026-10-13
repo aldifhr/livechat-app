@@ -1080,15 +1080,6 @@ _GIFTS_DIR = Path(__file__).parent / "static" / "gifts"
 app.mount("/gifts", StaticFiles(directory=str(_GIFTS_DIR), html=True), name="gifts")
 
 
-if __name__ == "__main__":
-    # Loopback and reload. This block is the developer entry point: `uvicorn.run`
-    # here is not a production server, and binding `0.0.0.0` with the reloader on
-    # would put a reloading dev server on the LAN with whatever auth state the
-    # environment happens to carry. A real deployment runs `uvicorn main:app`
-    # behind its own process manager and its own bind address.
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
-
-
 # --------------------------------------------------------------------------
 # health and metrics endpoints
 # --------------------------------------------------------------------------
@@ -1096,6 +1087,12 @@ if __name__ == "__main__":
 # These are not behind the write gate: they are read-only probes that a deploy
 # needs before it can decide whether to send traffic somewhere, and they carry
 # no room-identifying data, only aggregate counts that are safe by being broad.
+#
+# Defined above the `__main__` block rather than after it. The routes were once
+# declared below it, which works — the module is imported top to bottom, so the
+# decorators ran either way — but it reads as though they are part of the
+# development entry point, and a reader who stops at `uvicorn.run` would not
+# know they exist. Route declarations belong with the other routes.
 
 @app.get("/health")
 async def health() -> dict[str, Any]:
@@ -1125,5 +1122,17 @@ async def metrics() -> dict[str, Any]:
         "sources_active": len(sources),
         "websocket_connections": len(hub.active),
         "queued_messages_total": sum(q.qsize() for q in hub._queues.values()),
-        "clients_disconnected_total": len(getattr(hub, "_disconnection_log", [])),
+        # A real counter on the hub, incremented in `disconnect`. This used to read
+        # a `_disconnection_log` attribute that was never defined, so the getattr
+        # default was all it ever returned and the metric was a permanent zero.
+        "clients_disconnected_total": hub.disconnected_clients_count,
     }
+
+
+if __name__ == "__main__":
+    # Loopback and reload. This block is the developer entry point: `uvicorn.run`
+    # here is not a production server, and binding `0.0.0.0` with the reloader on
+    # would put a reloading dev server on the LAN with whatever auth state the
+    # environment happens to carry. A real deployment runs `uvicorn main:app`
+    # behind its own process manager and its own bind address.
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
