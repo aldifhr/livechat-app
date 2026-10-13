@@ -278,21 +278,6 @@ body {
   align-self: center;
 }
 
-.source-note {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.source-note strong {
-  color: var(--text);
-  font-weight: 600;
-}
-
 .chip {
   display: inline-flex;
   align-items: center;

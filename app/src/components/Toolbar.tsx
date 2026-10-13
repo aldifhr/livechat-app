@@ -192,28 +192,6 @@ export function Toolbar({
             Watch
           </button>
         )}
-        {/* The note names what is being read, and only that. With no handle typed
-            there is nothing to name, and the feed already says "Enter a username
-            above and press Connect" — a second "Type the handle to start" beside a
-            "Not connected" status is the same instruction twice on one screen. So
-            the note is silent until there is a handle to say something about. */}
-        {wanted ? (
-          <span className="source-note">
-            {disconnected ? (
-              // Stopped. The handle is still in the field, so it is still named here
-              // — but as a handle, not as a room being read, and the backend is not
-              // mentioned at all because the app is not talking to it.
-              <>
-                <strong>@{wanted}</strong> — stopped
-              </>
-            ) : (
-              <>
-                <strong>@{wanted}</strong> via {backendUrl(backend).replace(/^https?:\/\//, '')}
-              </>
-            )}
-          </span>
-        ) : null}
-
         <div className={`status status-${room.status} room-status`}>
           <span className="dot" />
           <span>

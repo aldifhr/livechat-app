@@ -99,10 +99,10 @@ const handleInput = () => $('.handle-input')
 check('there is a handle field', Boolean(handleInput()))
 check('it starts empty', handleInput().value === '')
 check('connect is disabled until there is something to connect to', connectButton()?.disabled === true)
-// With no handle there is nothing for the note to name, so it stays silent — the
-// status line carries the single "enter a handle and press Connect" instruction
-// rather than the toolbar repeating it in a second place.
-check('the note is silent until there is a handle', !$('.source-note'), $('.source-note')?.textContent ?? 'none')
+// The note that used to name the handle and the backend is gone: the status line
+// is the single place the toolbar says what it is reading, so there is no second
+// line to go stale or to contradict it.
+check('there is no source note', !$('.source-note'), $('.source-note')?.textContent ?? 'none')
 check('the status line carries the one instruction', /enter a handle/i.test($('.room-status')?.textContent ?? ''), $('.room-status')?.textContent)
 // Filters and search are controls for a feed that does not exist yet, so they wait
 // until there is something to filter rather than cluttering the idle screen.
@@ -112,8 +112,9 @@ check('and so does the search box', !$('.input-search'), 'search box present whi
 await type(handleInput(), '@mybasic.indonesia')
 check('the value reached React state', handleInput().value === '@mybasic.indonesia', handleInput().value)
 check('connect becomes possible', connectButton()?.disabled === false, `disabled=${connectButton()?.disabled}`)
-// The note names the handle once there is one to name — and not before.
-check('the note names the handle now', /@mybasic\.indonesia/.test($('.source-note')?.textContent ?? ''), $('.source-note')?.textContent)
+// Typing a handle changes nothing about the toolbar's text: the field itself shows
+// what was typed, and the status line is where the app says what it reads.
+check('typing a handle adds no source note', !$('.source-note'), $('.source-note')?.textContent ?? 'none')
 
 console.log('the handle is remembered without being asked twice')
 // Debounced, so this waits rather than checking instantly.
@@ -379,9 +380,8 @@ check(
 )
 
 console.log('stopping closes the reader')
-// Before the stop: the note names the room being read, and the backend it reads it
-// from. That is the state the assertions below compare against.
-check('while connected it names the room and the backend', /@mybasic\.indonesia via/.test($('.source-note')?.textContent ?? ''), $('.source-note')?.textContent)
+// Before the stop, the room is being read; the assertions below check what changes.
+check('while connected there is no source note', !$('.source-note'), $('.source-note')?.textContent ?? 'none')
 await click('.room-row .btn-danger')
 check(
   'the host was asked to stop',
@@ -396,9 +396,7 @@ const stopButton = () => $$('.room-row .btn').find((b) => b.textContent.trim() =
 const connectButton2 = () => $$('.room-row .btn').find((b) => b.textContent.trim() === 'Connect')
 check('the Stop button is gone the moment it is pressed', !stopButton(), $('.room-row')?.textContent)
 check('and a Connect button takes its place', Boolean(connectButton2()), $('.room-row')?.textContent)
-check('the field is editable again', $('.handle-input')?.disabled === false, String($('.handle-input')?.disabled))
-check('and the note no longer claims a live room', /stopped/.test($('.source-note')?.textContent ?? ''), $('.source-note')?.textContent)
-check('it stops naming the backend too', !/via/.test($('.source-note')?.textContent ?? ''), $('.source-note')?.textContent)
+check('and the field is editable again', $('.handle-input')?.disabled === false, String($('.handle-input')?.disabled))
 // The handle is still there so reconnecting is one click.
 check('the handle is still there to reconnect with', $('.handle-input')?.value === '@mybasic.indonesia', $('.handle-input')?.value)
 // And the status line catches up when the host confirms it, exactly as live.
@@ -411,8 +409,6 @@ check('the status line agrees it is disconnected', /Disconnected/.test($('.room-
 // fake transport does not do on its own.
 await click(connectButton2())
 check('the host was asked to connect', Boolean(fake.lastCommand('backend_connect')), JSON.stringify(fake.lastCommand('backend_connect')))
-check('connecting names the room again', /via/.test($('.source-note')?.textContent ?? ''), $('.source-note')?.textContent)
-check('and no longer says stopped', !/stopped/.test($('.source-note')?.textContent ?? ''), $('.source-note')?.textContent)
 // The host confirms, and only then does the button offer Stop again.
 await act(async () => {
   fake.emit({ platform: 'tiktok', type: 'status', connected: true, message: 'Connected' })
