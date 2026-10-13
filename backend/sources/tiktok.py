@@ -14,6 +14,7 @@ from typing import Any, AsyncGenerator
 
 from protocols import EventAdapter
 from sources.viewers_count import judge
+import events
 from events import COMMENT, FOLLOW, GIFT, JOIN, LIKE, SHARE, VIEWERS, Event
 
 # TikTok substitutes these when a viewer's profile is unavailable or deleted.
@@ -197,6 +198,13 @@ class TikTokAdapter(EventAdapter):
         @client.on(ConnectEvent)
         async def on_connect(_):
             self._connected = True
+            # Broadcast the transition, not just flip a flag. The status frame is
+            # edge-triggered and nothing else produces one mid-session, so without
+            # this the app's status line never leaves "connecting" on the socket
+            # it opened — the one-shot snapshot at attach (main.py) is all it gets.
+            await events.emit_status(
+                self.room_id, connected=True, message=f"Connected to @{self.username}"
+            )
 
         @client.on(DisconnectEvent)
         async def on_disconnect(_):
@@ -206,11 +214,34 @@ class TikTokAdapter(EventAdapter):
             # drop, which is what made a still-live stream sit at "Offline"
             # until somebody reconnected it by hand.
             self._connected = False
+            # Say so on the wire too. A dropped socket and a finished live both
+            # stop events arriving, and the app cannot tell them apart from the
+            # stream alone; this frame is what keeps the status honest between
+            # reconnects. While the run loop is still going this is a *connecting*
+            # frame, not a plain disconnect: the app then reads "Connecting" for
+            # the retry instead of a bare idle, and `emit_status` leaves the
+            # session counters alone — a transient blip is not a new session. An
+            # explicit stop has already cleared `_running`, so it lands here as a
+            # real disconnect and is logged as one.
+            await events.emit_status(
+                self.room_id,
+                connected=False,
+                connecting=self._running,
+                message=f"Disconnected from @{self.username}",
+            )
 
         @client.on(LiveEndEvent)
         async def on_live_end(_):
             self._connected = False
             self._live_ended = True
+            # The one transition worth a distinct flag: a streamer who stopped is
+            # not a connection to reconnect, and the app says "live ended" for it.
+            await events.emit_status(
+                self.room_id,
+                connected=False,
+                message=f"@{self.username} is no longer live",
+                live_ended=True,
+            )
 
         @client.on(CommentEvent)
         async def on_comment(event):
@@ -496,6 +527,20 @@ class TikTokAdapter(EventAdapter):
                 break
 
         self._connected = False
+        # The loop has ended. A live-end already reported itself from the handler;
+        # anything else is the source giving up (retries exhausted, circuit
+        # breaker, or a client that could not be rebuilt), and the app would
+        # otherwise sit on a stale "Connecting" over a stream that is not coming
+        # back.
+        if not self._live_ended:
+            try:
+                await events.emit_status(
+                    self.room_id,
+                    connected=False,
+                    message=f"Gave up connecting to @{self.username}",
+                )
+            except Exception:  # noqa: BLE001 — a status frame must not kill the loop
+                pass
 
     async def start(self) -> None:
         """Alias for connect()."""
