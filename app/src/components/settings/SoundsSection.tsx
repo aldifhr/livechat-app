@@ -12,7 +12,26 @@ interface Props {
 }
 
 /**
- * What each event sounds like, and the custom file that overrides all of it.
+ * Which settings key holds each event's custom file.
+ *
+ * The three rows are the same control with a different label, so they are driven
+ * from one description rather than three near-identical blocks. A path field and a
+ * template field per event: the file wins over the template, and both are per
+ * event, so a loud gift chime and a soft chat blip no longer have to be the same
+ * file or the same choice.
+ */
+const EVENTS = [
+  { key: 'giftSoundPath', templateKey: 'giftTemplate', label: 'Gift sound' },
+  { key: 'chatSoundPath', templateKey: 'chatTemplate', label: 'Chat blip' },
+  { key: 'joinSoundPath', templateKey: 'joinTemplate', label: 'Join knock' },
+] as const satisfies ReadonlyArray<{
+  key: 'giftSoundPath' | 'chatSoundPath' | 'joinSoundPath'
+  templateKey: 'giftTemplate' | 'chatTemplate' | 'joinTemplate'
+  label: string
+}>
+
+/**
+ * What each event sounds like, and the file that overrides that event's template.
  *
  * The one section holding an AudioContext, so it is also the one releasing it.
  * The context is created on the first preview rather than on mount, because a
@@ -44,12 +63,12 @@ export function SoundsSection({ settings, set }: Props) {
   // picked before trusting it to fire on a gift. A custom file wins over the
   // template, exactly as it does when a real event fires — a preview that sounded
   // different from the real thing would be worse than no preview.
-  function preview(templateId: string) {
+  function preview(templateId: string, customPath: string) {
     previewContextRef.current ??= resolveAudio()
-    void playSound(previewContextRef.current, templateId, settings.customSoundPath)
+    void playSound(previewContextRef.current, templateId, customPath)
   }
 
-  async function pickCustom() {
+  async function pickCustom(key: (typeof EVENTS)[number]['key']) {
     setStatus({ kind: 'busy', text: 'Choose a sound file…' })
     try {
       const path = await host.pickSoundFile()
@@ -63,7 +82,7 @@ export function SoundsSection({ settings, set }: Props) {
       // The old file's decoded buffer is dropped, so the next play reads the new
       // one instead of replaying what was cached under the old path.
       invalidateCustomSound()
-      set('customSoundPath', path)
+      set(key, path)
       setStatus({ kind: 'ok', text: `Using ${path.split(/[\\/]/).pop()}` })
     } catch (error: unknown) {
       if (!stillMounted.current) return
@@ -71,103 +90,74 @@ export function SoundsSection({ settings, set }: Props) {
     }
   }
 
-  function clearCustom() {
+  function clearCustom(key: (typeof EVENTS)[number]['key']) {
     invalidateCustomSound()
-    set('customSoundPath', '')
+    set(key, '')
     setStatus({ kind: 'ok', text: 'Back to the built-in sounds.' })
   }
 
   return (
     <Section title="Sounds" section="sounds">
       <p className="modal-hint">
-        A custom file, if you pick one, plays instead of any template — for gifts and chat alike.
-        Backing out of the picker keeps the file you already have.
+        Each event has its own sound: pick a template, or choose a file to play instead. A file
+        applies to its own event only, so a gift and a chat line can sound nothing alike. Backing
+        out of the picker keeps the file you already have.
       </p>
 
       <div className="settings-grid">
-        <label className="field">
-          <span className="field-label">Gift sound</span>
-          <span className="field-row">
-            <select
-              className="input"
-              value={settings.giftTemplate}
-              onChange={(e) => set('giftTemplate', e.target.value)}
-            >
-              {TEMPLATES.map((t) => (
-                <option key={t.id} value={t.id} title={t.hint}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-            <button className="btn btn-small" onClick={() => preview(settings.giftTemplate)} title="Hear it">
-              ▶
-            </button>
-          </span>
-        </label>
-
-        <label className="field">
-          <span className="field-label">Chat blip</span>
-          <span className="field-row">
-            <select
-              className="input"
-              value={settings.chatTemplate}
-              onChange={(e) => set('chatTemplate', e.target.value)}
-            >
-              {TEMPLATES.map((t) => (
-                <option key={t.id} value={t.id} title={t.hint}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-            <button className="btn btn-small" onClick={() => preview(settings.chatTemplate)} title="Hear it">
-              ▶
-            </button>
-          </span>
-        </label>
-
-        <label className="field">
-          <span className="field-label">Join knock</span>
-          <span className="field-row">
-            <select
-              className="input"
-              value={settings.joinTemplate}
-              onChange={(e) => set('joinTemplate', e.target.value)}
-            >
-              {TEMPLATES.map((t) => (
-                <option key={t.id} value={t.id} title={t.hint}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-            <button className="btn btn-small" onClick={() => preview(settings.joinTemplate)} title="Hear it">
-              ▶
-            </button>
-          </span>
-          <span className="field-note">Played at most every couple of seconds, however many arrive.</span>
-        </label>
+        {EVENTS.map((event) => {
+          const customPath = settings[event.key]
+          return (
+            <label className="field" key={event.key}>
+              <span className="field-label">{event.label}</span>
+              <span className="field-row">
+                <select
+                  className="input"
+                  value={settings[event.templateKey]}
+                  onChange={(e) => set(event.templateKey, e.target.value)}
+                >
+                  {TEMPLATES.map((t) => (
+                    <option key={t.id} value={t.id} title={t.hint}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="btn btn-small"
+                  onClick={() => preview(settings[event.templateKey], customPath)}
+                  title="Hear it"
+                >
+                  ▶
+                </button>
+                <button
+                  className="btn btn-small"
+                  onClick={() => pickCustom(event.key)}
+                  disabled={status.kind === 'busy'}
+                  title={customPath ? 'Change the file this event plays' : 'Choose a file for this event'}
+                >
+                  {customPath ? 'Change file…' : 'Choose file…'}
+                </button>
+                {customPath && (
+                  <button
+                    className="btn btn-small"
+                    onClick={() => clearCustom(event.key)}
+                    disabled={status.kind === 'busy'}
+                  >
+                    Use built-in
+                  </button>
+                )}
+              </span>
+              <span className="field-note">
+                {customPath
+                  ? customPath.split(/[\\/]/).pop()
+                  : 'No file — the template is used.'}
+              </span>
+            </label>
+          )
+        })}
       </div>
 
-      <div className="field">
-        <span className="field-label">Custom sound</span>
-        <span className="field-row">
-          <button className="btn btn-small" onClick={pickCustom} disabled={status.kind === 'busy'}>
-            {settings.customSoundPath ? 'Change file…' : 'Choose file…'}
-          </button>
-          {settings.customSoundPath && (
-            <button className="btn btn-small" onClick={clearCustom} disabled={status.kind === 'busy'}>
-              Use built-in
-            </button>
-          )}
-          <button className="btn btn-small" onClick={() => preview(settings.giftTemplate)} title="Hear it">
-            ▶
-          </button>
-        </span>
-        <span className="field-note">
-          {settings.customSoundPath
-            ? settings.customSoundPath.split(/[\\/]/).pop()
-            : 'No file — the templates above are used.'}
-        </span>
-      </div>
+      <span className="field-note">Join sounds play at most every couple of seconds, however many arrive.</span>
     </Section>
   )
 }

@@ -990,12 +990,13 @@ const soundNote = (label) =>
     '.field-note',
   )
 
-// A custom file overrides every template. Picking one asks the host for a path,
-// and an empty path — a cancelled picker — must leave the previous pick alone
-// rather than clear it.
-check('no custom file by default', /No file/.test(soundNote('Custom sound')?.textContent ?? ''), soundNote('Custom sound')?.textContent)
-const chooseBtn = $$('[data-section="sounds"] .btn').find((b) => b.textContent.trim() === 'Choose file…')
-check('a file picker is offered', Boolean(chooseBtn))
+// A custom file overrides that event's template, one file per event. Picking one
+// asks the host for a path, and an empty path — a cancelled picker — must leave
+// the previous pick alone rather than clear it.
+check('no custom file by default', /No file/.test(soundNote('Gift sound')?.textContent ?? ''), soundNote('Gift sound')?.textContent)
+// One picker per event, so a gift file and a chat file are independent choices.
+const chooseBtns = $$('[data-section="sounds"] .btn').filter((b) => b.textContent.trim() === 'Choose file…')
+check('a file picker per event', chooseBtns.length === 3, String(chooseBtns.length))
 // A previous section replaced `invoke` with a recording stub; restore plain
 // recording so this command is seen.
 fake.transport.invoke = async (command, args) => {
@@ -1003,11 +1004,20 @@ fake.transport.invoke = async (command, args) => {
   if (command === 'pick_sound_file') return ''
   return undefined
 }
-await click(chooseBtn)
+await click(chooseBtns[0])
 check('the host was asked for a file', Boolean(fake.lastCommand('pick_sound_file')), JSON.stringify(fake.commands.at(-1)))
 // Cancelled (empty path): nothing changes, and no error is raised — backing out
 // of a picker is not a failure the user has to act on.
-check('a cancelled pick leaves the settings alone', /No file/.test(soundNote('Custom sound')?.textContent ?? ''))
+check('a cancelled pick leaves the settings alone', /No file/.test(soundNote('Gift sound')?.textContent ?? ''))
+// A real pick lands on the event whose picker was used, and only that one.
+fake.transport.invoke = async (command, args) => {
+  fake.commands.push({ command, args })
+  if (command === 'pick_sound_file') return '/sounds/gift.mp3'
+  return undefined
+}
+await click(chooseBtns[0])
+check('the picked file is shown for its event', /gift\.mp3/.test(soundNote('Gift sound')?.textContent ?? ''), soundNote('Gift sound')?.textContent)
+check('and the other events are untouched', /No file/.test(soundNote('Chat blip')?.textContent ?? ''), soundNote('Chat blip')?.textContent)
 
 console.log('teardown')
 await act(async () => {

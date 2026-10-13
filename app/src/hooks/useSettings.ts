@@ -100,12 +100,22 @@ export interface ViewSettings {
   /** Which synthesised sound an arrival plays. */
   joinTemplate: string
   /**
-   * A sound file the user picked, played instead of any template.
+   * A sound file the user picked for gifts, played instead of `giftTemplate`.
    *
    * A path, not the audio itself: the file stays where it is and the app reads it
-   * when it fires. Empty means no custom sound, and a template is used instead.
+   * when it fires. Empty means no custom file for this event, and its template is
+   * used instead.
+   *
+   * One path per event rather than the single shared one this used to be. A gift
+   * is rare and worth a flourish; chat arrives several a second and needs
+   * something short, so one file forced to serve both was a file that suited
+   * neither — picking one meant the blip was as loud as the chime.
    */
-  customSoundPath: string
+  giftSoundPath: string
+  /** A sound file for chat blips, played instead of `chatTemplate`. */
+  chatSoundPath: string
+  /** A sound file for arrivals, played instead of `joinTemplate`. */
+  joinSoundPath: string
 }
 
 export const DEFAULT_SETTINGS: ViewSettings = {
@@ -135,7 +145,9 @@ export const DEFAULT_SETTINGS: ViewSettings = {
   giftTemplate: 'chime',
   chatTemplate: 'blip',
   joinTemplate: 'pop',
-  customSoundPath: '',
+  giftSoundPath: '',
+  chatSoundPath: '',
+  joinSoundPath: '',
 }
 
 const FONT_MIN = 0.75
@@ -148,7 +160,13 @@ function load(): ViewSettings {
     if (!raw) return DEFAULT_SETTINGS
     // Merged over the defaults so a build that adds a field does not leave older
     // saved settings missing it.
-    const saved = JSON.parse(raw) as Partial<ViewSettings>
+    const parsed = JSON.parse(raw) as Partial<ViewSettings> & { customSoundPath?: string }
+    // An older build had ONE custom file for gifts, chat and joins at once. It is
+    // carried into all three rather than dropped: reverting a streamer's pick to
+    // the built-ins would look like the file they chose had been forgotten. The
+    // old key is destructured out so it does not linger in what we save back.
+    const { customSoundPath, ...saved } = parsed
+    const legacy = typeof customSoundPath === 'string' ? customSoundPath : ''
     return {
       ...DEFAULT_SETTINGS,
       ...saved,
@@ -162,6 +180,11 @@ function load(): ViewSettings {
       // leave the picker showing nothing selected and the host falling back on
       // every message, so it settles on the default here instead.
       ttsPace: knownPace(saved.ttsPace ?? '') ? (saved.ttsPace as string) : DEFAULT_SETTINGS.ttsPace,
+      // A build before the split wrote no per-event path at all, so a missing one
+      // falls back to the file that used to serve every event.
+      giftSoundPath: saved.giftSoundPath ?? legacy,
+      chatSoundPath: saved.chatSoundPath ?? legacy,
+      joinSoundPath: saved.joinSoundPath ?? legacy,
     }
   } catch {
     return DEFAULT_SETTINGS

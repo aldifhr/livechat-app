@@ -29,12 +29,12 @@ export default function App() {
   useGiftSound({
     enabled: settings.giftSound,
     templateId: settings.giftTemplate,
-    customPath: settings.customSoundPath,
+    customPath: settings.giftSoundPath,
   })
   useJoinSound({
     enabled: settings.joinSound,
     templateId: settings.joinTemplate,
-    customPath: settings.customSoundPath,
+    customPath: settings.joinSoundPath,
   })
   useGiftNotification({
     notice: settings.giftNotice,
@@ -57,7 +57,7 @@ export default function App() {
     chatTts: settings.chatTts,
     ttsPace: settings.ttsPace,
     templateId: settings.chatTemplate,
-    customPath: settings.customSoundPath,
+    customPath: settings.chatSoundPath,
   })
 
   const { room, items, totalReceived, clear, log, health, stats } = useChat({

@@ -136,35 +136,45 @@ function playTemplate(context: AudioContext, template: SoundTemplate): void {
 }
 
 /**
- * A file that has been decoded once and can be replayed.
+ * Files that have been decoded once and can be replayed, keyed by path.
+ *
+ * A map rather than the single slot this used to be. One slot was fine while one
+ * custom file served every event, but with a file per event (gift, chat, join)
+ * three paths are live at once, and a one-slot cache would evict each file the
+ * moment another played — every blip in an active room would re-fetch and
+ * re-decode from disk. Keyed, each file decodes once.
  *
  * Decoded to an AudioBuffer rather than played through an <audio> element so it
  * shares the AudioContext's clock and gain with the templates — a custom sound
  * that came out at a different volume, or a beat off, would read as a bug.
  */
-let customBuffer: { path: string; buffer: AudioBuffer } | null = null
-// The in-flight load, carrying the path it is for. Keyed rather than bare so a
-// load for one file is never handed to a caller that asked for another.
-let customLoad: { path: string; promise: Promise<AudioBuffer | null> } | null = null
+const customBuffers = new Map<string, AudioBuffer>()
+// In-flight loads, keyed by path, so a load for one file is never handed to a
+// caller that asked for another, and two callers for the same file share one fetch.
+const customLoads = new Map<string, Promise<AudioBuffer | null>>()
 
-/** Forgets the decoded file, so a new pick is loaded fresh. */
+/** Forgets every decoded file, so a new pick is loaded fresh. */
 export function invalidateCustomSound(): void {
-  customBuffer = null
-  customLoad = null
+  customBuffers.clear()
+  customLoads.clear()
 }
 
 async function loadCustom(context: AudioContext, path: string): Promise<AudioBuffer | null> {
-  if (customBuffer?.path === path) return customBuffer.buffer
-  // One in-flight load *per path*. The guard used to be `customLoad !== null`,
-  // which meant a request for /b.mp3 arriving while /a.mp3 was still decoding
-  // would await A's load and return A's buffer — so picking a new sound played
-  // the old one. Keyed on the path, so a second file starts its own load.
-  if (customLoad && customLoad.path === path) {
-    const pending = await customLoad.promise
-    if (pending) return pending
+  const cached = customBuffers.get(path)
+  if (cached) return cached
+  // One in-flight load *per path*. The guard used to be a single flag, which meant
+  // a request for /b.mp3 arriving while /a.mp3 was still decoding would await A's
+  // load and return A's buffer — so picking a new sound played the old one. Keyed
+  // on the path, so a second file starts its own load and a repeat shares the first.
+  const pending = customLoads.get(path)
+  if (pending) return pending
+
+  // Held in an entry so the finally can compare against this exact load at
+  // runtime (a bare `const promise` would be in its own temporal dead zone here).
+  const entry: { promise: Promise<AudioBuffer | null> } = {
+    promise: Promise.resolve(null),
   }
-  const entry: { path: string; promise: Promise<AudioBuffer | null> } = { path, promise: null as unknown as Promise<AudioBuffer | null> }
-  entry.promise = (async () => {
+  entry.promise = (async (): Promise<AudioBuffer | null> => {
     try {
       // A path is not a URL a webview can request: it is rewritten onto the asset
       // protocol first, which is what the host registered the file against when
@@ -175,18 +185,21 @@ async function loadCustom(context: AudioContext, path: string): Promise<AudioBuf
       // A promise-based decode: the callback form would need a wrapper and both
       // are equally supported.
       const buffer = await context.decodeAudioData(bytes)
-      // Stored only if this is still the file the app wants: a decode that
-      // finishes after the user picked something else must not resurrect the
-      // abandoned file as the cached one.
-      if (customLoad === entry) customBuffer = { path, buffer }
+      customBuffers.set(path, buffer)
       return buffer
     } catch {
       // A missing, unreadable or undecodable file yields silence. The settings
       // dialog says when a pick failed; here it must not become a thrown error.
       return null
+    } finally {
+      // Cleared whether it resolved or failed, so a later play of the same path
+      // retries rather than awaiting a settled promise forever. Guarded so a
+      // decode that outlived a cache invalidation does not delete the entry a
+      // newer load for the same path has already installed.
+      if (customLoads.get(path) === entry.promise) customLoads.delete(path)
     }
   })()
-  customLoad = entry
+  customLoads.set(path, entry.promise)
   return entry.promise
 }
 
