@@ -261,6 +261,37 @@
   var board = document.getElementById('board')
 
   /**
+   * Reports the rendered height of the board to whoever embedded this page.
+   *
+   * The overlay itself is a fixed rectangle in OBS — that is what a browser
+   * source IS — and its own `overflow: hidden` is deliberate there: content that
+   * does not fit is content the operator chose not to size the source for.
+   *
+   * The dashboard's preview is a different thing. It has no size of its own to
+   * honour; it is a window onto this page, and when it is shorter than the board
+   * it clips the bottom rows with no scrollbar and no error. A ten-row board in
+   * a 520px window reads as a broken overlay rather than as a frame that is
+   * simply too small, and the operator has no way to tell the difference.
+   *
+   * So the height is reported and the preview grows to it. Measured only while
+   * the panel is shown, because a `hidden` element has no box to measure.
+   * Silently ignored when nothing is listening — OBS does not read it, and a page
+   * must not crash posting into a void.
+   */
+  function reportHeight() {
+    if (panel.hidden) return
+    try {
+      // `scrollHeight` is the body's content box; the body's own 24px padding is
+      // outside it, so it is added back or the last row sits on the very edge of
+      // a frame that is exactly tall enough.
+      parent.postMessage({ streamkitHeight: document.body.scrollHeight + 48 }, '*')
+    } catch (error) {}
+  }
+
+  new ResizeObserver(reportHeight).observe(document.body)
+  window.addEventListener('load', reportHeight)
+
+  /**
    * Draws the leaderboard: the chattiest viewers, most messages first.
    *
    * Rebuilt each poll rather than diffed — ten rows on a slow beat is cheaper to
@@ -300,6 +331,8 @@
 
       board.appendChild(row)
     }
+    // After the rows are in, so the measurement includes them.
+    reportHeight()
   }
 
   // ---- the connection ------------------------------------------------------
