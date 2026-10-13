@@ -44,43 +44,7 @@ def display_id(user: Any) -> str:
 
 
 def avatar_url(user: Any) -> str:
-    """The user's avatar URL, or "" when TikTok did not send one.
-
-    `avatar_thumb` is an ImageModel, not a list — a small protobuf message with
-    a `url_list: list[str]` on it. Reading it as if the attribute were the list
-    itself silently yields nothing, because iterating a protobuf message gives
-    field names rather than URLs; that is why this goes through `url_list`
-    explicitly. Confirmed against the installed library
-    (TikTokLiveProto/v3/webcast/model/user.py:1354, base.ImageModel), not against
-    the docs: the examples file describes it as an image and the wire type is a
-    message, and getting that wrong produced an empty avatar on every frame
-    while looking like correct code.
-
-    Empty is the normal case and not a failure. TikTok populates this on comment
-    events and leaves it empty or absent on join, follow, like and gift, so four
-    of the six per-viewer kinds have no avatar and never will with this library.
-
-    Tolerates every shape the events actually arrive in, and none of them
-    raises: `user` is None on events that carry no user at all, `avatar_thumb` is
-    None rather than an ImageModel on some of those, and `url_list` can be empty
-    or hold empty strings. A helper that raised here would turn a missing avatar
-    into a lost event, which is the wrong trade: a row with an initial is fine, a
-    dropped comment is not.
-
-    It does not guard against a `user` whose attribute access itself raises.
-    That is not a shape TikTokLive produces, and handling it would mean a
-    try/except around every field on the event to defend against a library
-    bug — which would then hide that bug rather than report it.
-
-    No fallback for a shape the library does not produce either: if a future
-    version types this as a plain list, an empty avatar is the correct visible
-    result and a silent second code path would hide the change.
-
-    The URL is signed by TikTok (`x-expires`, `x-signature`) and stops working
-    within hours. It is sent per event rather than remembered, so a client that
-    holds one for a while will show a broken image and no amount of retrying
-    will bring it back — that is the platform's design, not a bug here.
-    """
+    """The user's avatar URL, or "" when TikTok did not send one."""
     if user is None:
         return ""
     thumb = getattr(user, "avatar_thumb", None)
@@ -99,7 +63,15 @@ logger = logging.getLogger("streamkit.tiktok")
 
 
 class TikTokAdapter(EventAdapter):
-    """TikTok Live event adapter. Implements the EventAdapter protocol."""
+    """TikTok Live event adapter. Implements the EventAdapter protocol.
+
+    Single task model: `connect()` spawns exactly one `_run_client` task and
+    tracks it in `_task`. `_setup_handlers` only registers event handlers on
+    the client — it never spawns tasks. This is what prevents the reconnect
+    storm that previously crashed the VPS: the old code spawned a fresh
+    `_run_client` from inside `_setup_handlers`, which was called on every
+    retry, creating an unbounded fan-out of parallel connection loops.
+    """
 
     provider = "tiktok"
 
@@ -120,13 +92,11 @@ class TikTokAdapter(EventAdapter):
         # attempted" and the router reads it, so overloading it here would let a
         # new connect replace this object while its teardown is still running.
         self._live_ended = False
+        # The single background task running the connect/reconnect loop.
         self._task: asyncio.Task | None = None
         self._events: asyncio.Queue[Event] = asyncio.Queue()
-        self._event_task: asyncio.Task | None = None
         # Streak accumulation: user_id -> {gift_id, count, diamond_total}
         self._gift_streaks: dict[str, dict[str, int]] = {}
-        # Guard: don't create duplicate _run_client tasks
-        self._reconnect_task: asyncio.Task | None = None
 
     def status_payload(self) -> dict[str, Any]:
         if self._connected:
@@ -155,7 +125,7 @@ class TikTokAdapter(EventAdapter):
         return {"type": "status", "connected": False, "message": "Offline"}
 
     def is_running(self) -> bool:
-        """Whether a connection has been attempted.
+        """Whether a connection has been attempted and not yet given up.
 
         Public so the router does not read `_running` directly. Both flags are
         internal to this class's lifecycle, and a caller reaching past the class
@@ -164,29 +134,24 @@ class TikTokAdapter(EventAdapter):
         return self._running
 
     def start_background(self) -> None:
-        """Run `start()` as a task owned by this source, for `stop()` to cancel.
+        """Spawn the connect loop as a task owned by this source.
 
-        Assigning `_task` from outside is the same reach-around this replaces:
-        a task created elsewhere is a task `stop` may or may not know to cancel.
+        Idempotent: if the task is already running, do nothing. Without this
+        guard two calls (e.g. restore_sources on boot plus a manual connect)
+        each spawn an independent `_run_client` loop with its own retry
+        counter — the reconnect-storm signature.
         """
-        self._task = asyncio.create_task(self.start())
+        if self._task is not None and not self._task.done():
+            return
+        self._task = asyncio.create_task(self.connect())
 
     async def connect(self, **kwargs: Any) -> bool:
-        """Connect to TikTok Live for this username."""
+        """Connect to TikTok Live for this username. Idempotent."""
+        # Already running — don't spawn a second loop.
+        if self._task is not None and not self._task.done():
+            return True
         try:
             from TikTokLive import TikTokLiveClient as Client
-            from TikTokLive.events import (
-                ConnectEvent,
-                DisconnectEvent,
-                CommentEvent,
-                LikeEvent,
-                GiftEvent,
-                RoomUserSeqEvent,
-                JoinEvent,
-                FollowEvent,
-                ShareEvent,
-                LiveEndEvent,
-            )
         except ImportError:
             logger.error("TikTokLive library not installed. Run: pip install TikTokLive")
             return False
@@ -197,19 +162,16 @@ class TikTokAdapter(EventAdapter):
         self._running = True
         self._connected = False
         self._live_ended = False
-        self._attempt = 0
-        # Cancel any existing reconnect task before creating new one
-        if self._reconnect_task is not None and not self._reconnect_task.done():
-            self._reconnect_task.cancel()
-            try:
-                await self._reconnect_task
-            except asyncio.CancelledError:
-                pass
-        self._reconnect_task = asyncio.create_task(self._run_client())
+        self._task = asyncio.create_task(self._run_client())
         return True
 
     def _setup_handlers(self, client: Any) -> None:
-        """Register all TikTokLive event handlers on the given client."""
+        """Register event handlers on the given client.
+
+        Pure registration — never spawns tasks. Spawning the connect loop
+        from here (as the old code did) caused an unbounded fan-out because
+        this method is called on every retry inside `_run_client`.
+        """
         from TikTokLive.events import (
             ConnectEvent,
             DisconnectEvent,
@@ -237,7 +199,7 @@ class TikTokAdapter(EventAdapter):
             self._connected = False
             self._live_ended = True
 
-        @self._client.on(CommentEvent)
+        @client.on(CommentEvent)
         async def on_comment(event):
             name = display_name(event.user)
             if not name:
@@ -250,7 +212,7 @@ class TikTokAdapter(EventAdapter):
                 value=event.comment,
             ))
 
-        @self._client.on(LikeEvent)
+        @client.on(LikeEvent)
         async def on_like(event):
             name = display_name(event.user)
             if not name:
@@ -313,7 +275,7 @@ class TikTokAdapter(EventAdapter):
                 },
             ))
 
-        @self._client.on(JoinEvent)
+        @client.on(JoinEvent)
         async def on_join(event):
             name = display_name(event.user)
             if not name:
@@ -326,7 +288,7 @@ class TikTokAdapter(EventAdapter):
                 meta={"viewers": event.member_count},
             ))
 
-        @self._client.on(RoomUserSeqEvent)
+        @client.on(RoomUserSeqEvent)
         async def on_viewers(event):
             verdict = judge(event.total, self._last_viewers, event.total_user)
             self._last_viewers = verdict.last
@@ -338,7 +300,7 @@ class TikTokAdapter(EventAdapter):
                     meta={"count": verdict.count},
                 ))
 
-        @self._client.on(FollowEvent)
+        @client.on(FollowEvent)
         async def on_follow(event):
             name = display_name(event.user)
             if not name:
@@ -350,7 +312,7 @@ class TikTokAdapter(EventAdapter):
                 avatar=avatar_url(event.user),
             ))
 
-        @self._client.on(ShareEvent)
+        @client.on(ShareEvent)
         async def on_share(event):
             name = display_name(event.user)
             if not name:
@@ -364,22 +326,16 @@ class TikTokAdapter(EventAdapter):
                 meta={"count": joined} if joined else {},
             ))
 
-        self._running = True
-        self._connected = False
-        self._live_ended = False
-        self._event_task = asyncio.create_task(self._run_client())
-        return True
-
     async def disconnect(self) -> None:
         """Stop connection and cleanup."""
         self._running = False
-        if self._event_task:
-            self._event_task.cancel()
+        if self._task is not None:
+            self._task.cancel()
             try:
-                await self._event_task
+                await self._task
             except asyncio.CancelledError:
                 pass
-            self._event_task = None
+            self._task = None
 
         if self._client is not None:
             try:
@@ -401,21 +357,22 @@ class TikTokAdapter(EventAdapter):
     async def _run_client(self) -> None:
         """Run the TikTok client with auto-reconnect and exponential backoff.
 
-        Reconnects on transient failures but gives up permanently on:
+        Single loop, single retry counter. Gives up permanently on:
         - Streamer's live has ended (no point retrying)
         - Explicit shutdown via disconnect()
         - Max retry attempts exceeded
+        - Circuit breaker: 3 consecutive sign/block failures (TikTok is
+          blocking the IP — retrying makes it worse, not better)
 
-        Backoff sequence: 2s, 4s, 8s, 16s, 32s, capped at 30s.
-        Max retries: 10 attempts before giving up.
-        Includes jitter to prevent thundering herd on multi-room reconnect.
+        Backoff sequence: 2s, 4s, 8s, 16s, 32s, capped at 30s, with ±50% jitter.
         """
         import random
 
-        _max_retries = getattr(self, "_attempt", 0)  # inherit from connect
         _base_delay = 2.0
         _max_delay = 30.0
         _max_retries = 10
+        _consecutive_sign_failures = 0
+        _max_sign_failures = 3
         _attempt = 0
 
         while self._running and not self._live_ended:
@@ -430,7 +387,33 @@ class TikTokAdapter(EventAdapter):
             except Exception as e:
                 if self._live_ended or not self._running:
                     break
+
                 _attempt += 1
+                err_str = str(e)
+
+                # Circuit breaker: sign server / TikTok blocking is permanent,
+                # not transient. Stop immediately instead of hammering it.
+                is_sign_failure = (
+                    "Expecting value" in err_str
+                    or "sign" in err_str.lower()
+                    or "blocked" in err_str.lower()
+                    or "captcha" in err_str.lower()
+                    or "403" in err_str
+                )
+                if is_sign_failure:
+                    _consecutive_sign_failures += 1
+                else:
+                    _consecutive_sign_failures = 0
+
+                if _consecutive_sign_failures >= _max_sign_failures:
+                    logger.error(
+                        "Circuit breaker tripped for @%s after %d consecutive "
+                        "sign/block failures: %s — giving up permanently",
+                        self.username, _consecutive_sign_failures, err_str,
+                    )
+                    self._running = False
+                    break
+
                 logger.warning(
                     "TikTok connection failed for @%s (attempt %d/%d): %s",
                     self.username, _attempt, _max_retries, e,
@@ -444,13 +427,16 @@ class TikTokAdapter(EventAdapter):
                     break
 
                 delay = min(_base_delay * (2 ** (_attempt - 1)), _max_delay)
-                # Add jitter (±50%) to prevent thundering herd
                 delay = delay * (0.5 + random.random())
                 logger.info(
-                    "Reconnecting to @%s in %.1fs", self.username, delay,
+                    "Reconnecting to @%s in %.1fs (attempt %d/%d)",
+                    self.username, delay, _attempt, _max_retries,
                 )
                 await asyncio.sleep(delay)
-                # Re-create client on retry
+
+                # Re-create client on retry. _setup_handlers only registers
+                # handlers — it does NOT spawn a new _run_client, so this stays
+                # a single loop.
                 try:
                     from TikTokLive import TikTokLiveClient as Client
                     self._client = Client(unique_id=self.username)
@@ -460,37 +446,18 @@ class TikTokAdapter(EventAdapter):
                     self._running = False
                     break
             else:
-                # Connection ended normally (not via exception)
+                # Connection ended normally (not via exception).
                 break
 
         self._connected = False
 
-    def _register_handlers(self) -> None:
-        """Register event handlers on current client."""
-        # Use _setup_handlers instead — kept for backward compat
-        if self._client is not None:
-            self._setup_handlers(self._client)
-
-    # --- Backward compatibility helpers ---
-
-    def start_background(self) -> None:
-        """Run connect() as a task owned by this adapter."""
-        self._task = asyncio.create_task(self.connect())
-
     async def start(self) -> None:
-        """Legacy alias for connect()."""
+        """Alias for connect()."""
         await self.connect()
 
     async def stop(self) -> None:
-        """Legacy alias for disconnect()."""
+        """Alias for disconnect()."""
         await self.disconnect()
-        if self._task is not None and not self._task.done():
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-            self._task = None
 
 
 # Register adapter with provider registry
