@@ -127,11 +127,9 @@ export default function LivePreview() {
         </div>
       ) : (
         <div className="preview-stage">
-          <div className="preview-frame">
-            {/* The page itself, not a picture of it, so what is watched here is
-                exactly what OBS will load. */}
-            <iframe src={shown} title="Overlay preview" />
-          </div>
+          {/* The page itself, not a picture of it, so what is watched here is
+              exactly what OBS will load. */}
+          <iframe src={shown} title="Overlay preview" />
         </div>
       )}
     </>
