@@ -53,9 +53,10 @@ export function useGiftNotification({ notice, voice }: Options): void {
     }
 
     if (voice) {
-      // Urgent: a gift is the news, and it takes the voice rather than waiting
-      // behind whatever chat line is still being read.
-      say(giftAnnouncement(event.nickname, event.giftName, count, diamonds), true)
+      // Ordinary: waits behind whatever chat sentence is still being read. A gift
+      // announcement that cuts off the reader mid-sentence is worse than one that
+      // arrives a beat later — the chat is what the voice is primarily for.
+      say(giftAnnouncement(event.nickname, event.giftName, count, diamonds))
     }
   }, [notice, voice])
 

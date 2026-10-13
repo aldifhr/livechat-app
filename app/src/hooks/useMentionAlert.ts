@@ -66,9 +66,11 @@ export function useMentionAlert({ myHandle, sound, voice }: Options): void {
 
     if (voice) {
       const who = event.nickname.trim() || 'Someone'
-      // Urgent: someone naming you is the news, and it takes the voice rather
-      // than waiting behind whatever chat line is still being read.
-      say(`${who} menyebut kamu`, true)
+      // Ordinary: a mention waits behind whatever chat sentence is still being
+      // read rather than cutting it off. The name is short enough that waiting
+      // costs almost nothing, and a reader that is interrupted mid-sentence is
+      // worse than one that hears the mention a beat later.
+      say(`${who} menyebut kamu`)
     }
   }, [mine.join(','), sound, voice])
 
