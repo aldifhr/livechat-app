@@ -5,6 +5,6 @@ call — into normalised `events.Event` values. It must not import `hub` or know
 what a WebSocket is; `events.dispatch` is the whole interface.
 """
 
-from sources.tiktok import TikTokSource
+from sources.tiktok import TikTokAdapter
 
-__all__ = ["TikTokSource"]
+__all__ = ["TikTokAdapter"]

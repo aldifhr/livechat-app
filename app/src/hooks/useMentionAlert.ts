@@ -68,6 +68,10 @@ export function useMentionAlert({ myHandle, sound, voice, ttsPace }: Options): v
 
     if (voice) {
       const who = event.nickname.trim() || 'Someone'
+      // Ordinary: a mention waits behind whatever chat sentence is still being
+      // read rather than cutting it off. The name is short enough that waiting
+      // costs almost nothing, and a reader that is interrupted mid-sentence is
+      // worse than one that hears the mention a beat later.
       say(`${who} menyebut kamu`, ttsPace)
     }
   }, [mine.join(','), sound, voice, ttsPace])

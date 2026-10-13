@@ -12,6 +12,7 @@ import logging
 import os
 import re
 import secrets
+import sys
 from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Any
@@ -29,7 +30,8 @@ import store
 from watchdog import LivenessWatchdog
 from events import ALERT, Event
 from hub import hub
-from sources import TikTokSource
+from sources import TikTokAdapter
+from protocols import registry
 
 logger = logging.getLogger("streamkit.api")
 
@@ -55,11 +57,24 @@ DEFAULT_ROOM_CONFIG: dict[str, Any] = {}
 # a chatty journal on a busy room.
 _LEVEL = os.environ.get("STREAMKIT_LOG_LEVEL", "INFO").upper()
 if _LEVEL != "NONE":
-    logging.basicConfig(
-        level=getattr(logging, _LEVEL, logging.INFO),
-        format="%(asctime)s %(name)s %(levelname)s %(message)s",
-        datefmt="%H:%M:%S",
-    )
+    try:
+        from pythonjsonlogger import jsonlogger
+
+        _json_formatter = jsonlogger.JsonFormatter(
+            "%(asctime)s %(name)s %(levelname)s %(message)s"
+        )
+    except ImportError:
+        _json_formatter = logging.Formatter(
+            "%(asctime)s %(name)s %(levelname)s %(message)s",
+            datefmt="%H:%M:%S",
+        )
+
+    _handler = logging.StreamHandler(sys.stderr)
+    _handler.setFormatter(_json_formatter)
+
+    _root_logger = logging.getLogger()
+    _root_logger.setLevel(getattr(logging, _LEVEL, logging.INFO))
+    _root_logger.addHandler(_handler)
 
 
 # --------------------------------------------------------------------------
@@ -67,7 +82,7 @@ if _LEVEL != "NONE":
 # --------------------------------------------------------------------------
 
 #: room_id -> source. One live room per room, whatever asked for it.
-sources: dict[str, TikTokSource] = {}
+sources: dict[str, TikTokAdapter] = {}
 
 #: Serialises replacing one room's source. `_connect_room` has to `await` the old
 #: source's `stop()` before it can put the new one in place, and an `await` in the
@@ -101,16 +116,36 @@ async def lifespan(app: FastAPI):
     # else says why.
     warn_if_auth_unsatisfiable()
 
+    # Track process start time for /health uptime reporting
+    import time
+    app.state.started_at = time.time()
+
     # Watched from a thread, because the failure it exists for is one the loop
     # cannot report: a backend that stops yielding answers nothing and writes
     # nothing, and the only evidence available is a stack taken from outside it.
     liveness.start()
 
     yield
-    liveness.stop()
+    # Graceful shutdown sequence:
+    # 1. Stop all TikTok sources first (stop accepting new events)
     for source in list(sources.values()):
-        await source.stop()
+        try:
+            await asyncio.wait_for(source.stop(), timeout=10)
+        except asyncio.TimeoutError:
+            logger.error("Source %s did not stop within 10s", getattr(source, "username", "unknown"))
+        except Exception as e:
+            logger.error("Error stopping source: %s", e)
     sources.clear()
+
+    # 2. Close all WebSocket connections with normal close code 1000
+    for client_id, ws in list(hub.active.items()):
+        try:
+            await ws.close(code=1000, reason="backend shutdown")
+        except Exception:
+            logger.warning("Failed to cleanly close WebSocket %s", client_id[:8])
+        hub.disconnect(client_id)
+
+    liveness.stop()
 
 
 async def restore_sources() -> list[str]:
@@ -681,7 +716,7 @@ async def _connect_room(room_id: str, username: str) -> dict:
             # merely wasteful: it keeps emitting into the same room.
             await existing.stop()
 
-        source = TikTokSource(username, room_id)
+        source = TikTokAdapter(username, room_id)
         sources[room_id] = source
         source.start_background()
         return {"status": "connecting", "username": username, "room_id": room_id}
@@ -1012,3 +1047,43 @@ if __name__ == "__main__":
     # environment happens to carry. A real deployment runs `uvicorn main:app`
     # behind its own process manager and its own bind address.
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+
+
+# --------------------------------------------------------------------------
+# health and metrics endpoints
+# --------------------------------------------------------------------------
+#
+# These are not behind the write gate: they are read-only probes that a deploy
+# needs before it can decide whether to send traffic somewhere, and they carry
+# no room-identifying data, only aggregate counts that are safe by being broad.
+
+@app.get("/health")
+async def health() -> dict[str, Any]:
+    """Aggregate liveness probe for the backend.
+
+    Returns uptime, active room count, total WebSocket connections, and
+    per-room provider status. Used by orchestrators and load balancers.
+    """
+    import time
+    uptime_s = int(time.time() - getattr(app.state, "started_at", time.time()))
+    room_status = {}
+    for room_id, source in sources.items():
+        room_status[room_id] = source.status_payload()
+    return {
+        "status": "ok",
+        "uptimeSeconds": uptime_s,
+        "activeRooms": len(sources),
+        "totalConnections": len(hub.active),
+        "rooms": room_status,
+    }
+
+
+@app.get("/metrics")
+async def metrics() -> dict[str, Any]:
+    """Prometheus-style metrics exposed as JSON for simple scraping."""
+    return {
+        "sources_active": len(sources),
+        "websocket_connections": len(hub.active),
+        "queued_messages_total": sum(q.qsize() for q in hub._queues.values()),
+        "clients_disconnected_total": len(getattr(hub, "_disconnection_log", [])),
+    }

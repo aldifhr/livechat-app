@@ -593,14 +593,41 @@ code,
 /* The live preview's own stage: the overlay at its real proportions, filling the
    screen, rather than the scaled-down box beside the builder's controls. A
    browser source is a fixed rectangle, and the only way to see whether the
-   overlay actually fits it is to show it at that shape and nothing else. */
+   overlay actually fits it is to show it at that shape and nothing else.
+
+   `min-height` rather than `aspect-ratio`. A 16:9 ratio is the shape of an OBS
+   canvas and is a good default, but as a hard rule it is also a ceiling: a
+   ten-row leaderboard at 28px is ~580px tall, and a stage whose height is
+   derived from its width clips the last row with no scrollbar and no error — a
+   board visibly cut off reads as a broken overlay, not as a frame too short for
+   it. As a floor it keeps that shape for a short overlay and gets out of the way
+   for a tall one, which is what the overlay's own reported height then governs.
+   See LivePreview.tsx. */
 .preview-stage {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
   background: #000;
-  aspect-ratio: 16 / 9;
+  min-height: 520px;
   position: relative;
+}
+
+/* The iframe fills the stage. Without an explicit size an iframe defaults to
+   300×150, which silently clips whatever the overlay renders — a leaderboard
+   taller than 150px is cut off with no scrollbar and no error, so the preview
+   shows the top two rows of a ten-row board and reads as a broken overlay
+   rather than as a frame that is simply too small to hold it.
+
+   `height: 100%` is deliberately NOT here. A 16:9 stage is a floor, not a
+   ceiling: a ten-row leaderboard at 28px is ~580px tall, and a stage whose
+   height is locked to its aspect ratio clips the last row with no scrollbar and
+   no error. The overlay reports its own height over postMessage and the stage
+   takes the larger of the two — see LivePreview.tsx — so the iframe's height is
+   set inline by the component and this rule only supplies the width. */
+.preview-stage iframe {
+  width: 100%;
+  border: 0;
+  display: block;
 }
 
 /* The chat / top-chatters switch: two things you want to look at one at a time,

@@ -79,6 +79,56 @@ export default function LivePreview() {
 
   const shown = which === 'chat' ? chatUrl : boardUrl
 
+  /*
+   * The stage's height, as the overlay itself reports it.
+   *
+   * `aspect-ratio: 16 / 9` is the right default — it is the shape of an OBS
+   * canvas and it fills the screen — but it is a floor, not a ceiling. A
+   * ten-row leaderboard at 28px is ~580px tall, which is taller than the 520px a
+   * 926px-wide 16:9 stage has, and a stage whose height is locked to its aspect
+   * ratio then clips the last row with no scrollbar and no error: a board that
+   * is visibly cut off reads as a broken overlay rather than as a frame that is
+   * too short for it.
+   *
+   * The overlay knows how tall it actually is; nothing outside it can compute
+   * that, because it depends on the row count, the font size, the padding and
+   * every operator-chosen value. So it reports the number and the stage takes
+   * the larger of the two. `null` until the first report, which leaves the
+   * aspect ratio in charge rather than collapsing the stage to nothing.
+   *
+   * The reported height goes on the IFRAME, not on min-height of the stage: the
+   * stage's `aspect-ratio` still resolves its own height from its width, and a
+   * min-height on the stage grows the black box without growing the iframe
+   * inside it — which leaves the board clipped in a taller frame, the same bug
+   * with more empty space around it. Sizing the iframe lets the stage wrap it.
+   */
+  const [reportedHeight, setReportedHeight] = useState<number | null>(null)
+
+  useEffect(() => {
+    // A new overlay is a new height; the old one belongs to the page being left.
+    setReportedHeight(null)
+    function onMessage(event: MessageEvent) {
+      // Any origin: this is a preview of a page this dashboard itself served, and
+      // the only thing taken from the message is a number that is clamped before
+      // it is used as a height.
+      const height = (event.data as { streamkitHeight?: unknown } | null)?.streamkitHeight
+      if (typeof height === 'number' && Number.isFinite(height) && height > 0) {
+        setReportedHeight(Math.min(Math.ceil(height), 4000))
+      }
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [shown])
+
+  const frameStyle =
+    reportedHeight === null
+      ? undefined
+      : // Clamped between the stage's own floor and a ceiling: a quiet room
+        // reports a short chat and the preview would collapse to a sliver, while
+        // a long chat would grow past the fold. The stage's `min-height` holds
+        // the bottom; this holds the top.
+        { height: `${Math.max(520, Math.min(Math.ceil(reportedHeight), 1600))}px` }
+
   return (
     <>
       <div className="page-head">
@@ -127,11 +177,9 @@ export default function LivePreview() {
         </div>
       ) : (
         <div className="preview-stage">
-          <div className="preview-frame">
-            {/* The page itself, not a picture of it, so what is watched here is
-                exactly what OBS will load. */}
-            <iframe src={shown} title="Overlay preview" />
-          </div>
+          {/* The page itself, not a picture of it, so what is watched here is
+              exactly what OBS will load. */}
+          <iframe src={shown} title="Overlay preview" style={frameStyle} />
         </div>
       )}
     </>

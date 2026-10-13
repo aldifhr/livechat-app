@@ -55,6 +55,9 @@ export function useGiftNotification({ notice, voice, ttsPace }: Options): void {
     }
 
     if (voice) {
+      // Ordinary: waits behind whatever chat sentence is still being read. A gift
+      // announcement that cuts off the reader mid-sentence is worse than one that
+      // arrives a beat later — the chat is what the voice is primarily for.
       say(giftAnnouncement(event.nickname, event.giftName, count, diamonds), ttsPace)
     }
   }, [notice, voice, ttsPace])
