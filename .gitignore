@@ -39,4 +39,10 @@ backend/config/overlays.json
 # here (and named exactly) so a stray copy at the repo root cannot be committed
 # again.
 streamtools
+
+# ...except the vhost of the same name under deploy/, which is source. The rule
+# above is deliberately a bare filename so it catches a stray copy anywhere; the
+# exception has to name the one path that is meant to be tracked, and it carries
+# no credential — the vhost only says who to ask, never what the password is.
+!deploy/nginx/sites-available/streamtools
 .hermes/

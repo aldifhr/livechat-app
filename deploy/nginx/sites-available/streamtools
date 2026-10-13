@@ -1,0 +1,173 @@
+# StreamKit — the frontend domain.
+#
+#   /            /admin   the dashboard, served by the Next app on 127.0.0.1:5184
+#   /login                the sign-in page
+#   /overlay/             the chat overlay OBS loads
+#   /topchatter/          the leaderboard overlay
+#   /api/backend/*        proxied to Next, which attaches the backend's token
+#   /ws/                  proxied straight to the backend, no credential
+#
+# The overlay pages are static and served from disk, not through Next: OBS loads
+# them on a canvas-sized browser source where a framework runtime is dead weight,
+# and they must keep working when the dashboard is down or being deployed.
+#
+# /api goes to Next rather than to the backend because Next is what holds
+# STREAMKIT_TOKEN. Proxying here to the backend would need the token in nginx's
+# configuration instead — which is a secret in a file that gets read by every
+# nginx worker and shown by any config dump.
+#
+# /ws/ carries chat, gifts and viewer counts. It is deliberately outside the
+# gate: OBS cannot present a credential, and an overlay that asked for one would
+# show a password box on stream. Nothing that can change anything goes through it.
+#
+# The dashboard is behind a SESSION, not behind `auth_basic`. nginx does not read
+# a password file any more — it asks the app, once per request, whether the
+# request's cookie is a session the app signed (`auth_request` to
+# /api/auth/verify). That is what makes the login a page with an address, a
+# message when the password is wrong, and a way to sign out, instead of the
+# browser's own dialog. The check is in nginx rather than only in the app so the
+# /api/backend/* proxy cannot be reached around it: that proxy attaches
+# STREAMKIT_TOKEN to every mutating call it forwards, so an ungated dashboard is
+# a confused deputy that authorises the whole internet to delete rooms and
+# disconnect streamers. The gate is what makes the token in Next's environment
+# mean something.
+#
+# Everything the login page itself needs — /login, /api/auth/*, and Next's build
+# output under /_next/ — is outside the gate, or the gate would redirect the page
+# that is supposed to be reachable without signing in. /api/* answers 401 rather
+# than a redirect, so a fetch that has lost its session is told so instead of
+# being handed the login page's HTML as if it were data.
+
+server {
+    listen 80;
+    server_name streamtools.aldifhr.my.id;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name streamtools.aldifhr.my.id;
+
+    ssl_certificate     /etc/letsencrypt/live/streamtools.aldifhr.my.id/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/streamtools.aldifhr.my.id/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    # --- the overlay event stream, open to OBS ------------------------------
+    location /ws/ {
+        proxy_pass https://kit-backend.aldifhr.my.id;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host kit-backend.aldifhr.my.id;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+    # --- the one backend call an overlay makes itself -----------------------
+    # An overlay whose link names a HANDLE (rather than a room id) resolves it by
+    # posting here, and it posts to its own origin: the page and its socket are
+    # served by this vhost, so an overlay's default `baseUrl` is this host.
+    #
+    # This path used to fall through to `location /` and reach the Next app,
+    # which has no such route — so a handle-only link got a 404 and never
+    # resolved. The static design this replaced proxied `/api/` straight to the
+    # backend; the move to Next dropped that and nothing replaced it, because
+    # every link the dashboard builds names a room id and skips this call
+    # entirely. It is matched exactly, and outside the login below, so a
+    # hand-edited handle link resolves again.
+    #
+    # Not a hole: the route is exempt from the backend's write token by design —
+    # it is the one write the desktop app may make without a credential — and it
+    # is already reachable directly on kit-backend. Proxying it here adds no
+    # reachability that did not exist, and unlike /api/backend/* it attaches no
+    # token, so it is not a confused deputy.
+    location = /api/room-connect-by-username {
+        proxy_pass https://kit-backend.aldifhr.my.id;
+        proxy_http_version 1.1;
+        proxy_set_header Host kit-backend.aldifhr.my.id;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 60s;
+    }
+
+    # --- the overlay pages, one URL each -------------------------------------
+    # Served from disk and deliberately NOT gated: OBS loads them with no way to
+    # present a credential. The snippet's exact and regex locations are matched
+    # before the `location /` below, so they stay reachable while the dashboard
+    # does not.
+    root /var/www/streamtools;
+    include snippets/streamtools-overlays.conf;
+
+    # --- the session check nginx asks before it lets anything through --------
+    # `internal` so it cannot be called from outside; nginx issues it itself.
+    # The body is not forwarded: this decides who you are, and who you are does
+    # not depend on what you are sending. A 2xx from here means "signed in" and
+    # anything else means "no", which is all nginx needs to know.
+    location = /_auth {
+        internal;
+        proxy_pass http://127.0.0.1:5184/api/auth/verify;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header X-Original-URI $request_uri;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 30s;
+    }
+
+    # --- open: the sign-in page, and the API it posts to ---------------------
+    location = /login {
+        include snippets/streamtools-next.conf;
+    }
+
+    location ^~ /api/auth/ {
+        include snippets/streamtools-next.conf;
+    }
+
+    # --- open: Next's build output ------------------------------------------
+    # The login page is a Next page, so it is nothing without its JS and CSS
+    # chunks. These carry no data, only the app's own code, so serving them
+    # without a session is what lets the login page render at all.
+    location ^~ /_next/ {
+        include snippets/streamtools-next.conf;
+    }
+
+    # --- open: the landing page ---------------------------------------------
+    # The one page that has to be reachable with no session: it is what tells a
+    # visitor this is a product and points them at the login.
+    location = / {
+        include snippets/streamtools-next.conf;
+    }
+
+    # --- the API proxy: gated, and answered with 401, not a redirect --------
+    # A fetch that has lost its session must be told so; a 302 to the login page
+    # would arrive as a 200 with HTML, which reads to the caller as success and
+    # then fails on the JSON.
+    location ^~ /api/ {
+        auth_request /_auth;
+        include snippets/streamtools-next.conf;
+    }
+
+    # --- the dashboard: gated, and sent to the sign-in page ------------------
+    location / {
+        auth_request /_auth;
+        error_page 401 = @signin;
+        include snippets/streamtools-next.conf;
+    }
+
+    # Where an unsigned request is sent. `$request_uri` is the address it asked
+    # for, so signing in returns the visitor to the page they wanted rather than
+    # dumping them on the console's home.
+    location @signin {
+        return 302 /login?next=$request_uri;
+    }
+}

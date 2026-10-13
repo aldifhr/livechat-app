@@ -46,15 +46,19 @@ sudo systemctl restart streamtools-web
 sleep 2
 
 # A build that succeeded can still ship a page that cannot hydrate, and that is
-# invisible from here. Assert the one thing that would catch it.
-status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:5184/admin)
-if [ "$status" != "200" ]; then
-  echo "FAIL: /admin answered $status" >&2
-  exit 1
-fi
-chunk=$(curl -s --max-time 10 http://127.0.0.1:5184/admin | grep -o '/_next/static/[^"]*\.js' | head -1)
+# invisible from here. Assert the two things that would catch it, both of which
+# changed meaning when the dashboard stopped being a static build behind
+# nginx's `auth_basic`:
+#
+#   - /login must SERVE. It is the one page reachable with no session, so it is
+#     the only page whose chunks can be fetched without a cookie.
+#   - /admin must NOT serve. A 200 here would mean the gate is off, and the
+#     /api/backend/* proxy beside it attaches STREAMKIT_TOKEN to every call it
+#     forwards — an ungated dashboard is a confused deputy, not a cosmetic bug.
+login=$(curl -s --max-time 10 http://127.0.0.1:5184/login)
+chunk=$(printf '%s' "$login" | grep -o '/_next/static/[^"]*\.js' | head -1)
 if [ -z "$chunk" ]; then
-  echo "FAIL: /admin referenced no JS chunks — the page would not hydrate" >&2
+  echo "FAIL: /login referenced no JS chunks — the page would not hydrate" >&2
   exit 1
 fi
 code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "http://127.0.0.1:5184$chunk")
@@ -63,4 +67,13 @@ if [ "$code" != "200" ]; then
   exit 1
 fi
 
-echo "OK: deployed, /admin serves and its chunks load ($chunk)"
+status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:5184/admin)
+case "$status" in
+  30*) : ;; # sent to /login, which is the point
+  *)
+    echo "FAIL: /admin answered $status without a session — the gate is off" >&2
+    exit 1
+    ;;
+esac
+
+echo "OK: deployed, /login serves and its chunks load ($chunk), /admin is gated ($status)"
