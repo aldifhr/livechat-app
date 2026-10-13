@@ -452,6 +452,168 @@ code,
   color: var(--text-faint);
 }
 
+/* ---- login ---- */
+
+/* The sign-in page is the product's front door, not a lone card in a void. Two
+   halves: what this is on the left, the way in on the right. A single form
+   floating on a black page reads as a staging page; the same form beside the
+   product reads as somewhere you meant to arrive. The left half is dropped on a
+   narrow screen — there it would only push the form off the edge — and the card
+   carries its own small wordmark so it is never anonymous. */
+.login {
+  min-height: 100%;
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+}
+
+.login-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  padding: clamp(2rem, 5vw, 3.5rem);
+  border-right: 1px solid var(--line-soft);
+  /* A single soft highlight in the corner, so the panel is a surface with a
+     light on it rather than a flat black rectangle. Greyscale, like everything
+     else: the point is depth, not colour. */
+  background: radial-gradient(120% 90% at 0% 0%, rgba(255, 255, 255, 0.06), transparent 60%), var(--bg);
+}
+
+.login-lockup {
+  font-size: 1.15rem;
+}
+
+/* Pushed to the middle and the bottom respectively, so the pitch sits low and
+   the note sits on the floor however tall the window is. */
+.login-pitch {
+  margin-top: auto;
+  max-width: 42ch;
+}
+
+.login-pitch h2 {
+  margin: 0 0 0.5rem;
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.login-points {
+  list-style: none;
+  margin: 1.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.login-points li {
+  position: relative;
+  padding-left: 1.5rem;
+  color: var(--text-dim);
+}
+
+.login-points li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.55em;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.login-foot {
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line-soft);
+  max-width: 46ch;
+}
+
+.login-panel {
+  display: grid;
+  place-items: center;
+  padding: clamp(2rem, 5vw, 3rem) 1.5rem;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  padding: 1.75rem 1.5rem;
+}
+
+/* Only shown when the brand half is hidden. */
+.login-lockup-sm {
+  display: none;
+  margin-bottom: 0.75rem;
+  font-size: 1.05rem;
+}
+
+.login-card h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.5rem;
+  letter-spacing: -0.01em;
+}
+
+/* The shared input style is a sunken field for dense forms, where a dozen of
+   them in a grid want to recede. Here there are two, on a card, and the sunken
+   black made the password box read as a hole with no edge. Raised and clearly
+   bordered instead: on the only form in the product's front door, the fields
+   should look like fields. */
+.login-card input {
+  background: var(--bg);
+  border-color: var(--line);
+  padding: 0.6rem 0.7rem;
+}
+
+.login-card input:hover {
+  border-color: var(--accent-dim);
+}
+
+/* The global focus style is a 2px white outline, which is right for a button in
+   a dense panel and harsh on a black field — it read as a browser default. A
+   ring plus a lifted border says the same thing more quietly, and the ring is
+   offset from the border so it reads as focus rather than as a second edge. */
+.login-card input:focus {
+  border-color: var(--accent);
+  outline: 2px solid rgba(255, 255, 255, 0.25);
+  outline-offset: 1px;
+}
+
+.login-card form {
+  margin-top: 1.25rem;
+}
+
+.login-card button {
+  width: 100%;
+  padding: 0.6rem;
+  margin-top: 0.25rem;
+}
+
+/* Not the shared `.faint`: that grey is for captions on pages you have already
+   decided to read. This note carries the one thing a streamer must not
+   misunderstand — that the overlay link is public — so it is set at the
+   readable dim grey, not the faint one. */
+.login-foot {
+  color: var(--text-dim);
+  font-size: 0.86rem;
+}
+
+@media (max-width: 860px) {
+  .login {
+    grid-template-columns: 1fr;
+  }
+
+  .login-brand {
+    display: none;
+  }
+
+  .login-lockup-sm {
+    display: block;
+  }
+}
+
 /* ---- notices ---- */
 
 .notice {

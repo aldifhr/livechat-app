@@ -54,8 +54,9 @@ export default function About({ backend }: { backend?: string }) {
       <div className="panel">
         <h3>Password</h3>
         <p className="muted">
-          This dashboard is behind a password — the one your browser just asked for. Changing it here changes
-          that same login on the server. You will be asked to sign in again with the new one.
+          This dashboard is behind a password, and this is where you change it. Changing it here changes the
+          login on the server too — and signs out every device that was signed in with the old one, because
+          the session is signed with the password itself.
         </p>
         <PasswordPanel />
       </div>
@@ -69,9 +70,9 @@ export default function About({ backend }: { backend?: string }) {
           opening the source.
         </p>
         <p className="muted">
-          The overlay pages are behind the same password, but the event stream they read is not: OBS cannot
-          present a credential, and an overlay that asked for one would show a password box on stream. That
-          stream carries chat, gifts and viewer counts, and nothing that can change anything.
+          The overlay pages are not behind the password, and the event stream they read is open too: OBS
+          cannot present a credential, and an overlay that asked for one would show a password box on
+          stream. That stream carries chat, gifts and viewer counts, and nothing that can change anything.
         </p>
       </div>
     </>

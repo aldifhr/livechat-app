@@ -3,14 +3,14 @@
 /**
  * Changing the console's password from the console.
  *
- * The password belongs to nginx's login, not to this app, and the change is sent
- * to a server route that edits the file nginx reads. Nothing here knows or keeps
- * the password: it is typed, posted, and dropped.
+ * The password is this dashboard's own login, and the change is sent to a server
+ * route that edits the file the login checks. Nothing here knows or keeps the
+ * password: it is typed, posted, and dropped.
  *
- * The fields are cleared on success and the note says the browser will ask again,
- * because the credential the browser has cached is now the old one — the next
- * request it makes will be refused and it will prompt. Saying so is the
- * difference between that prompt reading as "it worked" and as "it broke".
+ * The fields are cleared on success and the note says the other devices will be
+ * signed out, because a session is signed with the password: changing it makes
+ * every cookie minted under the old one fail its check. Saying so is the
+ * difference between that reading as "it worked" and as "it broke".
  */
 
 import { useState } from 'react'
@@ -52,7 +52,7 @@ export default function PasswordPanel() {
       setConfirm('')
       setOutcome({
         kind: 'ok',
-        text: 'Password changed. Your browser will ask you to sign in again on the next page.',
+        text: 'Password changed. Every device signed in with the old password is now signed out — including this one, on its next page.',
       })
     } catch {
       setOutcome({ kind: 'error', text: 'The request could not be sent.' })

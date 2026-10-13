@@ -1,32 +1,32 @@
 /**
  * Changing the dashboard password.
  *
- * The password being changed is nginx's, not this app's: it is the `auth_basic`
- * login in front of the console, and it lives in an htpasswd file on this host.
- * That is why this route does not touch the backend or `STREAMKIT_TOKEN` — it
- * edits the file nginx reads. The hashing is done in-process (see `lib/htpasswd`)
- * rather than by shelling out, so the password never touches a command line.
+ * The password being changed is this dashboard's own login — the one the login
+ * page checks — and it lives in a file on this host. That is why this route does
+ * not touch the backend or `STREAMKIT_TOKEN`. The hashing is done in-process
+ * (see `lib/htpasswd`) rather than by shelling out, so the password never
+ * touches a command line.
  *
- * It is reachable only through nginx's `location /`, so the caller is already
- * authenticated by the current password before this runs. The current password is
- * still asked for and checked, for two reasons: a stolen session should not let
- * someone silently lock the owner out, and it is what makes a cross-site request
- * useless — an attacker can make the browser send the change, but cannot supply a
- * password it does not know.
+ * It sits behind the session gate like every other /api route, so the caller is
+ * already signed in. The current password is still asked for and checked, for
+ * two reasons: a stolen session should not let someone silently lock the owner
+ * out, and it is what makes a cross-site request useless — an attacker can make
+ * the browser send the change, but cannot supply a password it does not know.
  */
 
 import 'server-only'
 
 import { NextRequest } from 'next/server'
 import { setPassword, verifyPassword } from '@/lib/htpasswd'
+import { dashboardUser, passwordFile } from '@/lib/config'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/** The file nginx checks, and the account within it. Both are deployment facts
- *  with a working default, so a default install needs no configuration. */
-const FILE = process.env.STREAMKIT_HTPASSWD ?? '/etc/nginx/streamtools.htpasswd'
-const USER = process.env.STREAMKIT_DASHBOARD_USER ?? 'admin'
+/** The file the login checks, and the account within it. Both are deployment
+ *  facts with a working default, so a default install needs no configuration. */
+const FILE = passwordFile
+const USER = dashboardUser
 
 /** bcrypt hashes at most 72 bytes; a longer password would be silently cut. A
  *  newline would too, since an htpasswd line is one line. Refuse both. */

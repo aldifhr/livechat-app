@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { tokenConfigured, productName, splitWordmark } from '@/lib/config'
 import Sidebar from '@/components/Sidebar'
+import SignOutButton from '@/components/SignOutButton'
 
 // Rendered per request, not at build time. Next would otherwise prerender these
 // pages and freeze whatever STREAMKIT_TOKEN happened to be set to when the build
@@ -32,6 +33,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           {tail && <span>{tail}</span>}
         </span>
         <Sidebar />
+        <SignOutButton />
       </aside>
       <main className="content">
         {!tokenConfigured && (

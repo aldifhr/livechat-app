@@ -5,6 +5,11 @@
  * token on the server. There is no token in this file, in `NEXT_PUBLIC_` anything,
  * or anywhere else the browser could read one — the credential lives in the
  * server's environment and stops here.
+ *
+ * The route is behind the session gate, so a call made with no session is
+ * answered with a redirect to the login page rather than with data. `isAuthFailure`
+ * treats that as it treats any refused credential, which is what the caller wants:
+ * "sign in again", not "the backend broke".
  */
 
 'use client'
