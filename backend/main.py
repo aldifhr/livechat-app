@@ -719,7 +719,44 @@ async def _connect_room(room_id: str, username: str) -> dict:
         source = TikTokAdapter(username, room_id)
         sources[room_id] = source
         source.start_background()
+        # Start observer task to consume events from adapter queue and broadcast
+        asyncio.create_task(_observe_source(room_id, source))
         return {"status": "connecting", "username": username, "room_id": room_id}
+
+
+async def _observe_source(room_id: str, source: TikTokAdapter) -> None:
+    """Consume events from adapter and broadcast to WebSocket clients."""
+    # Wait for connection before starting observer
+    while source._running and not source._connected:
+        await asyncio.sleep(0.1)
+        if not source._running:
+            return
+
+    try:
+        async for event in source.observe():
+            payload = {
+                "kind": event.kind,
+                "user": event.user,
+                "value": event.value,
+                "meta": event.meta,
+            }
+            if event.user:
+                payload["user_id"] = event.user_id
+                payload["avatar"] = event.avatar
+            await hub.broadcast(payload, room_id=room_id)
+            # Also record for stats/eventlog
+            try:
+                eventlog.record(
+                    room_id, event.kind,
+                    user=event.user, text=event.value,
+                    meta=event.meta, user_id=event.user_id,
+                )
+            except Exception:
+                pass
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        logger.error("Observer task failed for room %s: %s", room_id, e)
 
 
 @router.post("/api/disconnect")

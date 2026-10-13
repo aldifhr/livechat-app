@@ -140,15 +140,24 @@ class TikTokAdapter(EventAdapter):
         guard two calls (e.g. restore_sources on boot plus a manual connect)
         each spawn an independent `_run_client` loop with its own retry
         counter — the reconnect-storm signature.
+
+        `_task` is parked with this *wrapper* task only until `connect()`
+        replaces it with the run loop. `connect()` therefore must not use
+        `_task` as its idempotency guard: the wrapper is still pending when
+        the scheduled coroutine runs, so the guard saw its own task, returned
+        early, and left `_running` False — every room reported a bare
+        "Offline" and no socket was ever opened.
         """
-        if self._task is not None and not self._task.done():
+        if self._running or (self._task is not None and not self._task.done()):
             return
         self._task = asyncio.create_task(self.connect())
 
     async def connect(self, **kwargs: Any) -> bool:
         """Connect to TikTok Live for this username. Idempotent."""
-        # Already running — don't spawn a second loop.
-        if self._task is not None and not self._task.done():
+        # Already running — don't spawn a second loop. Keyed on `_running`
+        # (which `start_background()` does not set) rather than `_task`, so the
+        # wrapper task parked there cannot trip this guard and skip the connect.
+        if self._running:
             return True
         try:
             from TikTokLive import TikTokLiveClient as Client
@@ -191,7 +200,11 @@ class TikTokAdapter(EventAdapter):
 
         @client.on(DisconnectEvent)
         async def on_disconnect(_):
-            self._running = False
+            # Only the socket is gone; the source is still meant to run, so
+            # `_run_client` is left free to reconnect. Clearing `_running` here
+            # (as it used to) ended the connect loop on the first transient
+            # drop, which is what made a still-live stream sit at "Offline"
+            # until somebody reconnected it by hand.
             self._connected = False
 
         @client.on(LiveEndEvent)
@@ -378,7 +391,16 @@ class TikTokAdapter(EventAdapter):
         while self._running and not self._live_ended:
             try:
                 if self._client is not None:
-                    await self._client.start()
+                    # `start()` is NOT blocking: it returns the websocket
+                    # heartbeat Task and comes straight back. Await that task,
+                    # or the loop spins and calls `start()` again on a client
+                    # whose socket is still up — which is exactly what raises
+                    # AlreadyConnectedError ("You can only make one connection
+                    # per client!"). Awaiting it parks this loop for as long as
+                    # the socket lives and returns only when it drops.
+                    _ws_task = await self._client.start()
+                    if _ws_task is not None:
+                        await _ws_task
                 else:
                     logger.warning("No TikTok client to start for @%s", self.username)
                     break
@@ -433,20 +455,44 @@ class TikTokAdapter(EventAdapter):
                     self.username, delay, _attempt, _max_retries,
                 )
                 await asyncio.sleep(delay)
+            else:
+                # The awaited websocket task returned without raising: the
+                # socket closed (stream ended or a plain drop). If we are still
+                # meant to run, back off and reconnect.
+                if not self._running or self._live_ended:
+                    break
 
-                # Re-create client on retry. _setup_handlers only registers
-                # handlers — it does NOT spawn a new _run_client, so this stays
-                # a single loop.
-                try:
-                    from TikTokLive import TikTokLiveClient as Client
-                    self._client = Client(unique_id=self.username)
-                    self._setup_handlers(self._client)
-                except Exception as retry_err:
-                    logger.error("Failed to recreate client on retry: %s", retry_err)
+                _attempt += 1
+                if _attempt >= _max_retries:
+                    logger.error(
+                        "Max reconnect attempts reached for @%s — giving up",
+                        self.username,
+                    )
                     self._running = False
                     break
-            else:
-                # Connection ended normally (not via exception).
+
+                delay = min(_base_delay * (2 ** (_attempt - 1)), _max_delay)
+                delay = delay * (0.5 + random.random())
+                logger.info(
+                    "Reconnecting to @%s in %.1fs (attempt %d/%d)",
+                    self.username, delay, _attempt, _max_retries,
+                )
+                await asyncio.sleep(delay)
+
+            # Rebuild the client before the next attempt — every path that
+            # reaches here (error-retry or normal drop) must start from a fresh
+            # client. Reusing the old one is what triggers AlreadyConnectedError:
+            # its websocket can still read as connected after the task returned.
+            # _setup_handlers only registers handlers, so this stays one loop.
+            if not self._running or self._live_ended:
+                break
+            try:
+                from TikTokLive import TikTokLiveClient as Client
+                self._client = Client(unique_id=self.username)
+                self._setup_handlers(self._client)
+            except Exception as retry_err:
+                logger.error("Failed to recreate client on retry: %s", retry_err)
+                self._running = False
                 break
 
         self._connected = False
