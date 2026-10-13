@@ -52,7 +52,7 @@ def main_run():
     started: dict[str, str] = {}
 
     class FakeSource:
-        """Stands in for TikTokSource so nothing reaches TikTok from a test."""
+        """Stands in for TikTokAdapter so nothing reaches TikTok from a test."""
 
         def __init__(self, username, room_id):
             self.username = username
@@ -77,7 +77,7 @@ def main_run():
         started[room_id] = username
         return FakeSource(username, room_id)
 
-    main.TikTokSource = fake_source
+    main.TikTokAdapter = fake_source
     main.sources.clear()
 
     client = TestClient(main.app)
@@ -212,7 +212,7 @@ def main_run():
     # lands in the event loop, and threads cannot express that.
     import asyncio
 
-    real_source = main.TikTokSource
+    real_source = main.TikTokAdapter
     built: list[FakeSource] = []
 
     class CountingSource(FakeSource):
@@ -228,7 +228,7 @@ def main_run():
             return source
         return make
 
-    main.TikTokSource = counting_factory()
+    main.TikTokAdapter = counting_factory()
     try:
         async def both():
             # Same room, different handles, so neither takes the idempotent path.
@@ -255,10 +255,10 @@ def main_run():
             still_running and installed is still_running[0],
         )
     finally:
-        main.TikTokSource = real_source
+        main.TikTokAdapter = real_source
         main.sources.clear()
 
-    main.TikTokSource = getattr(sys.modules["sources"], "TikTokSource")
+    main.TikTokAdapter = getattr(sys.modules["sources"], "TikTokAdapter")
     main.sources.clear()
 
 

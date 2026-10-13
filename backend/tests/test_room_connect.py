@@ -76,7 +76,7 @@ def main_run():
     # and the refusal path are exercised here; the live connect itself is verified
     # against the running deployment instead of in this process.
     started = {}
-    real_start = main.TikTokSource
+    real_start = main.TikTokAdapter
 
     class FakeSource:
         def __init__(self, username, room_id):
@@ -97,7 +97,7 @@ def main_run():
         def status_payload(self):
             return {"connected": False}
 
-    main.TikTokSource = FakeSource
+    main.TikTokAdapter = FakeSource
     main.sources.clear()
     try:
         r = client.post(f"/api/room-connect/{ov['id']}")
@@ -149,7 +149,7 @@ def main_run():
         delete_room(bare["id"])
         main.sources.clear()
     finally:
-        main.TikTokSource = real_start
+        main.TikTokAdapter = real_start
         main.sources.clear()
         # Restored even on failure: leaving the cache pointing at a temp file
         # would have this process write a stranger's rooms into the void.
