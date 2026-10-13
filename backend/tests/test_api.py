@@ -414,19 +414,30 @@ print("the 401 a browser sees is a 401, not an opaque CORS failure")
 # CORS has to be the outer layer. With the auth guard outermost, its 401 crosses
 # the wire without any CORS headers and a browser reports an opaque network
 # failure — so the reason for the refusal never reaches the page that has to act
-# on it.
+# on it. The origin here is the frontend host, which is the one origin the
+# allowlist carries: an overlay page posts a handle to this API from there.
 os.environ["STREAMKIT_TOKEN"] = "s3cret"
 try:
     with TestClient(main.app) as browser:
         r = browser.post(
             "/api/rooms",
             json={"name": "CrossOrigin"},
-            headers={"Origin": "https://example.test", "X-StreamKit-Token": "wrong"},
+            headers={"Origin": "https://streamtools.aldifhr.my.id", "X-StreamKit-Token": "wrong"},
         )
         check("the refusal is a 401", r.status_code == 401, f"got {r.status_code}")
         check(
             "and it carries the header that lets the page read it",
             r.headers.get("access-control-allow-origin") is not None,
+            f"headers={dict(r.headers)}",
+        )
+
+        # An origin that is not on the allowlist gets no grant. `*` used to be
+        # returned here, which let any page on the internet read this API's
+        # responses from a victim's browser.
+        r = browser.get("/api/rooms", headers={"Origin": "https://evil.example"})
+        check(
+            "an origin off the allowlist gets no CORS grant",
+            r.headers.get("access-control-allow-origin") is None,
             f"headers={dict(r.headers)}",
         )
 finally:

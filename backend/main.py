@@ -312,12 +312,27 @@ async def guard_mutations(request: Request, call_next):
 # order the guard is outermost and its 401 crosses the wire without any CORS
 # headers, which a browser reports as an opaque network failure rather than the
 # 401 it is — so the real reason for the refusal never reaches the page.
+#
+# The list is explicit rather than "*". The only browser that talks to this API
+# cross-origin is an overlay page: it is served from the frontend host and posts
+# a handle to /api/room-connect-by-username to resolve it. Everything else
+# reaches the backend server-side — the dashboard through its Next proxy, the
+# desktop app through native Rust HTTP — so neither needs a CORS grant at all.
+# A wildcard would also let any page on the internet read this API's responses
+# from a victim's browser, which is a permission nothing here asks for.
+#
+# Overridable so a deployment that moves the frontend domain does not have to
+# edit code: STREAMKIT_ALLOWED_ORIGINS is a comma-separated list.
+def _allowed_origins() -> list[str]:
+    raw = os.environ.get("STREAMKIT_ALLOWED_ORIGINS", "").strip()
+    if raw:
+        return [o.strip().rstrip("/") for o in raw.split(",") if o.strip()]
+    return ["https://streamtools.aldifhr.my.id"]
+
+
 app.add_middleware(
     CORSMiddleware,
-    # The frontend is served from a different origin than this API, so it has to
-    # be reachable cross-origin. Credentials are never used, which is what makes
-    # "*" acceptable here.
-    allow_origins=["*"],
+    allow_origins=_allowed_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
 )
