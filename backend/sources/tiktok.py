@@ -191,6 +191,14 @@ class TikTokAdapter(EventAdapter):
         # attempted" and the router reads it, so overloading it here would let a
         # new connect replace this object while its teardown is still running.
         self._live_ended = False
+        # Failed reconnects since the last successful connect. Lives on the
+        # instance, not in `_run_client`'s frame, so `on_connect` can clear it:
+        # the budget bounds *consecutive* failures, and a local counter counted
+        # every drop over the life of the source instead.
+        self._attempt = 0
+        # The same for the circuit breaker's streak, and for the same reason:
+        # three sign failures in a row is the signal, not three ever.
+        self._consecutive_sign_failures = 0
         # The single background task running the connect/reconnect loop.
         self._task: asyncio.Task | None = None
         self._events: asyncio.Queue[Event | _Stop] = asyncio.Queue()
@@ -200,6 +208,19 @@ class TikTokAdapter(EventAdapter):
         self._gift_streaks: dict[str, dict[str, int]] = {}
 
     def status_payload(self) -> dict[str, Any]:
+        # The live ending is checked first, and deliberately. `on_live_end` sets
+        # `_live_ended` while `_running` is still true (the connect loop has not
+        # unwound yet), so with the running check ahead of this one a client
+        # attaching in that window was told "Connecting" over a stream that had
+        # already finished. It is also the only terminal state here: nothing
+        # reconnects after it, so it outranks both flags below.
+        if self._live_ended:
+            return {
+                "type": "status",
+                "connected": False,
+                "message": f"@{self.username} is no longer live",
+                "liveEnded": True,
+            }
         if self._connected:
             return {
                 "type": "status",
@@ -216,13 +237,6 @@ class TikTokAdapter(EventAdapter):
         # A client attaching after the live already ended gets the same honest
         # answer as one that was there when it happened, rather than a bare
         # "Offline" that is indistinguishable from never-connected.
-        if self._live_ended:
-            return {
-                "type": "status",
-                "connected": False,
-                "message": f"@{self.username} is no longer live",
-                "liveEnded": True,
-            }
         return {"type": "status", "connected": False, "message": "Offline"}
 
     def is_running(self) -> bool:
@@ -272,6 +286,10 @@ class TikTokAdapter(EventAdapter):
         self._running = True
         self._connected = False
         self._live_ended = False
+        # A fresh connect starts a fresh retry budget. `_run_client` reads this
+        # instance counter (cleared again by `on_connect`), so it must begin at
+        # zero rather than carrying a previous session's spent attempts.
+        self._attempt = 0
         self._task = asyncio.create_task(self._run_client())
         return True
 
@@ -298,6 +316,15 @@ class TikTokAdapter(EventAdapter):
         @client.on(ConnectEvent)
         async def on_connect(_):
             self._connected = True
+            # A completed handshake is what "consecutive" counts from: the retry
+            # budget exists to survive a run of failures, and a connection that
+            # came up is proof the last run ended. Without this reset the budget
+            # was spent over the life of the source, so a long stream that
+            # blipped ten times in an evening ended permanently on the tenth.
+            self._attempt = 0
+            # Same reasoning for the circuit breaker: a successful handshake
+            # means TikTok is not blocking us, so the streak is over.
+            self._consecutive_sign_failures = 0
             # Broadcast the transition, not just flip a flag. The status frame is
             # edge-triggered and nothing else produces one mid-session, so without
             # this the app's status line never leaves "connecting" on the socket
@@ -529,9 +556,15 @@ class TikTokAdapter(EventAdapter):
         _base_delay = 2.0
         _max_delay = 30.0
         _max_retries = 10
-        _consecutive_sign_failures = 0
         _max_sign_failures = 3
-        _attempt = 0
+        # Both counters live on the instance, not in this frame, so `on_connect`
+        # can clear them. The budget and the circuit breaker both promise to
+        # bound *consecutive* failures; frame-local counters instead accumulated
+        # every failure over the life of the source, so a long stream that
+        # blipped now and then eventually spent a budget it had already earned
+        # back by connecting.
+        self._attempt = 0
+        self._consecutive_sign_failures = 0
 
         while self._running and not self._live_ended:
             try:
@@ -555,7 +588,7 @@ class TikTokAdapter(EventAdapter):
                 if self._live_ended or not self._running:
                     break
 
-                _attempt += 1
+                self._attempt += 1
                 err_str = str(e)
 
                 # Circuit breaker: sign server / TikTok blocking is permanent,
@@ -568,24 +601,24 @@ class TikTokAdapter(EventAdapter):
                     or "403" in err_str
                 )
                 if is_sign_failure:
-                    _consecutive_sign_failures += 1
+                    self._consecutive_sign_failures += 1
                 else:
-                    _consecutive_sign_failures = 0
+                    self._consecutive_sign_failures = 0
 
-                if _consecutive_sign_failures >= _max_sign_failures:
+                if self._consecutive_sign_failures >= _max_sign_failures:
                     logger.error(
                         "Circuit breaker tripped for @%s after %d consecutive "
                         "sign/block failures: %s — giving up permanently",
-                        self.username, _consecutive_sign_failures, err_str,
+                        self.username, self._consecutive_sign_failures, err_str,
                     )
                     self._running = False
                     break
 
                 logger.warning(
                     "TikTok connection failed for @%s (attempt %d/%d): %s",
-                    self.username, _attempt, _max_retries, e,
+                    self.username, self._attempt, _max_retries, e,
                 )
-                if _attempt >= _max_retries:
+                if self._attempt >= _max_retries:
                     logger.error(
                         "Max reconnect attempts reached for @%s — giving up",
                         self.username,
@@ -593,11 +626,11 @@ class TikTokAdapter(EventAdapter):
                     self._running = False
                     break
 
-                delay = min(_base_delay * (2 ** (_attempt - 1)), _max_delay)
+                delay = min(_base_delay * (2 ** (self._attempt - 1)), _max_delay)
                 delay = delay * (0.5 + random.random())
                 logger.info(
                     "Reconnecting to @%s in %.1fs (attempt %d/%d)",
-                    self.username, delay, _attempt, _max_retries,
+                    self.username, delay, self._attempt, _max_retries,
                 )
                 await asyncio.sleep(delay)
             else:
@@ -607,8 +640,8 @@ class TikTokAdapter(EventAdapter):
                 if not self._running or self._live_ended:
                     break
 
-                _attempt += 1
-                if _attempt >= _max_retries:
+                self._attempt += 1
+                if self._attempt >= _max_retries:
                     logger.error(
                         "Max reconnect attempts reached for @%s — giving up",
                         self.username,
@@ -616,11 +649,11 @@ class TikTokAdapter(EventAdapter):
                     self._running = False
                     break
 
-                delay = min(_base_delay * (2 ** (_attempt - 1)), _max_delay)
+                delay = min(_base_delay * (2 ** (self._attempt - 1)), _max_delay)
                 delay = delay * (0.5 + random.random())
                 logger.info(
                     "Reconnecting to @%s in %.1fs (attempt %d/%d)",
-                    self.username, delay, _attempt, _max_retries,
+                    self.username, delay, self._attempt, _max_retries,
                 )
                 await asyncio.sleep(delay)
 
@@ -641,6 +674,13 @@ class TikTokAdapter(EventAdapter):
                 break
 
         self._connected = False
+        # The loop has ended, so nothing is running any more. `_running` used to
+        # be left set on the natural exits (live end, retries exhausted, circuit
+        # breaker), which made `is_running()` report a dead source as live — the
+        # router then skipped the replace on the next connect and a finished
+        # stream could never be revived without a restart. `disconnect()` clears
+        # it too, for the cancellation path that never reaches this line.
+        self._running = False
         # The loop has ended. A live-end already reported itself from the handler;
         # anything else is the source giving up (retries exhausted, circuit
         # breaker, or a client that could not be rebuilt), and the app would
