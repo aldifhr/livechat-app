@@ -11,6 +11,8 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError, isAuthFailure, type Room } from '../lib/client'
+import ConfirmDialog from '../components/ConfirmDialog'
+import { useToast } from '../components/Toast'
 
 /** How often to ask about a room's live state. Long enough to be quiet, short
  *  enough that going offline is noticed while somebody is watching. */
@@ -19,11 +21,15 @@ const POLL_MS = 15_000
 export default function Rooms() {
   const [rooms, setRooms] = useState<Room[]>([])
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
   const [newHandle, setNewHandle] = useState('')
   const [label, setLabel] = useState('')
   const [live, setLive] = useState<Record<string, boolean>>({})
+  // The room waiting to be deleted, rather than a boolean: the dialog names the
+  // room, and naming it from the room that raised it is the one way the name on
+  // screen cannot drift from the room that gets deleted.
+  const [pendingDelete, setPendingDelete] = useState<Room | null>(null)
+  const toast = useToast()
 
   const load = useCallback(async () => {
     try {
@@ -107,12 +113,11 @@ export default function Rooms() {
       setNewHandle('')
       setLabel('')
       setError('')
-      setNotice(`Connected to @${handle}.`)
+      toast(`Connected to @${handle}.`)
       // A room that was just created is not in the list yet, so this cannot
       // wait for the next poll to show the streamer's own room.
       setRooms((current) => (current.some((r) => r.id === room.id) ? current : [room, ...current]))
     } catch (cause) {
-      setNotice('')
       setError(
         cause instanceof ApiError && isAuthFailure(cause.status)
           ? 'Your login was refused. Reload the page and sign in again.'
@@ -125,16 +130,27 @@ export default function Rooms() {
     }
   }
 
-  const remove = async (room: Room) => {
-    if (!window.confirm(`Delete "${room.name}"? The overlay link for it stops working immediately.`)) return
+  /**
+   * Delete the room the dialog is asking about.
+   *
+   * The room is taken from `pendingDelete` rather than from an argument, so what
+   * gets deleted is what the dialog named — the same object, not a name that was
+   * re-read from a list that a poll may have refreshed in between.
+   */
+  const confirmRemove = async () => {
+    const room = pendingDelete
+    if (!room) return
     setBusy(true)
     try {
       await api.deleteRoom(room.id)
       await load()
+      setPendingDelete(null)
+      toast(`Deleted “${room.name || room.username || 'room'}”. Its overlay link no longer works.`)
     } catch (cause) {
       // Same treatment as create: a refused token and a backend that is down are
       // different problems, and the raw "Invalid or missing STREAMKIT_TOKEN" says
       // nothing about which one happened or what to do about it.
+      setPendingDelete(null)
       setError(
         cause instanceof ApiError && isAuthFailure(cause.status)
           ? 'Your login was refused. Reload the page and sign in again.'
@@ -164,7 +180,6 @@ export default function Rooms() {
       </div>
 
       {error && <div className="notice error">{error}</div>}
-      {notice && <div className="notice ok">{notice}</div>}
 
       <div className="panel">
         <h3>Connect a stream</h3>
@@ -221,7 +236,7 @@ export default function Rooms() {
               </Link>
               <button
                 className="danger"
-                onClick={() => void remove(room)}
+                onClick={() => setPendingDelete(room)}
                 disabled={busy}
                 aria-label={`Delete ${room.name}`}
               >
@@ -231,6 +246,33 @@ export default function Rooms() {
           </div>
         ))
       )}
+
+      {/* One dialog for the list, not one per row: it is a single question at a
+          time, and a dialog per room would put a <dialog> in the DOM for every
+          row on the page. */}
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title="Delete this room?"
+        body={
+          <>
+            <p className="flush-top">
+              <strong>{pendingDelete?.name || pendingDelete?.username || 'This room'}</strong> will be removed
+              from the backend.
+            </p>
+            {/* The consequence, stated plainly: this is the whole reason the
+                question is asked, and it is what the browser's own dialog could
+                not say — it offered "OK". */}
+            <p className="muted flush-top">
+              Its overlay link stops working immediately. Anything you have pasted into OBS will go blank until
+              you point it at another room.
+            </p>
+          </>
+        }
+        confirmLabel="Delete room"
+        busy={busy}
+        onConfirm={() => void confirmRemove()}
+        onCancel={() => setPendingDelete(null)}
+      />
     </>
   )
 }

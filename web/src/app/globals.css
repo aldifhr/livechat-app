@@ -633,12 +633,6 @@ code,
   font-weight: 500;
 }
 
-.notice.ok {
-  border-color: var(--line);
-  color: var(--text-dim);
-  background: var(--bg-sunken);
-}
-
 /* ---- overlay builder ---- */
 
 .builder {
@@ -822,4 +816,132 @@ code,
 .seg button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* ---- toasts ----
+   Fixed to the corner rather than placed in the flow: the message is about an
+   action that has already happened, and it should not push the page around when
+   it appears or leave a gap when it goes. Above the dialog backdrop's layer so a
+   toast raised by a confirmed action is still readable. */
+.toasts {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-end;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: min(26rem, calc(100vw - 2rem));
+  padding: 0.6rem 0.6rem 0.6rem 0.9rem;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--text-dim);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  color: var(--text);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 55%);
+  animation: toast-in 160ms ease-out;
+}
+
+.toast-close {
+  border: 0;
+  background: transparent;
+  color: var(--text-faint);
+  padding: 0 0.4rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.toast-close:hover {
+  color: var(--text);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Respect a stated preference for less motion: the toast still appears, it just
+   does not slide. */
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
+}
+
+/* ---- confirmation dialog ----
+   The panel is drawn by us; the browser still supplies the focus trap, Escape
+   and the inert background, which is the part worth not writing by hand. */
+.dialog {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text);
+  max-width: min(28rem, calc(100vw - 2rem));
+}
+
+.dialog::backdrop {
+  background: rgb(0 0 0 / 65%);
+}
+
+.dialog-panel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  padding: 1.25rem 1.25rem 1rem;
+  box-shadow: 0 16px 48px rgb(0 0 0 / 60%);
+}
+
+.dialog-panel h3 {
+  margin: 0 0 0.6rem;
+  font-size: 1.05rem;
+}
+
+.dialog-body {
+  color: var(--text-dim);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.dialog-body strong {
+  color: var(--text);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+/* The palette has no red on purpose, so the destructive button is not signalled
+   by a hue. It is the solid one — the strongest contrast in the frame — and the
+   label says exactly what it does. Position is the other signal: it sits last,
+   after Cancel. */
+button.danger-solid {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+button.danger-solid:hover:not(:disabled) {
+  background: var(--accent-dim);
+  border-color: var(--accent-dim);
+  color: var(--accent-ink);
 }

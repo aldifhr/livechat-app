@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { tokenConfigured, productName, splitWordmark } from '@/lib/config'
 import Sidebar from '@/components/Sidebar'
 import SignOutButton from '@/components/SignOutButton'
+import { ToastProvider } from '@/components/Toast'
 
 // Rendered per request, not at build time. Next would otherwise prerender these
 // pages and freeze whatever STREAMKIT_TOKEN happened to be set to when the build
@@ -42,7 +43,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             STREAMKIT_TOKEN in the environment and restart.
           </div>
         )}
-        {children}
+        {/* Wrapped here rather than around the whole shell: the toasts belong to
+            the console's own actions, and the sidebar does not raise any. */}
+        <ToastProvider>{children}</ToastProvider>
       </main>
     </div>
   )
