@@ -22,6 +22,19 @@ from events import COMMENT, FOLLOW, GIFT, JOIN, LIKE, SHARE, VIEWERS, Event
 # dropped rather than shown as if they were usernames.
 PLACEHOLDER_NICKNAMES = {"", "?", "not found", "unknown", "-", "null", "none"}
 
+#: Pushed into an adapter's event queue to release a consumer parked in
+#: `observe()`. A bare queue cannot end that loop: `_running` going false is
+#: only read at the top of the `while`, which a consumer blocked in `get()`
+#: never reaches, and once the source has stopped nothing else is ever queued —
+#: so the `await` parked forever and every reconnect leaked the previous
+#: observer task for the life of the process. The sentinel is that missing
+#: wake-up, and it is queued behind any real events so a drain still happens.
+class _Stop:
+    """Type-only sentinel marker so the queue stays `Event | _Stop`."""
+
+
+_STOP = _Stop()
+
 
 def display_name(user: Any) -> str | None:
     """Return a nickname worth showing, or None if it is missing/placeholder."""
@@ -95,7 +108,7 @@ class TikTokAdapter(EventAdapter):
         self._live_ended = False
         # The single background task running the connect/reconnect loop.
         self._task: asyncio.Task | None = None
-        self._events: asyncio.Queue[Event] = asyncio.Queue()
+        self._events: asyncio.Queue[Event | _Stop] = asyncio.Queue()
         # Streak accumulation: user_id -> {gift_id, count, diamond_total}
         self._gift_streaks: dict[str, dict[str, int]] = {}
 
@@ -370,9 +383,23 @@ class TikTokAdapter(EventAdapter):
                 meta={"count": joined} if joined else {},
             ))
 
+    def _release_observer(self) -> None:
+        """Wake a consumer parked in `observe()`.
+
+        `put_nowait` rather than an await: this is called from teardown paths,
+        one of which (`_run_client` finishing) is the last statement of the task
+        that would otherwise be the one doing the awaiting.
+        """
+        self._events.put_nowait(_STOP)
+
     async def disconnect(self) -> None:
         """Stop connection and cleanup."""
         self._running = False
+        # Release the observer before awaiting the client teardown. `observe()`
+        # parks in `queue.get()`, which `_running` alone cannot interrupt, so
+        # without this the observer task for every disconnected room stayed
+        # alive holding a reference to the adapter and its queue.
+        self._release_observer()
         if self._task is not None:
             self._task.cancel()
             try:
@@ -396,6 +423,12 @@ class TikTokAdapter(EventAdapter):
         """Yield normalized events from TikTok Live stream."""
         while self._running or not self._events.empty():
             event = await self._events.get()
+            # The stop sentinel releases the `get()` above; it is not an event and
+            # must not reach `events.emit`. `_running` is re-read after the wake-up
+            # so a consumer that was parked when the source stopped ends the loop
+            # instead of blocking on the next `get()`.
+            if isinstance(event, _Stop):
+                return
             yield event
 
     async def _run_client(self) -> None:
@@ -541,6 +574,12 @@ class TikTokAdapter(EventAdapter):
                 )
             except Exception:  # noqa: BLE001 — a status frame must not kill the loop
                 pass
+
+        # The loop gave up on its own (retries exhausted, circuit breaker, live
+        # ended) rather than through `disconnect()`, so the observer parked in
+        # `queue.get()` still has to be woken here. Without this the observer
+        # for every room that failed to connect outlived its source.
+        self._release_observer()
 
     async def start(self) -> None:
         """Alias for connect()."""
