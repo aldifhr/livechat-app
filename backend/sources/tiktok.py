@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Any, AsyncGenerator
 
 from protocols import EventAdapter
@@ -55,6 +56,48 @@ def display_id(user: Any) -> str:
     if user is None:
         return ""
     return (getattr(user, "username", "") or "").strip()
+
+
+def _mention_handle(user: Any) -> str:
+    """The @-handle of a mentioned user, whichever field the lib filled in.
+
+    `mention_users` is typed as raw proto `User` objects, which carry the handle
+    as `display_id`; `at_user` is an `ExtendedUser`, which aliases the same value
+    to `username`. Reading both means neither shape is silently empty — and the
+    whole reason mentions are read here rather than scanned out of the text is
+    that a handle is exact, whereas `@name` cannot even be typed for a display
+    name that contains a space.
+    """
+    for attr in ("username", "display_id"):
+        value = getattr(user, attr, None)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def mention_handles(event: Any) -> list[str]:
+    """The handles a comment is addressed to, as TikTok reported them.
+
+    Taken from the event's own mention list rather than by scanning the text: the
+    proto carries the handles the sender actually picked, so there is no guessing
+    about case or a leading `@`, and a mention of a display name with a space is
+    still caught. A light scan of the text is the fallback for a frame that
+    leaves the list empty — the same rule the overlay has always used, kept so a
+    mention is never lost just because the list arrived blank.
+    """
+    handles: list[str] = []
+    for user in getattr(event, "mention_users", None) or []:
+        handle = _mention_handle(user)
+        if handle and handle not in handles:
+            handles.append(handle)
+    at_user = getattr(event, "at_user", None)
+    if at_user is not None:
+        handle = _mention_handle(at_user)
+        if handle and handle not in handles:
+            handles.append(handle)
+    if not handles:
+        handles = re.findall(r"@([A-Za-z0-9._]{1,24})", getattr(event, "comment", "") or "")
+    return handles
 
 
 def streak_step(
@@ -311,6 +354,10 @@ class TikTokAdapter(EventAdapter):
                 user_id=display_id(event.user),
                 avatar=avatar_url(event.user),
                 value=event.comment,
+                # The handles this message is addressed to, so the feed can
+                # highlight it, the mention alert can fire and the voice can say
+                # who was called. Empty for the ordinary comment.
+                meta={"mentions": mention_handles(event)},
             ))
 
         @client.on(LikeEvent)

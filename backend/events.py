@@ -86,7 +86,15 @@ def _named(e: Event) -> dict[str, Any]:
 
 
 def _comment(e: Event) -> dict[str, Any]:
-    return {"type": COMMENT, **_named(e), "text": e.value}
+    # `mentions` is carried only when there is one, so a plain message stays
+    # byte-for-byte what it was and a client that predates the field reads
+    # nothing new. An empty list and an absent key mean the same thing here —
+    # nobody was addressed — and the absent form keeps the ordinary case cheap.
+    payload: dict[str, Any] = {"type": COMMENT, **_named(e), "text": e.value}
+    mentions = e.meta.get("mentions")
+    if mentions:
+        payload["mentions"] = list(mentions)
+    return payload
 
 
 def _like(e: Event) -> dict[str, Any]:

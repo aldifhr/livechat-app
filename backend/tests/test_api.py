@@ -250,6 +250,30 @@ check(
     "avatar" not in to_wire(Event(kind="viewers", meta={"count": 12})),
 )
 
+# Mentions. The app has read `mentions` since it had a feed, but nothing on the
+# producing side ever set it — so `mentionsMe()` was always false and the
+# highlight, the alert sound and the spoken name never fired on a real room.
+# The field is carried only when a message is actually addressed to someone:
+# absent for the ordinary comment, so its wire form is byte-for-byte what it was.
+print("mentions on the wire")
+check(
+    "a plain comment carries no mentions key",
+    "mentions" not in to_wire(Event(kind="comment", user="a", value="hi")),
+)
+check(
+    "an addressed comment carries the handles",
+    to_wire(Event(kind="comment", user="a", value="@ana hi", meta={"mentions": ["ana", "budi"]}))["mentions"]
+    == ["ana", "budi"],
+)
+check(
+    "an empty mention list is left off, not sent as []",
+    "mentions" not in to_wire(Event(kind="comment", user="a", value="hi", meta={"mentions": []})),
+)
+check(
+    "mentions ride only on comments",
+    "mentions" not in to_wire(Event(kind="gift", user="a", meta={"giftName": "Rose", "count": 1, "value": 5})),
+)
+
 print("token guard")
 # Everything above ran with no token set, which must stay open so a fresh clone
 # works with no setup. Now turn one on and check what it actually covers.
