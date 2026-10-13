@@ -4,10 +4,17 @@ Four of these lived in `apps/api/` rather than `tests/`, so a `tests/test_*.py`
 glob reported a clean suite while never executing them — which is how a green run
 came to mean nothing at all. Anything matching `test_*.py` here runs, and the
 count is checked against the files on disk so the next stray test cannot hide.
+
+Each test also runs with `STREAMKIT_CONFIG_DIR` pointed at a throwaway directory,
+so a suite that forgets to isolate itself cannot write into the deployed
+`backend/config/rooms.json`. A test that wants its own store still overrides the
+variable; this only closes the silent default.
 """
 
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).parent
@@ -19,11 +26,15 @@ if not TESTS:
 
 failed: list[str] = []
 for path in TESTS:
+    env = dict(os.environ)
+    # A fresh scratch dir per test, so no two share state either.
+    env["STREAMKIT_CONFIG_DIR"] = tempfile.mkdtemp()
     result = subprocess.run(
         [sys.executable, "-u", str(path)],
         capture_output=True,
         text=True,
         cwd=str(HERE.parent),
+        env=env,
     )
     last = [ln for ln in result.stdout.strip().splitlines() if ln.strip()]
     summary = last[-1] if last else "(no output)"
