@@ -511,9 +511,15 @@ async def update_room(room_id: str, req: UpdateRoomRequest):
 
     # A different username means the running source is pointed at the wrong
     # room, so drop it; the room page re-requests the connection on reload.
+    #
+    # Removed from `sources` under the same lock the connect and stop paths use,
+    # then stopped outside it. Leaving it in the dict (as this used to) kept a
+    # dead entry that `/health` still counted as an active room, and the next
+    # connect had to displace an object whose teardown had already run.
     if username_changed:
-        source = sources.get(room_id)
-        if source is not None and source.is_running():
+        async with _sources_lock:
+            source = sources.pop(room_id, None)
+        if source is not None:
             await source.stop()
 
     return {"room": _summary(room_id, record)}

@@ -155,6 +155,38 @@ with TestClient(main.app) as client:
     check("patch keeps config", client.get(f"/api/rooms/{oid}").json()["config"] == {},
           json.dumps(client.get(f"/api/rooms/{oid}").json()["config"]))
 
+    print("changing the username drops the running source")
+    # A source aimed at the old handle is useless, and leaving it in `sources`
+    # (as this used to) kept a dead entry that `/health` still counted as an
+    # active room, which the next connect then had to displace. The slot has to
+    # be released, not just stopped.
+    class _FakeSource:
+        username = "someone"
+        room_id = oid
+
+        def __init__(self):
+            self.stopped = False
+
+        def is_running(self):
+            return True
+
+        async def stop(self):
+            self.stopped = True
+
+    fake = _FakeSource()
+    main.sources[oid] = fake
+    client.patch(f"/api/rooms/{oid}", json={"username": "someone-else"}, headers=AUTH)
+    check("the source is released from the registry", oid not in main.sources, list(main.sources))
+    check("and it was stopped", fake.stopped is True)
+
+    # A patch that leaves the username alone must not disturb a live source.
+    fake = _FakeSource()
+    main.sources[oid] = fake
+    client.patch(f"/api/rooms/{oid}", json={"name": "Renamed"}, headers=AUTH)
+    check("a rename keeps the source running", main.sources.get(oid) is fake, list(main.sources))
+    check("and does not stop it", fake.stopped is False)
+    main.sources.pop(oid, None)
+
     print("config")
     cfg = {"version": 2, "type": "chat", "padding": 12, "customCSS": "",
            "global": {"fontSize": 16}, "style": {}}
