@@ -57,6 +57,48 @@ def display_id(user: Any) -> str:
     return (getattr(user, "username", "") or "").strip()
 
 
+def streak_step(
+    streaks: dict[str, dict[str, int]],
+    user_id: str,
+    gift_id: int,
+    repeat_count: int,
+    diamond_count: int,
+    repeat_end: int,
+) -> tuple[int, int] | None:
+    """Fold one gift frame into the streak state, or report the finished total.
+
+    Returns `None` while a combo is still running (nothing to dispatch yet), and
+    `(count, diamonds)` on the frame that ends it.
+
+    The whole correctness of this rests on one fact about the protocol:
+    `repeat_count` is a *cumulative* total, not a per-frame delta. The third shot
+    of a ten-Rose combo arrives carrying `3`, and the final frame carries `10` —
+    so each frame's value replaces the stored one rather than being added to it.
+    Summing them is exactly the bug this exists to prevent: 1+2+…+10 = 55
+    diamonds for a combo worth 10.
+
+    Extracted from the handler so the arithmetic can be checked without a live
+    socket — the same reason `viewers_count.judge` was pulled out, and the reason
+    a nested handler is a poor place for a rule that is easy to get wrong.
+    """
+    if repeat_end == 0:
+        streaks[user_id] = {
+            "gift_id": gift_id,
+            "count": repeat_count,
+            "diamond_total": diamond_count * repeat_count,
+        }
+        return None
+
+    previous = streaks.pop(user_id, None)
+    count = repeat_count
+    # The final frame carries the full count. If it somehow arrives without one,
+    # fall back to the last running total rather than reporting a zero-gift —
+    # but only when it is the same gift, so a stale entry cannot leak in.
+    if count <= 0 and previous is not None and previous["gift_id"] == gift_id:
+        count = previous["count"]
+    return count, diamond_count * count
+
+
 def avatar_url(user: Any) -> str:
     """The user's avatar URL, or "" when TikTok did not send one."""
     if user is None:
@@ -109,7 +151,9 @@ class TikTokAdapter(EventAdapter):
         # The single background task running the connect/reconnect loop.
         self._task: asyncio.Task | None = None
         self._events: asyncio.Queue[Event | _Stop] = asyncio.Queue()
-        # Streak accumulation: user_id -> {gift_id, count, diamond_total}
+        # Streak state, keyed by user_id: the last running total seen for the
+        # combo in progress. `repeat_count` is cumulative, so this holds the
+        # latest value rather than a sum of the frames.
         self._gift_streaks: dict[str, dict[str, int]] = {}
 
     def status_payload(self) -> dict[str, Any]:
@@ -292,31 +336,21 @@ class TikTokAdapter(EventAdapter):
             user_id = display_id(event.user)
             gift_id = event.gift.gift_id or 0
 
-            # TikTok streak handling: repeat_end=0 means streak ongoing,
-            # repeat_end=1 means streak just finished. Accumulate diamonds
-            # during streak, dispatch total when repeat_end=1.
-            if event.repeat_end == 0:
-                # Streak in progress — accumulate
-                streak = self._gift_streaks.get(user_id)
-                if streak is None or streak["gift_id"] != gift_id:
-                    self._gift_streaks[user_id] = {
-                        "gift_id": gift_id,
-                        "count": event.repeat_count,
-                        "diamond_total": event.gift.diamond_count * event.repeat_count,
-                    }
-                else:
-                    streak["count"] += event.repeat_count
-                    streak["diamond_total"] += event.gift.diamond_count * event.repeat_count
-                return  # Don't dispatch yet
-
-            # repeat_end == 1 — streak finished (or single gift)
-            streak = self._gift_streaks.pop(user_id, None)
-            if streak and streak["gift_id"] == gift_id:
-                count = streak["count"]
-                value = streak["diamond_total"]
-            else:
-                count = event.repeat_count
-                value = event.gift.diamond_count * event.repeat_count
+            # TikTok streak handling. `repeat_count` is a cumulative total, not a
+            # per-frame delta, so the arithmetic lives in `streak_step` where it
+            # can be checked without a socket — summing the frames is what turned
+            # a ten-Rose combo into 1+2+…+10 = 55 diamonds.
+            step = streak_step(
+                self._gift_streaks,
+                user_id,
+                gift_id,
+                event.repeat_count,
+                event.gift.diamond_count,
+                event.repeat_end,
+            )
+            if step is None:
+                return  # Streak still running — nothing to dispatch yet
+            count, value = step
 
             await self._events.put(Event(
                 kind=GIFT,
