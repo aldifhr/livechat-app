@@ -139,16 +139,19 @@ for (const [name, rule] of [
 }
 
 console.log('what gets spoken')
-check('an empty message speaks nothing', ttsText('ana', '   ', true) === '')
-check('a message with no name is just the text', ttsText('ana', 'halo', false) === 'halo')
-check('a message with a name says who', ttsText('ana', 'halo', true) === 'ana says: halo')
-check('a blank name still says something', ttsText('', 'halo', true) === 'Someone says: halo')
-check('runs of whitespace collapse to one', ttsText('ana', 'a   b', false) === 'a b')
+// The read is the chat on its own. A sender's name used to be prefixed to it, and
+// the Indonesian voice turned the English framing word into "seiz" — a listener
+// heard "size" after every name. Nothing is said but the message now.
+check('an empty message speaks nothing', ttsText('   ') === '')
+check('a message is spoken as written', ttsText('halo') === 'halo')
+check('runs of whitespace collapse to one', ttsText('a   b') === 'a b')
 // A long message is cut with an ellipsis, not silently truncated — the ellipsis
 // is what tells a listener it was cut rather than that the message ended there.
-check('a long message is cut', ttsText('ana', 'x'.repeat(TTS_MAX_CHARS + 50), false).endsWith('…'))
-check('and the cut keeps the length bounded', ttsText('ana', 'x'.repeat(1000), false).length <= TTS_MAX_CHARS + 1)
-check('a short message is left whole', ttsText('ana', 'x'.repeat(10), false) === 'x'.repeat(10))
+check('a long message is cut', ttsText('x'.repeat(TTS_MAX_CHARS + 50)).endsWith('…'))
+check('and the cut keeps the length bounded', ttsText('x'.repeat(1000)).length <= TTS_MAX_CHARS + 1)
+check('a short message is left whole', ttsText('x'.repeat(10)) === 'x'.repeat(10))
+// Nothing frames the message, so no framing word can be mispronounced into one.
+check('no prefix is spoken', !/says|bilang|mengirim/i.test(ttsText('halo')))
 // Speech needs a longer gap than the blip: overlapping taps are busy, but
 // overlapping sentences are unintelligible.
 check('speech waits longer than a blip does', CHAT_TTS_GAP_MS > CHAT_SOUND_GAP_MS, String(CHAT_TTS_GAP_MS))

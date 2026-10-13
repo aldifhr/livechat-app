@@ -28,9 +28,11 @@ interface Options {
   notice: boolean
   /** Announce the gift with the neural voice. */
   voice: boolean
+  /** How fast it speaks, from the settings the user picked. */
+  ttsPace: string
 }
 
-export function useGiftNotification({ notice, voice }: Options): void {
+export function useGiftNotification({ notice, voice, ttsPace }: Options): void {
   const lastShownAt = useRef<number | null>(null)
 
   useRoomEvents((event: SidecarEvent) => {
@@ -53,9 +55,9 @@ export function useGiftNotification({ notice, voice }: Options): void {
     }
 
     if (voice) {
-      say(giftAnnouncement(event.nickname, event.giftName, count, diamonds))
+      say(giftAnnouncement(event.nickname, event.giftName, count, diamonds), ttsPace)
     }
-  }, [notice, voice])
+  }, [notice, voice, ttsPace])
 
   // Silence forgets when the last announcement was, so turning it back on does not
   // wait out a gap that started while it was off. The voice is stopped too, but

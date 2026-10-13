@@ -23,8 +23,6 @@
  * `?` and the check will not demand the host always send it.
  */
 
-import type { WebhookConfig, WebhookGift } from './webhook'
-import type { OverlayStyle } from '@shared/overlay'
 import type { BackendConfig } from './backend'
 
 type EventHandler = (event: SidecarEvent) => void
@@ -123,17 +121,10 @@ type HostCommand =
   | 'open_stream'
   | 'speak'
   | 'pick_sound_file'
-  | 'webhook_config_get'
-  | 'webhook_config_save'
-  | 'webhook_test'
-  | 'webhook_send'
   | 'backend_config_get'
   | 'backend_config_save'
   | 'backend_connect'
   | 'backend_disconnect'
-  | 'overlay_url'
-  | 'overlay_open'
-  | 'overlay_running'
 
 /**
  * How the UI reaches the host.
@@ -322,56 +313,19 @@ export const host = {
    * Reads a line of chat aloud with the neural voice, and returns the audio as a
    * data URL ready to play.
    *
-   * The text is sent to Microsoft to be spoken — that is what a neural voice this
-   * good costs, and it is why the setting that enables this is opt-in. The audio
-   * comes back as base64 rather than being played in the host, so it goes through
-   * the same AudioContext and the same volume as every other sound.
+   * The text is sent to Google to be spoken — that is what a neural voice this good
+   * costs, and it is why the setting that enables this is opt-in. The audio comes
+   * back as base64 rather than being played in the host, so it goes through the
+   * same AudioContext and the same volume as every other sound.
+   *
+   * The pace is sent rather than remembered here: which values the voice service
+   * actually honours is not a question the page should be answering, so it is
+   * named, and the host settles for its own default if the value is not one it has.
    */
-  speak: async (text: string): Promise<string> => {
+  speak: async (text: string, pace: string): Promise<string> => {
     const resolved = await resolve()
-    const encoded = await resolved.invoke('speak', { text })
+    const encoded = await resolved.invoke('speak', { text, pace })
     return typeof encoded === 'string' && encoded !== '' ? `data:audio/mpeg;base64,${encoded}` : ''
-  },
-  /**
-   * The stored webhook settings.
-   *
-   * Read from disk rather than sent in, so the token travels from the config file
-   * to the socket and never through the page that asked for the send.
-   */
-  webhookConfigGet: async (): Promise<WebhookConfig> => {
-    const resolved = await resolve()
-    const config = (await resolved.invoke('webhook_config_get')) as Partial<WebhookConfig> | null | undefined
-    return {
-      enabled: config?.enabled === true,
-      url: typeof config?.url === 'string' ? config.url : '',
-      token: typeof config?.token === 'string' ? config.token : '',
-    }
-  },
-  webhookConfigSave: async (config: WebhookConfig): Promise<void> => {
-    const resolved = await resolve()
-    await resolved.invoke('webhook_config_save', { config })
-  },
-  /**
-   * Sends one test gift and reports what came back.
-   *
-   * The only webhook call whose result the user sees — "saved" is not evidence a URL
-   * was right, and there is no other way to find out from a settings box.
-   */
-  webhookTest: async (): Promise<string> => {
-    const resolved = await resolve()
-    const said = await resolved.invoke('webhook_test')
-    return typeof said === 'string' ? said : 'Sent.'
-  },
-  /**
-   * Sends one gift to the configured webhook.
-   *
-   * The gift is the argument; the URL and the token are not. They are read from disk
-   * in the host, so a credential handed to the page in order to be used is a
-   * credential the page can leak.
-   */
-  webhookSend: async (gift: WebhookGift): Promise<void> => {
-    const resolved = await resolve()
-    await resolved.invoke('webhook_send', { gift })
   },
   /**
    * Opens a file picker and returns the chosen sound file's path.
@@ -420,51 +374,5 @@ export const host = {
   backendDisconnect: async (): Promise<void> => {
     const resolved = await resolve()
     await resolved.invoke('backend_disconnect')
-  },
-  /**
-   * The link to paste into OBS, with the styling carried in it.
-   *
-   * Built host-side because two of its parts are not the page's: the backend
-   * address is a file on disk and the handle is whatever was typed into the
-   * toolbar. Both of those would otherwise have to be kept in step with a second
-   * copy in the frontend, and a link pointing at a different backend than the app
-   * is reading is a link that shows an empty chat for reasons nobody can see.
-   */
-  overlayUrl: async (
-    username: string,
-    style: OverlayStyle,
-    roomId?: string,
-  ): Promise<string> => {
-    const resolved = await resolve()
-    // `roomId` makes the link a bare `?room=<id>`: the host emits just that when a
-    // room id is in hand, because naming the room by id is one nothing has to
-    // resolve and nothing can drift away from.
-    const url = await resolved.invoke('overlay_url', { username, style, roomId: roomId ?? null })
-    return typeof url === 'string' ? url : ''
-  },
-  /**
-   * Opens the overlay page in the user's browser.
-   *
-   * Through the host rather than `window.open`, which does nothing here: the
-   * webview is under a content security policy that does not let the page
-   * navigate anywhere, and a page asking for a new window is not something the
-   * platform grants it. The host checks the address is its own overlay before
-   * handing it to the OS — the same reason `openStream` checks before opening
-   * anything, though here the rule is the loopback port rather than a host list.
-   */
-  overlayOpen: async (url: string): Promise<void> => {
-    const resolved = await resolve()
-    await resolved.invoke('overlay_open', { url })
-  },
-  /**
-   * Whether the overlay server is answering.
-   *
-   * `false` means either that it is not running or that something else has the
-   * port — both of which a streamer needs to know before a stream rather than
-   * during one, which is why this is asked rather than assumed.
-   */
-  overlayRunning: async (): Promise<boolean> => {
-    const resolved = await resolve()
-    return await resolved.invoke('overlay_running') === true
   },
 }

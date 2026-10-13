@@ -1,5 +1,5 @@
 import type { ViewSettings } from '../../hooks/useSettings'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { host } from '../../lib/sidecar'
 import { TEMPLATES } from '../../lib/templates'
 import { invalidateCustomSound, playSound, resolveAudio, releaseAudio } from '../../lib/player'
@@ -9,16 +9,6 @@ import { Section } from './Section'
 interface Props {
   settings: ViewSettings
   set: SetSetting
-  /**
-   * The line the dialog shows about whatever was last attempted.
-   *
-   * Shared with the model and webhook sections rather than a status of their own:
-   * they are all answers to "did that work", and three separate lines in three
-   * places would mean the user reading the wrong one after clicking something in
-   * another section.
-   */
-  status: Status
-  setStatus: (status: Status) => void
 }
 
 /**
@@ -28,8 +18,17 @@ interface Props {
  * The context is created on the first preview rather than on mount, because a
  * dialog nobody plays a sound in should not hold an audio thread for as long as
  * the app is open.
+ *
+ * The status line is this section's own rather than the dialog's. It used to be
+ * shared, so that picking a sound in here and firing a webhook in another section
+ * could not leave two different answers on screen and the user reading the wrong
+ * one. Sharing only earned its cost while there were two things to share between;
+ * with the webhook gone this is the last section that reports at all, so threading
+ * the state up to a parent that no longer reads it would be the dead weight the
+ * sharing was avoiding.
  */
-export function SoundsSection({ settings, set, status, setStatus }: Props) {
+export function SoundsSection({ settings, set }: Props) {
+  const [status, setStatus] = useState<Status>({ kind: 'idle', text: '' })
   const previewContextRef = useRef<AudioContext | null>(null)
   // The dialog made this context, so the dialog closes it — on unmount, because a
   // context left open holds an audio thread for as long as the app runs.

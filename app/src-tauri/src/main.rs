@@ -11,10 +11,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod backend;
-mod overlay;
 mod sound;
 mod speech;
-mod webhook;
 
 use std::sync::Arc;
 
@@ -140,81 +138,17 @@ async fn pick_sound_file(app: tauri::AppHandle) -> Result<String, String> {
 /// Base64 because the bytes cross as a JSON string — Tauri's command channel is
 /// not a binary one, and a `Vec<u8>` would arrive as an array of numbers, four
 /// times the size.
+/// `pace` is optional so a page that does not know about the choice — an older
+/// build, or a host command called by hand — still speaks at the service's own
+/// pace rather than erroring.
 #[tauri::command]
-async fn speak(text: String) -> Result<String, String> {
+async fn speak(text: String, pace: Option<String>) -> Result<String, String> {
     use base64::Engine as _;
 
-    let said = text.trim();
-    if said.is_empty() {
-        return Err("nothing to say".into());
-    }
-
-    // The connection is opened per utterance and dropped after. A chat line is a
-    // few hundred milliseconds of speech and the gap between messages is longer
-    // than a handshake, so holding one open would idle a socket for no gain; the
-    // cost that mattered — decoding, not connecting — is paid either way.
-    let voice = speech::Speech::connect()
-        .await
-        .map_err(|e| e.to_string())?;
-    let audio = voice.say(said).await.map_err(|e| e.to_string())?;
+    let chosen = pace.as_deref().unwrap_or(speech::NORMAL);
+    let audio = speech::say(&text, chosen).await.map_err(|e| e.to_string())?;
 
     Ok(base64::engine::general_purpose::STANDARD.encode(audio))
-}
-
-/// The stored webhook settings.
-#[tauri::command]
-fn webhook_config_get(app: tauri::AppHandle) -> webhook::WebhookConfig {
-    webhook::read_config(&app)
-}
-
-/// Saves them.
-#[tauri::command]
-fn webhook_config_save(app: tauri::AppHandle, config: webhook::WebhookConfig) -> Result<(), String> {
-    webhook::write_config(&app, &config)
-}
-
-/// Sends one test gift to the configured URL, and reports what came back.
-///
-/// The only webhook call whose result the user sees. Everything else fires on a gift
-/// and logs quietly, because a failed integration must not be able to interrupt a
-/// stream — but a URL typed into a settings box has no other way to find out whether
-/// it was right, and "saved" is not evidence of anything.
-#[tauri::command]
-async fn webhook_test(app: tauri::AppHandle) -> Result<String, String> {
-    let config = webhook::read_config(&app);
-    if config.url.trim().is_empty() {
-        return Err("no webhook URL configured".into());
-    }
-
-    let gift = webhook::GiftPayload {
-        nickname: "Test".into(),
-        user_id: "test".into(),
-        gift_name: "Rose".into(),
-        count: 1,
-        diamonds: 1,
-        timestamp: backend::now_ms(),
-    };
-
-    webhook::send_gift(&config, &gift)
-        .await
-        .map(|()| "Sent. The receiving app should have it now.".to_string())
-        .map_err(|e| e.to_string())
-}
-
-/// Sends one gift to the configured webhook.
-///
-/// The gift arrives from the page, but the URL and the token do not: they are read
-/// from disk here. That split is the point — a credential handed to the page in
-/// order to be used is a credential the page can leak.
-#[tauri::command]
-async fn webhook_send(app: tauri::AppHandle, gift: webhook::GiftPayload) -> Result<(), String> {
-    let config = webhook::read_config(&app);
-    if !config.enabled {
-        return Ok(());
-    }
-    webhook::send_gift(&config, &gift)
-        .await
-        .map_err(|e| e.to_string())
 }
 
 /// The stored backend settings, or an empty one on first launch.
@@ -267,187 +201,6 @@ fn backend_disconnect(state: State<'_, AppState>, app: tauri::AppHandle) {
         json!({ "type": "status", "platform": "bridge", "connected": false, "message": "Disconnected" }),
     );
     state.backend.stop();
-}
-
-/// The overlay page, for the URL a streamer puts in OBS.
-///
-/// Built here rather than in the page because the two facts it needs are not the
-/// page's: the backend address lives in a config file and the handle the user
-/// typed lives in the toolbar's state. Everything else travels in the URL, so
-/// this is a URL with the two parts the page could not know appended — and
-/// `base` is left out entirely when it is the default, because a link with a
-/// parameter in it that everybody has is a link nobody reads.
-///
-/// `room_id` is accepted but not used: a bare `?room=<id>` link depends on the
-/// styling having been stored on the room, and when it has not, the link renders
-/// at the page's defaults — a different overlay from the one configured. The
-/// handle link carries the look in itself, so it is right either way. Kept in the
-/// signature so the command's shape does not churn for the page that calls it.
-#[tauri::command]
-fn overlay_url(app: tauri::AppHandle, username: String, style: OverlayStyle, _room_id: Option<String>) -> String {
-    let config = backend::read_config(&app);
-    let base = normalise_base(&config.base_url);
-    // Served from the backend, not from this app's loopback port. The overlay page
-    // opens its own socket to the backend anyway, so the only thing OBS needs to
-    // reach is the backend — which means a browser source can live on any machine,
-    // not just the one running the app. The loopback server still exists for the
-    // preview and the local case, but the URL handed out points at the domain.
-    let mut url = format!("{}/overlay/", base.trim_end_matches('/'));
-
-    let mut query: Vec<String> = Vec::new();
-    // The handle names the room and the styling travels with it — a link that is
-    // one readable line describing exactly what is on screen. The room id is not
-    // used here: a bare `?room=<id>` link depends on the styling having been
-    // stored on the room, and when it has not, the link renders at the page's
-    // defaults — which is a different overlay from the one configured. The handle
-    // link carries the look in itself, so it is right whether or not anything was
-    // stored.
-    let handle = username.trim().trim_start_matches('@').to_string();
-    if !handle.is_empty() {
-        query.push(format!("room={}", encode_component(&handle)));
-    }
-    if base != backend::DEFAULT_BASE_URL {
-        query.push(format!("base={}", encode_component(&base)));
-    }
-    for (key, value) in [
-        ("size", style.size.to_string()),
-        ("max", style.max.to_string()),
-        ("delay", style.delay.to_string()),
-        ("bg", format!("{:.2}", style.bg)),
-        ("name", encode_component(&style.name_colour)),
-        ("color", encode_component(&style.text_colour)),
-        ("font", encode_component(&style.font)),
-    ] {
-        query.push(format!("{key}={value}"));
-    }
-
-    if !query.is_empty() {
-        url.push('?');
-        url.push_str(&query.join("&"));
-    }
-    url
-}
-
-/// Opens the overlay page in the user's browser.
-///
-/// A separate command from `open_stream` rather than a second entry in its rule.
-/// That rule is "TikTok and nothing else" and the overlay is not TikTok; widening
-/// it would mean loosening the one rule that exists to be narrow, and the page
-/// would gain the ability to open any address on the loopback interface. Here the
-/// rule is this app's own overlay and nothing else, checked in `overlay::is_own_page`
-/// because the URL arrives from the page.
-///
-/// The host does this rather than the webview calling `window.open`: the app's
-/// content security policy does not permit the page to navigate anywhere, and the
-/// page asking for a new window is not something the platform will grant it.
-#[tauri::command]
-fn overlay_open(app: tauri::AppHandle, url: String) -> Result<(), String> {
-    use tauri_plugin_opener::OpenerExt as _;
-    // Two origins count as the overlay now: the loopback server and the backend's
-    // /overlay/ path. The backend prefix is built here from the saved config, the
-    // same address `overlay_url` hands out, so the preview and the copied link
-    // open under the same rule.
-    let base = normalise_base(&backend::read_config(&app).base_url);
-    let backend_prefix = format!("{}/overlay/", base.trim_end_matches('/'));
-    if !overlay::is_own_page(&url, &backend_prefix) {
-        return Err(format!("refusing to open {url}"));
-    }
-    app.opener()
-        .open_url(url, None::<&str>)
-        .map_err(|e| format!("could not open a browser: {e}"))
-}
-
-/// Whether the overlay is actually being served.
-///
-/// The overlay lives on the backend, not on a loopback port, so this asks the
-/// backend's own overlay route rather than a local server: the thing a streamer
-/// needs to know before a stream is "will OBS get the page when it fetches this
-/// link", and that is answered by the backend answering, full stop. A poll rather
-/// than a flag for the same reason it always was — "configured" and "reachable"
-/// are different claims, and a green light over a dead link is worse than none.
-#[tauri::command]
-async fn overlay_running(app: tauri::AppHandle) -> bool {
-    let base = normalise_base(&backend::read_config(&app).base_url);
-    let url = format!("{}/overlay/", base.trim_end_matches('/'));
-    match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
-        .build()
-    {
-        Ok(client) => matches!(client.get(url).send().await, Ok(response) if response.status().is_success()),
-        Err(_) => false,
-    }
-}
-
-/// The styling a link carries, narrowed to the types the page understands.
-///
-/// Narrowed here because this comes from the page and `url` pastes most of it
-/// into a URL: a colour of `red; background: url(...)` is a query parameter that
-/// the page would put straight into a style attribute.
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OverlayStyle {
-    #[serde(default = "default_overlay_size")]
-    size: u32,
-    #[serde(default = "default_overlay_max")]
-    max: u32,
-    #[serde(default = "default_overlay_delay")]
-    delay: u32,
-    #[serde(default)]
-    bg: f32,
-    #[serde(default = "default_name_colour")]
-    name_colour: String,
-    #[serde(default = "default_text_colour")]
-    text_colour: String,
-    #[serde(default = "default_overlay_font")]
-    font: String,
-}
-
-fn default_overlay_size() -> u32 {
-    22
-}
-fn default_overlay_max() -> u32 {
-    8
-}
-fn default_overlay_delay() -> u32 {
-    500
-}
-fn default_name_colour() -> String {
-    "#ffd76a".into()
-}
-fn default_text_colour() -> String {
-    "#ffffff".into()
-}
-fn default_overlay_font() -> String {
-    // The double quotes are part of the value: this is a font *stack*, and CSS
-    // only treats a multi-word family name as one name when it is quoted.
-    r#""Segoe UI", system-ui, sans-serif"#.into()
-}
-
-/// Percent-encodes the few characters that would otherwise end a query value.
-fn encode_component(value: &str) -> String {
-    value
-        .chars()
-        .map(|c| match c {
-            'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' | '.' | '~' => c.to_string(),
-            // Space as `+` rather than `%20` because that is what a form encodes
-            // it as, and the font stack is mostly spaces.
-            ' ' => "+".to_string(),
-            other => other
-                .to_string()
-                .bytes()
-                .map(|b| format!("%{b:02X}"))
-                .collect::<String>(),
-        })
-        .collect()
-}
-
-fn normalise_base(base: &str) -> String {
-    let trimmed = base.trim().trim_end_matches('/');
-    if trimmed.is_empty() {
-        backend::DEFAULT_BASE_URL.to_string()
-    } else {
-        trimmed.to_string()
-    }
 }
 
 /// The tray icon and its menu.
@@ -532,17 +285,10 @@ fn main() {
         open_stream,
         speak,
         pick_sound_file,
-        webhook_config_get,
-        webhook_config_save,
-        webhook_test,
-        webhook_send,
         backend_config_get,
         backend_config_save,
         backend_connect,
-        backend_disconnect,
-        overlay_url,
-        overlay_open,
-        overlay_running
+        backend_disconnect
     ])
         .setup(|app| {
             // Closing the window hides it rather than ending the app, so a stream keeps
@@ -554,12 +300,6 @@ fn main() {
             // asset scope is empty on a fresh launch, so without this a saved
             // custom sound would stop playing after a restart.
             sound::regrant(app.handle());
-
-            // No local overlay server. The overlay is served by the backend and
-            // the link handed out points there, so OBS fetches the page from the
-            // backend whether or not this app is running. A loopback server here
-            // would be a second copy of the page that only works on this machine —
-            // the exact thing the backend-hosted overlay exists to replace.
 
             let handle = app.handle().clone();
             if let Some(window) = app.get_webview_window("main") {
@@ -585,83 +325,4 @@ fn main() {
         })
         .run(tauri::generate_context!())
         .expect("error while running the application");
-}
-
-#[cfg(test)]
-mod overlay_url_tests {
-    use super::*;
-
-    fn style() -> OverlayStyle {
-        OverlayStyle {
-            size: 22,
-            max: 8,
-            delay: 500,
-            bg: 0.0,
-            name_colour: "#ffd76a".into(),
-            text_colour: "#ffffff".into(),
-            font: r#""Segoe UI", system-ui, sans-serif"#.into(),
-        }
-    }
-
-    /// Every field the settings dialog has, with a value of its own.
-    ///
-    /// Distinct on purpose: a builder that quietly left one out still produces a
-    /// URL, and a field that is always the default looks exactly like one that
-    /// works until somebody changes it.
-    fn every_field_is_in(url: &str) {
-        assert!(url.contains("size=22"), "size missing from {url}");
-        assert!(url.contains("max=8"), "max missing from {url}");
-        assert!(url.contains("delay=500"), "delay missing from {url}");
-        assert!(url.contains("name=%23ffd76a"), "name missing from {url}");
-        assert!(url.contains("color=%23ffffff"), "text colour missing from {url}");
-        assert!(url.contains("font=%22Segoe+UI%22%2C+system-ui%2C+sans-serif"), "font missing from {url}");
-    }
-
-    #[test]
-    fn a_style_becomes_a_query_string_the_page_can_read() {
-        let mut query = Vec::new();
-        for (key, value) in [
-            ("size", "22".to_string()),
-            ("max", "8".to_string()),
-            ("delay", "500".to_string()),
-            ("name", encode_component(&style().name_colour)),
-            ("color", encode_component(&style().text_colour)),
-            ("font", encode_component(&style().font)),
-        ] {
-            query.push(format!("{key}={value}"));
-        }
-        // The overlay is served by the backend, so the URL is the backend's
-        // overlay path rather than a loopback port — there is no local server.
-        let url = format!("https://kit-backend.aldifhr.my.id/overlay/?{}", query.join("&"));
-        every_field_is_in(&url);
-        // And the host is willing to open what it built, which is the preview's
-        // own rule — so this also checks the URL is one it considers its own.
-        assert!(overlay::is_own_page(&url, "https://kit-backend.aldifhr.my.id/overlay/"), "{url}");
-    }
-
-    #[test]
-    fn a_colour_is_encoded_rather_than_bare() {
-        // A `#` in a query string starts a fragment. Unencoded, the page reads
-        // `ffd76a` as the fragment and the colour comes back as the default, which
-        // is the setting looking like it did nothing.
-        assert_eq!(encode_component("#ffd76a"), "%23ffd76a");
-        assert_eq!(encode_component("a#b?c&d=e"), "a%23b%3Fc%26d%3De");
-    }
-
-    #[test]
-    fn a_font_stack_is_encoded_as_one_value() {
-        // The default is full of commas and quotes. A comma is the separator, so
-        // an unencoded stack arrives as a dozen parameters rather than one.
-        let encoded = encode_component(&style().font);
-        assert!(!encoded.contains(','), "a comma survived: {encoded}");
-        assert!(!encoded.contains('"'), "a quote survived: {encoded}");
-        assert_eq!(encoded, "%22Segoe+UI%22%2C+system-ui%2C+sans-serif");
-    }
-
-    #[test]
-    fn an_at_sign_is_off_a_handle() {
-        // `@ana` and `ana` are the same room to the backend, and a room named
-        // "@ana" is not one.
-        assert_eq!("@ana".trim().trim_start_matches('@'), "ana");
-    }
 }

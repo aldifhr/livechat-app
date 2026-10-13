@@ -30,9 +30,11 @@ interface Options {
   sound: boolean
   /** Speak the sender's name with the shared voice. */
   voice: boolean
+  /** How fast it speaks, from the settings the user picked. */
+  ttsPace: string
 }
 
-export function useMentionAlert({ myHandle, sound, voice }: Options): void {
+export function useMentionAlert({ myHandle, sound, voice, ttsPace }: Options): void {
   // Its own context rather than the shared player's: a mention plays `playMention`,
   // a fixed two-note figure, not a template or a file — so there is nothing for the
   // player to choose. The lifecycle is the same, so it borrows the same release
@@ -66,9 +68,9 @@ export function useMentionAlert({ myHandle, sound, voice }: Options): void {
 
     if (voice) {
       const who = event.nickname.trim() || 'Someone'
-      say(`${who} menyebut kamu`)
+      say(`${who} menyebut kamu`, ttsPace)
     }
-  }, [mine.join(','), sound, voice])
+  }, [mine.join(','), sound, voice, ttsPace])
 
   // This hook made its own context, so this hook closes it. Released on unmount
   // only: the effect above re-runs on a setting change far more often than the

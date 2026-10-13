@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { kindLabel } from '../hooks/useFeed'
 import { mentionsMe } from '../lib/mentions'
+import { tiktokProfileUrl } from '../lib/platforms'
 import { host } from '../lib/sidecar'
 import type { FeedItem } from '../types'
 
@@ -68,21 +69,21 @@ function FeedRowImpl({ item, isLast, myNames }: Props) {
               chat row worth following up on. Opened through the host, not a plain
               anchor: the webview's content security policy will not navigate, so an
               <a href> would do nothing. The stable handle builds the URL; the
-              display name is the fallback when there is no handle. */}
+              display name is the fallback when there is no handle, and a display
+              name is not a username, so the URL is built by the platform's own rule
+              rather than by percent-encoding whatever the row happens to say. */}
           <button
             type="button"
             className="nickname nickname-link"
             title={`Open @${item.id || item.nickname} on TikTok`}
             onClick={() => {
-              const handle = (item.id || item.nickname || '').trim()
-              if (handle) {
-                void host
-                  .openStream(`https://www.tiktok.com/@${encodeURIComponent(handle)}`)
-                  .catch(() => {
-                    // The host refuses anything but TikTok, and a profile URL is
-                    // TikTok — so a failure here is the browser, not the rule, and
-                    // there is nothing the row can do about it.
-                  })
+              const url = tiktokProfileUrl(item.id || item.nickname || '')
+              if (url) {
+                void host.openStream(url).catch(() => {
+                  // The host refuses anything but TikTok, and a profile URL is
+                  // TikTok — so a failure here is the browser, not the rule, and
+                  // there is nothing the row can do about it.
+                })
               }
             }}
           >

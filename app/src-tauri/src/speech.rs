@@ -5,47 +5,39 @@
 //! network instead — free, no API key, and the difference between the two is the
 //! difference between reading a chat and hearing one.
 //!
-//! Two engines, Google first. The Google Translate read-aloud endpoint is a plain
-//! HTTP GET that returns MP3, which is the simplest thing that can work and the
-//! reason it is tried first. It is also **undocumented** — Google ships no contract
-//! for it — so it can change or vanish without notice, which is exactly why Edge's
-//! Read Aloud is the fallback: same quality, a service Google does not control.
-//! `say` tries Google and, on any failure, falls back to Edge, so a chat is read
-//! by whichever engine is up rather than going silent because one moved.
+//! One engine: the Google Translate read-aloud endpoint, which is a plain HTTP GET
+//! returning MP3. The simplest thing that can work, and the only one that has kept
+//! working.
+//!
+//! Edge's Read Aloud was the second engine here and has been removed. It was there
+//! because it is the only one that can be asked for a particular voice, but it is
+//! not something a program can rely on: the service gates every connection on a
+//! `Sec-MS-GEC` DRM token, and Microsoft rotates the version constant that token is
+//! derived from on its own release cycle. When the pin goes stale the handshake
+//! still succeeds and the service then returns no audio at all, silently, forever.
+//! That failure is worse than having no second engine — a voice picker that hands
+//! the request to a fallback is a picker that quietly does nothing, which is what
+//! shipping one turned out to mean. One engine that works, and says so when it does
+//! not, beats two where one is a lie.
+//!
+//! Which leaves one voice. Google's endpoint takes a language and nothing else: a
+//! `voice` parameter is ignored and returns byte-identical audio, and the language
+//! is the only thing that changes the voice. What it does accept is `ttsspeed`, and
+//! that is what the setting offers — a reading pace, measured and clamped to the
+//! values the service actually answers to.
 //!
 //! The trade is written down rather than buried, because it is the one thing about
-//! this module that is not obvious from the code: **the text being spoken is sent
-//! to Google (or, on fallback, Microsoft) to be spoken.** There is no local option
-//! that sounds this good, so the app asks for it in settings rather than assuming
-//! it, and a user who wants nothing to leave the machine can leave it off and get
-//! silence.
-//!
-//! The Edge connection is kept open across utterances. Chat arrives several a
-//! second in an active room, and opening a WebSocket per message would spend the
-//! whole latency budget on handshakes — the voice would fall a sentence behind the
-//! room it is reading.
+//! this module that is not obvious from the code: **the text being spoken is sent to
+//! Google to be spoken.** There is no local option that sounds this good, so the app
+//! asks for it in settings rather than assuming it, and a user who wants nothing to
+//! leave the machine can leave it off and get silence.
 
-use async_tungstenite::tokio::ConnectStream;
-use msedge_tts::tts::{
-    SpeechConfig,
-    stream::{SynthesizedResponse, tokio_runtime as stream},
-};
+use std::time::Duration;
 
-/// One open connection, reused across utterances.
-///
-/// Held behind a mutex because two messages can arrive close enough together that
-/// both want to speak, and the sender/receiver pair is a single duplex stream —
-/// interleaving two syntheses on it produces garbled audio for both.
-pub struct Speech {
-    sender: tokio::sync::Mutex<stream::SenderAsync<ConnectStream>>,
-    receiver: tokio::sync::Mutex<stream::ReceiverAsync<ConnectStream>>,
-}
-
-/// The Google read-aloud endpoint. Undocumented: Google ships no contract for it,
-/// which is the whole reason Edge is the fallback.
+/// The read-aloud endpoint. Undocumented: Google ships no contract for it.
 const GOOGLE_TTS_URL: &str = "https://translate.google.com/translate_tts";
 
-/// The language code Google is asked for. Indonesian, matching the Edge voice.
+/// The language code Google is asked for. Indonesian.
 const GOOGLE_LANG: &str = "id";
 
 /// The `client` token the endpoint expects. `tw-ob` is what the translate page
@@ -56,8 +48,8 @@ const GOOGLE_CLIENT: &str = "tw-ob";
 ///
 /// Past this it answers 400 rather than truncating, so text is split here and the
 /// pieces spoken in order. The limit is not documented and has moved before; the
-/// value is deliberately under the observed ceiling so a chat line that happens to
-/// be long is still spoken rather than dropped.
+/// value is deliberately under the observed ceiling so a chat line that happens
+/// to be long is still spoken rather than dropped.
 const GOOGLE_MAX_CHARS: usize = 180;
 
 /// A browser user-agent.
@@ -68,12 +60,98 @@ const GOOGLE_MAX_CHARS: usize = 180;
 const GOOGLE_UA: &str =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
 
-/// How long to wait on Google before giving up and falling back to Edge.
+/// How long to wait on Google before giving up.
 ///
-/// A voice that is late is worse than one that switched engines: the room has moved
-/// on by the time a slow answer arrives. Short enough that the fallback still reads
-/// the line while it is current.
+/// A voice that is late is worse than silence: the room has moved on by the time a
+/// slow answer arrives. Short enough that the failure is heard while the line is
+/// still current.
 const GOOGLE_TIMEOUT_SECS: u64 = 6;
+
+/// The setting value meaning the service's own pace: no `ttsspeed` is sent.
+///
+/// Omitted rather than sent as `1` because the two are not the same thing to the
+/// service — a request with no speed parameter and one asking for speed 1 come back
+/// as the same audio today, but only the first is the service's default and only
+/// the first is guaranteed to stay it.
+pub const NORMAL: &str = "normal";
+
+/// The paces that can be picked, slowest first.
+///
+/// Each of these was measured against the live endpoint rather than taken from the
+/// documented range, because the documented range is not what the service honours:
+/// it silently clamps anything near its default, so a "slow" setting of 0.9 produces
+/// audio identical to normal, and a "fast" setting of 4 likewise. These are values
+/// outside the clamp, so each one is audible, and 0.3 and 2.0 are the gentlest
+/// settings that still measure as a real change rather than a rounding difference.
+pub const PACES: &[(&str, Option<&str>)] = &[
+    ("slow", Some("0.3")),
+    (NORMAL, None),
+    ("fast", Some("2.0")),
+];
+
+/// Whether a value from the page names a pace that may be used.
+pub fn is_known_pace(pace: &str) -> bool {
+    PACES.iter().any(|(id, _)| *id == pace)
+}
+
+/// The `ttsspeed` to send for a pace, or `None` to leave the service's own.
+pub fn speed_for(pace: &str) -> Option<&'static str> {
+    PACES
+        .iter()
+        .find(|(id, _)| *id == pace)
+        .and_then(|(_, speed)| *speed)
+}
+
+/// Why a synthesis failed.
+#[derive(Debug)]
+pub enum SpeechError {
+    /// The service could not be reached, or it did not answer in time.
+    Unreachable(String),
+    /// It answered, and not with audio.
+    Refused(String),
+}
+
+impl std::fmt::Display for SpeechError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SpeechError::Unreachable(why) => write!(f, "could not reach the voice service: {why}"),
+            SpeechError::Refused(why) => write!(f, "{why}"),
+        }
+    }
+}
+
+/// One line per synthesis, on stderr.
+///
+/// The webview cannot see any of this — the page is handed silence either way — so
+/// it goes to the terminal `tauri dev` runs in. It is here because a voice setting
+/// that quietly does nothing is the one failure a user cannot diagnose from the
+/// app: the audio comes back, so everything looks like it worked.
+fn log(message: &str) {
+    eprintln!("[tts] {message}");
+}
+
+/// Speaks one utterance and returns the audio as MP3 bytes.
+pub async fn say(text: &str, pace: &str) -> Result<Vec<u8>, SpeechError> {
+    let said = text.trim();
+    if said.is_empty() {
+        return Err(SpeechError::Refused("nothing to say".into()));
+    }
+
+    // An unrecognised pace is the service's own rather than an error: the page sends
+    // this, and a saved setting this build no longer offers must not silence the chat.
+    let pace = if is_known_pace(pace) { pace } else { NORMAL };
+
+    match synthesize(said, speed_for(pace)).await {
+        Ok(audio) => {
+            log(&format!("ok, {pace}, {} bytes", audio.len()));
+            Ok(audio)
+        }
+        Err(e) => {
+            log(&format!("failed at pace {pace}: {e}"));
+            Err(e)
+        }
+    }
+}
 
 /// Splits text into pieces the endpoint will each accept, on whitespace.
 ///
@@ -103,10 +181,10 @@ fn split_for_google(text: &str) -> Vec<String> {
 /// Each piece is a separate GET and the audio is concatenated — MP3 is a stream of
 /// independent frames, so joining the pieces plays as one continuous utterance with
 /// no seam. Any failure — unreachable, refused, no audio — is an `Err`, which the
-/// caller turns into a fallback rather than silence.
-async fn google_say(text: &str) -> Result<Vec<u8>, SpeechError> {
+/// caller turns into silence rather than a wrong sound.
+async fn synthesize(text: &str, speed: Option<&str>) -> Result<Vec<u8>, SpeechError> {
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(GOOGLE_TIMEOUT_SECS))
+        .timeout(Duration::from_secs(GOOGLE_TIMEOUT_SECS))
         .build()
         .map_err(|e| SpeechError::Unreachable(e.to_string()))?;
 
@@ -115,14 +193,21 @@ async fn google_say(text: &str) -> Result<Vec<u8>, SpeechError> {
         // reqwest encodes the query, so the text is passed as a value and not
         // hand-escaped. The parameter names and the endpoint are the parts that
         // matter and they are the literal ones the translate page sends.
+        let mut query = vec![
+            ("ie", "UTF-8"),
+            ("q", piece.as_str()),
+            ("tl", GOOGLE_LANG),
+            ("client", GOOGLE_CLIENT),
+        ];
+        // Only sent when a pace was asked for. Adding it for the default as well
+        // would be a second way of saying the same thing that can stop meaning it.
+        if let Some(speed) = speed {
+            query.push(("ttsspeed", speed));
+        }
+
         let response = client
             .get(GOOGLE_TTS_URL)
-            .query(&[
-                ("ie", "UTF-8"),
-                ("q", piece.as_str()),
-                ("tl", GOOGLE_LANG),
-                ("client", GOOGLE_CLIENT),
-            ])
+            .query(&query)
             .header("user-agent", GOOGLE_UA)
             .send()
             .await
@@ -151,147 +236,75 @@ async fn google_say(text: &str) -> Result<Vec<u8>, SpeechError> {
     Ok(audio)
 }
 
-/// The voice. Indonesian, female, neural.
-///
-/// One voice rather than a picker: the app reads an Indonesian chat, and a list of
-/// two hundred voices is a setting nobody finishes choosing. This one is the
-/// default for the language and reads Indonesian naturally.
-pub const VOICE: &str = "id-ID-GadisNeural";
-
-/// The audio format Edge is asked for.
-///
-/// MP3 at 24kHz: what the service suggests for this voice, small enough that a
-/// sentence is a few tens of kilobytes, and what every browser decodes without a
-/// second codec.
-const AUDIO_FORMAT: &str = "audio-24khz-48kbitrate-mono-mp3";
-
-/// How much faster than natural pace.
-///
-/// Slightly quick, because the room is moving: a voice reading at natural pace
-/// falls behind a chat that is still arriving, and the point is to hear what is
-/// being said roughly as it is said.
-const RATE: i32 = 10;
-
-/// Why a synthesis failed.
-#[derive(Debug)]
-pub enum SpeechError {
-    /// The service could not be reached, or the connection dropped.
-    Unreachable(String),
-    /// It answered, and not with audio.
-    Refused(String),
-}
-
-impl std::fmt::Display for SpeechError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SpeechError::Unreachable(why) => write!(f, "could not reach the voice service: {why}"),
-            SpeechError::Refused(why) => write!(f, "{why}"),
-        }
-    }
-}
-
-fn config() -> SpeechConfig {
-    SpeechConfig {
-        voice_name: VOICE.to_string(),
-        audio_format: AUDIO_FORMAT.to_string(),
-        pitch: 0,
-        rate: RATE,
-        volume: 0,
-    }
-}
-
-impl Speech {
-    /// Opens a connection to the voice service.
-    pub async fn connect() -> Result<Self, SpeechError> {
-        let (sender, receiver) = stream::msedge_tts_split_async()
-            .await
-            .map_err(|e| SpeechError::Unreachable(e.to_string()))?;
-        Ok(Self {
-            sender: tokio::sync::Mutex::new(sender),
-            receiver: tokio::sync::Mutex::new(receiver),
-        })
-    }
-
-    /// Speaks one utterance and returns the audio as MP3 bytes.
-    ///
-    /// Google first, Edge on any failure. The two produce the same format — MP3 at
-    /// 24kHz mono — so the caller cannot tell which engine answered and does not
-    /// need to. A chat is read by whichever engine is up rather than going silent
-    /// because the undocumented one moved, which is the whole point of the fallback.
-    ///
-    /// Serialised through both mutexes for the whole round trip: one utterance at a
-    /// time, start to finish. Two messages arriving together are spoken one after
-    /// the other rather than mixed, which is what the caller's gap already
-    /// arranges — this is the backstop for the case where the gap did not apply.
-    pub async fn say(&self, text: &str) -> Result<Vec<u8>, SpeechError> {
-        // The Edge round trip holds the connection mutexes; Google is a plain HTTP
-        // call that touches none of them, so it is tried before they are taken and
-        // a fallback does not have to unwind a locked connection.
-        match google_say(text).await {
-            Ok(audio) => return Ok(audio),
-            Err(_) => { /* fall through to Edge below */ }
-        }
-
-        let mut sender = self.sender.lock().await;
-        let mut receiver = self.receiver.lock().await;
-
-        sender
-            .send(text, &config())
-            .await
-            .map_err(|e| SpeechError::Unreachable(e.to_string()))?;
-
-        let mut audio = Vec::new();
-        loop {
-            match receiver.read().await {
-                Ok(Some(SynthesizedResponse::AudioBytes(bytes))) => audio.extend_from_slice(&bytes),
-                // Word boundaries and timings: the service sends them alongside the
-                // audio, and nothing here reads a transcript back off them.
-                Ok(Some(SynthesizedResponse::AudioMetadata(_))) => {}
-                // The turn is over: everything the service had for this utterance
-                // has arrived.
-                Ok(None) => break,
-                Err(e) => return Err(SpeechError::Refused(e.to_string())),
-            }
-        }
-
-        if audio.is_empty() {
-            return Err(SpeechError::Refused("the voice returned no audio".into()));
-        }
-        Ok(audio)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn the_voice_is_indonesian_and_neural() {
-        // A voice name that is neither would read an Indonesian chat in the wrong
-        // language or with the robotic platform voice this module exists to avoid.
-        assert!(VOICE.starts_with("id-ID"), "{VOICE}");
-        assert!(VOICE.ends_with("Neural"), "{VOICE}");
+    fn the_language_is_indonesian() {
+        // The chat is Indonesian; asking for another language reads it in that one.
+        assert_eq!(GOOGLE_LANG, "id");
     }
 
     #[test]
-    fn the_config_is_what_the_service_suggests() {
-        let config = config();
-        assert_eq!(config.voice_name, VOICE);
-        assert_eq!(config.audio_format, AUDIO_FORMAT);
-        // Quickened, but not so much it stops being listenable: the room is moving
-        // and a voice at natural pace falls behind it.
-        assert!(config.rate > 0 && config.rate <= 25, "{}", config.rate);
-        // Pitch and volume left alone: a chat read at a shifted pitch reads as a
-        // joke, and the player already owns the level.
-        assert_eq!(config.pitch, 0);
-        assert_eq!(config.volume, 0);
+    fn the_default_pace_sends_no_speed() {
+        // The service's own pace, expressed by not asking. A request carrying
+        // `ttsspeed=1` is a request for a number the service then clamps.
+        assert_eq!(speed_for(NORMAL), None);
+    }
+
+    #[test]
+    fn every_pace_the_picker_offers_is_one_the_service_answers_to() {
+        // Each of these was measured against the live endpoint. A value inside the
+        // service's clamp is worse than useless: it is offered, it is stored, and it
+        // sounds identical to normal.
+        for (id, speed) in PACES {
+            assert!(speed.is_some() || *id == NORMAL, "{id} must send a speed");
+            if let Some(speed) = speed {
+                let s: f32 = speed.parse().expect("a speed is a number");
+                assert!(s > 0.0 && s <= 4.0, "{id} = {speed}");
+                // Outside the range the service clamps to its own pace, which is the
+                // failure this list exists to avoid.
+                assert!(
+                    s <= 0.3 || s >= 2.0,
+                    "{id} = {speed} is close enough to default to be inaudible"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn only_a_known_pace_is_accepted() {
+        assert!(is_known_pace(NORMAL));
+        assert!(PACES.iter().all(|(id, _)| is_known_pace(id)));
+        assert!(!is_known_pace(""));
+        assert!(!is_known_pace("0.9"), "that is the clamp, not a pace");
+        assert!(!is_known_pace("google"), "the old engine name is not a pace");
+    }
+
+    #[test]
+    fn nothing_is_sent_for_text_that_is_empty() {
+        assert!(split_for_google("   ").is_empty());
+        assert!(split_for_google("").is_empty());
+    }
+
+    #[test]
+    fn long_text_is_split_never_lost() {
+        let long = "kata ".repeat(200);
+        let pieces = split_for_google(&long);
+        assert!(pieces.len() > 1);
+        // Every word survives, in order: a dropped word is a hole in the sentence.
+        assert_eq!(pieces.join(" ").split_whitespace().count(), 200);
+        for piece in &pieces {
+            assert!(piece.chars().count() <= GOOGLE_MAX_CHARS, "{piece}");
+        }
     }
 
     #[test]
     fn an_empty_utterance_is_refused_rather_than_played() {
-        // The caller trims before asking, but a service that returns nothing for
-        // empty text must not be reported as a successful silent utterance.
-        let err = SpeechError::Refused("the voice returned no audio".into());
+        // A service that returns nothing for empty text must not be reported as a
+        // successful silent utterance.
+        let err = SpeechError::Refused("google returned no audio".into());
         assert!(err.to_string().contains("no audio"), "{err}");
     }
 }

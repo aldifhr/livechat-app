@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { host } from '../lib/sidecar'
-import { PLATFORM, PLATFORMS } from '../lib/platforms'
+import { PLATFORM, PLATFORMS, tiktokUsername } from '../lib/platforms'
 import { backendUrl, normaliseUsername, type BackendConfig } from '../lib/backend'
 import type { FeedFilters, KindFilter } from '../hooks/useVisibleItems'
 import type { Health } from '../hooks/useHealth'
-import type { UseSettingsResult, ViewSettings } from '../hooks/useSettings'
+import type { UseSettingsResult } from '../hooks/useSettings'
 import type { RoomState } from '../types'
 
 interface Props {
@@ -13,34 +13,15 @@ interface Props {
   totalReceived: number
   kind: KindFilter
   search: string
-  collapse: boolean
   health: Health
   settings: UseSettingsResult
   backend: BackendConfig
   /** The current feed rows, so Clear can say when there is nothing to clear. */
   items: number
   onFiltersChange: (filters: Partial<FeedFilters>) => void
-  onCollapseChange: (enabled: boolean) => void
   onClearChat: () => void
   onOpenSettings: () => void
-  /**
-   * Reports whatever is in the handle field, as it changes.
-   *
-   * The field's state stays here, where it belongs with the logic around it, and
-   * this is the one thing outside that needs to know what it says: the overlay
-   * link. Lifting the state instead would put the debounced save and the
-   * seed-once-from-saved logic in the app for one consumer's benefit.
-   *
-   * `wanted`, not the raw field, so the app gets the same normalised handle
-   * Connect would use rather than something that has to be normalised again.
-   */
-  onHandleChange?: (handle: string) => void
 }
-
-const TOGGLES: { key: keyof ViewSettings; label: string; hint: string }[] = [
-  { key: 'giftSound', label: 'Gift sound', hint: 'Chime when a gift arrives' },
-  { key: 'giftNotice', label: 'Gift notice', hint: 'Raise a desktop toast when a gift arrives' },
-]
 
 /**
  * The toolbar.
@@ -53,6 +34,12 @@ const TOGGLES: { key: keyof ViewSettings; label: string; hint: string }[] = [
  * up. The address is not here at all: there is one backend this build knows, and
  * a field for it is a field to get wrong. Set up still has it for the cases where
  * it is genuinely a different address.
+ *
+ * This row used to carry three switches — collapse spam, gift sound, gift notice
+ * — as a glanceable shortcut. They are all behind the gear now, which is the same
+ * place the rest of the settings live and the reason this row is only the stream:
+ * the handle, the filters, the count, and Clear. Nothing here is a preference
+ * anyone reaches for mid-stream.
  */
 export function Toolbar({
   room,
@@ -60,16 +47,13 @@ export function Toolbar({
   totalReceived,
   kind,
   search,
-  collapse,
   health,
   settings,
   backend,
   items,
   onFiltersChange,
-  onCollapseChange,
   onClearChat,
   onOpenSettings,
-  onHandleChange,
 }: Props) {
   const spec = PLATFORMS[PLATFORM]
   const [busy, setBusy] = useState(false)
@@ -108,15 +92,6 @@ export function Toolbar({
   const wanted = normaliseUsername(handle)
   const canConnect = wanted !== '' && !isConnecting
 
-  // Reported as it changes rather than read back on demand: the overlay link is
-  // built in the settings dialog, which has no way to ask this component what is
-  // in the field, and a handle copied before Connect is pressed is exactly the
-  // one a streamer wants on their overlay.
-  useEffect(() => {
-    onHandleChange?.(wanted)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wanted])
-
   /*
     Remembered as soon as it stops changing, not on connect: being made to
     reconnect to save a handle is the same as not remembering it. Debounced
@@ -149,19 +124,13 @@ export function Toolbar({
     setDisconnected(false)
     onClearChat()
     try {
-      // The overlay styling rides along with the connect, so the backend stores it
-      // on the room and the overlay link can be a bare `?room=<id>` — the room
-      // carries the look, the link only names it.
-      const overlay = {
-        overlaySize: settings.overlaySize,
-        overlayNameColour: settings.overlayNameColour,
-        overlayTextColour: settings.overlayTextColour,
-        overlayBg: settings.overlayBg,
-        overlayMax: settings.overlayMax,
-        overlayDelay: settings.overlayDelay,
-        overlayFont: settings.overlayFont,
-      }
-      await host.backendConnect({ baseUrl: backendUrl(backend), username: wanted, overlay })
+      // No overlay styling rides along with the connect any more. It used to, so
+      // the backend could store the look on the room and the overlay link could be
+      // a bare `?room=<id>`; the styling is configured from the web admin panel now
+      // and stored there, so the app has nothing to add. The field is left off the
+      // wire entirely rather than sent empty, and the host reads that as "no
+      // styling", which leaves whatever the admin set alone.
+      await host.backendConnect({ baseUrl: backendUrl(backend), username: wanted })
       savedHandle.current = wanted
     } catch {
       // The host's rejection says why in words — no room for that handle, the URL
@@ -213,10 +182,10 @@ export function Toolbar({
         {isConnected && room.target && (
           <button
             className="btn btn-small watch-btn"
-            title={`Open tiktok.com/@${room.target}/live in your browser`}
+            title={`Open tiktok.com/@${tiktokUsername(room.target)}/live in your browser`}
             onClick={() =>
               host
-                .openStream(`https://www.tiktok.com/@${encodeURIComponent(room.target)}/live`)
+                .openStream(`https://www.tiktok.com/@${encodeURIComponent(tiktokUsername(room.target))}/live`)
                 .catch(() => {})
             }
           >
@@ -295,53 +264,45 @@ export function Toolbar({
       )}
 
       {/*
-        The stream itself: the handle, connect, filters, and the few things worth
-        a glance while watching. Everything else — theme, font, density, the
-        panels, the model — is behind the gear. This row used to carry a look
-        switcher of its own and a Model button, which pushed the chat below the
-        fold and made the toolbar something to scroll past.
+        The stream itself: the handle, connect, filters, and what is left worth
+        reading mid-stream. Everything else — theme, font, density, the panels, the
+        model, and every standing preference like the collapse switch and the gift
+        sounds — is behind the gear.
+
+        Two ends, one row: what happened on the left, what you can do on the right.
+        The count is the thing you watch and the buttons are the thing you reach
+        for, so they are not neighbours. It reads as one row rather than two only
+        because there is a single auto margin doing the pushing; two of them split
+        the free space instead of dividing the row.
       */}
       <div className="view-toggles">
-        <label className="toggle" title="Collapse identical consecutive messages">
-          <input type="checkbox" checked={collapse} onChange={(e) => onCollapseChange(e.target.checked)} />
-          <span>Collapse spam</span>
-        </label>
-        {TOGGLES.map((option) => (
-          <label key={option.key} className="toggle" title={option.hint}>
-            <input
-              type="checkbox"
-              checked={Boolean(settings[option.key])}
-              onChange={(e) => settings.set(option.key, e.target.checked as never)}
-            />
-            <span>{option.label}</span>
-          </label>
-        ))}
-
         <span className="summary">
           {totalReceived.toLocaleString()} events
           {kind !== 'all' && ` · ${spec.kinds.find((k) => k.value === kind)?.label.toLowerCase()}`}
           {search.trim() && ' · search'}
         </span>
 
-        <button
-          className="btn btn-small"
-          onClick={onClearChat}
-          disabled={items === 0}
-          title="Clear every row from the feed"
-        >
-          Clear
-        </button>
+        <span className="view-actions">
+          <button
+            className="btn btn-small"
+            onClick={onClearChat}
+            disabled={items === 0}
+            title="Clear every row from the feed"
+          >
+            Clear
+          </button>
 
-        <button
-          className="btn btn-small settings-btn"
-          onClick={onOpenSettings}
-          title="Theme, font, density, panels and model"
-          aria-label="Settings"
-        >
-          ⚙
-        </button>
-        <span className="font-hint" title="Ctrl + scroll anywhere in the window">
-          {Math.round(settings.fontScale * 100)}%
+          <button
+            className="btn btn-small settings-btn"
+            onClick={onOpenSettings}
+            title="Theme, font, density, panels and model"
+            aria-label="Settings"
+          >
+            ⚙
+          </button>
+          <span className="font-hint" title="Ctrl + scroll anywhere in the window">
+            {Math.round(settings.fontScale * 100)}%
+          </span>
         </span>
       </div>
     </div>

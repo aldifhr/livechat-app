@@ -51,3 +51,39 @@ export const PLATFORMS: Record<Platform, PlatformSpec> = {
 
 /** The only platform. Named rather than inlined so call sites read as intent. */
 export const PLATFORM: Platform = 'tiktok'
+
+/**
+ * Turns a name from a chat row into a TikTok username.
+ *
+ * Two fixes, both because a TikTok username cannot contain what these rows carry.
+ *
+ * A leading `@` is dropped: it is how a handle is written when a person types it
+ * and never part of the username itself, and the URL already has one.
+ *
+ * An `@` anywhere else becomes `_`. This is the case that matters. When the
+ * backend sends no stable `userId`, `id` falls back to the nickname, and a nickname
+ * is a display name — which may well read `gmd@me` for someone whose actual handle
+ * is `gmd_me`. Percent-encoding that produced `@gmd%40me`, a URL for an account
+ * that cannot exist: TikTok usernames are letters, digits, `_` and `.`, and `@` is
+ * the sigil that introduces a handle, not a character inside one. Substituting the
+ * underscore gives the nearest username that could be real.
+ *
+ * It is a substitution rather than a refusal because refusing would leave the row
+ * with no profile link at all, and a link that goes to the wrong account is worth
+ * less than one that goes to the right one but only sometimes.
+ */
+export function tiktokUsername(raw: string): string {
+  return raw.trim().replace(/^@+/, '').replace(/@/g, '_')
+}
+
+/**
+ * The profile URL for a name from a chat row, or `''` if there is no name.
+ *
+ * Built here rather than at each call site because getting it wrong is silent: the
+ * host opens a well-formed URL to an account that does not exist, which looks like
+ * a dead account rather than a bug.
+ */
+export function tiktokProfileUrl(raw: string): string {
+  const name = tiktokUsername(raw)
+  return name === '' ? '' : `https://www.tiktok.com/@${encodeURIComponent(name)}`
+}

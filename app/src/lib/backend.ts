@@ -24,11 +24,6 @@ export interface BackendConfig {
   baseUrl: string
   /** The streamer's TikTok handle: `mybasic.indonesia`. */
   username: string
-  /**
-   * Overlay styling to store on the room, so the overlay link can be a bare
-   * `?room=<id>`. Sent with the connect; absent or empty means nothing is stored.
-   */
-  overlay?: Record<string, unknown>
 }
 
 export const EMPTY_BACKEND: BackendConfig = { baseUrl: '', username: '' }

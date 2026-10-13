@@ -46,8 +46,14 @@ let requested = 0
  * handler that calls this must not block on a network round trip. A failure is
  * silence, not an exception — a chat reader that stops reading because a voice
  * failed is worse than one that keeps going quietly.
+ *
+ * The pace is a parameter rather than a constant because it is a setting, and a
+ * setting someone changed has to reach the host that will honour it. An
+ * unrecognised value is passed on as it is: the host checks it against the paces
+ * it has and settles for its default, which keeps a stale saved setting from
+ * silencing the chat.
  */
-export function say(text: string): void {
+export function say(text: string, pace: string): void {
   const spoken = text.trim()
   if (spoken === '') return
 
@@ -67,7 +73,7 @@ export function say(text: string): void {
 
   void (async () => {
     try {
-      const url = await host.speak(spoken)
+      const url = await host.speak(spoken, pace)
       // A newer utterance asked for, or the voice was hushed, while this was
       // being synthesised. Either way this one is no longer wanted, and playing
       // it would be speaking over a decision the user already made.

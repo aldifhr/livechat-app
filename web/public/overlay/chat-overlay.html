@@ -361,6 +361,22 @@
   }
 
   /**
+  /**
+   * A name from a chat row, turned into a TikTok username.
+   *
+   * A leading `@` is dropped, because it is how a handle is written when typed and
+   * never part of the username. An `@` anywhere else becomes `_`, because a
+   * display name is what a row falls back to when the wire carries no handle, and a
+   * display name can read `gmd@me` for someone whose handle is `gmd_me` — while a
+   * TikTok username can only be letters, digits, `_` and `.`. Percent-encoding the
+   * `@` instead produced a link to an account that cannot exist, which reads as a
+   * dead account rather than as a bug.
+   */
+  function tiktokUsername(raw) {
+    return String(raw == null ? '' : raw).trim().replace(/^@+/, '').replace(/@/g, '_')
+  }
+
+  /**
    * The name, as a link to the viewer's TikTok profile.
    *
    * Clickable because a name on a stream is the one thing a viewer wants to follow
@@ -378,10 +394,7 @@
     var link = document.createElement('a')
     link.className = 'name'
     link.textContent = who
-    // The profile path: the handle when there is one, else the display name. Both
-    // go through encodeURIComponent so a name with a space or a slash is a valid
-    // path rather than a broken one.
-    var path = handle || who
+    var path = tiktokUsername(handle || who)
     link.href = 'https://www.tiktok.com/@' + encodeURIComponent(path)
     link.target = '_blank'
     link.rel = 'noopener noreferrer'
@@ -400,10 +413,11 @@
    */
   function mentionLink(handle) {
     var link = document.createElement('a')
-    link.href = 'https://www.tiktok.com/@' + encodeURIComponent(handle)
+    var path = tiktokUsername(handle)
+    link.href = 'https://www.tiktok.com/@' + encodeURIComponent(path)
     link.target = '_blank'
     link.rel = 'noopener noreferrer'
-    link.title = 'Open @' + handle + ' on TikTok'
+    link.title = 'Open @' + path + ' on TikTok'
     link.textContent = '@' + handle
     return link
   }

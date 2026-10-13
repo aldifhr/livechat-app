@@ -69,17 +69,6 @@ body {
   flex-wrap: wrap;
 }
 
-/* Pushes the toolbar's view toggles to the right of their row.
-   Scoped, because `.toggle` is one class used by two places and the other one is
-   a wrapping row in the settings dialog: an auto margin there is not a right
-   alignment, it is every item absorbing a share of the free space, and a line
-   with three items splits it differently from a line with two. The rows stopped
-   lining up with each other the moment a group had an uneven number of toggles
-   in it, which is most of them. */
-.toolbar .toggle {
-  margin-left: auto;
-}
-
 /* The empty state can hold two rooms' worth of instructions. */
 
 .empty-hint {
@@ -487,17 +476,33 @@ body {
   font-size: 12px;
 }
 
+/* The read-out sits at the start of the toolbar's last row, under the filters it
+   describes. It and the action cluster each used to carry their own `auto` left
+   margin so they would sit at opposite ends — but two auto margins in one row do
+   not make two ends, they make two shares of the free space, so the row split down
+   the middle with a hole either side. One auto margin, on one element, is the only
+   way to pin something to the right; the other end is just where it falls. */
 .summary {
-  margin-left: auto;
   color: var(--muted);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 
-/* The scale sits at the very end so it never moves when the summary beside it
+/* Clear, the gear and the font scale: the row's actions, pinned opposite the
+   count. */
+.view-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* The scale sits at the very end so it never moves when the count beside it
    grows or shrinks with the filter. */
-.summary + .font-hint {
-  margin-left: 14px;
+.font-hint {
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Dialog */
@@ -1207,13 +1212,6 @@ textarea.input {
   align-items: center;
   gap: 14px;
   flex-wrap: wrap;
-}
-
-.font-hint {
-  margin-left: auto;
-  color: var(--muted);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
 }
 
 /* Stats panel */

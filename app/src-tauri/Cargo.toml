@@ -30,27 +30,18 @@ reqwest = { version = "0.12", features = ["json"] }
 # both end up on Schannel, the same implementation the webview already trusts.
 tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 # `net`/`io-util` for the overlay's HTTP server, `rt` because the listener needs a
-# reactor to park on, and `macros` for `#[tokio::test]`. All of them ride along
-# with what Tauri already pulls in; they are named so the reason is here rather
-# than inferred from a missing feature error.
-tokio = { version = "1", features = ["time", "net", "io-util", "rt", "macros"] }
+# reactor to park on, `process` for the song-request resolver, and `macros` for
+# `#[tokio::test]`. All of them ride along with what Tauri already pulls in; they
+# are named so the reason is here rather than inferred from a missing feature error.
+tokio = { version = "1", features = ["time", "net", "io-util", "rt", "process", "macros"] }
 # Already in the tree through reqwest and Tauri; pulled in directly because the
-# socket is read through the `Stream` interface.
+# overlay's websocket socket is read through the `Stream` interface.
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Audio crosses the command channel as a base64 string, because that channel is
 # JSON and a `Vec<u8>` would arrive as an array of numbers four times the size.
 base64 = "0.22"
-# Already in the tree through msedge-tts; pulled in directly only to name the
-# connection type its stream halves carry, which that crate keeps private.
-async-tungstenite = { version = "0.34", features = ["tokio-runtime"] }
-# Neural text-to-speech, the voice Edge's Read Aloud uses. Free, no API key, and
-# the reason the app does not sound like a 2003 screen reader: the platform voice
-# is a formant synthesiser, and this is a neural one. It sends the text to
-# Microsoft to be spoken, which is the trade — recorded here rather than buried,
-# because it is the one thing about this dependency that is not obvious.
-msedge-tts = { version = "0.4", features = ["tokio-runtime"] }
 
 [profile.release]
 opt-level = "s"

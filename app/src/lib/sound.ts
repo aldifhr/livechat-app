@@ -200,18 +200,19 @@ export function shouldPlayMentionAlert(
  * Trimmed to a length a voice can finish before the next message arrives: a
  * paragraph spoken over a live stream is a wall of overlapping speech. An
  * ellipsis marks that it was cut rather than pretending that was the whole
- * message. The name is prefixed only when asked for, because a stream of
- * anonymous sentences is as hard to follow as one of names.
+ * message.
+ *
+ * The message is spoken on its own. A sender's name used to be prefixed to it,
+ * and it did not survive contact with the voice: the prefix is not what a
+ * listener is tracking, the words in the message are, and a name spoken ahead of
+ * every line is a second thing to follow. So the read is the chat, uninterrupted.
  */
 export const TTS_MAX_CHARS = 120
 
-export function ttsText(nickname: string, text: string, withName: boolean): string {
+export function ttsText(text: string): string {
   const body = text.trim().replace(/\s+/g, ' ')
   if (body === '') return ''
-  const cut = body.length > TTS_MAX_CHARS ? `${body.slice(0, TTS_MAX_CHARS).trimEnd()}…` : body
-  if (!withName) return cut
-  const who = nickname.trim() || 'Someone'
-  return `${who} says: ${cut}`
+  return body.length > TTS_MAX_CHARS ? `${body.slice(0, TTS_MAX_CHARS).trimEnd()}…` : body
 }
 
 /**

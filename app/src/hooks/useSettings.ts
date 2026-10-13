@@ -9,8 +9,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { host } from '../lib/sidecar'
-import { clampRows, clampNumber, resolveColour, resolveOverlayFont, OVERLAY_DELAY, OVERLAY_SIZE } from '@shared/overlay'
 import { resolveDensity, resolveFont, resolveTheme, type DensityId, type FontId, type ThemeId } from '../lib/theme'
+import { NORMAL_PACE, knownPace } from '../lib/voices'
 
 export interface ViewSettings {
   /** Scales the feed's type. Driven by ctrl+scroll. */
@@ -23,6 +23,16 @@ export interface ViewSettings {
   density: DensityId
   /** One line per message with no avatar: far more rows fit on screen. */
   compact: boolean
+  /**
+   * Fold repeated identical messages into one row with a count.
+   *
+   * A setting rather than the component state it used to be, because it lived on
+   * the toolbar as a glanceable switch and moving it behind the gear took that
+   * away — and with it went the only thing making it stick. As local state it was
+   * reset on every launch, so a streamer who had turned it off had to do it again
+   * every time, which is the sort of setting nobody bothers to configure.
+   */
+  collapse: boolean
   /** Hide "X joined the stream" rows entirely. */
   hideJoins: boolean
   /** Hide messages TikTok has filtered itself. */
@@ -43,9 +53,6 @@ export interface ViewSettings {
   joinSound: boolean
   /** Raise a desktop toast when a gift arrives. */
   giftNotice: boolean
-  /** Post each gift to the configured webhook. Off by default: it sends data about
-   *  the room to a third party, and that has to be asked for. */
-  webhook: boolean
   /** Answer a greeting with a line of its own, so a newcomer is not met with
    *  silence. Off by default: it makes the app talk, which has to be asked for. */
   autoReply: boolean
@@ -53,28 +60,6 @@ export interface ViewSettings {
   showStats: boolean
   /** Show the in-app log panel at the bottom of the window. */
   showLog: boolean
-  /**
-   * How the OBS overlay looks.
-   *
-   * Six flat fields rather than one nested object, because this is what the
-   * settings file has always been: flat, and every field readable in
-   * `localStorage` without knowing how anything else is shaped. They only become
-   * a group in one place — the query string of the link that gets pasted.
-   *
-   * These change what OBS is showing, not what the app is showing, which is why
-   * they are here and not read off the live feed: a streamer tweaks the size
-   * until it fits their scene, and that should not require a room to be running.
-   */
-  overlaySize: number
-  /** How many messages are on screen at once. */
-  overlayMax: number
-  /** Milliseconds between one message appearing and the next. */
-  overlayDelay: number
-  /** 0 is no backdrop at all, 1 is an opaque panel. */
-  overlayBg: number
-  overlayNameColour: string
-  overlayTextColour: string
-  overlayFont: string
   /** Play a short blip when a new chat message arrives. */
   chatSound: boolean
   /** Read new chat messages aloud with the system voice. */
@@ -100,8 +85,14 @@ export interface ViewSettings {
    * and turning that on enabled this as a side effect nobody could see.
    */
   mentionVoice: boolean
-  /** Speak the sender's name before each message read aloud. */
-  ttsNames: boolean
+  /**
+   * How fast the room is read aloud.
+   *
+   * One value for all three speaking settings, because they are the same mouth —
+   * one place to choose how it reads, rather than a separate picker on chat and
+   * another on gifts that could disagree.
+   */
+  ttsPace: string
   /** Which synthesised sound a gift plays. */
   giftTemplate: string
   /** Which synthesised sound a chat message plays. */
@@ -123,6 +114,7 @@ export const DEFAULT_SETTINGS: ViewSettings = {
   font: 'sans',
   density: 'cozy',
   compact: false,
+  collapse: true,
   hideJoins: false,
   hideFiltered: false,
   showModeratorBadge: true,
@@ -130,24 +122,16 @@ export const DEFAULT_SETTINGS: ViewSettings = {
   giftSound: true,
   joinSound: false,
   giftNotice: true,
-  webhook: false,
   autoReply: false,
   showStats: true,
   showLog: true,
-  overlaySize: 22,
-  overlayMax: 8,
-  overlayDelay: 500,
-  overlayBg: 0,
-  overlayNameColour: '#ffd76a',
-  overlayTextColour: '#ffffff',
-  overlayFont: '"Segoe UI", system-ui, sans-serif',
   chatSound: false,
   chatTts: false,
   giftVoice: false,
   myHandle: '',
   mentionAlert: false,
   mentionVoice: false,
-  ttsNames: true,
+  ttsPace: NORMAL_PACE,
   giftTemplate: 'chime',
   chatTemplate: 'blip',
   joinTemplate: 'pop',
@@ -174,19 +158,10 @@ function load(): ViewSettings {
       theme: resolveTheme(saved.theme),
       font: resolveFont(saved.font),
       density: resolveDensity(saved.density),
-      // And the overlay's styling, for the same reason. These end up in a URL
-      // that the host pastes into a query string, so a size of `NaN` would become
-      // a link that renders nothing and a font of anything at all would be a way
-      // to end the value it sits in.
-      overlaySize: clampNumber(saved.overlaySize, OVERLAY_SIZE.min, OVERLAY_SIZE.max, DEFAULT_SETTINGS.overlaySize),
-      overlayMax: clampRows(saved.overlayMax, DEFAULT_SETTINGS.overlayMax),
-      overlayDelay: Math.round(
-        clampNumber(saved.overlayDelay, OVERLAY_DELAY.min, OVERLAY_DELAY.max, DEFAULT_SETTINGS.overlayDelay),
-      ),
-      overlayBg: clampNumber(saved.overlayBg, 0, 1, DEFAULT_SETTINGS.overlayBg),
-      overlayNameColour: resolveColour(saved.overlayNameColour, DEFAULT_SETTINGS.overlayNameColour),
-      overlayTextColour: resolveColour(saved.overlayTextColour, DEFAULT_SETTINGS.overlayTextColour),
-      overlayFont: resolveOverlayFont(saved.overlayFont),
+      // A pace a previous build offered and this one dropped. Left alone it would
+      // leave the picker showing nothing selected and the host falling back on
+      // every message, so it settles on the default here instead.
+      ttsPace: knownPace(saved.ttsPace ?? '') ? (saved.ttsPace as string) : DEFAULT_SETTINGS.ttsPace,
     }
   } catch {
     return DEFAULT_SETTINGS

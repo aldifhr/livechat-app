@@ -13,7 +13,6 @@ import { useGiftSound } from './hooks/useGiftSound'
 import { useJoinSound } from './hooks/useJoinSound'
 import { useMentionAlert } from './hooks/useMentionAlert'
 
-import { useWebhook } from './hooks/useWebhook'
 import { useSettings } from './hooks/useSettings'
 import { useKindCounts, useVisibleItems, type FeedFilters } from './hooks/useVisibleItems'
 import { EMPTY_BACKEND, type BackendConfig } from './lib/backend'
@@ -26,12 +25,6 @@ export default function App() {
   const [filters, setFilters] = useState<FeedFilters>({ kind: 'all', search: '' })
   const settings = useSettings()
   const { nudgeFontScale } = settings
-  const [collapse, setCollapse] = useState(true)
-  // Mirrors the toolbar's handle field. The toolbar owns the field and this only
-  // watches it, so the overlay link can carry a handle the user has typed but not
-  // yet connected to — which is the normal state when someone is setting the
-  // overlay up before a stream.
-  const [typedHandle, setTypedHandle] = useState('')
 
   useGiftSound({
     enabled: settings.giftSound,
@@ -43,13 +36,17 @@ export default function App() {
     templateId: settings.joinTemplate,
     customPath: settings.customSoundPath,
   })
-  useGiftNotification({ notice: settings.giftNotice, voice: settings.giftVoice })
-  useWebhook({ enabled: settings.webhook })
+  useGiftNotification({
+    notice: settings.giftNotice,
+    voice: settings.giftVoice,
+    ttsPace: settings.ttsPace,
+  })
   useAutoReply({ enabled: settings.autoReply })
   useMentionAlert({
     myHandle: settings.myHandle,
     sound: settings.mentionAlert,
     voice: settings.mentionVoice,
+    ttsPace: settings.ttsPace,
   })
 
   // The handles that count as "me", parsed once here rather than per row: the feed
@@ -58,7 +55,7 @@ export default function App() {
   useChatAlerts({
     chatSound: settings.chatSound,
     chatTts: settings.chatTts,
-    ttsNames: settings.ttsNames,
+    ttsPace: settings.ttsPace,
     templateId: settings.chatTemplate,
     customPath: settings.customSoundPath,
   })
@@ -67,7 +64,7 @@ export default function App() {
     collapseWindowMs: 2500,
     // Only worth collapsing when a spam wave is actually running; two identical
     // messages in a row are usually just someone repeating themselves.
-    collapseThreshold: collapse ? 2 : 0,
+    collapseThreshold: settings.collapse ? 2 : 0,
   })
 
   // One filter, shared by the feed and the counters: what you see is what the
@@ -168,16 +165,13 @@ export default function App() {
         totalReceived={totalReceived}
         kind={filters.kind}
         search={filters.search}
-        collapse={collapse}
         health={health}
         settings={settings}
         backend={backend}
         items={items.length}
         onFiltersChange={onFiltersChange}
-        onCollapseChange={setCollapse}
         onClearChat={clear}
         onOpenSettings={() => setSettingsOpen(true)}
-        onHandleChange={setTypedHandle}
       />
 
       <div className="feed-wrap">
@@ -244,8 +238,6 @@ export default function App() {
       <SettingsDialog
         open={settingsOpen}
         settings={settings}
-        roomTarget={room.target || typedHandle}
-        roomId={room.id}
         onClose={() => setSettingsOpen(false)}
       />
 

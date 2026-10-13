@@ -418,12 +418,27 @@
   }
 
   /**
-   * The name, as a link to the viewer's TikTok profile.
+   * A name from a chat row, turned into a TikTok username.
    *
-   * Clickable because a name on a stream is the one thing a viewer wants to follow
-   * up on — who said that, who sent that gift — and a chat where the name is dead
-   * text answers none of it. Opens in a new tab; the overlay itself is not
-   * navigated away from, because it is a browser source that has to keep showing.
+   * A leading `@` is dropped, because it is how a handle is written when typed and
+   * never part of the username. An `@` anywhere else becomes `_`, because a
+   * display name is what a row falls back to when the wire carries no handle, and a
+   * display name can read `gmd@me` for someone whose handle is `gmd_me` — while a
+   * TikTok username can only be letters, digits, `_` and `.`. Percent-encoding the
+   * `@` instead produced a link to an account that cannot exist, which reads as a
+   * dead account rather than as a bug.
+   */
+  function tiktokUsername(raw) {
+    return String(raw == null ? '' : raw).trim().replace(/^@+/, '').replace(/@/g, '_')
+  }
+
+  /**
+   * The viewer's name on a chat row, linked to their TikTok profile.
+   *
+   * The one thing on a row worth following up on — who said that, who sent that
+   * gift — and a chat where the name is dead text answers none of it. Opens in a
+   * new tab; the overlay itself is not navigated away from, because it is a browser
+   * source that has to keep showing.
    *
    * `userId` is TikTok's stable handle for the person when the wire carries one,
    * and the display name is the fallback. Built from the handle, not the display
@@ -435,10 +450,7 @@
     var link = document.createElement('a')
     link.className = 'name'
     link.textContent = who
-    // The profile path: the handle when there is one, else the display name. Both
-    // go through encodeURIComponent so a name with a space or a slash is a valid
-    // path rather than a broken one.
-    var path = handle || who
+    var path = tiktokUsername(handle || who)
     link.href = 'https://www.tiktok.com/@' + encodeURIComponent(path)
     link.target = '_blank'
     link.rel = 'noopener noreferrer'

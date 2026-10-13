@@ -133,20 +133,19 @@ check('and the handle without its @', remembered?.args?.config?.username === 'my
 console.log('connecting asks the host for the right thing')
 await click(connectButton())
 const asked = fake.lastCommand('backend_connect')
-// The address and the handle are the point; the overlay styling rides along too,
-// so the backend can store it on the room and the overlay link can be a bare
-// `?room=<id>`. Asserted field by field rather than as one exact blob, so a field
-// added to the payload later does not read as a regression in the connect itself.
+// The address and the handle are the whole of it. Asserted field by field rather
+// than as one exact blob, so a field added to the payload later does not read as a
+// regression in the connect itself.
 check(
   'with the built-in address and the typed handle',
   asked?.args?.config?.baseUrl === DEFAULT_BACKEND && asked?.args?.config?.username === 'mybasic.indonesia',
   JSON.stringify(asked),
 )
-check(
-  'and the overlay styling, so the link can name the room by id',
-  typeof asked?.args?.config?.overlay === 'object' && asked.args.config.overlay.overlaySize === 22,
-  JSON.stringify(asked?.args?.config?.overlay),
-)
+// The overlay styling used to ride along here. It is configured from the web admin
+// panel now, so the app has none to send, and a field left off entirely is what
+// tells the host "no styling" — sending an empty one would overwrite what the
+// admin stored.
+check('and no overlay styling, which the app no longer owns', asked?.args?.config?.overlay === undefined, JSON.stringify(asked?.args?.config))
 
 console.log('frames drive the feed')
 await act(async () => {
@@ -440,45 +439,6 @@ check(
 )
 await click('.log-toggle')
 
-console.log('the webhook is configured and tested')
-// The settings live behind the gear, so the dialog is opened to reach them.
-await click('.settings-btn')
-// Off by default: this posts data about the room to a third party, and that has to
-// be asked for rather than switched on by a fresh install.
-const webhookSection = () => $('[data-section="webhook"]')
-check('the webhook section is there', Boolean(webhookSection()))
-const webhookToggle = webhookSection()?.querySelector('.toggle input')
-check('and it starts off', webhookToggle?.checked === false, String(webhookToggle?.checked))
-// With it off the URL, token and test button are all inert — a half-configured
-// webhook must not be able to send.
-const webhookUrl = webhookSection()?.querySelector('input[type="url"], input:not([type])')
-check('the url field is disabled while off', webhookUrl?.disabled === true, String(webhookUrl?.disabled))
-await click(webhookToggle)
-check('turning it on enables the url field', webhookUrl?.disabled === false, String(webhookUrl?.disabled))
-await type(webhookUrl, 'https://example.com/hook')
-// The token is a credential, so it is hidden until asked for and sent as a header
-// rather than in the URL, where it would end up in an access log.
-const tokenInput = webhookSection()?.querySelector('input[type="password"], input[type="text"]')
-check('the token is hidden by default', tokenInput?.type === 'password', tokenInput?.type)
-// The test button is the only call whose result the user sees — "saved" is not
-// evidence a URL was right. Scoped to its own section so `/test/i` matches the
-// webhook button and not whichever came first in the document.
-const webhookTestBtn = $$('[data-section="webhook"] .btn').find((b) => /test/i.test(b.textContent))
-check('the test button is enabled once there is a url', webhookTestBtn?.disabled === false, String(webhookTestBtn?.disabled))
-await click(webhookTestBtn)
-check(
-  'testing reports what came back',
-  /Sent/.test($('.modal-settings')?.textContent ?? ''),
-  $('.modal-settings')?.textContent?.slice(0, 120),
-)
-// The host was actually asked, with a real gift payload rather than an empty one.
-check(
-  'the host sent the test gift',
-  Boolean(fake.lastCommand('webhook_test')),
-  JSON.stringify(fake.lastCommand('webhook_test')),
-)
-await click($('.modal-close'))
-
 console.log('failures are shown, not swallowed')
 await act(async () => {
   fake.emit({ platform: 'tiktok', type: 'error', message: 'Streamer is not live right now.' })
@@ -488,20 +448,27 @@ check('the error badge appeared', !!$('.log-badge'), $('.log-badge')?.textConten
 
 console.log('reading preferences')
 // The look and feed preferences moved behind the gear, so this opens the dialog
-// and drives them there. Only gift sound/notice and collapse stay on the toolbar.
+// and drives them there. Nothing that is a standing preference stays on the
+// toolbar any more; that row is the stream and nothing else.
 check('compact is off by default', doc.body.classList.contains('compact') === false)
-
 await click('.settings-btn')
+
 check('the settings dialog opens', Boolean($('.modal-settings')))
-// The seven groups are collapsible disclosures, so the dialog opens as a list of
-// titles rather than a wall of controls. Only the two groups people return to —
-// Look starts open; the rest wait to be asked for.
+// The groups are collapsible disclosures, so the dialog opens as a list of
+// titles rather than a wall of controls. Only the one group people return to —
+// Look — starts open; the rest wait to be asked for.
 const sections = () => [...$$('.modal-settings .settings-section')]
 check('every group is a collapsible disclosure', sections().every((s) => s.tagName === 'DETAILS'), sections().map((s) => s.tagName).join(','))
 const openTitles = sections()
   .filter((s) => s.open)
   .map((s) => s.querySelector('.settings-heading')?.textContent?.trim())
 check('only the one return-to group starts open', openTitles.length === 1, openTitles.join(', '))
+// Neither the overlay nor the webhook is configured from here any more: the
+// overlay is the web admin panel's, and the webhook is gone. A group that outlived
+// its feature would keep asking a question nothing answers.
+check('the overlay is not offered here', !$('[data-section="overlay"]'))
+check('and neither is a webhook', !$('[data-section="webhook"]'))
+
 // A closed group hides its controls until its title is clicked.
 const feed = sections().find((s) => s.getAttribute('data-section') === 'feed')
 check('the feed group starts closed', feed?.open === false, String(feed?.open))
@@ -509,8 +476,6 @@ await click(feed.querySelector('.settings-heading'))
 check('clicking its title opens it', feed.open === true, String(feed.open))
 const dialogToggle = (label) =>
   $$('.modal-settings .toggle').find((t) => t.textContent.trim().startsWith(label))?.querySelector('input')
-const toolbarToggle = (label) =>
-  $$('.view-toggles .toggle').find((t) => t.textContent.trim().startsWith(label))?.querySelector('input')
 
 await click(dialogToggle('Compact'))
 check('turning on compact sets the class', doc.body.classList.contains('compact') === true)
@@ -547,29 +512,39 @@ await click($('.modal-close'))
 check('the dialog closes', !$('.modal-settings'))
 
 // On by default, and stored: whether a chime fires at 3am is a preference, not a
-// decision to make on every launch. These stay on the toolbar — a glanceable
-// switch you flip without opening anything.
-const soundToggle = toolbarToggle('Gift sound')
+// decision to make on every launch. Behind the gear with everything else — the
+// toolbar keeps the stream and nothing that is a standing preference.
+await click('.settings-btn')
+const soundToggle = dialogToggle('Gift sound')
 check('the gift sound is offered', Boolean(soundToggle))
 check('it is on to begin with', soundToggle?.checked === true)
+check('and the toolbar no longer carries it', !$('.view-toggles .toggle'))
 
 // jsdom has no Web Audio, so this is the only place the missing-audio path is
 // exercised — and it matters more than it looks: a throw from the gift handler
 // would take down the feed, which is the app's whole job.
 await click(soundToggle)
-check('it can be turned off', toolbarToggle('Gift sound')?.checked === false)
+check('it can be turned off', dialogToggle('Gift sound')?.checked === false)
 await act(async () => {
   fake.emit({ platform: 'tiktok', type: 'gift', ...viewer({ id: 'silent' }), giftName: 'Mute', count: 1, diamonds: 5, timestamp: 1700000006700 })
 })
 check('a gift with the sound off leaves the feed intact', $$('.row-gift').some((r) => /Mute/.test(r.textContent ?? '')))
 
-await click(toolbarToggle('Gift sound'))
-check('and back on', toolbarToggle('Gift sound')?.checked === true)
+await click(dialogToggle('Gift sound'))
+check('and back on', dialogToggle('Gift sound')?.checked === true)
 await act(async () => {
   fake.emit({ platform: 'tiktok', type: 'gift', ...viewer({ id: 'loud' }), giftName: 'Chime', count: 1, diamonds: 9999, timestamp: 1700000006800 })
 })
 check('a gift with the sound on still lands in the feed', $$('.row-gift').some((r) => /Chime/.test(r.textContent ?? '')))
 check('and nothing about the room broke', $$('.row').length > 0)
+
+// Collapse spam moved here too. It used to be component state on the toolbar, so
+// it silently reset on every launch — which is the thing this now asserts against.
+check('collapse spam is offered here', Boolean(dialogToggle('Collapse spam')))
+check('and it starts on', dialogToggle('Collapse spam')?.checked === true)
+check('the notice toggle came with it', Boolean(dialogToggle('Gift notice')))
+await click($('.modal-close'))
+check('the dialog closes again', !$('.modal-settings'))
 
 await act(async () => {
   fake.emit({
@@ -871,27 +846,57 @@ console.log('chat alerts')
 // things that have to be asked for, not assumed.
 check('the chat blip is offered off', dialogToggle('Chat blip')?.checked === false)
 check('and speech is off too', dialogToggle('Read chat aloud')?.checked === false)
-// The name toggle only exists while speech is on — with nothing being spoken,
-// there is no sentence for a name to sit in front of.
-check('the name toggle is hidden while speech is off', !dialogToggle('Say the name'))
+// There is no name toggle: the read is the chat on its own, so there is no
+// framing to configure.
+check('the name toggle does not exist', !dialogToggle('Say the name'))
 await click(dialogToggle('Chat blip'))
 check('the blip turns on', dialogToggle('Chat blip')?.checked === true)
 await click(dialogToggle('Read chat aloud'))
 check('speech turns on', dialogToggle('Read chat aloud')?.checked === true)
-check('and now the name toggle appears', Boolean(dialogToggle('Say the name')))
-check('on, since it is the useful default', dialogToggle('Say the name')?.checked === true)
-await click(dialogToggle('Say the name'))
-check('and can be turned off', dialogToggle('Say the name')?.checked === false)
-// Turning speech off takes the name toggle with it again rather than leaving a
-// control that silently does nothing.
-await click(dialogToggle('Read chat aloud'))
-check('speech off hides the name toggle again', !dialogToggle('Say the name'))
+check('and turning it on adds no name toggle', !dialogToggle('Say the name'))
 
 // A gift can be announced with the same voice. Off by default, like every other
 // sound that speaks: it sends text to be spoken, and that has to be asked for.
 check('gift announcements are offered off', dialogToggle('Say gifts')?.checked === false)
 await click(dialogToggle('Say gifts'))
 check('and turn on', dialogToggle('Say gifts')?.checked === true)
+
+console.log('choosing the reading pace')
+// The picker is scoped to the feed section rather than found by label alone, so a
+// "Reading pace" field added elsewhere would not quietly become the thing tested.
+const paceField = () => $('[data-section="feed"] select.input')
+// Three paces, and no more: the voice service takes a language and nothing else, so
+// there is exactly one Indonesian voice to choose from and pace is what is left.
+check('the pace can be chosen', Boolean(paceField()))
+check(
+  'the choices are slow, normal and fast',
+  [...(paceField()?.options ?? [])].map((o) => o.value).join(',') === 'slow,normal,fast',
+  [...(paceField()?.options ?? [])].map((o) => o.value).join(','),
+)
+check('and it starts on the service default', paceField()?.value === 'normal', paceField()?.value)
+await act(async () => {
+  const el = paceField()
+  el.value = 'fast'
+  el.dispatchEvent(new harness.dom.window.Event('change', { bubbles: true }))
+})
+check('a chosen pace sticks', paceField()?.value === 'fast', paceField()?.value)
+// The part that actually matters: the choice is not a label in a dialog, it is what
+// gets asked of the voice service. The message is spoken as itself, with no name and
+// nothing framed around it, so `text` is the whole utterance.
+await act(async () => {
+  fake.emit({
+    platform: 'tiktok',
+    type: 'chat',
+    ...viewer({ id: 'pace-check' }),
+    text: 'halo dunia',
+    timestamp: 1700000009999,
+  })
+})
+await flush()
+const spoken = fake.lastCommand('speak')
+check('the message is spoken at the chosen pace', spoken?.args?.pace === 'fast', JSON.stringify(spoken?.args))
+check('and it is sent as the chat, unframed', spoken?.args?.text === 'halo dunia', String(spoken?.args?.text))
+
 
 console.log('mentions of me')
 // The highlight has existed in FeedRow for a long time; this is the half that was
@@ -1003,98 +1008,6 @@ check('the host was asked for a file', Boolean(fake.lastCommand('pick_sound_file
 // Cancelled (empty path): nothing changes, and no error is raised — backing out
 // of a picker is not a failure the user has to act on.
 check('a cancelled pick leaves the settings alone', /No file/.test(soundNote('Custom sound')?.textContent ?? ''))
-
-
-console.log('the stream overlay')
-// A link for OBS. Built host-side because two of its parts are not the page's -
-// the backend address is a file on disk and the handle is whatever is in the
-// toolbar - and asserting on the arguments is how we know the styling got there
-// rather than only that a button was pressed.
-const overlayRequests = []
-fake.transport.invoke = async (command, args) => {
-  fake.commands.push({ command, args })
-  if (command === 'overlay_url') {
-    overlayRequests.push(args)
-    return 'http://127.0.0.1:4319/?size=22&max=8'
-  }
-if (command === 'overlay_running') return true
-  return undefined
-}
-check('there is a section for it', Boolean($('[data-section="overlay"]')))
-check('explains where the link goes', /Browser/.test($('[data-section="overlay"] .modal-hint')?.textContent ?? ''), $('[data-section="overlay"] .modal-hint')?.textContent)
-check('the size has a sensible bound', $('[data-section="overlay"] input[type="number"]')?.min === '8', $('[data-section="overlay"] input[type="number"]')?.min)
-
-const copyBtn = $$('[data-section="overlay"] .btn').find((b) => /Copy link/.test(b.textContent))
-check('there is a button to copy it', Boolean(copyBtn))
-// The link has to carry a handle the user has typed but not yet connected to.
-// Setting an overlay up is something done before a stream, and at that point the
-// room is not open — so a link built only from the connected room comes out with
-// no handle in it and shows nothing. That is what it did.
-await act(async () => {
-  const input = $('.handle-input')
-  const setter = Object.getOwnPropertyDescriptor(harness.dom.window.HTMLInputElement.prototype, 'value').set
-  setter.call(input, 'typedbutnotconnected')
-  input.dispatchEvent(new harness.dom.window.Event('input', { bubbles: true }))
-})
-await click(copyBtn)
-check('the link carries the handle that was typed', overlayRequests.at(-1)?.username === 'typedbutnotconnected', overlayRequests.at(-1)?.username)
-
-// And the room actually being read still wins, because an overlay pointed at some
-// other handle is a link showing somebody else's chat on somebody's stream.
-await act(async () => {
-  fake.emit({ platform: 'tiktok', type: 'room', username: 'findidntsleep', roomId: 'r-1', title: 'ranked grind' })
-})
-await click(copyBtn)
-check('but the open room wins over it', overlayRequests.at(-1)?.username === 'findidntsleep', overlayRequests.at(-1)?.username)
-// And it names the room by id, so the link is a bare `?room=<id>` the page opens
-// directly — one parameter nothing has to resolve, rather than a handle the page
-// turns into an id on every load.
-check('and carries the room id so the link can be just ?room=<id>', overlayRequests.at(-1)?.roomId === 'r-1', overlayRequests.at(-1)?.roomId)
-
-// The id also arrives from the bridge, which is the only place the page learns it:
-// the backend sends no room frame, so the host announces the resolved room by id
-// the moment it connects. That bridge announcement must fill the id without
-// touching the room's live state, which the room's own frames own.
-await act(async () => {
-  fake.emit({ platform: 'bridge', type: 'room', username: 'x', roomId: 'bridge-room-9', title: '' })
-})
-await click(copyBtn)
-check('a bridge room announcement also supplies the id', overlayRequests.at(-1)?.roomId === 'bridge-room-9', overlayRequests.at(-1)?.roomId)
-// It did not disturb the connected state the room's own frames established.
-check('and left the live room state alone', $('.room-status')?.textContent?.includes('Live A') === true || /connected|Live/i.test($('.room-status')?.textContent ?? ''), $('.room-status')?.textContent)
-
-check('and the styling is one object on the way out', overlayRequests.at(-1)?.style?.size === 22 && overlayRequests.at(-1)?.style?.max === 8, JSON.stringify(overlayRequests.at(-1)?.style))
-// Shown as well as copied: the clipboard is a permission a webview can be refused.
-check('and the link is shown, not only copied', Boolean($('.overlay-url')), $('.overlay-url')?.textContent)
-
-const checkBtn = $$('[data-section="overlay"] .btn').find((b) => /Check server/.test(b.textContent))
-check('the server can be asked whether it is up', Boolean(checkBtn))
-await click(checkBtn)
-check('and answers yes when it is', /live on the backend/.test(doc.body.textContent ?? ''), $('[data-section="overlay"] .field-note:last-of-type')?.textContent)
-
-// The preview. Through the host, because the page cannot open a window itself
-// under the app's content security policy — and a button that silently does
-// nothing reads as the overlay being broken, which is the part that works.
-const previewBtn = () => $$('[data-section="overlay"] .btn').find((b) => /Preview/.test(b.textContent))
-check('there is a preview button', Boolean(previewBtn()))
-await click(previewBtn())
-const opened = fake.commands.filter((c) => c.command === 'overlay_open')
-check('which asks the host to open it', opened.length === 1, JSON.stringify(fake.commands.at(-1)))
-check('with the link it built', typeof opened[0]?.args?.url === 'string' && opened[0].args.url.includes('127.0.0.1'), opened[0]?.args?.url)
-check('and says what happened', /Opened in your browser/.test(doc.body.textContent ?? ''))
-check('without the page trying to open a window itself', true)
-
-// And the answer when it is not. A port somebody else holds is the failure this
-// exists to catch, and a streamer who has been told the overlay is ready and then
-// watches nothing is worse off than one told it is not.
-fake.transport.invoke = async (command, args) => {
-  fake.commands.push({ command, args })
-  if (command === 'overlay_running') return false
-  return undefined
-}
-await click(checkBtn)
-check('and no when it is not', /not serving the overlay/.test(doc.body.textContent ?? ''), $('[data-section="overlay"] .field-note:last-of-type')?.textContent)
-
 
 console.log('teardown')
 await act(async () => {
