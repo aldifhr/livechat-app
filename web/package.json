@@ -7,9 +7,11 @@
     "dev": "next dev --port 5184",
     "build": "next build",
     "start": "next start --port 5184",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node test/test-htpasswd.mjs"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "next": "16.4.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

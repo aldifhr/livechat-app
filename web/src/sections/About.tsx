@@ -13,6 +13,8 @@
  * domain to hand out and nothing to keep in step.
  */
 
+import PasswordPanel from '@/components/PasswordPanel'
+
 export default function About({ backend }: { backend?: string }) {
   // Read during render rather than at module scope: `window` does not exist when
   // this module is first evaluated on the server.
@@ -47,6 +49,15 @@ export default function About({ backend }: { backend?: string }) {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="panel">
+        <h3>Password</h3>
+        <p className="muted">
+          This dashboard is behind a password — the one your browser just asked for. Changing it here changes
+          that same login on the server. You will be asked to sign in again with the new one.
+        </p>
+        <PasswordPanel />
       </div>
 
       <div className="panel">
