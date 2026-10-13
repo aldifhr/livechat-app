@@ -788,6 +788,32 @@ select.input option {
 }
 
 /*
+ * One full-width row per sound event, stacked.
+ *
+ * Not `.settings-grid`: that floors a cell at 120px because its cells hold a lone
+ * select, and three cells of a select-plus-three-buttons overflow the dialog into
+ * a horizontal scrollbar. Here each row is the dialog's whole width, so the
+ * template select and every button beside it fit on one line.
+ *
+ * The select is capped rather than grown: `flex: 1` would stretch it to the full
+ * width and leave the buttons stranded at the far edge, away from the control they
+ * belong to.
+ */
+.sound-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sound-rows .field-row .input {
+  flex: 0 1 180px;
+}
+
+.sound-rows .field-row {
+  flex-wrap: wrap;
+}
+
+/*
  * A run of toggles, in columns that line up.
  *
  * A grid rather than a wrapping flex row. Wrapping puts each item at its natural

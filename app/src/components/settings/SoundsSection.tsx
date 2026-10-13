@@ -30,6 +30,11 @@ const EVENTS = [
   label: string
 }>
 
+/** The file's name alone: the directory is noise in a row this narrow. */
+function basename(path: string): string {
+  return path.split(/[\\/]/).pop() ?? path
+}
+
 /**
  * What each event sounds like, and the file that overrides that event's template.
  *
@@ -38,13 +43,10 @@ const EVENTS = [
  * dialog nobody plays a sound in should not hold an audio thread for as long as
  * the app is open.
  *
- * The status line is this section's own rather than the dialog's. It used to be
- * shared, so that picking a sound in here and firing a webhook in another section
- * could not leave two different answers on screen and the user reading the wrong
- * one. Sharing only earned its cost while there were two things to share between;
- * with the webhook gone this is the last section that reports at all, so threading
- * the state up to a parent that no longer reads it would be the dead weight the
- * sharing was avoiding.
+ * A row per event, stacked — not the `.settings-grid` the Look section uses.
+ * That grid floors each cell at 120px, sized for a lone select; a sound row is a
+ * select PLUS up to three buttons, so three of them side by side overflowed the
+ * dialog into a horizontal scrollbar and wrapped every note mid-sentence.
  */
 export function SoundsSection({ settings, set }: Props) {
   const [status, setStatus] = useState<Status>({ kind: 'idle', text: '' })
@@ -83,7 +85,7 @@ export function SoundsSection({ settings, set }: Props) {
       // one instead of replaying what was cached under the old path.
       invalidateCustomSound()
       set(key, path)
-      setStatus({ kind: 'ok', text: `Using ${path.split(/[\\/]/).pop()}` })
+      setStatus({ kind: 'ok', text: `Using ${basename(path)}` })
     } catch (error: unknown) {
       if (!stillMounted.current) return
       setStatus({ kind: 'error', text: message(error) })
@@ -100,19 +102,23 @@ export function SoundsSection({ settings, set }: Props) {
     <Section title="Sounds" section="sounds">
       <p className="modal-hint">
         Each event has its own sound: pick a template, or choose a file to play instead. A file
-        applies to its own event only, so a gift and a chat line can sound nothing alike. Backing
-        out of the picker keeps the file you already have.
+        applies to its own event only, so a gift and a chat line can sound nothing alike.
       </p>
 
-      <div className="settings-grid">
+      <div className="sound-rows">
         {EVENTS.map((event) => {
           const customPath = settings[event.key]
+          const busy = status.kind === 'busy'
           return (
-            <label className="field" key={event.key}>
+            // A div, not a label: a label wrapping a select AND the buttons beside
+            // it forwards a click anywhere inside to the select, so reaching for
+            // "Choose file…" would drop the template list open at the same time.
+            <div className="field" key={event.key}>
               <span className="field-label">{event.label}</span>
               <span className="field-row">
                 <select
                   className="input"
+                  aria-label={`${event.label} template`}
                   value={settings[event.templateKey]}
                   onChange={(e) => set(event.templateKey, e.target.value)}
                 >
@@ -132,32 +138,28 @@ export function SoundsSection({ settings, set }: Props) {
                 <button
                   className="btn btn-small"
                   onClick={() => pickCustom(event.key)}
-                  disabled={status.kind === 'busy'}
+                  disabled={busy}
                   title={customPath ? 'Change the file this event plays' : 'Choose a file for this event'}
                 >
                   {customPath ? 'Change file…' : 'Choose file…'}
                 </button>
                 {customPath && (
-                  <button
-                    className="btn btn-small"
-                    onClick={() => clearCustom(event.key)}
-                    disabled={status.kind === 'busy'}
-                  >
-                    Use built-in
+                  <button className="btn btn-small" onClick={() => clearCustom(event.key)} disabled={busy}>
+                    Use template
                   </button>
                 )}
               </span>
               <span className="field-note">
-                {customPath
-                  ? customPath.split(/[\\/]/).pop()
-                  : 'No file — the template is used.'}
+                {customPath ? basename(customPath) : 'No file — the template is used.'}
               </span>
-            </label>
+            </div>
           )
         })}
       </div>
 
-      <span className="field-note">Join sounds play at most every couple of seconds, however many arrive.</span>
+      <span className="field-note">
+        Join sounds play at most every couple of seconds, however many arrive.
+      </span>
     </Section>
   )
 }
