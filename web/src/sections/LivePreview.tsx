@@ -80,27 +80,34 @@ export default function LivePreview() {
   const shown = which === 'chat' ? chatUrl : boardUrl
 
   /*
-   * The stage's height, as the overlay itself reports it.
+   * The stage's height, as the overlay itself reports it, and the scale that
+   * makes it fit.
    *
-   * `aspect-ratio: 16 / 9` is the right default — it is the shape of an OBS
-   * canvas and it fills the screen — but it is a floor, not a ceiling. A
-   * ten-row leaderboard at 28px is ~580px tall, which is taller than the 520px a
-   * 926px-wide 16:9 stage has, and a stage whose height is locked to its aspect
-   * ratio then clips the last row with no scrollbar and no error: a board that
-   * is visibly cut off reads as a broken overlay rather than as a frame that is
-   * too short for it.
+   * Two things have to be true at once, and the first version of this got the
+   * first one right by breaking the second:
    *
-   * The overlay knows how tall it actually is; nothing outside it can compute
-   * that, because it depends on the row count, the font size, the padding and
-   * every operator-chosen value. So it reports the number and the stage takes
-   * the larger of the two. `null` until the first report, which leaves the
-   * aspect ratio in charge rather than collapsing the stage to nothing.
+   *   1. Nothing is clipped. A ten-row leaderboard at 28px is ~580px tall, and a
+   *      stage locked to `aspect-ratio: 16 / 9` cuts the last row off with no
+   *      scrollbar and no error — which reads as a broken overlay rather than as
+   *      a frame too short for it.
+   *   2. The whole overlay is visible at once, without scrolling. A preview you
+   *      have to scroll to see the bottom of is not a preview of what OBS shows;
+   *      it is a preview of the top of it, which is exactly the thing the fixed
+   *      rectangle was meant to settle.
    *
-   * The reported height goes on the IFRAME, not on min-height of the stage: the
-   * stage's `aspect-ratio` still resolves its own height from its width, and a
-   * min-height on the stage grows the black box without growing the iframe
-   * inside it — which leaves the board clipped in a taller frame, the same bug
-   * with more empty space around it. Sizing the iframe lets the stage wrap it.
+   * Growing the frame to its natural height satisfies (1) and fails (2) — a
+   * 676px stage pushes the fold and the bottom rows are simply below it. So the
+   * frame is laid out at its full height and then scaled down to fit the space
+   * the page has: every row is present in the box, and the box is small enough
+   * to be seen whole. That is what a browser source is too — OBS scales the page
+   * into whatever rectangle the operator drew, and this does the same thing.
+   *
+   * The scale is measured against the VIEWPORT, not against the stage element.
+   * A ResizeObserver on the stage cannot give the width the scale needs: the
+   * stage's width comes from its parent and its height comes from the iframe it
+   * contains, so the measurement the transform is computed from would depend on
+   * the transform — the observer would be measuring the thing it is meant to
+   * size. The viewport is upstream of all of it and stable.
    */
   const [reportedHeight, setReportedHeight] = useState<number | null>(null)
 
@@ -120,14 +127,45 @@ export default function LivePreview() {
     return () => window.removeEventListener('message', onMessage)
   }, [shown])
 
+  // Ceiling on the stage, as a share of the window. Enough to read a board
+  // comfortably, short enough that the page head and the switch stay on screen
+  // with it.
+  const [viewport, setViewport] = useState(() =>
+    typeof window === 'undefined' ? { w: 1280, h: 800 } : { w: window.innerWidth, h: window.innerHeight },
+  )
+
+  useEffect(() => {
+    function onResize() {
+      setViewport({ w: window.innerWidth, h: window.innerHeight })
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  const maxStageHeight = Math.max(320, Math.round(viewport.h * 0.62))
+
+  const scale =
+    reportedHeight === null
+      ? 1
+      : // Only ever shrinks: an overlay shorter than the space is shown at its
+        // real size, because scaling a 200px chat up to fill a 520px stage would
+        // be previewing a font size nobody chose.
+        Math.min(1, maxStageHeight / reportedHeight)
+
   const frameStyle =
     reportedHeight === null
       ? undefined
-      : // Clamped between the stage's own floor and a ceiling: a quiet room
-        // reports a short chat and the preview would collapse to a sliver, while
-        // a long chat would grow past the fold. The stage's `min-height` holds
-        // the bottom; this holds the top.
-        { height: `${Math.max(520, Math.min(Math.ceil(reportedHeight), 1600))}px` }
+      : {
+          // The full height, then scaled: the frame is laid out whole and the
+          // transform only changes how much of the page it occupies.
+          height: `${reportedHeight}px`,
+          transform: `scale(${scale})`,
+          transformOrigin: 'top left',
+        }
+
+  // The space the scaled frame actually occupies, so the page below the stage
+  // sits under it rather than under its untransformed height.
+  const occupied = reportedHeight === null ? undefined : Math.round(reportedHeight * scale)
 
   return (
     <>
@@ -176,7 +214,7 @@ export default function LivePreview() {
           No room to preview. Connect a username on the Rooms tab and its overlay appears here.
         </div>
       ) : (
-        <div className="preview-stage">
+        <div className="preview-stage" style={occupied ? { height: `${occupied}px` } : undefined}>
           {/* The page itself, not a picture of it, so what is watched here is
               exactly what OBS will load. */}
           <iframe src={shown} title="Overlay preview" style={frameStyle} />
