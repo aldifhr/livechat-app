@@ -152,6 +152,28 @@ check('and the cut keeps the length bounded', ttsText('x'.repeat(1000)).length <
 check('a short message is left whole', ttsText('x'.repeat(10)) === 'x'.repeat(10))
 // Nothing frames the message, so no framing word can be mispronounced into one.
 check('no prefix is spoken', !/says|bilang|mengirim/i.test(ttsText('halo')))
+
+// Emotes are read as words, which is the commonest way a chat line reads wrong:
+// a message ending `[thanks]` was spoken ending in "thanks".
+console.log('emotes are not spoken')
+check('a trailing emote is dropped', ttsText('kadang gw kek gitu [thanks]') === 'kadang gw kek gitu', ttsText('kadang gw kek gitu [thanks]'))
+check('several go at once', ttsText('halo [heart] [smile] dunia') === 'halo dunia', ttsText('halo [heart] [smile] dunia'))
+// A space, not nothing: two words separated only by an emote must not fuse.
+check('words either side stay apart', ttsText('halo[heart]dunia') === 'halo dunia', ttsText('halo[heart]dunia'))
+// A message that was nothing but emotes has nothing left to say, and speaking it
+// would hold an empty utterance against the next message.
+check('an emote-only message speaks nothing', ttsText('[thanks] [heart]') === '', JSON.stringify(ttsText('[thanks] [heart]')))
+check('and neither does a lone one', ttsText('[thanks]') === '')
+// Real Unicode emoji are already silent at the service — measured, a message with
+// one in it returns byte-identical audio — so they are left exactly as written.
+check('real emoji are left alone', ttsText('halo 🙏 dunia') === 'halo 🙏 dunia', ttsText('halo 🙏 dunia'))
+// A mention is written `@handle`, so it is not an emote and is read as the word the
+// viewer typed. Brackets are only ever emotes on this platform.
+check('a mention is still read', ttsText('halo @bittersweetbynajla') === 'halo @bittersweetbynajla', ttsText('halo @bettersweetbynajla'))
+// And the cut still counts characters after the emotes are gone, so a wall of
+// emotes cannot smuggle an unbounded read past the length cap.
+check('the length cap still applies', ttsText(`${'x'.repeat(200)} [thanks] [heart]`).length <= TTS_MAX_CHARS + 1)
+
 // Speech needs a longer gap than the blip: overlapping taps are busy, but
 // overlapping sentences are unintelligible.
 check('speech waits longer than a blip does', CHAT_TTS_GAP_MS > CHAT_SOUND_GAP_MS, String(CHAT_TTS_GAP_MS))
@@ -163,6 +185,15 @@ check('the value is spoken as diamonds, because a bare number says nothing', /99
 check('a nameless sender still gets named', /Someone/.test(giftAnnouncement('', 'Rose', 1, 0)), giftAnnouncement('', 'Rose', 1, 0))
 check('a gift with no name in the catalogue still reads as a gift', /a gift/.test(giftAnnouncement('ana', '', 1, 0)), giftAnnouncement('ana', '', 1, 0))
 check('no diamonds means no diamond count', !/diamonds/.test(giftAnnouncement('ana', 'Rose', 1, 0)), giftAnnouncement('ana', 'Rose', 1, 0))
+// The count agrees with the word. One diamond is the smallest gift anybody sends,
+// so this is not a rare slip — it is the most common sentence here, and "1 diamonds"
+// is the one a listener is most likely to hear.
+check('one is one diamond, not one diamonds', giftAnnouncement('ana', 'Rose', 1, 1) === 'ana mengirim Rose, 1 diamond', giftAnnouncement('ana', 'Rose', 1, 1))
+check('two is still diamonds', giftAnnouncement('ana', 'Rose', 1, 2) === 'ana mengirim Rose, 2 diamonds', giftAnnouncement('ana', 'Rose', 1, 2))
+// A repeated gift multiplies the value, so a repeat of a one-diamond gift is the
+// case where the singular would otherwise leak out twice over.
+check('a repeat of one is still singular', giftAnnouncement('ana', 'Rose', 3, 1) === 'ana mengirim Rose kali 3, 1 diamond', giftAnnouncement('ana', 'Rose', 3, 1))
+check('and the repeat itself is plural', giftAnnouncement('ana', 'Rose', 3, 6) === 'ana mengirim Rose kali 3, 6 diamonds', giftAnnouncement('ana', 'Rose', 3, 6))
 
 console.log(failures === 0 ? '\nall passed' : `\n${failures} failed`)
 process.exit(failures === 0 ? 0 : 1)

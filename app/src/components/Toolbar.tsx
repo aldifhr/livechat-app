@@ -182,7 +182,7 @@ export function Toolbar({
         {isConnected && room.target && (
           <button
             className="btn btn-small watch-btn"
-            title={`Open tiktok.com/@${tiktokUsername(room.target)}/live in your browser`}
+            title={`Open tiktok.com/@${room.target}/live in your browser`}
             onClick={() =>
               host
                 .openStream(`https://www.tiktok.com/@${encodeURIComponent(tiktokUsername(room.target))}/live`)

@@ -195,6 +195,15 @@ export function shouldPlayMentionAlert(
 }
 
 /**
+ * A bracketed emote, the way TikTok writes them: `[thanks]`, `[heart]`.
+ *
+ * Anything inside a pair of brackets with no whitespace. Mentions are written
+ * `@handle` and not `[handle]`, so there is no reading of a square bracket here
+ * that is not an emote.
+ */
+const EMOTE = /\[[^\s[\]]+\]/g
+
+/**
  * The text read aloud for one chat message.
  *
  * Trimmed to a length a voice can finish before the next message arrives: a
@@ -206,11 +215,25 @@ export function shouldPlayMentionAlert(
  * and it did not survive contact with the voice: the prefix is not what a
  * listener is tracking, the words in the message are, and a name spoken ahead of
  * every line is a second thing to follow. So the read is the chat, uninterrupted.
+ *
+ * Emotes are taken out before anything else, because the service reads each one
+ * as a word: a message ending `[thanks]` is spoken ending in "thanks", which is
+ * the single most common way a chat line reads wrong. Only the bracketed form is
+ * removed. Real Unicode emoji are already silent there — measured against the
+ * endpoint, a message with 🙏 in it returns byte-for-byte the same audio as one
+ * without — so there is nothing to fix and stripping them would only risk eating
+ * a character the message needed.
+ *
+ * Replaced with a space rather than nothing, so two words separated only by an
+ * emote do not become one word.
  */
 export const TTS_MAX_CHARS = 120
 
 export function ttsText(text: string): string {
-  const body = text.trim().replace(/\s+/g, ' ')
+  // Emotes first, so the whitespace collapse below tidies the gap they leave.
+  const body = text.replace(EMOTE, ' ').trim().replace(/\s+/g, ' ')
+  // A message that was nothing but emotes leaves nothing to say. Speaking it would
+  // put an empty utterance into the gap and hold it against the next message.
   if (body === '') return ''
   return body.length > TTS_MAX_CHARS ? `${body.slice(0, TTS_MAX_CHARS).trimEnd()}…` : body
 }
@@ -233,9 +256,15 @@ export const CHAT_TTS_GAP_MS = 1800
  * was sent, then the value when there is one. The value is spoken as diamonds
  * rather than as a bare number, because "500" on its own does not say what was
  * counted — and a gift's worth is the reason it is being announced at all.
+ *
+ * The count agrees with the word. One diamond is the smallest thing anybody sends
+ * and it is announced constantly, so "1 diamonds" is not a rare slip: it is the
+ * most common sentence this module produces, and the one most likely to be heard.
  */
 export function giftAnnouncement(nickname: string, giftName: string, count: number, diamonds: number): string {
   const who = nickname.trim() || 'Someone'
   const what = count > 1 ? `${giftName} kali ${count}` : giftName || 'a gift'
-  return diamonds > 0 ? `${who} mengirim ${what}, ${diamonds} diamonds` : `${who} mengirim ${what}`
+  if (diamonds <= 0) return `${who} mengirim ${what}`
+  const worth = diamonds === 1 ? '1 diamond' : `${diamonds} diamonds`
+  return `${who} mengirim ${what}, ${worth}`
 }

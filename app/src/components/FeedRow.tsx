@@ -39,6 +39,37 @@ interface Props {
 }
 
 /**
+ * A viewer's name, linked to their profile when there is one to link to.
+ *
+ * A plain span when the name cannot be a username. That is not an edge case being
+ * defended against — display names are free text, and a name in Arabic or Devanagari
+ * or Thai turns into a long percent-encoded URL for an account that does not exist.
+ * The name still shows; it just is not dressed as a link, because a control that
+ * always fails is worse than a word.
+ */
+function Nickname({ name, handle }: { name: string; handle: string }) {
+  const url = tiktokProfileUrl(handle)
+  if (!url) return <span className="nickname">{name}</span>
+
+  return (
+    <button
+      type="button"
+      className="nickname nickname-link"
+      title={`Open @${name} on TikTok`}
+      onClick={() => {
+        void host.openStream(url).catch(() => {
+          // The host refuses anything but TikTok, and a profile URL is TikTok — so
+          // a failure here is the browser, not the rule, and there is nothing the
+          // row can do about it.
+        })
+      }}
+    >
+      {name}
+    </button>
+  )
+}
+
+/**
  * Whether a mention names this reader.
  *
  * The rule itself lives in `lib/mentions` and is shared with the alert hook: one
@@ -68,27 +99,15 @@ function FeedRowImpl({ item, isLast, myNames }: Props) {
           {/* The name is a link to the viewer's TikTok profile — the one thing on a
               chat row worth following up on. Opened through the host, not a plain
               anchor: the webview's content security policy will not navigate, so an
-              <a href> would do nothing. The stable handle builds the URL; the
-              display name is the fallback when there is no handle, and a display
-              name is not a username, so the URL is built by the platform's own rule
-              rather than by percent-encoding whatever the row happens to say. */}
-          <button
-            type="button"
-            className="nickname nickname-link"
-            title={`Open @${item.id || item.nickname} on TikTok`}
-            onClick={() => {
-              const url = tiktokProfileUrl(item.id || item.nickname || '')
-              if (url) {
-                void host.openStream(url).catch(() => {
-                  // The host refuses anything but TikTok, and a profile URL is
-                  // TikTok — so a failure here is the browser, not the rule, and
-                  // there is nothing the row can do about it.
-                })
-              }
-            }}
-          >
-            {item.nickname || 'Room'}
-          </button>
+              <a href> would do nothing.
+
+              Not every name is a username. The stable handle is used when there is
+              one, and the display name otherwise, and a display name can be free
+              text in any script. So the URL is built by the platform's rule and comes
+              back empty when the name cannot be a username at all — a row whose name
+              is `℘กัॐ…` has no profile, and a link that is certain to fail is worse
+              than a name that is plainly not a link. */}
+          <Nickname name={item.nickname || 'Room'} handle={item.id || item.nickname || ''} />
           {item.isModerator && (
             <span className="badge-mod" title="Room moderator">
               MOD
