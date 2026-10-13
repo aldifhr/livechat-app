@@ -3,6 +3,12 @@
 /**
  * The sign-in form.
  *
+ * One field, because there is one account. This dashboard is a single
+ * deployment's console, not a service with users: the account is a fact of the
+ * configuration, not something the visitor supplies, so asking for a username
+ * would be asking them to guess a name that is already decided. The password is
+ * the only thing not known in advance, so it is the only thing asked for.
+ *
  * The password is typed, posted, and dropped — nothing here stores it, and the
  * server answers with a cookie rather than the browser's own credential. On
  * success the page is loaded for real rather than navigated to with the client
@@ -14,7 +20,6 @@
 import { useState } from 'react'
 
 export default function LoginForm({ next }: { next: string }) {
-  const [user, setUser] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -27,7 +32,7 @@ export default function LoginForm({ next }: { next: string }) {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user, password }),
+        body: JSON.stringify({ password }),
         cache: 'no-store',
       })
       const payload = (await response.json().catch(() => ({}))) as { detail?: string }
@@ -51,26 +56,13 @@ export default function LoginForm({ next }: { next: string }) {
       {error && <div className="notice error">{error}</div>}
 
       <div className="field">
-        <label htmlFor="login-user">Username</label>
-        <input
-          id="login-user"
-          name="user"
-          type="text"
-          autoComplete="username"
-          autoFocus
-          value={user}
-          onChange={(event) => setUser(event.target.value)}
-          required
-        />
-      </div>
-
-      <div className="field">
         <label htmlFor="login-password">Password</label>
         <input
           id="login-password"
           name="password"
           type="password"
           autoComplete="current-password"
+          autoFocus
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           required

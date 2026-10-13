@@ -1,6 +1,11 @@
 /**
  * Signing in.
  *
+ * One field: the password. The account is `dashboardUser` from the config, not
+ * something the visitor types — this is a single deployment's console, so the
+ * name is a fact of the deployment and asking for it would only be asking them
+ * to guess it. The password is the one thing not known in advance.
+ *
  * The password is the one in the htpasswd file this app also changes, and it is
  * checked here in-process — the password never leaves this server, and it is not
  * compared anywhere a shell or nginx can see it.
@@ -50,10 +55,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return refuse('Expected a JSON body.', 400)
   }
 
-  const { user, password } = (body ?? {}) as { user?: unknown; password?: unknown }
-  if (typeof user !== 'string' || typeof password !== 'string') {
-    return refuse('Both a username and a password are required.', 400)
+  // A `user` is still accepted if something sends one — an older page, a script
+  // — but it is not required and it is not trusted: the account is the
+  // configured one either way. Accepting it and ignoring it means a stale client
+  // cannot be used to sign in as a different account by naming it.
+  const { password } = (body ?? {}) as { user?: unknown; password?: unknown }
+  if (typeof password !== 'string') {
+    return refuse('A password is required.', 400)
   }
+
+  const user = dashboardUser
 
   let check: Awaited<ReturnType<typeof verifyPassword>>
   try {
@@ -62,13 +73,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return refuse('The password file could not be read.', 500)
   }
 
-  // One message for both: which usernames exist is not something a login form
-  // should be willing to tell anyone.
+  // One message for both a missing account and a wrong password: which names
+  // exist is not something a login form should be willing to tell anyone.
   if (check !== 'ok') {
-    return refuse('That username or password is not correct.', 401)
+    return refuse('That password is not correct.', 401)
   }
 
-  const hash = await passwordHash(passwordFile, dashboardUser).catch(() => null)
+  const hash = await passwordHash(passwordFile, user).catch(() => null)
   if (!hash) return refuse('The password file could not be read.', 500)
 
   // The session is signed with a key derived from the password hash in force, so
