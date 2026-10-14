@@ -12,9 +12,12 @@
  * every second word is not reading — it is stuttering, and every sentence is
  * heard only as its first half.
  *
- * The one exception is an *urgent* utterance — a gift, a mention. Those are the
- * news, and they take the slot rather than waiting behind a sentence that is
- * still going. Everything else waits.
+ * The one exception used to be an *urgent* utterance — a gift, a mention — which
+ * took the slot rather than waiting. That is gone: no caller ever passed it, and
+ * the gift and mention hooks were written to wait on purpose (a gift that cuts
+ * off the reader mid-sentence is worse than one that arrives a beat later). A
+ * parameter whose only correct value is "never" is a trap for the next reader, so
+ * `hush()` is now the only way anything is cut off.
  *
  * Synthesis is a network round trip — the host splits a long line into pieces and
  * fetches each one — so a request made two seconds ago may only now be audible.
@@ -73,21 +76,15 @@ let requested = 0
  * silencing the chat.
  *
  * @param pace - the reading pace, passed through to the host.
- * @param urgent - take the slot now rather than waiting. Currently unused: a gift
- * and a mention wait their turn like anything else, because the chat is what the
- * voice is primarily for.
  */
-export function say(text: string, pace: string, urgent = false): void {
+export function say(text: string, pace: string): void {
   const spoken = text.trim()
   if (spoken === '') return
 
-  // The voice is busy — mid-sentence, or still being synthesised. An ordinary
-  // utterance waits for it to finish: cutting it off is what turns a reader into
-  // a stutter. An urgent one is the news and takes the slot.
-  if (claimed) {
-    if (!urgent) return
-    hush()
-  }
+  // The voice is busy — mid-sentence, or still being synthesised. An utterance
+  // that arrives now waits for it to finish: cutting it off is what turns a
+  // reader into a stutter, and the next message is a second away.
+  if (claimed) return
 
   const now = Date.now()
   // The gap is measured from the end of the last utterance, so it reflects how
@@ -106,7 +103,18 @@ export function say(text: string, pace: string, urgent = false): void {
       // A newer utterance asked for, or the voice was hushed, while this was
       // being synthesised. Either way this one is no longer wanted, and playing
       // it would be speaking over a decision the user already made.
-      if (ticket !== requested || url === '') return
+      if (ticket !== requested) return
+      if (url === '') {
+        // The host had no audio for this text. That is not "say it later" — it
+        // is nothing to play — and the claim has to come back, or a voice that
+        // returned empty once stays claimed forever and every later `say()`
+        // returns at the busy check above. That is a silent reader for the rest
+        // of the session, which is exactly the failure the catch below guards
+        // against; this path was the one that missed it.
+        speaking = null
+        claimed = false
+        return
+      }
 
       const audio = new Audio(url)
       // Released when it ends so the next utterance is not measured against a

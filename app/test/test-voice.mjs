@@ -9,14 +9,14 @@
  * opening half of each sentence.
  *
  * The rules, in the order they are checked:
- *   1. A sentence already being spoken runs to its end. Only an urgent
- *      utterance (gift, mention) takes the slot.
+ *   1. A sentence already being spoken runs to its end. Nothing takes the slot;
+ *      `hush()` is the only way anything is cut off.
  *   2. The voice is claimed for the whole synthesis round trip, not just for
  *      playback — otherwise a message arriving mid-fetch is synthesised into a
  *      sentence that cuts off the first one.
  *   3. The gap is measured from the end of the previous utterance.
- *   4. A failed synthesis releases the claim; a voice that errors once must not
- *      stay silent for the rest of the session.
+ *   4. A synthesis that fails OR returns empty releases the claim; a voice that
+ *      went quiet once must not stay silent for the rest of the session.
  *
  *   node test/test-voice.mjs
  */
@@ -196,19 +196,34 @@ console.log('a sentence already speaking is not cut off')
   check('the second one was not synthesised', asked.length === 1, `asked=${asked.length}`)
 }
 
-console.log('an urgent utterance takes the slot')
+console.log('an empty synthesis releases the claim')
 {
+  // The host can answer with '' — no audio for this text. That is not "play it
+  // later": nothing was played, and the claim must come back. Left set, every
+  // later `say()` returns at the busy check and the reader is silent for the rest
+  // of the session. This is the path the `catch` below does not cover.
   await reset()
+  let calls = 0
+  globalThis.__speakSpy = async (text) => {
+    asked.push(text)
+    calls += 1
+    return calls === 1 ? '' : 'data:audio/mpeg;base64,AAAA'
+  }
   say('halo')
   await flush()
-  const first = FakeAudio.instances.at(-1)
-  check('the first sentence is playing', first?.played === true)
-
-  say('ana mengirim Rose', true)
+  check('nothing played for the empty answer', FakeAudio.instances.length === 0)
+  say('apa kabar')
   await flush()
-  const second = FakeAudio.instances.at(-1)
-  check('the first sentence was stopped', first.paused === true)
-  check('the urgent one is playing', second?.played === true && second !== first)
+  check('the next utterance is still attempted', asked.length === 2, `asked=${asked.length}`)
+  check('and it plays', FakeAudio.instances.length === 1, FakeAudio.instances.length)
+
+  globalThis.__speakSpy = async (text) => {
+    asked.push(text)
+    await new Promise((resolve) => {
+      releaseSpeak = resolve
+    })
+    return 'data:audio/mpeg;base64,AAAA'
+  }
 }
 
 console.log('the voice is claimed for the whole round trip')
