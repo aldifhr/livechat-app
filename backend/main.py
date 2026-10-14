@@ -1183,7 +1183,7 @@ async def metrics() -> dict[str, Any]:
     return {
         "sources_active": len(sources),
         "websocket_connections": len(hub.active),
-        "queued_messages_total": sum(q.qsize() for q in hub._queues.values()),
+        "queued_messages_total": hub.queued_messages(),
         # A real counter on the hub, incremented in `disconnect`. This used to read
         # a `_disconnection_log` attribute that was never defined, so the getattr
         # default was all it ever returned and the metric was a permanent zero.

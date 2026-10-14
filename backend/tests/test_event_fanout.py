@@ -149,6 +149,30 @@ async def viewers_coalesce_rather_than_queue():
     check("and the drain-strike counter was not touched", hub._strikes[cid] == 7, hub._strikes[cid])
 
 
+async def queued_messages_counts_every_client():
+    """The metric reads the hub's own method, not its private map.
+
+    `/metrics` used to sum `hub._queues` directly, so the metric was a caller of
+    private bookkeeping and would break silently if that map were renamed or
+    split. This pins both halves: the method adds up every client, and an empty
+    hub reports zero rather than raising.
+    """
+    hub = hub_module.Hub()
+    check("an empty hub queues nothing", hub.queued_messages() == 0, hub.queued_messages())
+
+    for cid, n in (("c1", 3), ("c2", 2)):
+        hub._queues[cid] = asyncio.Queue(maxsize=4096)
+        for i in range(n):
+            hub._queues[cid].put_nowait({"type": "comment", "text": f"m{i}"})
+
+    check("every client's backlog is counted", hub.queued_messages() == 5, hub.queued_messages())
+
+    # A client that goes away takes its backlog out of the total, or the number
+    # would only ever climb.
+    hub._queues.pop("c1", None)
+    check("a gone client stops counting", hub.queued_messages() == 2, hub.queued_messages())
+
+
 async def main():
     print("emit does not block on a stuck client")
     await emit_never_blocks()
@@ -158,6 +182,9 @@ async def main():
 
     print("\nviewer counts coalesce")
     await viewers_coalesce_rather_than_queue()
+
+    print("\nthe queue metric adds up the hub's own backlog")
+    await queued_messages_counts_every_client()
 
 
 if __name__ == "__main__":

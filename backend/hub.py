@@ -91,6 +91,15 @@ class Hub:
             self.customizer_clients.add(client_id)
         return client_id
 
+    def queued_messages(self) -> int:
+        """How many messages are waiting across every client.
+
+        A method rather than letting the metric read `_queues` directly: the
+        queue map is this class's own bookkeeping, and a metric that reaches into
+        it is a caller that breaks silently the day the map is renamed or split.
+        """
+        return sum(q.qsize() for q in self._queues.values())
+
     def disconnect(self, client_id: str) -> None:
         # Only a client that was actually connected counts. `disconnect` is called
         # from the socket teardown, and a duplicate call for an id already gone
