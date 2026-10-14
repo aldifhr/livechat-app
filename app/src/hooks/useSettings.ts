@@ -10,7 +10,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { host } from '../lib/sidecar'
 import { resolveDensity, resolveFont, resolveTheme, type DensityId, type FontId, type ThemeId } from '../lib/theme'
-import { NORMAL_PACE, knownPace } from '../lib/voices'
+import {
+  NORMAL_PACE,
+  knownPace,
+  clampVolume,
+  resolveLanguage,
+  DEFAULT_LANGUAGE,
+  TTS_VOLUME_MAX,
+} from '../lib/voices'
 
 export interface ViewSettings {
   /** Scales the feed's type. Driven by ctrl+scroll. */
@@ -93,6 +100,23 @@ export interface ViewSettings {
    * another on gifts that could disagree.
    */
   ttsPace: string
+  /**
+   * The language the room is read in.
+   *
+   * One value for the same reason as the pace, and for a second one: the service
+   * offers exactly one voice per language, so the language *is* the voice. Two
+   * pickers could only ever disagree about which voice the room should be read in.
+   */
+  ttsLanguage: string
+  /**
+   * How loud the voice is, 0..1.
+   *
+   * Applied to the audio on the page rather than to the synthesis, so it costs
+   * nothing and costs nothing to change. Full by default: the voice service has no
+   * idea what else is playing, so a level that was right for it can be wrong for a
+   * stream with music under it.
+   */
+  ttsVolume: number
   /** Which synthesised sound a gift plays. */
   giftTemplate: string
   /** Which synthesised sound a chat message plays. */
@@ -142,6 +166,8 @@ export const DEFAULT_SETTINGS: ViewSettings = {
   mentionAlert: false,
   mentionVoice: false,
   ttsPace: NORMAL_PACE,
+  ttsLanguage: DEFAULT_LANGUAGE,
+  ttsVolume: TTS_VOLUME_MAX,
   giftTemplate: 'chime',
   chatTemplate: 'blip',
   joinTemplate: 'pop',
@@ -180,6 +206,13 @@ function load(): ViewSettings {
       // leave the picker showing nothing selected and the host falling back on
       // every message, so it settles on the default here instead.
       ttsPace: knownPace(saved.ttsPace ?? '') ? (saved.ttsPace as string) : DEFAULT_SETTINGS.ttsPace,
+      // Same reasoning as the pace: a language code this build no longer offers
+      // would reach the host as a `tl` it has never sent, and the room would be
+      // read in whatever voice the service answered for a code it did not know.
+      ttsLanguage: resolveLanguage(saved.ttsLanguage),
+      // Clamped rather than checked, because unlike a name this one has no "is
+      // this a value we offer" question — it has a range, and the range is all.
+      ttsVolume: clampVolume(saved.ttsVolume ?? DEFAULT_SETTINGS.ttsVolume),
       // A build before the split wrote no per-event path at all, so a missing one
       // falls back to the file that used to serve every event.
       giftSoundPath: saved.giftSoundPath ?? legacy,

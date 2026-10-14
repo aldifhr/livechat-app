@@ -28,6 +28,10 @@ const fake = fakeTransport({
   // The webhook starts unconfigured, as it does on first launch.
   webhook_config_get: { enabled: false, url: '', token: '' },
   webhook_test: 'Sent.',
+  // A base64 string the tester can play. Left to the default of `undefined` the host
+  // answers with nothing, `host.speak` turns that into `''`, and the tester correctly
+  // reports a failure — which is the behaviour under test elsewhere, not here.
+  speak: 'QUFBQQ==',
 })
 setTransport(fake.transport)
 
@@ -470,8 +474,20 @@ const feed = sections().find((s) => s.getAttribute('data-section') === 'feed')
 check('the feed group starts closed', feed?.open === false, String(feed?.open))
 await click(feed.querySelector('.settings-heading'))
 check('clicking its title opens it', feed.open === true, String(feed.open))
-const dialogToggle = (label) =>
-  $$('.modal-settings .toggle').find((t) => t.textContent.trim().startsWith(label))?.querySelector('input')
+  const dialogToggle = (label) =>
+    $$('.modal-settings .toggle').find((t) => t.textContent.trim().startsWith(label))?.querySelector('input')
+  // A settings field found by its caption rather than by its position in the DOM.
+  // The voice block holds three controls in one grid, so "the first select in the
+  // feed section" silently became the language the moment a field was added above
+  // it — and this suite failed as "the choices are id,en,ms,…" instead of as a
+  // missing control, which is a much harder thing to read.
+  const dialogField = (label) =>
+    $$('.modal-settings .field').find((f) => f.querySelector('.field-label')?.textContent.trim() === label)
+  const paceField = () => dialogField('Reading pace')?.querySelector('select')
+  const languageField = () => dialogField('Language')?.querySelector('select')
+  const volumeField = () => dialogField('Volume')?.querySelector('input[type="range"]')
+  const testerButton = () =>
+    $$('.modal-settings button').find((b) => b.textContent.includes('Test the voice'))
 
 await click(dialogToggle('Compact'))
 check('turning on compact sets the class', doc.body.classList.contains('compact') === true)
@@ -842,6 +858,17 @@ console.log('chat alerts')
 // things that have to be asked for, not assumed.
 check('the chat blip is offered off', dialogToggle('Chat blip')?.checked === false)
 check('and speech is off too', dialogToggle('Read chat aloud')?.checked === false)
+// The voice settings are reachable with nothing speaking. They used to hide
+// themselves until one of the three toggles above was on — which put the Tester,
+// the one control that exists to help you decide whether you want the voice,
+// somewhere you could only reach after already having answered yes. A section that
+// appears only once its own feature is enabled is a section that cannot be used to
+// find out what turning it on does.
+check(
+  'the voice settings are there with speech still off',
+  Boolean(dialogField('Language') && dialogField('Reading pace') && dialogField('Volume')),
+)
+check('and so is the tester', Boolean(testerButton()))
 // There is no name toggle: the read is the chat on its own, so there is no
 // framing to configure.
 check('the name toggle does not exist', !dialogToggle('Say the name'))
@@ -857,12 +884,10 @@ check('gift announcements are offered off', dialogToggle('Say gifts')?.checked =
 await click(dialogToggle('Say gifts'))
 check('and turn on', dialogToggle('Say gifts')?.checked === true)
 
-console.log('choosing the reading pace')
-// The picker is scoped to the feed section rather than found by label alone, so a
-// "Reading pace" field added elsewhere would not quietly become the thing tested.
-const paceField = () => $('[data-section="feed"] select.input')
+console.log('the voice settings')
 // Three paces, and no more: the voice service takes a language and nothing else, so
-// there is exactly one Indonesian voice to choose from and pace is what is left.
+// there is one voice per language and pace is what is left to choose. The fields
+// themselves are found by caption — see `dialogField` above.
 check('the pace can be chosen', Boolean(paceField()))
 check(
   'the choices are slow, normal and fast',
@@ -876,7 +901,34 @@ await act(async () => {
   el.dispatchEvent(new harness.dom.window.Event('change', { bubbles: true }))
 })
 check('a chosen pace sticks', paceField()?.value === 'fast', paceField()?.value)
-// The part that actually matters: the choice is not a label in a dialog, it is what
+
+// The language is the only thing on this service that changes the voice, so it is
+// worth its own assertion: a picker that moves the setting without the setting
+// reaching the host would be a control that lies.
+check('a language can be chosen', Boolean(languageField()))
+check(
+  'and Indonesian is the default',
+  languageField()?.value === 'id',
+  languageField()?.value,
+)
+await act(async () => {
+  const el = languageField()
+  el.value = 'en'
+  el.dispatchEvent(new harness.dom.window.Event('change', { bubbles: true }))
+})
+check('a chosen language sticks', languageField()?.value === 'en', languageField()?.value)
+
+// Volume is a slider, so its saved value is a fraction even though the control is
+// shown as a percentage. Getting that backwards is the whole risk in a range input.
+check('volume starts at full', volumeField()?.value === '100', volumeField()?.value)
+await act(async () => {
+  const el = volumeField()
+  el.value = '40'
+  el.dispatchEvent(new harness.dom.window.Event('input', { bubbles: true }))
+})
+check('the slider reports a percentage', volumeField()?.value === '40', volumeField()?.value)
+
+// The part that actually matters: these are not labels in a dialog, they are what
 // gets asked of the voice service. The message is spoken as itself, with no name and
 // nothing framed around it, so `text` is the whole utterance.
 await act(async () => {
@@ -891,7 +943,46 @@ await act(async () => {
 await flush()
 const spoken = fake.lastCommand('speak')
 check('the message is spoken at the chosen pace', spoken?.args?.pace === 'fast', JSON.stringify(spoken?.args))
+check('in the chosen language', spoken?.args?.language === 'en', JSON.stringify(spoken?.args))
 check('and it is sent as the chat, unframed', spoken?.args?.text === 'halo dunia', String(spoken?.args?.text))
+
+console.log('the tester button')
+// A control that reports nothing is the one failure a settings dialog cannot have,
+// so the button says what came of it rather than closing its mouth either way.
+check('there is a tester', Boolean(testerButton()))
+// The whole chain runs inside one `act`. The tester awaits the host and then the
+// audio, and React holds updates outside an act environment until one runs — so
+// clicking inside act and flushing outside it renders nothing, and the assertion
+// that follows is looking for a status line that is correctly never painted.
+await act(async () => {
+  testerButton().click()
+  await flush()
+  await flush()
+})
+check('it spoke the sample', fake.lastCommand('speak')?.args?.text?.length > 0, JSON.stringify(fake.lastCommand('speak')?.args))
+check(
+  'in the language it is testing',
+  fake.lastCommand('speak')?.args?.language === 'en',
+  JSON.stringify(fake.lastCommand('speak')?.args),
+)
+check(
+  'and reported that it did',
+  $$('[data-section="feed"] .modal-status-ok').length === 1,
+  $('[data-section="feed"] .voice-tester')?.innerHTML ?? 'NO .voice-tester',
+)
+// And the other half: the same button with a host that answers with nothing must say
+// so, rather than reporting a voice that was never heard.
+await act(async () => {
+  fake.setResult('speak', '')
+  testerButton().click()
+  await flush()
+  await flush()
+})
+check(
+  'a voice that answers with nothing is reported, not swallowed',
+  $$('[data-section="feed"] .modal-status-error').length === 1,
+  $('[data-section="feed"] .voice-tester')?.innerHTML ?? 'NO .voice-tester',
+)
 
 
 console.log('mentions of me')

@@ -123,6 +123,7 @@ export function installDom() {
     Event: g.Event,
     KeyboardEvent: g.KeyboardEvent,
     MouseEvent: g.MouseEvent,
+    Audio: g.Audio,
     getComputedStyle: g.getComputedStyle,
     requestAnimationFrame: g.requestAnimationFrame,
     cancelAnimationFrame: g.cancelAnimationFrame,
@@ -137,6 +138,12 @@ export function installDom() {
   g.Event = dom.window.Event
   g.KeyboardEvent = dom.window.KeyboardEvent
   g.MouseEvent = dom.window.MouseEvent
+  // `voice.ts` reaches the bare global rather than `window.Audio`, and the compiled
+  // module runs in Node's global scope — so jsdom's constructor has to be copied
+  // across or `new Audio()` raises a ReferenceError there. The tester reports that
+  // as a failed preview and the ordinary reader swallows it, so without this neither
+  // path shows anything wrong until the day the voice is expected to be audible.
+  g.Audio = dom.window.Audio
   g.getComputedStyle = dom.window.getComputedStyle.bind(dom.window)
   g.requestAnimationFrame = dom.window.requestAnimationFrame.bind(dom.window)
   g.cancelAnimationFrame = dom.window.cancelAnimationFrame.bind(dom.window)
@@ -194,7 +201,22 @@ export function fakeTransport(overrides = {}) {
     lastCommand(name) {
       return [...commands].reverse().find((c) => c.command === name)
     },
-}
+    /**
+     * Changes what a command answers with, part-way through a suite.
+     *
+     * The overrides object is read on every call, so assigning to it is enough — but
+     * it is the one thing a suite needs that neither the constructor nor `emit`
+     * offers, and reaching into the transport's internals to do it would make the
+     * shape of the harness part of every test that wanted it.
+     *
+     * `undefined` is stored as a key that is present but answers `undefined`, which is
+     * the same as no override at all: a command nobody stubbed answers `undefined`
+     * either way, so "the host has nothing for this" needs no separate spelling.
+     */
+    setResult(name, value) {
+      overrides[name] = value
+    },
+  }
 }
 
 /**

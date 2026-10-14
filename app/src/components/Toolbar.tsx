@@ -273,7 +273,7 @@ export function Toolbar({
           <button
             className="btn btn-small settings-btn"
             onClick={onOpenSettings}
-            title="Theme, font, density, panels and model"
+            title="Look, panels, feed and voice, sounds, model and webhook"
             aria-label="Settings"
           >
             ⚙

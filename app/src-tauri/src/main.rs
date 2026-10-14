@@ -142,15 +142,18 @@ async fn pick_sound_file(app: tauri::AppHandle) -> Result<String, String> {
 /// Base64 because the bytes cross as a JSON string — Tauri's command channel is
 /// not a binary one, and a `Vec<u8>` would arrive as an array of numbers, four
 /// times the size.
-/// `pace` is optional so a page that does not know about the choice — an older
-/// build, or a host command called by hand — still speaks at the service's own
-/// pace rather than erroring.
+///
+/// `pace` and `language` are optional so a page that does not know about a choice —
+/// an older build, or a host command called by hand — still speaks at the service's
+/// own pace in the chat's own language rather than erroring.
 #[tauri::command]
-async fn speak(text: String, pace: Option<String>) -> Result<String, String> {
+async fn speak(text: String, pace: Option<String>, language: Option<String>) -> Result<String, String> {
     use base64::Engine as _;
 
     let chosen = pace.as_deref().unwrap_or(speech::NORMAL);
-    let audio = speech::say(&text, chosen).await.map_err(|e| e.to_string())?;
+    let audio = speech::say(&text, chosen, language.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(base64::engine::general_purpose::STANDARD.encode(audio))
 }

@@ -17,6 +17,16 @@
  * So this test reads both files and compares them against each other, which is
  * the only place the mismatch is visible. It is deliberately a source-reading
  * test rather than a runtime one: the shapes only exist as source text.
+ *
+ * The same seam, a second time, for the voice. `TTS_LANGUAGES` in `voices.ts` is
+ * what the picker offers and `speech::LANGUAGES` is what the host will actually
+ * send, and the two are separate literals in separate languages. A code added to
+ * only one of them is a language the dialog offers and the voice refuses — and
+ * because the host settles for its default rather than erroring, the symptom is a
+ * room quietly read in the wrong accent rather than anything that looks broken.
+ * Each side was pinned to itself (a Rust test listing its codes, a TS test
+ * exercising the picker) and both were green while the lists disagreed, which is
+ * the exact shape of the bug this file was written for.
  */
 
 import { readFileSync } from 'node:fs'
@@ -94,6 +104,56 @@ function tsVariants(source) {
   return variants
 }
 
+/**
+ * The language codes the picker offers, read out of `TTS_LANGUAGES`.
+ *
+ * Read out of the list rather than kept as a literal here, for the reason the frame
+ * keys above are: a second list is a second thing to forget, and forgetting it is
+ * the failure this file exists to catch.
+ */
+function tsLanguages(source) {
+  const body = source.slice(source.indexOf('export const TTS_LANGUAGES'))
+  const codes = new Set()
+  const entry = /\{\s*value:\s*'([^']+)'/g
+  let match
+  while ((match = entry.exec(body)) !== null) codes.add(match[1])
+  return codes
+}
+
+/**
+ * The codes `speech::LANGUAGES` will send.
+ *
+ * Read from after the `= &[` rather than from the declaration, because the
+ * declaration is `&[&str] = &[...]` and its first `]` closes the type annotation.
+ * Cutting there reads `&[&str` and finds no codes in it at all — which is what the
+ * first version of this did, and which the "the host will speak languages" check
+ * below caught only because it asserts a non-zero count instead of trusting the
+ * read. The assertion is the part worth keeping; the parse is just plumbing.
+ */
+function rustLanguages(source) {
+  const at = source.indexOf('pub const LANGUAGES')
+  if (at === -1) return new Set()
+  const valuesAt = source.indexOf('= &[', at)
+  if (valuesAt === -1) return new Set()
+  const body = source.slice(valuesAt, source.indexOf(']', valuesAt))
+  const codes = new Set()
+  const quoted = /"([^"]+)"/g
+  let match
+  while ((match = quoted.exec(body)) !== null) codes.add(match[1])
+  return codes
+}
+
+/** A single `'id'` out of a `const NAME: &str = "id"`. */
+function rustDefaultLanguage(source) {
+  const at = source.indexOf('pub const DEFAULT_LANGUAGE')
+  return at === -1 ? null : /"([^"]+)"/.exec(source.slice(at, at + 200))?.[1] ?? null
+}
+
+function tsDefaultLanguage(source) {
+  const at = source.indexOf('export const DEFAULT_LANGUAGE')
+  return at === -1 ? null : /'([^']+)'/.exec(source.slice(at, at + 200))?.[1] ?? null
+}
+
 const rust = rustFrames(readFileSync(join_(pkgRoot, 'src-tauri', 'src', 'backend.rs'), 'utf8'))
 const ts = tsVariants(readFileSync(join_(pkgRoot, 'src', 'lib', 'sidecar.ts'), 'utf8'))
 
@@ -161,6 +221,51 @@ check(
   'the host sends id, so viewerId could only ever read as undefined',
 )
 check('nothing in the app reads viewerId', !/\bviewerId\b/.test(hookSource))
+
+console.log('the voice languages line up')
+// A separate seam from the event frames above, and the same failure mode: two lists
+// in two languages that nothing requires to agree. The host resolves an unknown
+// language to its default instead of refusing, so a code in the picker and not in
+// the host is not a crash — it is a room read in an accent nobody chose.
+const speechSource = readFileSync(join_(pkgRoot, 'src-tauri', 'src', 'speech.rs'), 'utf8')
+const voicesSource = readFileSync(join_(pkgRoot, 'src', 'lib', 'voices.ts'), 'utf8')
+const offered = tsLanguages(voicesSource)
+const spoken = rustLanguages(speechSource)
+check('the picker offers languages', offered.size > 0, `found ${offered.size}`)
+check('the host will speak languages', spoken.size > 0, `found ${spoken.size}`)
+
+for (const code of offered) {
+  check(
+    `'${code}' is one the host will send`,
+    spoken.has(code),
+    `the host only sends: ${[...spoken].join(',')}`,
+  )
+}
+for (const code of spoken) {
+  check(
+    `the host's '${code}' is one the picker offers`,
+    offered.has(code),
+    `the picker offers: ${[...offered].join(',')}`,
+  )
+}
+
+// The default matters more than the list: it is what every unmatched code falls
+// back to, and it is what the room reads in when a saved setting names a language a
+// later build dropped. Two defaults that drift means one side silently reads a
+// language the other never intended.
+check(
+  'both sides default to the same language',
+  tsDefaultLanguage(voicesSource) !== null &&
+    tsDefaultLanguage(voicesSource) === rustDefaultLanguage(speechSource),
+  `page: ${tsDefaultLanguage(voicesSource)} | host: ${rustDefaultLanguage(speechSource)}`,
+)
+// And that default has to be one the host actually sends, or it is a default only
+// in name.
+check(
+  'and the host can send it',
+  spoken.has(rustDefaultLanguage(speechSource) ?? ''),
+  `host sends: ${[...spoken].join(',')}`,
+)
 
 if (failures) {
   console.log(`\n${failures} failed`)

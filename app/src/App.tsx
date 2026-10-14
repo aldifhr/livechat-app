@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FeedRow } from './components/FeedRow'
 import { LogPanel } from './components/LogPanel'
 import { SettingsDialog } from './components/settings/SettingsDialog'
@@ -18,6 +18,7 @@ import { useKindCounts, useVisibleItems, type FeedFilters } from './hooks/useVis
 import { EMPTY_BACKEND, type BackendConfig } from './lib/backend'
 import { myHandles } from './lib/mentions'
 import { host } from './lib/sidecar'
+import type { VoiceOptions } from './lib/voices'
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -25,6 +26,16 @@ export default function App() {
   const [filters, setFilters] = useState<FeedFilters>({ kind: 'all', search: '' })
   const settings = useSettings()
   const { nudgeFontScale } = settings
+
+  // Memoised, because it is handed to three hooks with dependency arrays and a
+  // fresh object literal would be a changed value on every message arriving — the
+  // same churn `useSettings` memoises its own result to avoid. Spelled out on the
+  // fields rather than on the object so changing the pace re-runs the hooks and
+  // changing anything else does not.
+  const voice = useMemo<VoiceOptions>(
+    () => ({ pace: settings.ttsPace, language: settings.ttsLanguage, volume: settings.ttsVolume }),
+    [settings.ttsPace, settings.ttsLanguage, settings.ttsVolume],
+  )
 
   useGiftSound({
     enabled: settings.giftSound,
@@ -39,14 +50,14 @@ export default function App() {
   useGiftNotification({
     notice: settings.giftNotice,
     voice: settings.giftVoice,
-    ttsPace: settings.ttsPace,
+    speech: voice,
   })
   useAutoReply({ enabled: settings.autoReply })
   useMentionAlert({
     myHandle: settings.myHandle,
     sound: settings.mentionAlert,
     voice: settings.mentionVoice,
-    ttsPace: settings.ttsPace,
+    speech: voice,
   })
 
   // The handles that count as "me", parsed once here rather than per row: the feed
@@ -55,7 +66,7 @@ export default function App() {
   useChatAlerts({
     chatSound: settings.chatSound,
     chatTts: settings.chatTts,
-    ttsPace: settings.ttsPace,
+    voice,
     templateId: settings.chatTemplate,
     customPath: settings.chatSoundPath,
   })

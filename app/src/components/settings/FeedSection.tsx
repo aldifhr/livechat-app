@@ -1,8 +1,10 @@
 import type { ViewSettings } from '../../hooks/useSettings'
-import type { SetSetting } from './shared'
+import { message, type SetSetting, type Status } from './shared'
 import type { ReactNode } from 'react'
+import { useState } from 'react'
 import { Section } from './Section'
-import { TTS_PACES } from '../../lib/voices'
+import { TTS_LANGUAGES, TTS_PACES, languageSample } from '../../lib/voices'
+import { preview } from '../../lib/voice'
 
 interface Props {
   settings: ViewSettings
@@ -91,35 +93,114 @@ function ToggleGroup({ label, children }: { label: string; children: ReactNode }
 }
 
 /**
- * How fast the room is read aloud.
+ * How the voice sounds: which language, how fast, how loud, and a sample.
  *
- * One picker for all three speaking settings rather than a control on each, for the
+ * One block for all three speaking settings rather than a control on each, for the
  * same reason the voice itself is shared: they are the same mouth, so a control per
- * setting could only ever disagree with itself. Shown while any of them is on —
- * with nothing being spoken there is nothing to set the pace of, and the list is
- * three long enough that offering it anyway is just a question with no consequence.
+ * setting could only ever disagree with itself.
+ *
+ * Shown whether or not anything is speaking. It used to hide itself until one of the
+ * three toggles was on, on the reasoning that with nothing being spoken there is
+ * nothing to set — which was defensible for a three-option pace picker and is not
+ * defensible here, because the Tester is how you decide whether you want the voice
+ * at all. Hidden until it is on, it was unreachable exactly when it was needed: a
+ * settings dialog whose TTS section only appears after you have already turned TTS
+ * on is a dialog you cannot use to find out what turning it on does.
+ *
+ * This one block holds state of its own, which the rest of the section does not:
+ * the Tester has to await a network round trip and report what came of it, and
+ * there is nowhere for that to live but here.
  */
-function PacePicker({ settings, set }: Props) {
-  const anySpeaking = Boolean(settings.chatTts || settings.giftVoice || settings.mentionVoice)
-  if (!anySpeaking) return null
+function VoiceSettings({ settings, set }: Props) {
+  const [status, setStatus] = useState<Status>({ kind: 'idle', text: '' })
 
   const chosen = TTS_PACES.find((p) => p.value === settings.ttsPace)
+  const percent = Math.round(settings.ttsVolume * 100)
+
+  /**
+   * Speaks the sample in the language it is testing, and says whether it worked.
+   *
+   * Reports the failure rather than swallowing it, which is the only reason this is
+   * not just a call to the same function the chat reader uses: a tester that
+   * reported "done" while the voice service was unreachable is precisely the voice
+   * setting that quietly does nothing.
+   */
+  async function test() {
+    setStatus({ kind: 'busy', text: 'Asking the voice…' })
+    try {
+      await preview(languageSample(settings.ttsLanguage), {
+        pace: settings.ttsPace,
+        language: settings.ttsLanguage,
+        volume: settings.ttsVolume,
+      })
+      setStatus({ kind: 'ok', text: 'That is the voice as configured.' })
+    } catch (error: unknown) {
+      setStatus({ kind: 'error', text: `The voice did not answer — ${message(error)}` })
+    }
+  }
 
   return (
-    <label className="field">
-      <span className="field-label">Reading pace</span>
-      <select className="input" value={settings.ttsPace} onChange={(e) => set('ttsPace', e.target.value)}>
-        {TTS_PACES.map((p) => (
-          <option key={p.value} value={p.value} title={p.note}>
-            {p.label}
-          </option>
-        ))}
-      </select>
+    <>
+      <div className="settings-grid">
+        <label className="field">
+          <span className="field-label">Language</span>
+          <select
+            className="input"
+            value={settings.ttsLanguage}
+            onChange={(e) => set('ttsLanguage', e.target.value)}
+          >
+            {TTS_LANGUAGES.map((language) => (
+              <option key={language.value} value={language.value}>
+                {language.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="field">
+          <span className="field-label">Reading pace</span>
+          <select className="input" value={settings.ttsPace} onChange={(e) => set('ttsPace', e.target.value)}>
+            {TTS_PACES.map((p) => (
+              <option key={p.value} value={p.value} title={p.note}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="field">
+          <span className="field-label">Volume</span>
+          <span className="field-row">
+            <input
+              className="slider"
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={percent}
+              onChange={(e) => set('ttsVolume', Number(e.target.value) / 100)}
+            />
+            <span className="slider-readout">{percent}%</span>
+          </span>
+        </label>
+      </div>
+
+      <span className="field-row voice-tester">
+        <button className="btn btn-small" onClick={test} disabled={status.kind === 'busy'}>
+          {status.kind === 'busy' ? 'Speaking…' : '▶ Test the voice'}
+        </button>
+        {status.text !== '' && (
+          <span className={`modal-status modal-status-${status.kind}`}>{status.text}</span>
+        )}
+      </span>
+
       <span className="field-note">
-        Reads chat, gifts and mentions alike. {chosen?.note ?? TTS_PACES[1].note}. The text is sent to the
+        Reads chat, gifts and mentions alike. {chosen?.note ?? TTS_PACES[1].note}. The language is the
+        voice — this service offers one per language and no other choice — so a room that is mostly
+        Indonesian will read as Indonesian speech whichever accent you pick. The text is sent to the
         voice service to be spoken, which is the trade for a voice this good.
       </span>
-    </label>
+    </>
   )
 }
 
@@ -127,9 +208,9 @@ function PacePicker({ settings, set }: Props) {
 /**
  * The chat feed: how rows look, what fires on them, and how they are spoken.
  *
- * Purely the saved settings and no state of its own — every one of these is a
- * checkbox or a text field written straight through to `localStorage`, which is
- * why this section needs nothing but the settings object and its setter.
+ * Every one of these is a checkbox or a text field written straight through to
+ * `localStorage`, except the voice block, which holds the Tester's status because
+ * a test that awaits a network round trip has nowhere else to say what came of it.
  */
 export function FeedSection({ settings, set }: Props) {
   return (
@@ -189,7 +270,7 @@ export function FeedSection({ settings, set }: Props) {
         ))}
       </ToggleGroup>
 
-      <PacePicker settings={settings} set={set} />
+      <VoiceSettings settings={settings} set={set} />
     </Section>
   )
 }

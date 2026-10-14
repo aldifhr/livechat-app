@@ -37,8 +37,36 @@ use std::time::Duration;
 /// The read-aloud endpoint. Undocumented: Google ships no contract for it.
 const GOOGLE_TTS_URL: &str = "https://translate.google.com/translate_tts";
 
-/// The language code Google is asked for. Indonesian.
-const GOOGLE_LANG: &str = "id";
+/// The language asked for when the page names none: the chat's own.
+///
+/// Indonesian, because the chat is Indonesian. Asking for another reads it in that
+/// one — which is also what makes the language the closest thing to a voice picker
+/// this service can honestly be, since it offers one voice per language and nothing
+/// to choose between within one.
+pub const DEFAULT_LANGUAGE: &str = "id";
+
+/// The language codes that may reach the service, and the only ones the picker offers.
+///
+/// A whitelist rather than passing whatever arrives through: `tl` is a query value
+/// to a service with no contract, and a stale saved setting should settle for the
+/// default the same way an unknown pace does, not arrive as a `tl` nobody has ever
+/// sent. The codes here match `TTS_LANGUAGES` in `app/src/lib/voices.ts`; the two
+/// lists are only ever changed together, and a test on each side pins its contents.
+pub const LANGUAGES: &[&str] = &["id", "en", "ms", "th", "vi", "zh-CN", "ja", "es"];
+
+/// The language to ask for: the one named if this build offers it, else the default.
+///
+/// Unrecognised input is the default rather than an error, for the reason the pace
+/// is: the page hands this whatever a settings file held, and a setting from a build
+/// that has since dropped a language must not silence the chat.
+pub fn resolve_language(language: Option<&str>) -> &'static str {
+    for known in LANGUAGES {
+        if Some(*known) == language {
+            return known;
+        }
+    }
+    DEFAULT_LANGUAGE
+}
 
 /// The `client` token the endpoint expects. `tw-ob` is what the translate page
 /// itself sends; without it the request is refused.
@@ -131,7 +159,11 @@ fn log(message: &str) {
 }
 
 /// Speaks one utterance and returns the audio as MP3 bytes.
-pub async fn say(text: &str, pace: &str) -> Result<Vec<u8>, SpeechError> {
+///
+/// `pace` and `language` are the page's settings, passed through and checked here
+/// rather than resolved there: which values the service honours is not a question
+/// the webview should be answering.
+pub async fn say(text: &str, pace: &str, language: Option<&str>) -> Result<Vec<u8>, SpeechError> {
     let said = text.trim();
     if said.is_empty() {
         return Err(SpeechError::Refused("nothing to say".into()));
@@ -140,14 +172,15 @@ pub async fn say(text: &str, pace: &str) -> Result<Vec<u8>, SpeechError> {
     // An unrecognised pace is the service's own rather than an error: the page sends
     // this, and a saved setting this build no longer offers must not silence the chat.
     let pace = if is_known_pace(pace) { pace } else { NORMAL };
+    let language = resolve_language(language);
 
-    match synthesize(said, speed_for(pace)).await {
+    match synthesize(said, speed_for(pace), language).await {
         Ok(audio) => {
-            log(&format!("ok, {pace}, {} bytes", audio.len()));
+            log(&format!("ok, {language}, {pace}, {} bytes", audio.len()));
             Ok(audio)
         }
         Err(e) => {
-            log(&format!("failed at pace {pace}: {e}"));
+            log(&format!("failed at {language}, pace {pace}: {e}"));
             Err(e)
         }
     }
@@ -212,7 +245,7 @@ fn hard_chunks(word: &str, limit: usize) -> Vec<&str> {
 /// independent frames, so joining the pieces plays as one continuous utterance with
 /// no seam. Any failure — unreachable, refused, no audio — is an `Err`, which the
 /// caller turns into silence rather than a wrong sound.
-async fn synthesize(text: &str, speed: Option<&str>) -> Result<Vec<u8>, SpeechError> {
+async fn synthesize(text: &str, speed: Option<&str>, language: &str) -> Result<Vec<u8>, SpeechError> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(GOOGLE_TIMEOUT_SECS))
         .build()
@@ -226,7 +259,7 @@ async fn synthesize(text: &str, speed: Option<&str>) -> Result<Vec<u8>, SpeechEr
         let mut query = vec![
             ("ie", "UTF-8"),
             ("q", piece.as_str()),
-            ("tl", GOOGLE_LANG),
+            ("tl", language),
             ("client", GOOGLE_CLIENT),
         ];
         // Only sent when a pace was asked for. Adding it for the default as well
@@ -271,9 +304,38 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_language_is_indonesian() {
-        // The chat is Indonesian; asking for another language reads it in that one.
-        assert_eq!(GOOGLE_LANG, "id");
+    fn the_default_language_is_indonesian() {
+        // The chat is Indonesian; asking for another reads it in that one.
+        assert_eq!(DEFAULT_LANGUAGE, "id");
+    }
+
+    #[test]
+    fn a_language_this_build_offers_is_used_as_named() {
+        for code in LANGUAGES {
+            assert_eq!(resolve_language(Some(code)), *code, "{code}");
+        }
+    }
+
+    #[test]
+    fn an_unknown_language_reads_in_the_default_rather_than_failing() {
+        // A settings file outlives the build that wrote it, so a language dropped in
+        // a later release comes back from the page. Silently reading in the wrong
+        // language beats refusing to speak at all.
+        assert_eq!(resolve_language(Some("kl")), DEFAULT_LANGUAGE);
+        assert_eq!(resolve_language(Some("")), DEFAULT_LANGUAGE);
+        assert_eq!(resolve_language(Some("id;evil")), DEFAULT_LANGUAGE);
+        assert_eq!(resolve_language(None), DEFAULT_LANGUAGE);
+    }
+
+    #[test]
+    fn the_offered_languages_are_the_ones_the_page_offers() {
+        // Pinned because the page filters the picker with its own list and this host
+        // rejects anything not in this one: a code added to only one of the two is a
+        // language the picker offers and the voice refuses. They are changed together.
+        assert_eq!(
+            LANGUAGES,
+            &["id", "en", "ms", "th", "vi", "zh-CN", "ja", "es"]
+        );
     }
 
     #[test]

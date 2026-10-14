@@ -315,15 +315,16 @@ export const host = {
    * The text is sent to Google to be spoken — that is what a neural voice this good
    * costs, and it is why the setting that enables this is opt-in. The audio comes
    * back as base64 rather than being played in the host, so it goes through the
-   * same AudioContext and the same volume as every other sound.
+   * same AudioContext and the same volume control as every other sound.
    *
-   * The pace is sent rather than remembered here: which values the voice service
-   * actually honours is not a question the page should be answering, so it is
-   * named, and the host settles for its own default if the value is not one it has.
+   * The pace and the language are sent rather than remembered here: which values
+   * the voice service actually honours is not a question the page should be
+   * answering, so both are named, and the host settles for its own defaults if
+   * either is not one it has.
    */
-  speak: async (text: string, pace: string): Promise<string> => {
+  speak: async (text: string, pace: string, language: string): Promise<string> => {
     const resolved = await resolve()
-    const encoded = await resolved.invoke('speak', { text, pace })
+    const encoded = await resolved.invoke('speak', { text, pace, language })
     return typeof encoded === 'string' && encoded !== '' ? `data:audio/mpeg;base64,${encoded}` : ''
   },
   /**

@@ -605,6 +605,71 @@ select.input option {
   color: var(--text);
 }
 
+/* A range input, restyled to the panel.
+   The native one draws its own track and thumb in the OS's colours, which on a dark
+   panel is a grey bar with a grey nub — it reads as disabled next to the selects
+   beside it. Only the track, the filled part and the thumb are styled; Firefox draws
+   the progress fill itself and needs `-moz-range-progress` for the same two-thirds
+   of the job, so both are given the same colours rather than one of them being left
+   the default. */
+.slider {
+  flex: 1;
+  min-width: 0;
+  height: 4px;
+  margin: 0;
+  appearance: none;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  outline: none;
+  cursor: pointer;
+}
+
+.slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: var(--accent);
+  border: none;
+  border-radius: 50%;
+}
+
+.slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  background: var(--accent);
+  border: none;
+  border-radius: 50%;
+}
+
+.slider::-moz-range-progress {
+  height: 4px;
+  background: var(--accent);
+}
+
+/* The percentage beside the slider.
+   Fixed width so dragging it does not reflow the row on every step — a read-out
+   that changes width moves the thumb under the cursor, which is the one thing a
+   slider must not do. Tabular figures for the same reason: digits that change width
+   with their value jitter the number rather than the layout. */
+.slider-readout {
+  flex: 0 0 auto;
+  min-width: 34px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* The Tester's button and its answer, on one line.
+   Wraps rather than overflowing because the failure text is a sentence: "the voice
+   service returned no audio for that text" is wider than the dialog at the longest,
+   and a status line clipped mid-word reports a different problem from the one it is
+   reporting. */
+.voice-tester {
+  flex-wrap: wrap;
+}
+
 .modal-status {
   margin: 0;
   font-size: 12px;

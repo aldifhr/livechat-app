@@ -5,6 +5,7 @@ import { playMention, releaseAudio, resolveAudio } from '../lib/player'
 import { shouldPlayMentionAlert } from '../lib/sound'
 import { mentionsMe, myHandles } from '../lib/mentions'
 import { say } from '../lib/voice'
+import type { VoiceOptions } from '../lib/voices'
 
 /**
  * A sound and a spoken name when a message is addressed to me.
@@ -30,11 +31,11 @@ interface Options {
   sound: boolean
   /** Speak the sender's name with the shared voice. */
   voice: boolean
-  /** How fast it speaks, from the settings the user picked. */
-  ttsPace: string
+  /** Pace, language and volume for the voice, from the settings the user picked. */
+  speech: VoiceOptions
 }
 
-export function useMentionAlert({ myHandle, sound, voice, ttsPace }: Options): void {
+export function useMentionAlert({ myHandle, sound, voice, speech }: Options): void {
   // Its own context rather than the shared player's: a mention plays `playMention`,
   // a fixed two-note figure, not a template or a file — so there is nothing for the
   // player to choose. The lifecycle is the same, so it borrows the same release
@@ -72,9 +73,9 @@ export function useMentionAlert({ myHandle, sound, voice, ttsPace }: Options): v
       // read rather than cutting it off. The name is short enough that waiting
       // costs almost nothing, and a reader that is interrupted mid-sentence is
       // worse than one that hears the mention a beat later.
-      say(`${who} menyebut kamu`, ttsPace)
+      say(`${who} menyebut kamu`, speech)
     }
-  }, [mine.join(','), sound, voice, ttsPace])
+  }, [mine.join(','), sound, voice, speech.pace, speech.language, speech.volume])
 
   // This hook made its own context, so this hook closes it. Released on unmount
   // only: the effect above re-runs on a setting change far more often than the

@@ -4,6 +4,7 @@ import { useRoomEvents } from '../lib/reactive'
 import { useAudioPlayer } from '../lib/gate'
 import { say, hush } from '../lib/voice'
 import { shouldPlayChatSound, ttsText } from '../lib/sound'
+import type { VoiceOptions } from '../lib/voices'
 
 /**
  * What a new chat message does besides appear in the feed: a blip, and speech.
@@ -29,15 +30,15 @@ import { shouldPlayChatSound, ttsText } from '../lib/sound'
 interface Options {
   chatSound: boolean
   chatTts: boolean
-  /** How fast it speaks, from the settings the user picked. */
-  ttsPace: string
+  /** Pace, language and volume for the voice, from the settings the user picked. */
+  voice: VoiceOptions
   /** Which synthesised template the blip uses when there is no custom file. */
   templateId: string
   /** A user-picked sound file, played instead of the template when set. */
   customPath: string
 }
 
-export function useChatAlerts({ chatSound, chatTts, ttsPace, templateId, customPath }: Options): void {
+export function useChatAlerts({ chatSound, chatTts, voice, templateId, customPath }: Options): void {
   const { play } = useAudioPlayer()
   const lastBlipAt = useRef<number | null>(null)
 
@@ -53,8 +54,8 @@ export function useChatAlerts({ chatSound, chatTts, ttsPace, templateId, customP
       }
     }
 
-    if (chatTts) say(ttsText(event.text), ttsPace)
-  }, [chatSound, chatTts, ttsPace, templateId, customPath])
+    if (chatTts) say(ttsText(event.text), voice)
+  }, [chatSound, chatTts, voice.pace, voice.language, voice.volume, templateId, customPath])
 
   // Turned off: forget when the last blip was, so turning it back on does not wait
   // out a gap that started while it was off. The voice is shared, so stopping it
