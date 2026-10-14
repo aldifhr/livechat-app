@@ -38,20 +38,6 @@ from models import (
     ConnectRequest,
     HookRequest,
     TriggerRequest,
-    clean_overlay,
-    summary,
-)
-# Room CRUD handlers now live in `routes/rooms` (imported below). These aliases
-# keep main._clean_overlay / main._summary working for anything that still
-# reaches for them.
-_OVERLAY_STORE_KEYS = (
-    "overlaySize",
-    "overlayNameColour",
-    "overlayTextColour",
-    "overlayBg",
-    "overlayMax",
-    "overlayDelay",
-    "overlayFont",
 )
 
 # silently overrode the frontend defaults with stale values. Nothing is left for
@@ -250,17 +236,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-# Model classes and helpers now live in `models.py` (imported at top of file).
-# Route handlers only remain here.
-def _clean_overlay(raw: dict[str, Any] | None) -> dict[str, Any]:
-    """Deprecated alias for `models.clean_overlay`."""
-    return clean_overlay(raw)
-
-
-def _summary(room_id: str, record: dict[str, Any]) -> dict[str, Any]:
-    """Deprecated alias for `models.summary`."""
-    return summary(room_id, record)
 
 # Room CRUD lives in its own router, bound to live process state at startup.
 from routes.rooms import bind_state, router as rooms_router  # noqa: E402
