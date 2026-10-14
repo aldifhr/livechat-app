@@ -12,6 +12,10 @@ from fastapi import APIRouter, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 
+import events
+import store
+from models import HookRequest, TriggerRequest
+
 router = APIRouter()
 
 #: Live process state, injected from `main` at registration.
@@ -71,6 +75,71 @@ async def metrics() -> dict[str, Any]:
         # default was all it ever returned and the metric was a permanent zero.
         "clients_disconnected_total": _state["hub"].disconnected_clients_count,
     }
+
+
+@router.post("/api/rooms/{room_id}/trigger")
+async def trigger(room_id: str, req: TriggerRequest):
+    """Emit an event into a room by hand.
+
+    Kept separate from `webhook` so a Stream Deck or cron job POSTs to a path
+    whose shape matches the dashboard button, while external integrators use the
+    flatter `/api/hooks/{room_id}` shape without touching the same surface.
+    """
+    if await store.get_room_async(room_id) is None:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    await events.emit(
+        room_id,
+        events.Event(
+            kind=req.kind,
+            user=req.user,
+            user_id=req.user_id,
+            value=req.text,
+            meta={
+                "title": req.title,
+                "icon": req.icon,
+                "count": req.count,
+                "giftName": req.text or "Gift",
+                "diamonds": req.diamonds * req.count,
+                "value": req.diamonds * req.count,
+            },
+        ),
+    )
+    return {"status": "ok", "kind": req.kind}
+
+
+@router.post("/api/hooks/{room_id}")
+async def webhook(room_id: str, req: HookRequest):
+    """Alias for `trigger` with a flatter body, for external integrations.
+
+    Kept separate rather than merged so the intent at the call site is
+    readable, and so this path can grow its own auth later without changing
+    what the dashboard's own button posts.
+    """
+    from fastapi import HTTPException
+    if await store.get_room_async(room_id) is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    value = req.text
+    if req.amount is not None and not value:
+        value = f"{req.amount:g}"
+
+    meta: dict[str, Any] = {"title": req.title, "icon": req.icon, "count": 1}
+    if req.amount is not None:
+        meta["amount"] = req.amount
+
+    await events.emit(
+        room_id,
+        events.Event(
+            kind=req.kind,
+            user=req.user,
+            user_id=req.user_id,
+            value=value,
+            meta=meta,
+        ),
+    )
+    return {"status": "ok"}
 
 
 def mount_gifts(app: Any, static_dir: str) -> None:

@@ -23,7 +23,7 @@ import eventlog
 import events
 import store
 from watchdog import LivenessWatchdog
-from events import ALERT, Event
+from events import ALERT
 from hub import hub
 from sources import TikTokAdapter
 from protocols import registry
@@ -32,13 +32,6 @@ from protocols import registry
 #: one level. Every route module gets the same logger through it rather than
 #: re-importing main and risking a setup-order cycle.
 from logging_setup import logger
-
-from models import (
-    ConnectByUsernameRequest,
-    ConnectRequest,
-    HookRequest,
-    TriggerRequest,
-)
 
 # silently overrode the frontend defaults with stale values. Nothing is left for
 # this backend to default: a record's config is whatever the editor wrote, and an
@@ -146,8 +139,6 @@ async def restore_sources() -> list[str]:
 
 
 app = FastAPI(title="StreamKit", lifespan=lifespan)
-
-router = APIRouter()
 
 
 # --------------------------------------------------------------------------
@@ -327,82 +318,7 @@ async def _observe_source(room_id: str, source: TikTokAdapter) -> None:
         logger.error("Observer task failed for room %s: %s", room_id, e)
 
 
-# --------------------------------------------------------------------------
-# manual triggers and webhooks
-# --------------------------------------------------------------------------
-
-
-@router.post("/api/rooms/{room_id}/trigger")
-async def trigger(room_id: str, req: TriggerRequest):
-    """Emit an event into an room by hand.
-
-    This is the seam that makes the room more than a chat mirror: anything
-    that can POST here — a Stream Deck, a Discord bot, a cron job — appears on
-    the stream without touching the backend.
-    """
-    if await store.get_room_async(room_id) is None:
-        raise HTTPException(status_code=404, detail="Room not found")
-
-    await events.emit(
-        room_id,
-        Event(
-            kind=req.kind,
-            user=req.user,
-            user_id=req.user_id,
-            value=req.text,
-            meta={
-                "title": req.title,
-                "icon": req.icon,
-                "count": req.count,
-                "giftName": req.text or "Gift",
-                # `diamonds` is the total for the whole send, matching what
-                # sources/tiktok.py puts in `value`: one gift of five sent three
-                # times is fifteen. Sending the per-unit figure here instead made
-                # a triggered gift worth a third of a real one, and left the
-                # frontend guessing whether to multiply — which is how a total
-                # ends up counted twice.
-                "diamonds": req.diamonds * req.count,
-                "value": req.diamonds * req.count,
-            },
-        ),
-    )
-    return {"status": "ok", "kind": req.kind}
-
-
-@router.post("/api/hooks/{room_id}")
-async def webhook(room_id: str, req: HookRequest):
-    """Alias for `trigger` with a flatter body, for external integrations.
-
-    Kept separate rather than merged so the intent at the call site is
-    readable, and so this path can grow its own auth later without changing
-    what the dashboard's own button posts.
-    """
-    if await store.get_room_async(room_id) is None:
-        raise HTTPException(status_code=404, detail="Room not found")
-
-    value = req.text
-    if req.amount is not None and not value:
-        value = f"{req.amount:g}"
-
-    # `amount` is forwarded, not just formatted into the text. A donation posted
-    # through this hook used to arrive as the string "50000" and nothing else,
-    # so a widget that counts money had nothing to count — the number was on the
-    # wire as a label and nowhere as a value.
-    meta: dict[str, Any] = {"title": req.title, "icon": req.icon, "count": 1}
-    if req.amount is not None:
-        meta["amount"] = req.amount
-
-    await events.emit(
-        room_id,
-        Event(
-            kind=req.kind,
-            user=req.user,
-            user_id=req.user_id,
-            value=value,
-            meta=meta,
-        ),
-    )
-    return {"status": "ok"}
+# Manual triggers and webhooks live in `routes/ops` alongside health/metrics.
 
 
 
@@ -499,10 +415,7 @@ async def websocket_endpoint(websocket: WebSocket, client_type: str, room_id: st
         hub.disconnect(client_id)
 
 
-app.include_router(router)
-
-
-# Health, metrics, and the static gift-sticker gallery now live in
+# Health, metrics, the manual trigger/webhook routes, and the static gift-sticker gallery now live in
 # `routes/ops`. State is bound from this module so the ops handlers reach the
 # live source map and hub without importing `main`.
 from routes.ops import bind_state, router as ops_router, mount_gifts  # noqa: E402
