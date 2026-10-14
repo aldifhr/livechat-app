@@ -117,13 +117,19 @@ def _like(e: Event) -> dict[str, Any]:
 
 
 def _gift(e: Event) -> dict[str, Any]:
-    return {
+    payload = {
         "type": GIFT,
         **_named(e),
         "giftName": e.meta.get("giftName", "Gift"),
         "count": e.meta.get("count", 1),
         "value": e.meta.get("value", 0),
     }
+    # Carried only when TikTok sent one, the same rule as mentions/emotes: a gift
+    # with no picture keeps the frame it had, and the app falls back to the name.
+    image = e.meta.get("giftImage")
+    if image:
+        payload["giftImage"] = str(image)
+    return payload
 
 
 def _join(e: Event) -> dict[str, Any]:

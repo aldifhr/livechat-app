@@ -371,6 +371,27 @@ check(
     "emotes" not in to_wire(Event(kind="gift", user="a", meta={"giftName": "Rose", "count": 1, "value": 5})),
 )
 
+# The gift's picture. The app has drawn `item.giftImage` since it had a feed and
+# nothing ever set it, so the slot stayed empty for every gift. Same rule: carried
+# only when present, so a gift with no picture keeps the frame it had.
+print("the gift picture on the wire")
+check(
+    "a gift with no picture carries no giftImage key",
+    "giftImage" not in to_wire(Event(kind="gift", user="a", meta={"giftName": "Rose", "count": 1, "value": 5})),
+)
+check(
+    "a gift with a picture carries it",
+    to_wire(Event(kind="gift", user="a", meta={
+        "giftName": "Rose", "count": 1, "value": 5, "giftImage": "https://x/rose.webp",
+    }))["giftImage"] == "https://x/rose.webp",
+)
+check(
+    "an empty giftImage is left off, not sent as \"\"",
+    "giftImage" not in to_wire(Event(kind="gift", user="a", meta={
+        "giftName": "Rose", "count": 1, "value": 5, "giftImage": "",
+    })),
+)
+
 print("token guard")
 # Everything above ran with no token set, which must stay open so a fresh clone
 # works with no setup. Now turn one on and check what it actually covers.

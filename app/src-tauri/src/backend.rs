@@ -470,17 +470,28 @@ pub fn to_app_event(frame: &Value, now_ms: i64) -> Option<Value> {
             "type": "like", "platform": platform, "nickname": user(), "id": id(),
             "avatar": avatar, "count": count, "timestamp": timestamp,
         }),
-        "gift" => json!({
-            "type": "gift", "platform": platform, "nickname": user(), "id": id(),
-            "avatar": avatar,
-            "giftName": frame.get("giftName").and_then(Value::as_str).unwrap_or("Gift"),
-            "count": count,
-            // Already a total, not a unit price: the backend multiplies by the
-            // repeat count before it emits, so this must not be multiplied again
-            // or the diamonds double on every frame of a wave.
-            "diamonds": frame.get("value").and_then(Value::as_i64).unwrap_or(0),
-            "timestamp": timestamp,
-        }),
+        "gift" => {
+            let mut gift = json!({
+                "type": "gift", "platform": platform, "nickname": user(), "id": id(),
+                "avatar": avatar,
+                "giftName": frame.get("giftName").and_then(Value::as_str).unwrap_or("Gift"),
+                "count": count,
+                // Already a total, not a unit price: the backend multiplies by the
+                // repeat count before it emits, so this must not be multiplied again
+                // or the diamonds double on every frame of a wave.
+                "diamonds": frame.get("value").and_then(Value::as_i64).unwrap_or(0),
+                "timestamp": timestamp,
+            });
+            // Carried only when TikTok sent one, so a gift with no picture keeps
+            // the frame it had and the feed falls back to the name. The app has
+            // drawn `item.giftImage` since it had a feed and nothing ever set it.
+            if let Some(image) = frame.get("giftImage").and_then(Value::as_str) {
+                if !image.is_empty() {
+                    gift["giftImage"] = json!(image);
+                }
+            }
+            gift
+        }
         "join" => json!({
             "type": "join", "platform": platform, "nickname": user(), "id": id(),
             "avatar": avatar, "timestamp": timestamp,
@@ -886,6 +897,28 @@ mod tests {
         let out = mapped(json!({ "type": "comment", "user": "eko", "userId": "7", "text": "hi" }));
         assert_eq!(out["isModerator"], json!(false));
         assert_eq!(out["emotes"], json!([]));
+    }
+
+    #[test]
+    fn a_gift_picture_reaches_the_app() {
+        // The app draws `item.giftImage` and nothing ever set it, so the slot was
+        // empty for every gift. It must survive the frame mapping.
+        let out = mapped(json!({
+            "type": "gift", "user": "ana", "userId": "ana", "giftName": "Rose",
+            "count": 1, "value": 5, "giftImage": "https://x/rose.webp",
+        }));
+        assert_eq!(out["giftImage"], json!("https://x/rose.webp"));
+    }
+
+    #[test]
+    fn a_gift_with_no_picture_has_no_gift_image_key() {
+        // Absent, not empty string: the app checks truthiness and an empty string
+        // would put a broken <img> on the row.
+        let out = mapped(json!({
+            "type": "gift", "user": "ana", "userId": "ana", "giftName": "Rose",
+            "count": 1, "value": 5,
+        }));
+        assert!(out.get("giftImage").is_none(), "{}", out);
     }
 
     #[test]

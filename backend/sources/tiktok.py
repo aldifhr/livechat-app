@@ -199,6 +199,37 @@ def avatar_url(user: Any) -> str:
     return ""
 
 
+def first_url(image: Any) -> str:
+    """The first usable URL in an `ImageModel`, or "" when there is none.
+
+    `ImageModel.url_list` is a list of the same picture at different sizes and
+    TikTok does not promise it is non-empty — so an absent or blank entry has to
+    read as "no picture" rather than as a broken image in the feed.
+    """
+    urls = getattr(image, "url_list", None)
+    if not isinstance(urls, (list, tuple)):
+        return ""
+    for entry in urls:
+        if isinstance(entry, str) and entry.strip():
+            return entry.strip()
+    return ""
+
+
+def gift_image_url(event: Any) -> str:
+    """The gift's picture, or "" when TikTok did not send one.
+
+    The app has drawn `item.giftImage` since it had a feed and nothing ever set
+    it, so the image slot stayed empty for every gift. `event.gift.image` is the
+    field; `gift_image` is a legacy alias for the same thing, kept for the
+    versions that spell it that way.
+    """
+    gift = getattr(event, "gift", None)
+    if gift is None:
+        return ""
+    image = getattr(gift, "image", None) or getattr(gift, "gift_image", None)
+    return first_url(image)
+
+
 logger = logging.getLogger("streamkit.tiktok")
 
 
@@ -493,6 +524,9 @@ class TikTokAdapter(EventAdapter):
                     "value": value,
                     "repeatEnd": event.repeat_end,
                     "streak": event.streaking if hasattr(event, "streaking") else False,
+                    # Carried only when TikTok sent one, so a gift with no picture
+                    # keeps the frame it had and the feed falls back to the name.
+                    **({"giftImage": img} if (img := gift_image_url(event)) else {}),
                 },
             ))
 
