@@ -93,6 +93,17 @@ def _comment(e: Event) -> dict[str, Any]:
     mentions = e.meta.get("mentions")
     if mentions:
         payload["mentions"] = list(mentions)
+    # Same rule for the MOD badge and custom emotes: present only when true, so a
+    # plain comment's frame is unchanged and an older client sees nothing new.
+    if e.meta.get("moderator"):
+        payload["isModerator"] = True
+    emotes = [
+        {"url": str(x.get("url", "")), "id": str(x.get("id", ""))}
+        for x in (e.meta.get("emotes") or [])
+        if isinstance(x, dict) and x.get("url")
+    ]
+    if emotes:
+        payload["emotes"] = emotes
     return payload
 
 

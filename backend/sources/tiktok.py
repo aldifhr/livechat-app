@@ -23,6 +23,11 @@ from events import COMMENT, FOLLOW, GIFT, JOIN, LIKE, SHARE, VIEWERS, Event
 # dropped rather than shown as if they were usernames.
 PLACEHOLDER_NICKNAMES = {"", "?", "not found", "unknown", "-", "null", "none"}
 
+#: How many custom emotes one comment may carry into the feed. TikTok sends a
+#: list and the renderer draws every entry, so an unbounded list is unbounded work
+#: on a frame from an unauthenticated socket. A real message holds a handful.
+MAX_EMOTES_PER_MESSAGE = 12
+
 #: Pushed into an adapter's event queue to release a consumer parked in
 #: `observe()`. A bare queue cannot end that loop: `_running` going false is
 #: only read at the top of the `while`, which a consumer blocked in `get()`
@@ -98,6 +103,42 @@ def mention_handles(event: Any) -> list[str]:
     if not handles:
         handles = re.findall(r"@([A-Za-z0-9._]{1,24})", getattr(event, "comment", "") or "")
     return handles
+
+
+def is_moderator(user: Any) -> bool:
+    """Whether TikTok marks this user as a moderator of the room.
+
+    Read straight off the proto (`ExtendedUser.is_moderator`). The app has drawn a
+    MOD badge for this since it had a feed, but nothing ever set the field, so the
+    badge could not appear — the data was in the frame the whole time.
+    """
+    return bool(getattr(user, "is_moderator", False))
+
+
+def emotes_in(event: Any) -> list[dict[str, str]]:
+    """The custom emotes a comment contains, as `{url, id}` in reading order.
+
+    TikTok sends these as a list of `{index, emote}` rather than inline in the
+    text, so the picture has to be carried separately from the message. Only
+    emotes with a usable image URL are returned: an entry with no URL would be a
+    broken image in the feed, which is worse than the text it replaces.
+
+    Bounded, because this is user data arriving on an unauthenticated socket and
+    the renderer draws every entry it is given.
+    """
+    out: list[dict[str, str]] = []
+    for item in getattr(event, "emotes", None) or []:
+        emote = getattr(item, "emote", None)
+        if emote is None:
+            continue
+        urls = getattr(getattr(emote, "image", None), "url_list", None) or []
+        url = next((u for u in urls if isinstance(u, str) and u.strip()), "")
+        if not url:
+            continue
+        out.append({"url": url.strip(), "id": str(getattr(emote, "emote_id", "") or "")})
+        if len(out) >= MAX_EMOTES_PER_MESSAGE:
+            break
+    return out
 
 
 def streak_step(
@@ -375,6 +416,15 @@ class TikTokAdapter(EventAdapter):
             name = display_name(event.user)
             if not name:
                 return
+            # `moderator` and `emotes` are carried on the comment only when they
+            # are true/present, so an ordinary message's frame stays byte-for-byte
+            # what it was — the same rule `mentions` follows.
+            meta: dict[str, Any] = {"mentions": mention_handles(event)}
+            if is_moderator(event.user):
+                meta["moderator"] = True
+            emotes = emotes_in(event)
+            if emotes:
+                meta["emotes"] = emotes
             await self._events.put(Event(
                 kind=COMMENT,
                 user=name,
@@ -384,7 +434,7 @@ class TikTokAdapter(EventAdapter):
                 # The handles this message is addressed to, so the feed can
                 # highlight it, the mention alert can fire and the voice can say
                 # who was called. Empty for the ordinary comment.
-                meta={"mentions": mention_handles(event)},
+                meta=meta,
             ))
 
         @client.on(LikeEvent)

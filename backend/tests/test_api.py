@@ -333,6 +333,44 @@ check(
     "mentions" not in to_wire(Event(kind="gift", user="a", meta={"giftName": "Rose", "count": 1, "value": 5})),
 )
 
+# The MOD badge and custom emotes. The app has read `isModerator` and `emotes`
+# since it had a feed and neither was ever produced, so the badge could not appear
+# and emotes could not render. Both follow the mentions rule: carried only when
+# true/present, so a plain comment's frame is byte-for-byte what it was.
+print("moderator badge and emotes on the wire")
+check(
+    "a plain comment carries no isModerator key",
+    "isModerator" not in to_wire(Event(kind="comment", user="a", value="hi")),
+)
+check(
+    "a moderator comment says so",
+    to_wire(Event(kind="comment", user="a", value="hi", meta={"moderator": True}))["isModerator"] is True,
+)
+check(
+    "a plain comment carries no emotes key",
+    "emotes" not in to_wire(Event(kind="comment", user="a", value="hi")),
+)
+check(
+    "an emote comment carries url and id",
+    to_wire(Event(kind="comment", user="a", value="hi", meta={
+        "emotes": [{"url": "https://x/e.webp", "id": "42"}],
+    }))["emotes"] == [{"url": "https://x/e.webp", "id": "42"}],
+)
+check(
+    "an emote with no url is dropped, not drawn broken",
+    "emotes" not in to_wire(Event(kind="comment", user="a", value="hi", meta={
+        "emotes": [{"url": "", "id": "42"}],
+    })),
+)
+check(
+    "an empty emote list is left off, not sent as []",
+    "emotes" not in to_wire(Event(kind="comment", user="a", value="hi", meta={"emotes": []})),
+)
+check(
+    "emotes ride only on comments",
+    "emotes" not in to_wire(Event(kind="gift", user="a", meta={"giftName": "Rose", "count": 1, "value": 5})),
+)
+
 print("token guard")
 # Everything above ran with no token set, which must stay open so a fresh clone
 # works with no setup. Now turn one on and check what it actually covers.
