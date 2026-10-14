@@ -59,12 +59,19 @@ async function proxy(request: NextRequest): Promise<Response> {
     return Response.json({ detail: 'Not proxied' }, { status: 404 })
   }
 
+  // The query string travels with the path. It was dropped silently before:
+  // `client.ts` builds `URLSearchParams` for every call that takes a `query`, and
+  // none of it ever reached the backend, so a filtered or paginated request would
+  // have answered as if unfiltered. Rebuilt from the same `nextUrl` the path came
+  // from, so the two cannot disagree.
+  const query = request.nextUrl.search
+
   const method = request.method
   const body = MUTATING.has(method) ? await request.text() : undefined
   const forwardToken = MUTATING.has(method) || SENSITIVE_READ.test(path)
 
   try {
-    const result = await backendFetch(path, {
+    const result = await backendFetch(`${path}${query}`, {
       method,
       body: body === '' ? undefined : body,
       // The token rides on the calls that change something, and on the room
