@@ -1,0 +1,6 @@
+[Unit]
+Description=Back up the StreamKit room store
+
+[Service]
+Type=oneshot
+ExecStart=/root/livechat-app/scripts/backup-rooms.sh
