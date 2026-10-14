@@ -235,7 +235,15 @@ export function ttsText(text: string): string {
   // A message that was nothing but emotes leaves nothing to say. Speaking it would
   // put an empty utterance into the gap and hold it against the next message.
   if (body === '') return ''
-  return body.length > TTS_MAX_CHARS ? `${body.slice(0, TTS_MAX_CHARS).trimEnd()}…` : body
+  if (body.length <= TTS_MAX_CHARS) return body
+  // Cut on code POINTS, not code units. `slice` counts UTF-16 units, so a message
+  // whose 120th unit is the high half of an emoji is cut between the surrogate
+  // pair — a lone surrogate. That is not valid UTF-16, so `JSON.stringify` emits
+  // `\ud83d` and the host's parser rejects the whole request ("unexpected end of
+  // hex escape"): the message is not spoken at all. Array.from splits on code
+  // points, so an emoji is one element and is never halved.
+  const points = Array.from(body)
+  return `${points.slice(0, TTS_MAX_CHARS).join('').trimEnd()}…`
 }
 
 /**

@@ -174,6 +174,28 @@ check('a mention is still read', ttsText('halo @bittersweetbynajla') === 'halo @
 // emotes cannot smuggle an unbounded read past the length cap.
 check('the length cap still applies', ttsText(`${'x'.repeat(200)} [thanks] [heart]`).length <= TTS_MAX_CHARS + 1)
 
+console.log('an emoji at the cut is not sliced in half')
+// `slice` counts UTF-16 code units, so a message whose 120th unit is the high
+// half of an emoji is cut between the surrogate pair. The lone surrogate is not
+// valid UTF-16: `JSON.stringify` emits `\ud83d` and the host's parser rejects the
+// whole request, so the message is not spoken at all. Cutting on code points
+// keeps the emoji whole.
+{
+  const cutAtEmoji = `${'a'.repeat(TTS_MAX_CHARS - 1)}😀${'b'.repeat(10)}`
+  const said = ttsText(cutAtEmoji)
+  // No lone surrogate survives: every high surrogate is followed by a low one.
+  const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(said)
+  check('no lone surrogate in the result', !lone, JSON.stringify(said.slice(-6)))
+  // The real proof: the string survives a JSON round trip, which is the hop that
+  // rejected it before. A lone surrogate throws here (or comes back replaced).
+  const roundTripped = JSON.parse(JSON.stringify({ text: said })).text
+  check('the result survives a JSON round trip', roundTripped === said, JSON.stringify(said.slice(-6)))
+  check('and the emoji at the cut is still whole', said.includes('😀'), JSON.stringify(said.slice(-6)))
+  // And the same for a run of emoji with no ASCII in front.
+  const allEmoji = ttsText('😀'.repeat(TTS_MAX_CHARS + 5))
+  check('a run of emoji is cut cleanly too', !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(allEmoji), JSON.stringify(allEmoji.slice(-6)))
+}
+
 // Speech needs a longer gap than the blip: overlapping taps are busy, but
 // overlapping sentences are unintelligible.
 check('speech waits longer than a blip does', CHAT_TTS_GAP_MS > CHAT_SOUND_GAP_MS, String(CHAT_TTS_GAP_MS))
