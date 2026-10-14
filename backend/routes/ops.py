@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 
 import events
 import store
+from fastapi import HTTPException
 from models import HookRequest, TriggerRequest
 
 router = APIRouter()
@@ -85,10 +86,7 @@ async def trigger(room_id: str, req: TriggerRequest):
     whose shape matches the dashboard button, while external integrators use the
     flatter `/api/hooks/{room_id}` shape without touching the same surface.
     """
-    if await store.get_room_async(room_id) is None:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="Room not found")
-
+    await _require_room(room_id)
     await events.emit(
         room_id,
         events.Event(
@@ -117,9 +115,7 @@ async def webhook(room_id: str, req: HookRequest):
     readable, and so this path can grow its own auth later without changing
     what the dashboard's own button posts.
     """
-    from fastapi import HTTPException
-    if await store.get_room_async(room_id) is None:
-        raise HTTPException(status_code=404, detail="Room not found")
+    await _require_room(room_id)
 
     value = req.text
     if req.amount is not None and not value:
@@ -140,6 +136,18 @@ async def webhook(room_id: str, req: HookRequest):
         ),
     )
     return {"status": "ok"}
+
+
+async def _require_room(room_id: str) -> None:
+    """Raise 404 by name if the room does not exist.
+
+    Shared by the ``trigger`` and ``webhook`` endpoints so the existence check
+    reads one way and cannot drift between them — the bug this guards is a 404
+    that reads "something else" in one handler and "room missing" in the other.
+    """
+    record = await store.get_room_async(room_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Room not found")
 
 
 def mount_gifts(app: Any, static_dir: str) -> None:
