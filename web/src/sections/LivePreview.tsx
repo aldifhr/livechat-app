@@ -1,17 +1,16 @@
 /**
- * The live preview.
+ * The live preview, full screen.
  *
- * A page of its own rather than half of the builder, for two reasons. A browser
- * source in OBS is a fixed rectangle, and to see whether the overlay actually fits
- * it you want the overlay at that size on the whole screen — with controls beside
- * it, the preview is always smaller than the thing it is supposed to be a preview
- * of. And a preview is what you leave on a second monitor while you talk to chat;
- * that is a window you navigate to, not a panel inside a form.
- *
- * The room and which overlay to show arrive in the query string. The style does
- * not, and does not need to: the overlay fetches it from the room over the socket
- * it opens on load, so this page is showing the live thing rather than a
- * reconstruction of it.
+ * A canvas, like the builder's — fixed, and not resized by whatever the overlay
+ * currently has in it. That was tried the other way round first, with the stage
+ * growing to fit its contents and scaling itself down, on the reasoning that a
+ * ten-row leaderboard gets clipped by a fixed frame. It answers a different
+ * question than the one this page is for, and it answers it by moving: a quiet
+ * chat sat as a small strip on a 520px floor, swelled as the room warmed up, and
+ * the board shrank whenever the ranking did. The page says it is "the real
+ * overlay, at the size OBS will show it", and OBS clips too — a board that
+ * overflows the canvas is a real problem, and the honest way to find out is to
+ * look at the canvas rather than at a frame that has been resized to hide it.
  */
 
 'use client'
@@ -19,6 +18,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api, type Room } from '@/lib/client'
 import OverlayStage from '@/components/OverlayStage'
+
+/**
+ * The canvas shapes a stream can be. OBS is set per stream, so the preview has to
+ * be told rather than assume — a vertical TikTok is not a 16:9 rectangle, and
+ * judging a vertical overlay inside a landscape frame says nothing about it.
+ */
+const CANVASES = [
+  { label: '1920×1080', width: 1920, height: 1080 },
+  { label: '1280×720', width: 1280, height: 720 },
+  { label: '1080×1920', width: 1080, height: 1920 },
+  { label: '720×1280', width: 720, height: 1280 },
+]
 
 export default function LivePreview() {
   const [rooms, setRooms] = useState<Room[]>([])
@@ -68,11 +79,15 @@ export default function LivePreview() {
 
   const shown = which === 'chat' ? chatUrl : boardUrl
 
-  // Ceiling on the frame, as a share of the window. Enough to read a board
-  // comfortably, short enough that the page head and the switch stay on screen
-  // with it.
-  const maxStageHeight =
-    typeof window === 'undefined' ? 520 : Math.max(320, Math.round(window.innerHeight * 0.62))
+  const [canvas, setCanvas] = useState(CANVASES[0])
+
+  // How much height the canvas may take: the window, less the page head and the
+  // controls above it. Enough to read a board at size, short enough that the
+  // header stays on screen with it.
+  const maxHeight =
+    typeof window === 'undefined'
+      ? 560
+      : Math.max(320, window.innerHeight - (window.innerWidth > 720 ? 210 : 300))
 
   return (
     <>
@@ -97,6 +112,17 @@ export default function LivePreview() {
               ))}
             </select>
           )}
+          <select
+            value={canvas.label}
+            onChange={(e) => setCanvas(CANVASES.find((c) => c.label === e.target.value) ?? CANVASES[0])}
+            aria-label="Canvas size"
+          >
+            {CANVASES.map((c) => (
+              <option key={c.label} value={c.label}>
+                {c.label}
+              </option>
+            ))}
+          </select>
           <div className="seg">
             <button
               className={which === 'chat' ? 'on' : ''}
@@ -121,7 +147,13 @@ export default function LivePreview() {
           No room to preview. Connect a username on the Rooms tab and its overlay appears here.
         </div>
       ) : (
-        <OverlayStage url={shown} title="Overlay preview" maxHeight={maxStageHeight} />
+        <OverlayStage
+          variant="canvas"
+          url={shown}
+          title="Overlay preview"
+          canvas={canvas}
+          maxHeight={maxHeight}
+        />
       )}
     </>
   )

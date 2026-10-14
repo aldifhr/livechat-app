@@ -1229,9 +1229,13 @@ button.danger-solid:hover:not(:disabled) {
    up, and a leaderboard rebuilt each poll shrank whenever the ranking did. The
    box was reporting its contents instead of standing still while they moved. */
 
+.preview-canvas-row {
+  display: flex;
+  justify-content: center;
+}
+
 .preview-canvas {
   position: relative;
-  width: 100%;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius);

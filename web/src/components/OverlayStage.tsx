@@ -80,7 +80,7 @@ export default function OverlayStage({
 }: Props) {
   const [reportedHeight, setReportedHeight] = useState<number | null>(null)
   const [boxWidth, setBoxWidth] = useState(0)
-  const box = useRef<HTMLDivElement | null>(null)
+  const row = useRef<HTMLDivElement | null>(null)
 
   // A new overlay is a new height; the old one belongs to the page being left.
   useEffect(() => {
@@ -98,12 +98,19 @@ export default function OverlayStage({
     return () => window.removeEventListener('message', onMessage)
   }, [url])
 
-  // The canvas variant needs the box's width to know how far to scale the canvas
-  // down. Measured on the box rather than the window, because the box is what the
-  // panel layout decided: it changes when the window does not — the sidebar moving
-  // from beside it to above it is enough.
+  // How far to scale the canvas down, measured on the ROW that holds it.
+  //
+  // Not on the canvas, and that is not a detail: the canvas is sized from this
+  // number, so measuring it is a feedback loop. Each observation returns the
+  // already-scaled width, which produces the next, smaller scale — observed
+  // shrinking 492, 344, 198, 52 as a canvas that never changed. The row's width
+  // comes from the layout around it and does not depend on the answer.
+  //
+  // Measured on the row rather than the window for the same reason the builder
+  // has its own: the space beside the controls is not the window. It changes when
+  // the window does not — the sidebar moving from beside it to above it is enough.
   useEffect(() => {
-    const node = box.current
+    const node = row.current
     if (!node || variant !== 'canvas') return
     const observer = new ResizeObserver(() => setBoxWidth(node.clientWidth))
     observer.observe(node)
@@ -127,22 +134,31 @@ export default function OverlayStage({
     // fills its iframe the way it fills a browser source — `html, body { height:
     // 100% }` — so the iframe being canvas-sized is what makes the box stand still
     // while messages arrive underneath it.
-    const scale = boxWidth > 0 ? boxWidth / canvas.width : 1
+    // Fits both ways, not just by width. Constraining to the width alone is right
+    // for a landscape canvas in a wide panel and wrong for a vertical one: a
+    // 1080x1920 canvas scaled to a 490px column comes out 870px tall, which pushes
+    // the controls it sits beside off the page.
+    const scale =
+      boxWidth > 0 ? Math.min(boxWidth / canvas.width, maxHeight / canvas.height) : 1
     return (
-      <div
-        className="preview-canvas"
-        ref={box}
-        style={{ aspectRatio: `${canvas.width} / ${canvas.height}` }}
-      >
+      <div className="preview-canvas-row" ref={row}>
         <div
-          className="preview-canvas-inner"
+          className="preview-canvas"
           style={{
-            width: `${canvas.width}px`,
-            height: `${canvas.height}px`,
-            transform: `scale(${scale})`,
+            width: `${Math.round(canvas.width * scale)}px`,
+            height: `${Math.round(canvas.height * scale)}px`,
           }}
         >
-          <iframe src={framed} title={title} />
+          <div
+            className="preview-canvas-inner"
+            style={{
+              width: `${canvas.width}px`,
+              height: `${canvas.height}px`,
+              transform: `scale(${scale})`,
+            }}
+          >
+            <iframe src={framed} title={title} />
+          </div>
         </div>
       </div>
     )
