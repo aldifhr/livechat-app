@@ -49,7 +49,9 @@ export default function Sidebar() {
         })}
       </nav>
       <p className="side-note">
-        {ITEMS.find((item) => pathname === item.href || pathname.startsWith(item.href))?.hint}
+        {ITEMS.find((item) =>
+          item.exact ? pathname === item.href : pathname.startsWith(item.href),
+        )?.hint}
         <br />
         <br />
         The overlay is served over the web, so it keeps working when this dashboard is closed.
