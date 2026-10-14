@@ -443,12 +443,28 @@ pub fn to_app_event(frame: &Value, now_ms: i64) -> Option<Value> {
         .map(|list| Value::Array(list.clone()))
         .unwrap_or_else(|| Value::Array(Vec::new()));
 
+    // The MOD badge and custom emotes. Both were read by the app since it had a
+    // feed and neither was ever sent, so the badge could not appear and emotes
+    // could not render. `isModerator` is a plain bool (absent means false) and
+    // `emotes` is a list of `{url, id}`, empty for a comment with none.
+    let is_moderator = frame
+        .get("isModerator")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let emotes = frame
+        .get("emotes")
+        .and_then(Value::as_array)
+        .map(|list| Value::Array(list.clone()))
+        .unwrap_or_else(|| Value::Array(Vec::new()));
+
     Some(match kind {
         "comment" => json!({
             "type": "chat", "platform": platform, "nickname": user(), "id": id(),
             "avatar": avatar, "text": frame.get("text").and_then(Value::as_str).unwrap_or_default(),
             "timestamp": timestamp,
             "mentions": mentions,
+            "isModerator": is_moderator,
+            "emotes": emotes,
         }),
         "like" => json!({
             "type": "like", "platform": platform, "nickname": user(), "id": id(),
@@ -848,6 +864,28 @@ mod tests {
         // and a null would make a client that trusts the field throw.
         let out = mapped(json!({ "type": "comment", "user": "eko", "userId": "7", "text": "hi" }));
         assert_eq!(out["mentions"], json!([]));
+    }
+
+    #[test]
+    fn the_mod_badge_and_emotes_reach_the_app() {
+        // Both were read by the app and never sent, so the badge could not appear
+        // and emotes could not render. They must survive the frame mapping.
+        let out = mapped(json!({
+            "type": "comment", "user": "eko", "userId": "7", "text": "hi",
+            "isModerator": true,
+            "emotes": [{ "url": "https://x/e.webp", "id": "42" }],
+        }));
+        assert_eq!(out["isModerator"], json!(true));
+        assert_eq!(out["emotes"], json!([{ "url": "https://x/e.webp", "id": "42" }]));
+    }
+
+    #[test]
+    fn a_plain_comment_is_not_a_moderator_and_has_no_emotes() {
+        // Absent means false/empty rather than null, so a client that trusts the
+        // field reads "ordinary comment" instead of throwing.
+        let out = mapped(json!({ "type": "comment", "user": "eko", "userId": "7", "text": "hi" }));
+        assert_eq!(out["isModerator"], json!(false));
+        assert_eq!(out["emotes"], json!([]));
     }
 
     #[test]
