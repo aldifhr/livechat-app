@@ -11,6 +11,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod backend;
+mod myinstant;
 mod sound;
 mod speech;
 
@@ -158,6 +159,49 @@ async fn speak(text: String, pace: Option<String>, language: Option<String>) -> 
     Ok(base64::engine::general_purpose::STANDARD.encode(audio))
 }
 
+/// Searches myinstant for sounds the user can pick.
+///
+/// Returns an empty list rather than an error when nothing matches — the site is
+/// a user-upload board and a word nobody has used yet is a normal answer, not an
+/// outage. Only an unreachable or refused site is an `Err`.
+#[tauri::command]
+async fn myinstant_search(query: String) -> Result<Vec<myinstant::Instant>, String> {
+    myinstant::search(&query)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Downloads a myinstant sound into the cache and returns its local path.
+///
+/// The path handed back is registered with the asset protocol and remembered in
+/// the same record `pick_sound_file` writes to, for the same two reasons: the page
+/// cannot grant itself asset access, and the scope is rebuilt empty on every
+/// launch. So a sound chosen here survives a restart exactly like a file chosen
+/// from disk — which is the point, because from the page's side it is one.
+#[tauri::command]
+async fn myinstant_fetch(path: String, app: tauri::AppHandle) -> Result<String, String> {
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| format!("no cache folder: {e}"))?
+        .join("myinstants");
+    let dest = myinstant::cache_path(&cache_dir, &path)
+        .ok_or_else(|| format!("that is not a myinstant sound path: {path}"))?;
+
+    myinstant::download(&path, &dest)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let chosen = dest.to_string_lossy().into_owned();
+    let _ = app.asset_protocol_scope().allow_file(&dest);
+    let mut config = sound::read_config(&app);
+    config.paths.retain(|existing| existing != &chosen);
+    config.paths.push(chosen.clone());
+    sound::write_config(&app, &config)?;
+
+    Ok(chosen)
+}
+
 /// The stored backend settings, or an empty one on first launch.
 #[tauri::command]
 fn backend_config_get(app: tauri::AppHandle) -> backend::BackendConfig {
@@ -291,7 +335,9 @@ fn main() {
         notify,
         open_stream,
         speak,
-        pick_sound_file,
+          pick_sound_file,
+          myinstant_search,
+          myinstant_fetch,
         backend_config_get,
         backend_config_save,
         backend_connect,
