@@ -129,6 +129,20 @@ server {
         include snippets/streamtools-next.conf;
     }
 
+    # The sign-in POST is the one credential endpoint, so it is the one that
+    # gets a rate limit. `zone=auth` (10r/m, burst 5) is defined in
+    # conf.d/streamkit-limits.conf: bcrypt at cost 10 is ~83ms per verify, so an
+    # unthrottled form is a cheap way to burn the box's CPU and to guess.
+    #
+    # Matched EXACTLY, and placed before the /api/auth/ prefix below. That prefix
+    # also carries /api/auth/verify, which nginx calls through `auth_request` for
+    # EVERY gated request — throttling it would rate-limit the whole dashboard,
+    # not the login. Only this one path is the brute-force target.
+    location = /api/auth/login {
+        limit_req zone=auth burst=5 nodelay;
+        include snippets/streamtools-next.conf;
+    }
+
     location ^~ /api/auth/ {
         include snippets/streamtools-next.conf;
     }
