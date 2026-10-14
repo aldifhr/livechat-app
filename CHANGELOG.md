@@ -121,6 +121,48 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
     itu tidak pernah ada, jadi urutan startup itu tidak pernah berarti apa-apa.
 
 ### Fixed
+- **Dua halaman tidak sepakat dengan dirinya sendiri soal "tanpa styling".**
+  `STYLE_DEFAULTS` adalah yang di-reset sebelum style hasil push diterapkan,
+  jadi itu jawaban halaman atas "seperti apa overlay tanpa style". Literal
+  `config` di baris-baris sebelumnya adalah jawaban yang sama, untuk load. Dua
+  salinan dari satu konsep di satu file — dan keduanya sudah melenceng, di dua
+  halaman, ke arah yang berbeda.
+  - **Chat: `background` 0 saat load, 0.05 saat reset.** Jadi overlay terbuka
+    dengan video tembus lurus, lalu dapat scrim samar begitu backend push style
+    untuk room yang config tersimpannya tidak punya `bg`. Tiga sumber sudah
+    bilang 0 — `shared/overlay.ts`, default load, dan komentarnya — jadi yang ini
+    outlier-nya.
+  - **Board: `size` 36 saat load, 28 saat reset.** Ini regresi yang `25151ca`
+    ditulis untuk tutup, kembali lewat jalur yang fix itu tidak sentuh. Commit itu
+    menaikkan default load dan `shared/overlay.ts`, dan check yang ditambahkan
+    membandingkan keduanya — jadi salinan ketiga tidak pernah masuk scope dan
+    tidak pernah naik. Board terbuka di 36px, 1.9% dari canvas 1920px, turun ke
+    28px, 1.5%, begitu backend push style untuk room tanpa `size` tersimpan.
+    Ukuran yang sama, tidak terbaca lagi, di hari yang sama dengan fix-nya.
+  - `test-overlay-sync.mjs` sekarang membandingkan tiap halaman terhadap default
+    load-nya sendiri, bukan hanya terhadap shared module. Membandingkan hanya
+    terhadap `shared/` tidak bisa melihat kelas bug ini sama sekali: tiap salinan
+    masih cocok dengan shared module — itulah sebabnya check lama tetap hijau.
+
+- **Jalur restyle langsung tidak punya test sama sekali.** Frame `config` adalah
+  hal terbaru di wire dan paling sedikit terlindungi, dan juga paling
+  berdampak: itu cara streamer menata stream yang sedang jalan, lewat link yang
+  ditempel ke OBS sekali lalu tidak pernah disentuh. Bug di sini tidak error —
+  halaman render, OBS render, overlay cuma menampilkan hal yang salah, dan itu
+  baru ketahuan dengan melihat live.
+  - 27 assertion menjalankan halaman sungguhan di JSDOM dengan frame didorong lewat
+    socket palsu: push sampai ke custom property; key yang tidak dibawa frame
+    revert, bukan menetap (frame adalah style **penuh**, bukan patch); baris chat
+    yang sudah tampil tetap objek baris yang **sama** dan tidak ada socket kedua
+    yang dibuka; komentar setelah restyle tetap sampai, karena `config.username`
+    adalah yang dipakai render dan merge yang salah akan menghasilkan overlay
+    yang styled tapi bisu; `{}` adalah no-op termasuk pada link yang membawa `bg`
+    sendiri; `null` dilewati, bukan ditulis sebagai `--name-colour: null`; dan
+    `max` yang dipush benar-benar mengubah limit yang ditegakkan.
+  - Default pembandingnya dibaca dari halaman, bukan ditulis di test. Literal di
+    test adalah salinan kedua dari angka yang sama — persis bagaimana size board
+    berakhir 36 di satu tempat dan 28 di tempat lain dengan semua assertion hijau.
+
 - **Daftar bahasa bisa melenceng tanpa apa-apanya terjadi.** `TTS_LANGUAGES` di
   `voices.ts` adalah yang ditawar picker, `speech::LANGUAGES` di `speech.rs` adalah
   yang benar-benar dikirim host — dua literal di dua bahasa tanpa yang mengikat
