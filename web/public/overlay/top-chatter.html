@@ -211,7 +211,7 @@
     // rewritten to work; `base` is still honoured for a page hosted elsewhere.
     baseUrl: String(param('base', baked.baseUrl || location.origin)).replace(/\/+$/, ''),
     username: String(param('room', baked.username || '')).replace(/^@/, '').trim(),
-    size: number('size', typeof baked.size === 'number' ? baked.size : 28, 8, 120),
+    size: number('size', typeof baked.size === 'number' ? baked.size : 28, 8, 96),
     nameColour: param('name', baked.nameColour || '#ffd76a'),
     textColour: param('color', baked.textColour || '#ffffff'),
     // How opaque the gray panel is. Defaults high now that it is a card

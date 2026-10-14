@@ -190,7 +190,7 @@
   var config = {
     baseUrl: String(param('base', baked.baseUrl || 'https://kit-backend.aldifhr.my.id')).replace(/\/+$/, ''),
     username: String(param('room', baked.username || '')).replace(/^@/, '').trim(),
-    size: number('size', typeof baked.size === 'number' ? baked.size : 28, 8, 120),
+    size: number('size', typeof baked.size === 'number' ? baked.size : 28, 8, 96),
     nameColour: param('name', baked.nameColour || '#ffd76a'),
     textColour: param('color', baked.textColour || '#ffffff'),
     background: number('bg', typeof baked.background === 'number' ? baked.background : 0.35, 0, 1),
