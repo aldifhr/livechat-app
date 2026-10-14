@@ -408,7 +408,13 @@ class TikTokAdapter(EventAdapter):
             if not name:
                 return
             user_id = display_id(event.user)
-            gift_id = event.gift.gift_id or 0
+            # `event.gift` is an ExtendedGift, whose id field is `id` — only the
+            # EVENT has a `gift_id`. Reading `event.gift.gift_id` raised
+            # AttributeError inside this handler on every gift, so the room
+            # received none at all while the log filled with tracebacks. Read
+            # defensively: a library upgrade renaming a field should degrade the
+            # id, not silence every gift.
+            gift_id = getattr(event.gift, "id", None) or getattr(event, "gift_id", 0) or 0
 
             # TikTok streak handling. `repeat_count` is a cumulative total, not a
             # per-frame delta, so the arithmetic lives in `streak_step` where it
