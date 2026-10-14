@@ -38,6 +38,29 @@ const CHAT_PAGE = readFileSync(`${pkgRoot}backend/static/overlay.html`, 'utf8')
 const BOARD_PAGE = readFileSync(`${pkgRoot}backend/static/topchatter.html`, 'utf8')
 
 /**
+ * The page's own `STYLE_DEFAULTS`, read out of the page rather than kept here.
+ *
+ * A literal in this file would be a second copy of the same numbers, which is
+ * precisely how the board's size came to be 36 on one side and 28 on the other
+ * with every assertion still green. Read out, so moving a default in the page
+ * moves it here and a test written against the old value fails — which is the
+ * point of writing it down.
+ *
+ * Only the keys these tests compare. `font` is skipped because its value contains
+ * commas and would need a different parse than the numbers, and nothing here
+ * asserts on it.
+ */
+const DEFAULTS = (() => {
+  const body = CHAT_PAGE.slice(CHAT_PAGE.indexOf('var STYLE_DEFAULTS = {'))
+  const out = {}
+  for (const key of ['size', 'nameColour', 'textColour', 'background']) {
+    const found = new RegExp(`\\b${key}:\\s*([^,\\n]+)`).exec(body)
+    if (found) out[key] = found[1].trim().replace(/^['"]|['"]$/g, '')
+  }
+  return out
+})()
+
+/**
  * Loads the page with a socket and a fetch it can be driven through.
  *
  * The script runs on load, so both are in place before the DOM is built: a page
@@ -393,6 +416,117 @@ console.log('the two pages resolve the room the same way')
 const chatSockets = boardPage.sockets.length
 check('the board page opens one overlay socket', chatSockets === 1, String(chatSockets))
 check('as an overlay client, sharing the room', boardPage.sockets[0]?.url.endsWith('/ws/overlay/room-1'), boardPage.sockets[0]?.url)
+
+console.log('a pushed style reaches the screen')
+// The live restyle path, which is the one nothing here covered until the config
+// frame was narrowed: a frame arrives mid-stream carrying the room's whole style,
+// and the page has to restyle itself without rebuilding, reconnecting, or
+// disturbing a message that is already on screen. A bug here is the quiet kind —
+// OBS shows the old styling or no styling, nothing errors, and the only symptom is
+// a streamer saying the link does not work.
+const restyled = load('?room=ana&max=8&delay=120&size=40&name=%2300ff00&bg=0.5')
+await settle()
+restyled.openRoom()
+await settle()
+await settle()
+
+const restyleRoot = restyled.window.document.documentElement
+const restyleVar = (name) => restyleRoot.style.getPropertyValue(name)
+check('it starts on the values the link gave it', restyleVar('--size') === '40px', restyleVar('--size'))
+
+// One comment already on screen, which the restyle must not touch.
+restyled.say('ana', 'before the restyle')
+check('and with a message showing', restyled.rows().length === 1, String(restyled.rows().length))
+const rowBefore = restyled.rows()[0]
+
+restyled.frame({ type: 'config', config: { size: 28, nameColour: '#ff00ff' } })
+await settle()
+check('a pushed size reaches the page', restyleVar('--size') === '28px', restyleVar('--size'))
+check('and a pushed colour', restyleVar('--name-colour') === '#ff00ff', restyleVar('--name-colour'))
+// The key the frame left out reverts rather than persisting. That is the contract:
+// the frame is the room's whole style, not a patch, so `bg` going back to the
+// page's own default is correct — and it is exactly what a patch-shaped merge would
+// get wrong, keeping the 0.5 the link arrived with.
+check(
+  'a key the frame omits reverts to the default',
+  restyleVar('--background') === String(DEFAULTS.background),
+  `${restyleVar('--background')} (want ${DEFAULTS.background})`,
+)
+check('the message already on screen is untouched', restyled.rows()[0] === rowBefore)
+check('and still the only one', restyled.rows().length === 1, String(restyled.rows().length))
+
+console.log('a restyle does not stop the chat')
+// The regression this whole block is here for. The merge touches `config`, and
+// `config.username` is what the page connects and renders with — a merge that
+// replaced the object, or that let a frame carry a `room` key through, would leave
+// an overlay that is styled and silent.
+check('it did not open a second socket', restyled.sockets.length === 1, String(restyled.sockets.length))
+restyled.say('budi', 'after the restyle')
+check('a comment after it still arrives', await waitFor(() => /after the restyle/.test(restyled.rows().at(-1)?.textContent ?? '')), restyled.rows().at(-1)?.textContent)
+check('and the earlier one is still there', /before the restyle/.test(restyled.rows().map((r) => r.textContent).join(' ')))
+
+console.log('a pushed style is a whole style, not a patch')
+// Two pushes in a row. If the second inherited anything from the first it would
+// not be the room's current style, and a streamer who changes one setting and then
+// another would end up with a mixture of the two.
+restyled.frame({ type: 'config', config: { size: 30, nameColour: '#00ffff' } })
+await settle()
+restyled.frame({ type: 'config', config: { size: 12 } })
+await settle()
+check('the second push replaces the first', restyleVar('--size') === '12px', restyleVar('--size'))
+check('and leaves nothing of it behind', restyleVar('--name-colour') === DEFAULTS.nameColour, restyleVar('--name-colour'))
+// The comment row survived both pushes, which is the "no DOM rebuild" claim.
+check('still without rebuilding the list', /after the restyle/.test(restyled.rows().map((r) => r.textContent).join(' ')))
+
+console.log('an empty frame is silence, not a reset')
+// A room with no saved styling sends `{}`. Acting on it would strip the styling
+// from any link that carried its own parameters — which is every link there was
+// before styling could be saved, and all of them are still valid. Un-styling is
+// done by saving actual defaults.
+restyled.frame({ type: 'config', config: {} })
+await settle()
+check('an empty frame changes nothing', restyleVar('--size') === '12px', restyleVar('--size'))
+check('and does not reset the colour either', restyleVar('--name-colour') === DEFAULTS.nameColour, restyleVar('--name-colour'))
+restyled.frame({ type: 'config', config: { size: 26 } })
+await settle()
+restyled.frame({ type: 'config' })
+await settle()
+check('a frame with no config at all changes nothing', restyleVar('--size') === '26px', restyleVar('--size'))
+// And a link that carried its own values keeps them across the whole conversation.
+const linkOwned = load('?room=ana&max=8&delay=120&bg=0.6')
+await settle()
+linkOwned.openRoom()
+await settle()
+await settle()
+const linkVar = (name) => linkOwned.window.document.documentElement.style.getPropertyValue(name)
+check('a link keeps its own background', linkVar('--background') === '0.6', linkVar('--background'))
+linkOwned.frame({ type: 'config', config: {} })
+await settle()
+check('an empty frame does not take it away', linkVar('--background') === '0.6', linkVar('--background'))
+
+console.log('a value that is null is not a value')
+// `undefined` and `null` are skipped by the merge, which means the key keeps the
+// default it was just reset to. Passing `null` through to a custom property would
+// render `--size: nullpx`, which the stylesheet cannot use.
+restyled.frame({ type: 'config', config: { size: 31, nameColour: null } })
+await settle()
+check('a null colour falls back to the default', restyleVar('--name-colour') === DEFAULTS.nameColour, restyleVar('--name-colour'))
+check('and the rest of the frame still applied', restyleVar('--size') === '31px', restyleVar('--size'))
+
+console.log('a pushed limit changes the limit')
+// `max` and `delay` are not custom properties — `applyConfig` does not write them,
+// because the stylesheet has no rule for them. They are read by the queue. So the
+// only way to see whether a pushed one took effect is to push comments through it.
+restyled.frame({ type: 'config', config: { max: 2, delay: 120 } })
+await settle()
+const before = restyled.rows().length
+for (let n = 0; n < 8; n += 1) restyled.say(`v${n}`, `m${n}`)
+await new Promise((resolve) => setTimeout(resolve, 1500))
+const liveAfter = () => restyled.rows().filter((row) => row.dataset.leaving !== '1').length
+check('the pushed row limit is the one it enforces', liveAfter() <= 3, String(liveAfter()))
+check('and it is reached, not merely respected', liveAfter() === 2, String(liveAfter()))
+check('not the eight the link asked for', liveAfter() !== 8, String(liveAfter()))
+check('and the page is still taking messages', restyled.rows().length > before)
 
 console.log(failures === 0 ? '\nall passed' : `\n${failures} failed`)
 process.exit(failures === 0 ? 0 : 1)
