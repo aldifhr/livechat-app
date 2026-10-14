@@ -118,6 +118,13 @@ server {
         proxy_pass http://127.0.0.1:5184/api/auth/verify;
         proxy_pass_request_body off;
         proxy_set_header Content-Length "";
+        # Next treats an `RSC: 1` request as a React Server Component fetch and
+        # answers it with a 307 to `?<the rsc query>`. This is a status check, not
+        # a component fetch: nginx only understands 204 and 401 from here, so a
+        # 307 comes back as "unexpected status" and the client gets a 500. A
+        # client-side navigation sends `RSC: 1`, which is how a streamer clicking
+        # between dashboard pages hit a 500 instead of the page.
+        proxy_set_header RSC "";
         proxy_set_header X-Original-URI $request_uri;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
