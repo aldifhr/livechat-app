@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
 ## [Unreleased]
 
 ### Added
+- **Volume, language, dan Tester untuk suara.** Tiga setelan yang selalu ada di
+  produk lain dan tidak ada sama sekali di sini: suara dari app selalu pada level
+  tetap, selalu bahasa Indonesia, dan satu-satunya cara tahu itu benar adalah
+  menunggu chat berikutnya datang.
+  - **Volume** diterapkan ke elemen `Audio` di halaman, bukan ke sintesisnya —
+    tidak ada biaya, dan tidak ada biaya untuk berubah. `clampVolume()` menahan
+    nilainya ke 0..1: `Audio.volume` melempar `IndexSizeError` di luar rentang,
+    dan lemparan itu dari dalam jalur playback tertangkap sebagai "layanan suara
+    tak terjangkau", jadi setelan yang rusak terbaca sebagai layanan yang mati.
+  - **Language** dijadi setelan, bukan konstanta. `tl` memang cuma parameter, dan
+    satu-satunya hal di layanan ini yang benar-benar memilih suara — jadi bahasa
+    adalah pickers suara yang paling jujur yang bisa dimiliki mesin ini, dan bukan
+    8 ikonbolt yang tidak melakukan apa-apa.
+    - Host punya whitelist sendiri (`speech::LANGUAGES`) dan kode yang tidak dikenal
+      jatuh ke default, sama seperti pace — halaman memvalidasi tapi tidak dipercaya.
+      Test di kedua sisi mengunci daftar yang sama.
+  - **Sample per bahasa.** Tester berbicara dalam bahasa yang sedang diuji, karena
+    itu satu-satunya cara tombol itu membuktikan sesuatu. Sample yang terkunci di
+    satu bahasa tidak memberi tahu apa pun tentang yang lain.
+  - **Tester melaporkan kegagalannya.** `preview()` menolak, tidak menelan — tombol
+    yang melaporkan "selesai" sementara tidak ada yang terdengar adalah setelan suara
+    yang diam-diam tidak melakukan apa-apa, persis kegagalan yang paling tidak bisa
+    didiagnosis. Dia juga mengambil alih suara dan mengabaikan gap: klik yang
+    kadang diam-diam tidak terjadi adalah kontrol yang tidak bisa dipercaya.
+
 - **Styling sebuah stream sekarang tersimpan, dan sampai ke overlay yang sedang
   berjalan.** `client.ts` tidak punya cara untuk `POST /api/rooms/{id}/config`,
   jadi tidak ada satu pun kode frontend yang pernah menyimpannya: refresh membuang
@@ -96,6 +121,45 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
     itu tidak pernah ada, jadi urutan startup itu tidak pernah berarti apa-apa.
 
 ### Fixed
+- **Daftar bahasa bisa melenceng tanpa apa-apanya terjadi.** `TTS_LANGUAGES` di
+  `voices.ts` adalah yang ditawar picker, `speech::LANGUAGES` di `speech.rs` adalah
+  yang benar-benar dikirim host — dua literal di dua bahasa tanpa yang mengikat
+  keduanya.
+  - Kode yang ada di satu sisi saja = bahasa yang dialog tawarkan dan host tolak.
+  - Dan karena host me-*resolve* kode asing ke default, bukan menolaknya, gejalanya
+    bukan crash: ruangan dibaca dengan aksen yang tidak dipilih siapa pun.
+  - Dua sisi sama-sama punya test yang mengunci dirinya sendiri (test Rust yang
+    mencantumkan kodenya, test TS yang menggerakkan picker) dan keduanya hijau
+    sementara daftarnya beda — persis bentuk bug yang `test:wire` dibuat.
+  - Sekarang `test:wire` membaca keempat file dan membandingkannya dua arah, plus
+    `DEFAULT_LANGUAGE` di kedua sisi.
+  - Ekstraksi Rust-nya sempat memotong pada `]` pertama — yang menutup anotasi tipe
+    `&[&str]`, bukan daftar nilainya — sehingga membaca nol kode. Yang menangkapnya
+    adalah assertion jumlah > 0, bukan parsesnya; assertion itu yang harus disimpan.
+
+- **Tidak ada CI sama sekali.** `.github/workflows/ci.yml`, empat job: `app`
+  (typecheck + 15 file `.mjs`), `rust` (48 test, plus library sistem yang Tauri
+  linker-kan), `web` (typecheck + 3 suite), `backend` (17 suite lewat `run_all.py`).
+  - Python dipin ke 3.12, bukan `latest`: runner yang diam-diam pindah ke 3.14
+    mengubah suite hijau jadi merah tanpa hubungan dengan perubahan yang diuji.
+  - Tidak ada build installer dan tidak ada secret. `tauri build` butuh signing
+    identity per platform, dan hijau di test tidak mengatakan apa-apa soal itu.
+
+- **Setelan suara tidak ada sampai fiturnya sudah dinyalakan.** Blok language /
+  pace / volume / tester disembunyikan sampai salah satu dari tiga toggle suara
+  aktif — logika yang masuk akal untuk pace picker tiga opsi, dan tidak untuk blok
+  yang isinya termasuk Tester.
+  - Tester justru alatnya dipakai untuk menilai *sebelum* decided menyalakan, jadi
+    satu-satunya cara Mengeceknya adalah menyalakannya dulu. Dialog yang bagian TTS-nya
+    baru muncul setelah TTS sudah dinyalakan adalah dialog yang tidak bisa dipakai
+    untuk mencari tahu apa yang terjadi kalau dinyalakan.
+  - Sekarang bloknya selalu tampil, dan ada test yang memastikannya ada dengan
+    ketiga toggle masih mati.
+
+- **Tooltip gear tidak lagi menyebut section yang tidak ada.** "Theme, font,
+  density, panels and model" — tidak ada satu pun "feed" atau "sounds" di sana,
+  dan keduanya adalah tempat semua setelan suara ini hidup.
+
 - **Seluruh console merender tanpa styling sama sekali.** `next build` menulis
   `.next/static` di sebelah server bundle dan tidak menyalinnya ke
   `.next/standalone`; `deploy-web.sh`elding memcopinya manual. Asersinya hanya
