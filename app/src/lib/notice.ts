@@ -5,6 +5,12 @@
  * service, and given its own gap rather than sharing the chime's: a toast is far
  * more intrusive than a two-note chime, and it lingers on screen long enough that
  * showing one every few seconds is a wall rather than a series.
+ *
+ * This gap is for the TOAST only. The spoken announcement has its own, much
+ * shorter one inside `voice.ts` (the gap between two utterances), because a
+ * sentence in a streamer's ear is not a panel on their screen: gating the voice
+ * on this number meant every gift that arrived within eight seconds of another
+ * was never announced at all, which on a busy room is nearly all of them.
  */
 
 /**
