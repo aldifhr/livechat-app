@@ -43,6 +43,9 @@
     padding: 0;
     height: 100%;
     background: transparent;
+    /* OBS composites the source, so the page must not have an opaque body of its
+       own or the video behind it disappears. */
+    overflow: hidden;
   }
 
   /* A backdrop, for when this page is being *shown* rather than composited.
@@ -55,10 +58,6 @@
      browser source — which is asked for this page with no such parameter, and
      must stay transparent — is unaffected. */
   html.stage-backdrop { background: #141414; }
-  
-    /* OBS composites the source; an opaque body would hide the video behind it. */
-    overflow: hidden;
-  }
 
   body {
     display: flex;
