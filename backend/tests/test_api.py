@@ -127,10 +127,15 @@ with TestClient(main.app) as client:
     check("create defaults to no config", created["config"] == {}, json.dumps(created["config"]))
     check("create has no theme key", "theme" not in created, json.dumps(sorted(created)))
 
-    check("get by id", client.get(f"/api/rooms/{oid}").json()["name"] == "Test room")
-    check("list contains it", oid in [o["id"] for o in client.get("/api/rooms").json()["rooms"]])
+    # These reads carry the token like the writes do: the room reads are gated
+    # now (they answer with every streamer's handle and overlay config), and this
+    # block runs with `STREAMKIT_AUTH_DISABLED=true` only for the writes it was
+    # written around. `AUTH` is the shared header the suite already builds.
+    check("get by id", client.get(f"/api/rooms/{oid}", headers=AUTH).json()["name"] == "Test room")
+    check("list contains it",
+          oid in [o["id"] for o in client.get("/api/rooms", headers=AUTH).json()["rooms"]])
 
-    check("missing room is 404", client.get("/api/rooms/nope").status_code == 404)
+    check("missing room is 404", client.get("/api/rooms/nope", headers=AUTH).status_code == 404)
 
     print("create from a template")
     # The dashboard resolves a template to a full config and posts it, so that
@@ -144,7 +149,7 @@ with TestClient(main.app) as client:
     }
     tpl = client.post("/api/rooms", json={"name": "From template", "config": room_config}, headers=AUTH).json()["room"]
     check("template config stored verbatim", tpl["config"] == room_config, json.dumps(tpl["config"]))
-    listed = {o["id"]: o for o in client.get("/api/rooms").json()["rooms"]}
+    listed = {o["id"]: o for o in client.get("/api/rooms", headers=AUTH).json()["rooms"]}
     check("template widgets visible in list",
           listed[tpl["id"]]["config"]["widgets"][0]["type"] == "chat")
     client.delete(f"/api/rooms/{tpl['id']}", headers=AUTH)
@@ -152,8 +157,8 @@ with TestClient(main.app) as client:
     print("username")
     patched = client.patch(f"/api/rooms/{oid}", json={"username": "@someone"}, headers=AUTH).json()["room"]
     check("username strips @", patched["username"] == "someone", patched["username"])
-    check("patch keeps config", client.get(f"/api/rooms/{oid}").json()["config"] == {},
-          json.dumps(client.get(f"/api/rooms/{oid}").json()["config"]))
+    check("patch keeps config", client.get(f"/api/rooms/{oid}", headers=AUTH).json()["config"] == {},
+          json.dumps(client.get(f"/api/rooms/{oid}", headers=AUTH).json()["config"]))
 
     print("changing the username drops the running source")
     # A source aimed at the old handle is useless, and leaving it in `sources`
@@ -191,7 +196,7 @@ with TestClient(main.app) as client:
     cfg = {"version": 2, "type": "chat", "padding": 12, "customCSS": "",
            "global": {"fontSize": 16}, "style": {}}
     check("config save", client.post(f"/api/rooms/{oid}/config", json={"config": cfg}, headers=AUTH).status_code == 200)
-    check("config persisted", client.get(f"/api/rooms/{oid}").json()["config"] == cfg)
+    check("config persisted", client.get(f"/api/rooms/{oid}", headers=AUTH).json()["config"] == cfg)
     check("config on missing is 404", client.post("/api/rooms/nope/config", json={"config": cfg}, headers=AUTH).status_code == 404)
 
     print("websocket attach")
