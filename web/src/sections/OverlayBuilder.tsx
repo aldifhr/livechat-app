@@ -16,7 +16,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   chatStyleFromQuery,
   chatStyleToQuery,
@@ -61,11 +61,23 @@ function RoomPicker({
 /** A read-only link with a copy button — the thing that ends up in OBS. */
 function CopyLink({ label, hint, url }: { label: string; hint: string; url: string }) {
   const [copied, setCopied] = useState(false)
+  // The timer is cleared on unmount. Without it, copying and then navigating away
+  // inside the 1.5s window leaves a callback that sets state on a component that
+  // is gone — harmless in React 18, but a leak the next reader has to re-derive.
+  const resetTimer = useRef<number | null>(null)
+  useEffect(() => () => {
+    if (resetTimer.current !== null) window.clearTimeout(resetTimer.current)
+  }, [])
+
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(url)
       setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
+      if (resetTimer.current !== null) window.clearTimeout(resetTimer.current)
+      resetTimer.current = window.setTimeout(() => {
+        resetTimer.current = null
+        setCopied(false)
+      }, 1500)
     } catch {
       // Clipboard access is refused in some contexts and there is no honest way to
       // paste on the operator's behalf; the field is selectable, so they can.
