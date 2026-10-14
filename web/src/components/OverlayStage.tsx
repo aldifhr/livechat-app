@@ -35,7 +35,7 @@
  * upstream of all of it and stable.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 interface Props {
   /** The overlay's address. Empty renders nothing rather than an empty frame. */
@@ -43,16 +43,44 @@ interface Props {
   /** What this frame is, for anybody reading the page rather than the screen. */
   title: string
   /**
-   * The tallest the frame may be, in pixels, before it is scaled down.
+   * How the frame is sized.
    *
-   * A share of the window when this page is the subject; a fixed height when it is
-   * sitting beside controls, where the space is whatever the layout left over.
+   * `canvas` is a fixed rectangle, which is what a browser source is: the box does
+   * not change when messages arrive, so the overlay grows inside it the way it
+   * grows on a stream. `fit` is the frame that grows to its content and scales
+   * itself down to be seen whole.
+   *
+   * They answer different questions and one of them is wrong in each context.
+   * Beside a form, `fit` is wrong: a quiet chat reported 60px, so the frame became
+   * 60px inside a stage with a 520px floor — a small white strip floating in a
+   * black box — and then grew to three quarters of the panel as the room warmed
+   * up. The box was reporting the content instead of standing still while the
+   * content moved. `canvas` keeps the rectangle fixed and lets the overlay do
+   * exactly what it does on a stream.
+   *
+   * Full screen, `canvas` is wrong: judging whether a ten-row leaderboard fits
+   * means seeing all of it at once, and a fixed rectangle clips it.
    */
-  maxHeight: number
+  variant?: 'canvas' | 'fit'
+  /** The tallest a `fit` frame may be before it is scaled down. */
+  maxHeight?: number
+  /** The canvas a `canvas` frame represents, in CSS pixels. */
+  canvas?: { width: number; height: number }
 }
 
-export default function OverlayStage({ url, title, maxHeight }: Props) {
+/** OBS's default stream canvas. */
+const DEFAULT_CANVAS = { width: 1920, height: 1080 }
+
+export default function OverlayStage({
+  url,
+  title,
+  variant = 'fit',
+  maxHeight = 520,
+  canvas = DEFAULT_CANVAS,
+}: Props) {
   const [reportedHeight, setReportedHeight] = useState<number | null>(null)
+  const [boxWidth, setBoxWidth] = useState(0)
+  const box = useRef<HTMLDivElement | null>(null)
 
   // A new overlay is a new height; the old one belongs to the page being left.
   useEffect(() => {
@@ -70,7 +98,55 @@ export default function OverlayStage({ url, title, maxHeight }: Props) {
     return () => window.removeEventListener('message', onMessage)
   }, [url])
 
+  // The canvas variant needs the box's width to know how far to scale the canvas
+  // down. Measured on the box rather than the window, because the box is what the
+  // panel layout decided: it changes when the window does not — the sidebar moving
+  // from beside it to above it is enough.
+  useEffect(() => {
+    const node = box.current
+    if (!node || variant !== 'canvas') return
+    const observer = new ResizeObserver(() => setBoxWidth(node.clientWidth))
+    observer.observe(node)
+    setBoxWidth(node.clientWidth)
+    return () => observer.disconnect()
+  }, [variant])
+
   if (!url) return null
+
+  // Both variants show the page rather than composite it, and a page with a
+  // transparent body still gets an opaque base from the browser. Asking the page
+  // for a backdrop is the only thing that reaches it: an iframe element's own
+  // background is ignored, verified rather than assumed, so there is nothing to
+  // set from out here.
+  const staged = new URL(url)
+  staged.searchParams.set('backdrop', 'dark')
+  const framed = staged.toString()
+
+  if (variant === 'canvas') {
+    // The canvas at its real pixel size, scaled into the box. The overlay page
+    // fills its iframe the way it fills a browser source — `html, body { height:
+    // 100% }` — so the iframe being canvas-sized is what makes the box stand still
+    // while messages arrive underneath it.
+    const scale = boxWidth > 0 ? boxWidth / canvas.width : 1
+    return (
+      <div
+        className="preview-canvas"
+        ref={box}
+        style={{ aspectRatio: `${canvas.width} / ${canvas.height}` }}
+      >
+        <div
+          className="preview-canvas-inner"
+          style={{
+            width: `${canvas.width}px`,
+            height: `${canvas.height}px`,
+            transform: `scale(${scale})`,
+          }}
+        >
+          <iframe src={framed} title={title} />
+        </div>
+      </div>
+    )
+  }
 
   const ceiling = Math.max(220, maxHeight)
 
@@ -99,7 +175,7 @@ export default function OverlayStage({ url, title, maxHeight }: Props) {
 
   return (
     <div className="preview-stage" style={occupied ? { height: `${occupied}px` } : undefined}>
-      <iframe src={url} title={title} style={frameStyle} />
+      <iframe src={framed} title={title} style={frameStyle} />
     </div>
   )
 }

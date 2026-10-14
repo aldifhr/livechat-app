@@ -211,10 +211,21 @@ function SaveBadge({ state }: { state: SaveState }) {
   )
 }
 
+/** The canvas shapes a stream can be. OBS is set per stream, so the preview has
+ *  to be told rather than assume — a vertical TikTok is not a 16:9 rectangle, and
+ *  judging a vertical overlay inside a landscape frame says nothing about it. */
+const CANVASES = [
+  { label: '1920×1080', width: 1920, height: 1080 },
+  { label: '1280×720', width: 1280, height: 720 },
+  { label: '1080×1920', width: 1080, height: 1920 },
+  { label: '720×1280', width: 720, height: 1280 },
+]
+
 export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }) {
   const [rooms, setRooms] = useState<Room[]>([])
   const [roomId, setRoomId] = useState(initialRoom ?? '')
   const [which, setWhich] = useState<Which>('chat')
+  const [canvas, setCanvas] = useState(CANVASES[0])
 
   // The query string, read after mount rather than in a state initialiser: those run
   // during the server render too, where `window` does not exist, and the page
@@ -346,17 +357,38 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
             <>
               <div className="builder-stage-head">
                 <span className="copy-label">Preview</span>
-                <Link className="quiet-link" href={previewHref}>
-                  Open full screen
-                </Link>
+                <div className="builder-stage-actions">
+                  <select
+                    value={canvas.label}
+                    onChange={(e) =>
+                      setCanvas(CANVASES.find((c) => c.label === e.target.value) ?? CANVASES[0])
+                    }
+                    aria-label="Preview canvas size"
+                  >
+                    {CANVASES.map((c) => (
+                      <option key={c.label} value={c.label}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                  <Link className="quiet-link" href={previewHref}>
+                    Open full screen
+                  </Link>
+                </div>
               </div>
+              {/* A fixed canvas, not a frame that fits its contents. The overlay
+                  inside grows downward from the top exactly as it does on a
+                  stream, so a quiet chat is a short column of messages rather than
+                  a small box that swells as the room warms up. */}
               <OverlayStage
+                variant="canvas"
                 url={which === 'chat' ? api.chatOverlay(selected) : api.topChatterOverlay(selected)}
                 title={`${which === 'chat' ? 'Chat' : 'Top chatters'} overlay preview`}
-                maxHeight={420}
+                canvas={canvas}
               />
               <p className="faint tight-caption">
-                The overlay itself, on the stream. It changes as you move the controls.
+                The overlay on a {canvas.width}×{canvas.height} canvas — what OBS shows. It changes as
+                you move the controls.
               </p>
             </>
           ) : (

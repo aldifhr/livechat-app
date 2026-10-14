@@ -1215,3 +1215,61 @@ button.danger-solid:hover:not(:disabled) {
 .stream-origin {
   margin: 0.25rem 0 0;
 }
+
+/* ---- the preview canvas -------------------------------------------------
+   A fixed rectangle, the way a browser source is one. The box does not change
+   when messages arrive; the overlay grows inside it from the top, which is what
+   happens on a stream. The frame that fits its contents instead — used by the
+   full-screen page, where seeing all of a ten-row board at once is the whole
+   question — is `.preview-stage` above.
+
+   Beside the controls, a fitting frame was wrong twice over: a quiet chat
+   reported a 60px height and floated as a small white strip inside the stage's
+   520px floor, then swelled to three quarters of the panel as the room warmed
+   up, and a leaderboard rebuilt each poll shrank whenever the ranking did. The
+   box was reporting its contents instead of standing still while they moved. */
+
+.preview-canvas {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  /* A dark field rather than white: an overlay is drawn over video, and light
+     text on white is exactly the combination the colours are chosen against. */
+  background:
+    repeating-conic-gradient(#141414 0% 25%, #0d0d0d 0% 50%) 50% / 18px 18px;
+}
+
+.preview-canvas-inner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+}
+
+/* Transparent, deliberately. The overlay's own `html, body` are transparent — it is
+   drawn over video — but an iframe paints a base background of its own behind a
+   transparent document, and that base is white. Left alone the whole canvas reads
+   as a white rectangle with light text on it, which is precisely the combination
+   the name and text colours are chosen to be legible against. Transparent here
+   lets the field behind it show through, which is the nearest thing to video a
+   dashboard can put there. */
+.preview-canvas iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  background: transparent;
+}
+
+.builder-stage-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.builder-stage-actions select {
+  padding: 0.25rem 0.4rem;
+  font-size: 0.8rem;
+}

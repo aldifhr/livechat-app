@@ -43,6 +43,19 @@
     padding: 0;
     height: 100%;
     background: transparent;
+  }
+
+  /* A backdrop, for when this page is being *shown* rather than composited.
+     `html` and `body` are transparent on purpose — this page is drawn over video,
+     and in OBS the pixels behind it are the scene. A browser paints an opaque
+     base behind a transparent document regardless, so on its own this page in a
+     preview frame is a white rectangle with light text on it: precisely the
+     combination the colours are picked to be legible against.
+     `?backdrop=dark` puts something there. It is opt-in per request, so the OBS
+     browser source — which is asked for this page with no such parameter, and
+     must stay transparent — is unaffected. */
+  html.stage-backdrop { background: #141414; }
+  
     /* OBS composites the source; an opaque body would hide the video behind it. */
     overflow: hidden;
   }
@@ -307,6 +320,13 @@
    * Silently ignored when nothing is listening — OBS does not read it, and a page
    * must not crash posting into a void.
    */
+  // A backdrop is asked for, not taken. See the `stage-backdrop` rule: this page
+  // is composited over video in OBS and has to stay transparent there, and a
+  // preview frame cannot provide the video — so it asks for a stand-in instead.
+  if (param('backdrop', '') === 'dark') {
+    document.documentElement.classList.add('stage-backdrop')
+  }
+
   function reportHeight() {
     if (panel.hidden) return
     try {
