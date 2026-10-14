@@ -35,8 +35,20 @@ from protocols import registry
 #: re-importing main and risking a setup-order cycle.
 from logging_setup import logger
 
-# Every style default is owned by the frontend (apps/web/lib/widgets) so the two
-# can't drift apart — an earlier version mirrored the full schema here and
+from models import (
+    OVERLAY_STORE_KEYS,
+    ConnectByUsernameRequest,
+    ConnectRequest,
+    ConfigUpdateRequest,
+    CreateRoomRequest,
+    HookRequest,
+    TriggerRequest,
+    UpdateRoomRequest,
+    clean_overlay,
+    summary,
+)
+# Backward-compat aliases for tests that reference model names through `main`.
+_CONNECT_EXEMPT_OVERLAY_KEYS = OVERLAY_STORE_KEYS  # noqa: PLW0612
 # silently overrode the frontend defaults with stale values. Nothing is left for
 # this backend to default: a record's config is whatever the editor wrote, and an
 # room nobody has edited yet has no config at all. An empty dict is therefore
@@ -234,146 +246,16 @@ app.add_middleware(
 )
 
 
-# --------------------------------------------------------------------------
-# request bodies
-# --------------------------------------------------------------------------
-
-
-class ConnectRequest(BaseModel):
-    # Optional because /api/disconnect is posted with only an room id, and
-    # this used to be required — which made disconnect answer 422 and left the
-    # editor's Stop button silently doing nothing. /api/connect validates it.
-    username: str = ""
-    room_id: str | None = None
-
-
-class CreateRoomRequest(BaseModel):
-    name: str
-#: Starting room, resolved by the caller.
-    #:
-    #: The frontend owns the config schema entirely — this module used to mirror
-    #: a single key of it, because a second copy of the schema here is how the two
-    #: drift. Accepting the whole config keeps that ownership one-directional:
-    #: the backend stores what it is given and never interprets it.
-    config: dict[str, Any] | None = None
-
-
-class UpdateRoomRequest(BaseModel):
-    name: str | None = None
-    username: str | None = None
-
-
-class ConnectByUsernameRequest(BaseModel):
-    """A handle and the overlay styling to remember for its room.
-
-    The styling is optional and saved into the room's config when present, so a
-    bare `?room=<id>` overlay link can render as the configured overlay with
-    nothing in the URL — the room carries the look, the link only names it.
-    """
-
-    # Bounded because this route is exempt from the token gate: without a cap the
-    # body is read and parsed in full before the handle regex rejects it, so the
-    # only limit on what an unauthenticated caller sends is the server's.
-    username: str = Field(default="", max_length=64)
-    # Overlay styling to store on the room. Bounded in depth and key count by the
-    # extractor below; a stray blob is ignored rather than stored.
-    overlay: dict[str, Any] | None = None
-
-
-#: The overlay keys the app may store on a room, and nothing else. A connect body
-#: is unauthenticated, so the styling it writes is whitelisted rather than taken
-#: wholesale — a caller cannot use a connect to smuggle arbitrary config in.
-_OVERLAY_STORE_KEYS = (
-    "overlaySize",
-    "overlayNameColour",
-    "overlayTextColour",
-    "overlayBg",
-    "overlayMax",
-    "overlayDelay",
-    "overlayFont",
-)
-
-
+# Model classes and helpers now live in `models.py` (imported at top of file).
+# Route handlers only remain here.
 def _clean_overlay(raw: dict[str, Any] | None) -> dict[str, Any]:
-    """Only the known overlay keys, each coerced to the type the page expects."""
-    if not isinstance(raw, dict):
-        return {}
-    out: dict[str, Any] = {}
-    for key in _OVERLAY_STORE_KEYS:
-        if key not in raw or raw[key] is None:
-            continue
-        value = raw[key]
-        if key in ("overlaySize", "overlayMax", "overlayDelay"):
-            if isinstance(value, bool):
-                continue
-            if isinstance(value, (int, float)):
-                out[key] = value
-        elif key == "overlayBg":
-            if isinstance(value, bool):
-                continue
-            if isinstance(value, (int, float)):
-                out[key] = value
-        else:  # the colour and font strings
-            if isinstance(value, str) and len(value) <= 200:
-                out[key] = value
-    return out
-
-
-class ConfigUpdateRequest(BaseModel):
-    config: dict[str, Any]
-    room_id: str | None = None
-
-
-class TriggerRequest(BaseModel):
-    """Fire an event by hand — the "alert now" path with no live room involved.
-
-    Deliberately permissive on `kind`: the set of things a streamer can trigger
-    should grow without a backend release, and an unrecognised kind is surfaced
-    as an alert by `events.to_wire` rather than rejected.
-    """
-
-    kind: str = ALERT
-    user: str = ""
-    #: Stable per-user key, for widgets that keep state per viewer. Defaults to
-    #: `user` so a caller that only knows a nickname still gets a key.
-    user_id: str = ""
-    text: str = ""
-    title: str = ""
-    icon: str = "★"
-    #: Gift value and repeat count. Without these a triggered gift is worth
-    #: nothing, which makes the reward thresholds a widget might key on
-    #: impossible to exercise from the editor.
-    diamonds: int = 0
-    count: int = 1
-
-
-class HookRequest(BaseModel):
-    """External webhook body."""
-
-    user: str = ""
-    user_id: str = ""
-    text: str = ""
-    title: str = ""
-    icon: str = "★"
-    kind: str = ALERT
-    amount: float | None = None
-
-
-# --------------------------------------------------------------------------
-# rooms
-# --------------------------------------------------------------------------
+    """Deprecated alias for `models.clean_overlay`."""
+    return clean_overlay(raw)
 
 
 def _summary(room_id: str, record: dict[str, Any]) -> dict[str, Any]:
-    config = record.get("config", {})
-    return {
-        "id": room_id,
-        "name": record.get("name", "Untitled"),
-        "username": record.get("username", ""),
-        "config": config,
-        "createdAt": record.get("createdAt", 0),
-    }
-
+    """Deprecated alias for `models.summary`."""
+    return summary(room_id, record)
 
 @router.get("/api/rooms")
 async def list_rooms():
