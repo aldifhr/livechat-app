@@ -26,8 +26,25 @@ export const COOKIE_NAME = 'streamkit_session'
 
 /** How long a sign-in lasts. Long enough that a streamer is not typing a
  *  password mid-stream, short enough that a forgotten laptop is not a permanent
- *  door. */
-export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000
+ *  door.
+ *
+ *  Seven days is the default because the cost of being wrong is lopsided: signing
+ *  in again is one password, while a session that outlives its welcome is a stolen
+ *  console for a week. A deployment that wants the older behaviour — and it is a
+ *  defensible one for a single operator who signs in from one machine — sets
+ *  STREAMKIT_SESSION_DAYS rather than editing this. */
+export const SESSION_TTL_MS = sessionTtlMs()
+
+/** Reads the configured lifetime, falling back to a week. Anything unreadable or
+ *  nonsensical — zero, negative, NaN, `forever` — is a week, because an
+ *  unparseable value must not become an unlimited session. */
+function sessionTtlMs(): number {
+  const raw = process.env.STREAMKIT_SESSION_DAYS?.trim()
+  if (!raw) return 7 * 24 * 60 * 60 * 1000
+  const days = Number(raw)
+  if (!Number.isFinite(days) || days <= 0) return 7 * 24 * 60 * 60 * 1000
+  return days * 24 * 60 * 60 * 1000
+}
 
 /** Bumped if the token's shape ever changes, so tokens minted under the old
  *  shape fail closed rather than being read under new rules. */

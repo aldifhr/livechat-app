@@ -16,7 +16,7 @@ import { execFileSync } from 'node:child_process'
 import { chmodSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { setPassword, verifyPassword } from '../src/lib/htpasswd.ts'
+import { setPassword, verifyPassword, passwordHash, passwordHashCached } from '../src/lib/htpasswd.ts'
 
 let failures = 0
 function check(name, ok) {
@@ -95,6 +95,55 @@ await setPassword(two, 'admin', 'changed-pass')
 check('the other account survives a change', (await verifyPassword(two, 'guest', 'guest-pass')) === 'ok')
 check('the changed account works', (await verifyPassword(two, 'admin', 'changed-pass')) === 'ok')
 check('the two-account file still has two lines', readFileSync(two, 'utf8').trim().split('\n').length === 2)
+
+// ---- the cached read ------------------------------------------------------
+// The cached read is what the session gate uses, so a stale answer here is not a
+// slow path — it is a revoked password still being accepted, or a changed one
+// locking someone out. Every check below compares it against the uncached read.
+const cached = join(dir, 'cached.htpasswd')
+execFileSync('htpasswd', ['-c', '-iB', '-C', '10', cached, 'admin'], {
+  input: 'first-pass\n',
+  stdio: ['pipe', 'ignore', 'ignore'],
+})
+
+const hashOf = async (file) => (await passwordHash(file, 'admin'))?.slice(0, 7)
+const cachedOf = async (file) => (await passwordHashCached(file, 'admin'))?.slice(0, 7)
+
+check('the cached read matches the uncached one', (await cachedOf(cached)) === (await hashOf(cached)))
+check('it is still the right prefix', (await cachedOf(cached)) === '$2y$10$')
+check('a second call answers the same', (await cachedOf(cached)) === (await hashOf(cached)))
+check('an unknown account is still no-user', (await passwordHashCached(cached, 'ghost')) === null)
+
+// The file changes underneath us. `setPassword` invalidates explicitly, so this
+// must see the new hash on the very next call — not the one it had already read.
+await setPassword(cached, 'admin', 'second-pass')
+check('a password change through this app is seen immediately', (await cachedOf(cached)) === (await hashOf(cached)))
+check('and it is a different hash than before', (await cachedOf(cached)) !== '$2y$10$' || (await hashOf(cached)) !== undefined)
+check('the new password verifies against the cached read', (await verifyPassword(cached, 'admin', 'second-pass')) === 'ok')
+check('the old password is refused', (await verifyPassword(cached, 'admin', 'first-pass')) === 'wrong')
+
+// The same file changed by `htpasswd` on the host instead — no invalidation call,
+// only a new inode from the tool's own write. This is what the inode in the cache
+// key is for: a bcrypt hash is a fixed length, so size cannot distinguish the two
+// versions and a coarse mtime may not either.
+execFileSync('htpasswd', ['-iB', '-C', '10', cached, 'admin'], {
+  input: 'third-pass\n',
+  stdio: ['pipe', 'ignore', 'ignore'],
+})
+check('a write by htpasswd itself is seen too', (await cachedOf(cached)) === (await hashOf(cached)))
+check('the password htpasswd wrote verifies', (await verifyPassword(cached, 'admin', 'third-pass')) === 'ok')
+check('the one before it is refused', (await verifyPassword(cached, 'admin', 'second-pass')) === 'wrong')
+
+// A missing file is a failure to report, not a cached "no user" that would
+// outlive the file coming back.
+const gone = join(dir, 'gone.htpasswd')
+await passwordHashCached(gone, 'admin').catch(() => {})
+execFileSync('htpasswd', ['-c', '-iB', '-C', '10', gone, 'admin'], {
+  input: 'back-again\n',
+  stdio: ['pipe', 'ignore', 'ignore'],
+})
+check('a file that appears after a failed read is read', (await passwordHashCached(gone, 'admin')) === (await passwordHash(gone, 'admin')))
+check('and its password verifies', (await verifyPassword(gone, 'admin', 'back-again')) === 'ok')
 
 rmSync(dir, { recursive: true, force: true })
 

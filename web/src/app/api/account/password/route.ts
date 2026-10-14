@@ -41,6 +41,11 @@ export async function POST(request: NextRequest): Promise<Response> {
   // Same-origin only. A change triggered from another site would be carrying this
   // browser's cached Basic credentials; the current-password check below is the
   // real gate, and this refuses the attempt before it even reaches that.
+  //
+  // A missing `Origin` means the request did not come from a page making a
+  // cross-origin request — browsers send it on every POST — and even if it did,
+  // `SameSite=Lax` means the session cookie would not have travelled with it, so
+  // this route would already have refused the caller before reaching the password.
   const origin = request.headers.get('origin')
   if (origin) {
     let sameHost = false

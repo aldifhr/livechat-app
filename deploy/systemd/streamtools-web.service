@@ -1,0 +1,56 @@
+# StreamKit dashboard — the web app on streamtools.aldifhr.my.id.
+#
+# Runs the Next standalone server, which serves the landing page, the console and
+# the /api/backend proxy. The overlay pages themselves are static and are served
+# by nginx out of /var/www/streamtools/overlay, so OBS keeps working while this
+# service is restarting.
+#
+# The environment lives in a file rather than in this unit so that rotating the
+# backend token is an edit and a restart, not a rebuild: Next reads it when it
+# serves a request, and a token baked in at build time would be both stale and,
+# in a NEXT_PUBLIC_ variable, readable by anyone who opened the dashboard.
+
+[Unit]
+Description=StreamKit dashboard (Next.js)
+Documentation=https://streamtools.aldifhr.my.id
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Not root. This app proxies every mutating backend call with a token that can
+# delete rooms and disconnect streams, so the blast radius of anything that gets
+# code execution in it — a bad dependency, a request that reaches the renderer —
+# should be one unprivileged account rather than the whole box. It needs exactly
+# two writable places: the password file it checks, and Next's own cache.
+User=streamkit
+Group=streamkit
+WorkingDirectory=/root/livechat-app/web/.next/standalone
+EnvironmentFile=/etc/streamtools-web.env
+ExecStart=/usr/bin/node web/server.js
+Restart=always
+RestartSec=3
+
+# The build directory is this service's whole world; nothing else should write
+# to it while it is running.
+ProtectSystem=full
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Nothing here should be able to reach the network as a client of its own — every
+# outbound call goes to one backend, on its own address, and this app has no
+# business dialling anything else.
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=streamtools-web
+
+[Install]
+WantedBy=multi-user.target

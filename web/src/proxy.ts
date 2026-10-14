@@ -26,7 +26,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { COOKIE_NAME, sessionKey, verifySession } from '@/lib/session'
 import { dashboardUser, passwordFile, sessionSecret } from '@/lib/config'
-import { passwordHash } from '@/lib/htpasswd'
+import { passwordHashCached } from '@/lib/htpasswd'
 
 async function hasSession(request: NextRequest): Promise<boolean> {
   const secret = sessionSecret()
@@ -35,7 +35,7 @@ async function hasSession(request: NextRequest): Promise<boolean> {
   const token = request.cookies.get(COOKIE_NAME)?.value
   if (!token) return false
 
-  const hash = await passwordHash(passwordFile, dashboardUser).catch(() => null)
+  const hash = await passwordHashCached(passwordFile, dashboardUser).catch(() => null)
   if (!hash) return false
 
   return verifySession(sessionKey(secret, hash), token) !== null

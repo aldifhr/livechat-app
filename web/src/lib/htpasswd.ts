@@ -68,13 +68,62 @@ export async function passwordHash(file: string, user: string): Promise<string |
   return hashFor(await readFile(file, 'utf8'), user)
 }
 
+/**
+ * The last file read, keyed by path.
+ *
+ * `passwordHash` sits on the path of every gated request, twice: once by the
+ * `auth_request` nginx makes and once by `proxy.ts` when the request reaches the
+ * app. That is two reads and two `stat`s per request for a file whose contents
+ * change perhaps twice a year, so the text is held here and re-read only when the
+ * file on disk is observably a different file.
+ *
+ * The key is the stat that came back with the read, so an entry is only ever
+ * served for the exact file it was read from. The inode is in the key as well as
+ * the timestamp and size, and not as decoration: `setPassword` replaces the file
+ * by rename, and a bcrypt hash is always the same length, so a write landing
+ * within the same filesystem tick as the read it followed would move neither size
+ * nor — at one-second resolution — mtime. The rename always lands on a new
+ * inode, so that pair cannot be missed.
+ */
+interface CacheEntry {
+  ino: number
+  mtimeMs: number
+  size: number
+  text: string
+}
+
+const cache = new Map<string, CacheEntry>()
+
+/**
+ * The bcrypt hash stored for `user`, re-reading only when the file has changed.
+ *
+ * Same answer as `passwordHash` on every call. The difference is that this one is
+ * safe to put on the request path, which is where it is needed.
+ */
+export async function passwordHashCached(file: string, user: string): Promise<string | null> {
+  const info = await stat(file)
+  const hit = cache.get(file)
+  if (hit && hit.ino === info.ino && hit.mtimeMs === info.mtimeMs && hit.size === info.size) {
+    return hashFor(hit.text, user)
+  }
+
+  const text = await readFile(file, 'utf8')
+  cache.set(file, { ino: info.ino, mtimeMs: info.mtimeMs, size: info.size, text })
+  return hashFor(text, user)
+}
+
+/** Drop the held copy of `file`, so the next question re-reads it. */
+export function forgetPasswordHash(file: string): void {
+  cache.delete(file)
+}
+
 /** Whether `password` is the one stored for `user` in the file at `file`. */
 export async function verifyPassword(
   file: string,
   user: string,
   password: string,
 ): Promise<VerifyResult> {
-  const stored = await passwordHash(file, user)
+  const stored = await passwordHashCached(file, user)
   if (stored === null) return 'no-user'
   if (!BCRYPT.test(stored)) {
     throw new Error(`the stored hash for "${user}" is not a bcrypt hash`)
@@ -129,5 +178,11 @@ export async function setPassword(file: string, user: string, password: string):
   } catch (cause) {
     await unlink(scratch).catch(() => {})
     throw cause
+  } finally {
+    // The file is a different file now. The inode in the cache key would catch it
+    // on the next read either way; dropping it here means the change is visible to
+    // whatever is already holding a derived session key as soon as it asks again,
+    // rather than at the mercy of how the two stats happen to compare.
+    forgetPasswordHash(file)
   }
 }

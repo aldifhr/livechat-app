@@ -18,7 +18,7 @@
 import 'server-only'
 
 import { NextRequest, NextResponse } from 'next/server'
-import { passwordHash, verifyPassword } from '@/lib/htpasswd'
+import { passwordHashCached, verifyPassword } from '@/lib/htpasswd'
 import { dashboardUser, passwordFile, sessionSecret } from '@/lib/config'
 import { sessionCookie, sessionKey, signSession } from '@/lib/session'
 
@@ -32,6 +32,13 @@ function refuse(detail: string, status: number): NextResponse {
 export async function POST(request: NextRequest): Promise<NextResponse> {
   // Same-origin only. A sign-in posted from another site would be handing this
   // server a password the visitor did not mean to give it.
+  //
+  // A request with no `Origin` at all is not treated as cross-site: browsers send
+  // it on every POST, so its absence means this did not come from a page making a
+  // cross-origin request. Two independent things already cover the case this is
+  // here for — a cross-site form post carries no session cookie (`SameSite=Lax`
+  // in `sessionCookie`) and a caller with no cookie is not signing anybody in, it
+  // is guessing the password.
   const origin = request.headers.get('origin')
   if (origin) {
     let sameHost = false
@@ -79,7 +86,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return refuse('That password is not correct.', 401)
   }
 
-  const hash = await passwordHash(passwordFile, user).catch(() => null)
+  const hash = await passwordHashCached(passwordFile, user).catch(() => null)
   if (!hash) return refuse('The password file could not be read.', 500)
 
   // The session is signed with a key derived from the password hash in force, so

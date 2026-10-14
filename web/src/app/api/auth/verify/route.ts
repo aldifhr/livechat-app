@@ -14,7 +14,7 @@
 import 'server-only'
 
 import { cookies } from 'next/headers'
-import { passwordHash } from '@/lib/htpasswd'
+import { passwordHashCached } from '@/lib/htpasswd'
 import { dashboardUser, passwordFile, sessionSecret } from '@/lib/config'
 import { COOKIE_NAME, sessionKey, verifySession } from '@/lib/session'
 
@@ -36,7 +36,7 @@ async function verify(): Promise<Response> {
   // The key is derived from the hash in force, so this also refuses a cookie
   // that was valid until the password changed — which is the point of deriving
   // it from the hash rather than storing a session.
-  const hash = await passwordHash(passwordFile, dashboardUser).catch(() => null)
+  const hash = await passwordHashCached(passwordFile, dashboardUser).catch(() => null)
   if (!hash) return refused()
 
   if (!verifySession(sessionKey(secret, hash), token)) return refused()

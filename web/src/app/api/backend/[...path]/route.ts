@@ -31,8 +31,14 @@ const ALLOWED = [
   /^\/api\/disconnect$/,
 ]
 
-/** Methods that change something. Reads are forwarded without the token. */
-const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE'])
+/** Methods that change something. Reads are forwarded without the token.
+ *
+ *  Every name here is also exported as a handler below. A method listed but not
+ *  exported is one the app refuses with a 405 before this list is ever consulted,
+ *  so a reader checking `MUTATING` against the exports should find them equal —
+ *  and a method that IS exported but missing here would be forwarded as a read,
+ *  with no token attached, which is the opposite of what it does. */
+const MUTATING = new Set(['POST', 'PATCH', 'DELETE'])
 
 /**
  * Reads that carry the token too, because the backend gates them like a write.

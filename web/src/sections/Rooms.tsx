@@ -50,16 +50,24 @@ export default function Rooms() {
   // Status is asked per room rather than derived from the list, because the list
   // endpoint does not carry it — a room that was created by a test is not
   // necessarily connected, and showing both as "live" would be a lie.
+  //
+  // Keyed on the room IDS rather than on `rooms`. That object is a fresh array
+  // every poll, so depending on it tore this effect down and rebuilt it on every
+  // tick — which restarted the interval each time and fired an immediate status
+  // sweep on top of the one already in flight. The ids are a string, so the effect
+  // only restarts when the set of rooms genuinely changes.
+  const roomIds = rooms.map((room) => room.id).join(',')
+
   useEffect(() => {
-    if (rooms.length === 0) return
+    if (!roomIds) return
     let cancelled = false
 
     const check = async () => {
       const results = await Promise.all(
-        rooms.map(async (room) => {
+        roomIds.split(',').map(async (id) => {
           try {
-            const status = await api.status(room.id)
-            return [room.id, status.connected] as const
+            const status = await api.status(id)
+            return [id, status.connected] as const
           } catch {
             // A status that cannot be read is not evidence the room is down, so
             // the room is left out and keeps whatever it last showed. Reporting
@@ -82,7 +90,7 @@ export default function Rooms() {
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [rooms])
+  }, [roomIds])
 
   /**
    * Connect a handle, which creates its room if needed.

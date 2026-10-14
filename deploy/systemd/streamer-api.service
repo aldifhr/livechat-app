@@ -4,7 +4,13 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
+# Not root, for the same reason the dashboard is not: this one dials TikTok and
+# answers over the network, and an unauthenticated route on it is reachable from
+# the open internet (see the /ws/ and room-connect notes in the nginx vhost). A
+# compromise here should cost one account, not the box. It writes exactly one
+# place: the room store under /var/lib/streamkit, which is chowned to it.
+User=streamkit
+Group=streamkit
 WorkingDirectory=/root/livechat-app/backend
 Environment=PYTHONPATH=/root/livechat-app/backend
 Environment=STREAMKIT_LOG_LEVEL=INFO
@@ -31,6 +37,13 @@ MemoryMax=512M
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=full
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
 
 [Install]
 WantedBy=multi-user.target

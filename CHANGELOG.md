@@ -4,6 +4,61 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
 
 ## [Unreleased]
 
+### Security
+- **Kedua service jalan sebagai `streamkit`, bukan root.** `streamtools-web` dan
+  `streamer-api` tadinya `User=root`. Yang web memproxy setiap call mutating dengan
+  token yang bisa delete room dan disconnect stream, jadi RCE di sana berarti root
+  di seluruh box. Sekarang keduanya `User=streamkit` dengan sandbox yang diperluas
+  (`PrivateDevices`, `ProtectKernelTunables/Modules/ControlGroups`,
+  `RestrictSUIDSGID`, `RestrictRealtime`, `LockPersonality`). Kode repo tetap
+  milik root dan hanya dibaca; yang di-*chown* ke `streamkit` hanya dua hal yang
+  memang harus ditulis — password file dan room store.
+  - `/etc/streamtools-web.env` dan `/etc/streamkit/env` berubah dari `0600 root:root`
+    jadi `0640 root:streamkit`: root tetap pemiliknya, tapi service bisa baca.
+  - `/var/lib/streamtools/htpasswd` `0640 root:www-data` → `0600 streamkit:streamkit`.
+    Group `www-data` sudah tidak ada gunanya sejak nginx berhenti membaca file itu
+    dan beralih ke `/api/auth/verify`.
+  - `streamtools-web.service` dihapus dari `After=livechat-backend.service` — unit
+    itu tidak pernah ada, jadi urutan startup itu tidak pernah berarti apa-apa.
+
+### Changed
+- **Session 30 hari → 7 hari**, dan jadi configurable lewat
+  `STREAMKIT_SESSION_DAYS`. Nilai yang bukan positif (atau `0`, `NaN`, `forever`)
+  jatuh ke 7 hari, bukan jadi session selamanya. Hanya berlaku untuk cookie baru —
+  token yang sudah terbit masih bawa `exp`-nya sendiri, jadi menurunkan ini tidak
+  signing-out siapa pun secara diam-diam.
+- **Baca `htpasswd` di-cache per file.** `passwordHash()` ada di jalur setiap
+  request yang digate, dan dipanggil **dua kali**: sekali oleh `auth_request` nginx
+  (`/api/auth/verify`) dan sekali lagi oleh `proxy.ts` begitu request-nya sampai di
+  app. Itu 2× `readFile` + 2× `stat` per request untuk file yang isinya berubah
+  mungkin dua kali setahun.
+  - `passwordHashCached()` menahan isi file dan membaca ulang hanya saat
+    `(inode, mtime, size)` berubah. Inode ikut karena `setPassword` mengganti file
+    dengan `rename` dan hash bcrypt selalu sama panjang — jadi size tidak bisa
+    membedakan dua versi, dan pada resolusi mtime 1 detik `mtime` juga tidak.
+  - `setPassword()` mengosongkan cache secara eksplisit di `finally`, jadi ganti
+    password langsung terlihat tanpa bergantung pada perbandingan stat.
+  - `verifyPassword()` ikut memakai cache — jalur login juga memungut dua kali.
+
+### Fixed
+- **Polling status room di `Rooms.tsx` bilek tiap 15 detik.** Effect-nya
+  bergantung pada objek `rooms`, yang adalah array baru setiap polling, jadi
+  effect dibongkar-tata ulang tiap tick: interval-nya direset dan langsung
+  menjalankan satu sweep status di atas yang sedang jalan. Sekarang bergantung
+  pada `roomIds` (string), jadi hanya restart saat isi room benar-benar berubah.
+- **`PUT` di set `MUTATING` tapi route-nya tidak export `PUT`.** Tidak bisa
+  dieksploitasi (Next menolak `PUT` 405 sebelum set itu dibaca), tapi set itu
+  adalah daftar "method yang mewajibkan token" dan salah satu isinya tidak pernah
+  membaca token sama sekali.
+
+### Docs
+- Klaim bahwa `if (origin)` membuat cek same-origin bisa dilewati dengan
+  Origin-absen **diverifikasi dan memang bukan celah**: `SameSite=Lax` membuat
+  cookie tidak dikirim pada POST lintas situs, dan `/api/account/password` tetap
+  menanyakan password lama yang penyerang tidak punya. Perilaku tidak diubah —
+  yang ditambahkan hanya penjelasan kenapa dua lapis itu sudah cukup, supaya
+  pembaca berikutnya tidak "sengaja" memperburuknya.
+
 ## [1.1.0] — 2026-10-14
 
 ### Security
