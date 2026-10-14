@@ -13,7 +13,7 @@
     "test:ui": "node test/test-ui.mjs",
     "test:stats": "node test/test-stats.mjs",
     "test:layout": "node test/test-layout.mjs",
-    "test:overlay": "node test/test-overlay.mjs && node test/test-overlay-page.mjs",
+    "test:overlay": "node test/test-overlay.mjs && node test/test-overlay-page.mjs && node test/test-overlay-sync.mjs",
     "test:backend": "node test/test-backend.mjs",
     "test:sound": "node test/test-sound.mjs",
     "test:templates": "node test/test-templates.mjs",

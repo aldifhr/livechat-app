@@ -61,6 +61,15 @@ function load(search = '?room=ana&max=8', source = CHAT_PAGE) {
         new Promise((resolve) => {
           resolveRoom = resolve
         })
+      // jsdom has no ResizeObserver, and the page constructs one at load to report
+      // its height to the dashboard preview. Without this the constructor throws
+      // before the page opens its socket, and every assertion below fails for a
+      // reason that has nothing to do with what it is testing.
+      window.ResizeObserver = class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      }
       window.WebSocket = class {
         constructor(url) {
           this.url = url
@@ -230,34 +239,29 @@ page.frame({ type: 'like', user: 'ana', count: 5 })
 page.frame({ type: 'viewers', count: 100 })
 await new Promise((resolve) => setTimeout(resolve, 50))
 check('a like is ignored', page.rows().length === afterGift, String(page.rows().length))
-check('a viewer count is ignored', !/100/.test(page.dom.window.document.body.textContent.replace(/20/g, '')), 'viewer count leaked')
+// Scoped to the chat list, not `body.textContent`: the page's own `<script>` is
+// text in the body, and a comment in it mentioning `height: 100%` would read as
+// the leaked count. The claim is about what the chat renders.
+check('a viewer count is ignored', !/100/.test(page.rows().map((r) => r.textContent).join(' ')), 'viewer count leaked')
 
-console.log('the leaderboard renders from the frame it is sent')
-// The board is its own panel, apart from the chat, and hidden until a ranking
-// arrives — an overlay with nobody talking yet reserves no space for an empty box.
+console.log('the chat overlay leaves the leaderboard to the board page')
+// The board is what /overlay/top-chatter is for. The chat overlay used to render
+// it as a second, competing panel; that was removed, and this pins the removal —
+// a topChatters frame is now a no-op here rather than a leaderboard appearing in
+// the chat.
 const doc = page.dom.window.document
-const board = () => doc.querySelector('#board')
-check('the board starts hidden', board()?.hidden === true, String(board()?.hidden))
+check('the chat overlay has no board element', doc.querySelector('#board') === null)
+const chatBeforeBoard = page.rows().length
 page.frame({
   type: 'topChatters',
   chatters: [
     { id: 'b', nickname: 'budi', messages: 5 },
     { id: 'a', nickname: 'ana', messages: 3 },
-    { id: 'c', nickname: 'citra', messages: 1 },
   ],
 })
 await new Promise((resolve) => setTimeout(resolve, 50))
-check('a ranking shows the board', board()?.hidden === false, String(board()?.hidden))
-const boardRows = () => [...doc.querySelectorAll('#board li')]
-check('one row per chatter', boardRows().length === 3, String(boardRows().length))
-check('ranked in the order sent', boardRows().map((r) => r.querySelector('.board-name')?.textContent).join(',') === 'budi,ana,citra', boardRows().map((r) => r.textContent).join(' | '))
-check('the count is shown beside the name', /5/.test(boardRows()[0]?.textContent ?? ''), boardRows()[0]?.textContent)
-check('names go in as text, not markup', boardRows()[0]?.querySelector('.board-name')?.textContent === 'budi', boardRows()[0]?.innerHTML)
-check('the board is not part of the chat list', doc.querySelectorAll('#chat li').length === page.rows().length, 'board leaked into chat')
-// An empty ranking hides the board again rather than leaving a stale one up.
-page.frame({ type: 'topChatters', chatters: [] })
-await new Promise((resolve) => setTimeout(resolve, 50))
-check('an empty ranking hides the board', board()?.hidden === true, String(board()?.hidden))
+check('a ranking does not enter the chat', page.rows().length === chatBeforeBoard, String(page.rows().length))
+check('and no board appears', doc.querySelector('#board') === null)
 
 console.log('a frame it did not expect does not take the page down')
 // Every one of these is something the backend can send, or something a truncated
@@ -353,9 +357,11 @@ boardPage.openRoom('room-1')
 await settle()
 await settle()
 const boardDoc = boardPage.dom.window.document
-const bboard = () => boardDoc.querySelector('#board')
+// The panel hides as one unit — caption and list together — so the hidden state
+// lives on `#panel`, not on `#board` inside it.
+const bpanel = () => boardDoc.querySelector('#panel')
 check('the board page has no chat list', boardDoc.querySelector('#chat') === null, 'chat list present')
-check('the board starts hidden', bboard()?.hidden === true, String(bboard()?.hidden))
+check('the board starts hidden', bpanel()?.hidden === true, String(bpanel()?.hidden))
 boardPage.frame({
   type: 'topChatters',
   chatters: [
@@ -364,22 +370,21 @@ boardPage.frame({
   ],
 })
 await settle()
-check('a ranking shows the board', bboard()?.hidden === false, String(bboard()?.hidden))
+check('a ranking shows the board', bpanel()?.hidden === false, String(bpanel()?.hidden))
 const bRows = () => [...boardDoc.querySelectorAll('#board li')]
 check('one row per chatter', bRows().length === 2, String(bRows().length))
 check('ranked in the order sent', bRows().map((r) => r.querySelector('.board-name')?.textContent).join(',') === 'budi,ana', bRows().map((r) => r.textContent).join(' | '))
 check('the count is shown beside the name', /5/.test(bRows()[0]?.textContent ?? ''), bRows()[0]?.textContent)
-check('a caption names what it is', /top chatters/i.test(boardDoc.querySelector('#caption')?.textContent ?? ''), boardDoc.querySelector('#caption')?.textContent)
+check('a caption names what it is', /top chatters|top yapping/i.test(boardDoc.querySelector('#caption')?.textContent ?? ''), boardDoc.querySelector('#caption')?.textContent)
 // Everything that is not a ranking is ignored: this source shows the board only.
 boardPage.frame({ type: 'comment', user: 'ana', text: 'hi' })
 boardPage.frame({ type: 'gift', user: 'ana', giftName: 'Rose', count: 1 })
 await settle()
 check('chat is not shown on the board page', bRows().length === 2, String(bRows().length))
-// An empty ranking hides the board and its caption rather than leaving a stale one.
+// An empty ranking hides the whole panel rather than leaving a stale one up.
 boardPage.frame({ type: 'topChatters', chatters: [] })
 await settle()
-check('an empty ranking hides the board', bboard()?.hidden === true, String(bboard()?.hidden))
-check('and hides the caption with it', boardDoc.querySelector('#caption')?.hidden === true, String(boardDoc.querySelector('#caption')?.hidden))
+check('an empty ranking hides the board', bpanel()?.hidden === true, String(bpanel()?.hidden))
 
 console.log('the two pages resolve the room the same way')
 // Both name a handle and open a socket for the room id that comes back. Checked
