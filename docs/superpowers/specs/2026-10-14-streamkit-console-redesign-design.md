@@ -1,7 +1,31 @@
 # StreamKit console — redesign alur, dan style yang tidak lagi hilang
 
-Status: arah sudah disetujui (opsi C) — spec ini menunggu review
+Status: selesai diimplementasikan
 Tanggal: 2026-10-14
+
+## Apa yang berubah dari spec ini saat dikerjakan
+
+Semuanya sudah live. Bagian di bawah tetap apa yang **alasan**nya, bukan apa yang
+pada akhirnya terjadi.
+
+- **"Tidak menyentuh backend" tidak berlaku.** Rutenya memang benar, tapi
+  *broadcast*-nya salah: `main.py` mengirim config mentah dengan nama store
+  (`overlaySize`) ke halaman yang membaca nama lain (`size`). Translasi itu hanya
+  ada di `baked_config`, jadi jalur HTML benar dan jalur WebSocket salah.
+  `page_config()` sekarang dipakai di handshake, di broadcast, dan di HTML.
+  Selain itu ada **empat** kosakata key, bukan tiga — `resolveStyle()` cocok dengan
+  tidak satu pun. Sudah tercatat di bagian config di bawah.
+- **Preview inline ternyata murah.** Awalnya ditulis sebagai "kalau ini murah".
+  Setelah link jadi pendek, iframe yang menunjuk room itu menerima config live
+  dari socket yang sudah terbuka, jadi tidak ada yang perlu di-*re-point* setiap
+  kali slider bergerak.
+- **Link jadi `?room=<id>`, dengan konsekuensi precedence.** Sudah ditulis di
+  bawah, tapi perlu ditegaskan karena mengubah link yang sudah tertempel di OBS:
+  config tersimpan menang atas query string. Frame kosong adalah no-op, bukan
+  "balik ke default", supaya link yang membawa parameternya sendiri tidak
+  dilucuti.
+- **Link sticky di atas builder tidak dikerjakan.** Dengan preview inline mengisi
+  kolom kanan, tidak ada lagi kolom kosong yang perlu diamankan ke atas.
 
 ## Masalah
 
@@ -181,6 +205,8 @@ editor; begitu disimpan, styling-nya kembali dari server.
 
 ## Yang tidak berubah
 
+Semua ini terbukti masih berlaku setelah dikerjakan:
+
 - Batas style di `shared/overlay.ts` — sumber tunggal, dipakai builder dan
   halaman overlay
 - Navigasi berbasis URL
@@ -216,7 +242,8 @@ editor; begitu disimpan, styling-nya kembali dari server.
 1. **Persistensi** — `client.ts` + editor. Style tidak hilang lagi.
 2. **Live push** — halaman overlay menangani frame `config`.
 3. **Hub Streams** — kartu, link, empty state.
-4. **Editor** — link sticky, preview inline, tab dipertahankan.
+4. **Editor** — preview inline, tab dipertahankan. *Link sticky tidak jadi: dengan
+   preview inline mengisi kolom kanan, tidak ada lagi kolom yang kosong.*
 
 Masing-masing berdiri sendiri dan bisa diuji sendiri. Fase 1 saja sudah
 menghilangkan kehilangan hasil kerja, jadi kalau mandek di sana, aplikasi tetap

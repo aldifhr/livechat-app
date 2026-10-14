@@ -4,6 +4,80 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
 
 ## [Unreleased]
 
+### Added
+- **Styling sebuah stream sekarang tersimpan, dan sampai ke overlay yang sedang
+  berjalan.** `client.ts` tidak punya cara untuk `POST /api/rooms/{id}/config`,
+  jadi tidak ada satu pun kode frontend yang pernah menyimpannya: refresh membuang
+  semuanya, dan menggeser slider tidak melakukan apa-apa pada overlay yang sudah
+  jalan di OBS.
+  - `usePersistedStyle()` memuat style dari `room.config`, menyimpan ter-debounce
+    400ms, dan menampilkan "Menyimpan… / Tersimpan / Gagal" supaya hasilnya bukan
+    tebakan. Penyimpanan dikendalikan `patch`, bukan `setState`, supaya memuat tidak
+    ikut memicu simpan — yang akan menimpa style tersimpan dengan default.
+  - `saveStyle()` melakukan **read-modify-write**: `store.set_config` mengganti
+    seluruh config, bukan merge, jadi mengirim hanya field yang berubah akan menghapus
+    styling overlay yang lain. Kedua tab memang berbagi `size`/`max`/`bg`/warna,
+    dan berbeda pada `delay` dan `title`.
+  - `styleFromStored()` di `shared/overlay.ts`. Ada **empat** kosakata key yang
+    berbeda dan tidak satu pun cocok: store `overlaySize`/`overlayBg`, link
+    `size`/`bg`, `resolveStyle()` `size`/`nameColour`, dan halaman `size`/`background`.
+    Memberikan `room.config` langsung ke `resolveStyle()` mengembalikan seluruh
+    field ke default tanpaclsan apa pun.
+
+### Changed
+- **Session 30 hari → 7 hari**, dan jadi configurable lewat
+  `STREAMKIT_SESSION_DAYS`. Nilai yang bukan positif (atau `0`, `NaN`, `forever`)
+  jatuh ke 7 hari, bukan jadi session selamanya. Hanya berlaku untuk cookie baru —
+  token yang sudah terbit masih bawa `exp`-nya sendiri.
+- **Baca `htpasswd` di-cache per file.** `passwordHash()` ada di jalur setiap
+  request yang digate, dan dipanggil **dua kali**: sekali oleh `auth_request` nginx
+  (`/api/auth/verify`) dan sekali lagi oleh `proxy.ts` begitu request-nya sampai di
+  app. Itu 2× `readFile` + 2× `stat` per request untuk file yang isinya berubah
+  mungkin dua kali setahun.
+  - `passwordHashCached()` menahan isi file dan membaca ulang hanya saat
+    `(inode, mtime, size)` berubah. Inode ikut karena `setPassword` mengganti file
+    dengan `rename` dan hash bcrypt selalu sama panjang — jadi size tidak bisa
+    membedakan dua versi, dan pada resolusi mtime 1 detik `mtime` juga tidak.
+  - `setPassword()` mengosongkan cache secara eksplisit di `finally`.
+  - `verifyPassword()` ikut memakai cache — jalur login juga memungut dua kali.
+
+
+- **Link overlay sekarang hanya menyebut room.** Dulu ±250 karakter, sebagian besar
+  stack font default dalam bentuk URL-encoded, dan dibangun ulang tiap style
+  berubah. Benar waktu styling belum punya tempat lain. Sekarang styling-nya ada di
+  config room dan overlay diberi tahu lewat socket yang sudah terbuka — link
+  ditempel ke OBS sekali, dan setiap restyle berikutnya tidak menyentuhnya.
+  - Konsekuensi precedence yang harus disadari: config tersimpan menang atas query
+    string. Link lama yang membawa style basi akan mengikuti config room begitu
+    room itu pernah disimpan lewat editor.
+  - Frame kosong (`{}`) adalah no-op, bukan "balik ke default". Room yang belum
+    pernah di-style mengirim `{}`, dan bertindak atas itu akan melucuti styling dari
+    link mana pun yang membawa parameternya sendiri. Un-style lewat tombol Reset,
+    yang menyimpan default asli.
+- **Overlay restyle tanpa reconnect.** `onmessage` hanya mengenal `gift` dan
+  `comment`, dan return untuk yang lain — termasuk frame `{"type":"config"}` yang
+  sudah dikirim backend sejak socket dibuka. Sekarang di-merge ke config hidup lalu
+  custom property diterapkan ulang: tanpa reconnect, tanpa bangun ulang DOM, dan
+  tanpa mengganggu komentar yang sedang tampil. Frame adalah style **lengkap**,
+  bukan patch, jadi key yang tidak dikirim kembali ke default halaman.
+- **`page_config()` di backend**, diteruskan dari `baked_config` dan dipakai juga
+  oleh handshake WebSocket dan `emit_config`. Translasi store-key → page-key
+  sebelumnya hanya ada di jalur HTML, jadi jalur WebSocket mengirim `overlayBg`
+  ke halaman yang mencari `background`: restyle mengubah link tanpa mengubah
+  layar. `overlayTitle` masuk peta karena judul board sekarang bisa diatur.
+- **`/admin` adalah Streams** — satu kartu per stream, masing-masing membawa kedua
+  link overlay beserta tombol Copy. Link yang ditempel ke OBS dulu dua klik masuk
+  ke builder yang hanya menampilkan satu room; menyalin link adalah tindakan akhir
+  produk ini, jadi ada di kartu. Nama menu Rooms → Streams mengikuti.
+- **Preview inline di builder.** Kolom kanan dulu hanya berisi link dan tombol yang
+  navigasi pergi. Sekarang berisi overlay sungguhan; slider yang digeser
+  mengubahnya tanpa ada yang perlu di-*re-point*. Logika scaling diekstrak ke
+  `OverlayStage` dan dipakai bersama halaman live preview, karena dua salinannya
+  berarti dua hal yang bisa salah.
+- `?title=` sebagai pengganti "overlay mana" diganti `?which=`. `?title=` membaca
+  judul board dari query string, dan link sudah tidak membawa satu — jadi ia akan
+  diam-diam berhenti memilih board.
+
 ### Security
 - **Kedua service jalan sebagai `streamkit`, bukan root.** `streamtools-web` dan
   `streamer-api` tadinya `User=root`. Yang web memproxy setiap call mutating dengan
@@ -21,31 +95,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
   - `streamtools-web.service` dihapus dari `After=livechat-backend.service` — unit
     itu tidak pernah ada, jadi urutan startup itu tidak pernah berarti apa-apa.
 
-### Changed
-- **Session 30 hari → 7 hari**, dan jadi configurable lewat
-  `STREAMKIT_SESSION_DAYS`. Nilai yang bukan positif (atau `0`, `NaN`, `forever`)
-  jatuh ke 7 hari, bukan jadi session selamanya. Hanya berlaku untuk cookie baru —
-  token yang sudah terbit masih bawa `exp`-nya sendiri, jadi menurunkan ini tidak
-  signing-out siapa pun secara diam-diam.
-- **Baca `htpasswd` di-cache per file.** `passwordHash()` ada di jalur setiap
-  request yang digate, dan dipanggil **dua kali**: sekali oleh `auth_request` nginx
-  (`/api/auth/verify`) dan sekali lagi oleh `proxy.ts` begitu request-nya sampai di
-  app. Itu 2× `readFile` + 2× `stat` per request untuk file yang isinya berubah
-  mungkin dua kali setahun.
-  - `passwordHashCached()` menahan isi file dan membaca ulang hanya saat
-    `(inode, mtime, size)` berubah. Inode ikut karena `setPassword` mengganti file
-    dengan `rename` dan hash bcrypt selalu sama panjang — jadi size tidak bisa
-    membedakan dua versi, dan pada resolusi mtime 1 detik `mtime` juga tidak.
-  - `setPassword()` mengosongkan cache secara eksplisit di `finally`, jadi ganti
-    password langsung terlihat tanpa bergantung pada perbandingan stat.
-  - `verifyPassword()` ikut memakai cache — jalur login juga memungut dua kali.
-
 ### Fixed
-- **Polling status room di `Rooms.tsx` bilek tiap 15 detik.** Effect-nya
-  bergantung pada objek `rooms`, yang adalah array baru setiap polling, jadi
-  effect dibongkar-tata ulang tiap tick: interval-nya direset dan langsung
-  menjalankan satu sweep status di atas yang sedang jalan. Sekarang bergantung
-  pada `roomIds` (string), jadi hanya restart saat isi room benar-benar berubah.
+- **Seluruh console merender tanpa styling sama sekali.** `next build` menulis
+  `.next/static` di sebelah server bundle dan tidak menyalinnya ke
+  `.next/standalone`; `deploy-web.sh`elding memcopinya manual. Asersinya hanya
+  mencocokkan `*.js`, jadi stylesheet — satu-satunya aset yang tidak ikut tercopy —
+  justru satu-satunya yang tidak pernah diuji. Semua halaman menjawab 200 dan
+  hydrate; yang rusak cuma tampilannya, dan itu terbaca sebagai "desainnya jelek".
+  `deploy-web.sh` sekarang meng-*assert* stylesheet juga.
+- **Tiga kelas dipakai komponen tapi tidak pernah ada di stylesheet.** `.btn` —
+  sehingga "Style the overlay" dan "Open live preview" jadi anchor telanjang tanpa
+  border atau padding, dan satu-satunya jalan dari stream ke styling-nya terlihat
+  seperti bagian dari kalimat di sebelahnya. `.seg button.on` — `color: #fff` di
+  atas `background: var(--accent)` yang juga putih, jadi tab terpilih tak terlihat
+  di atas background-nya sendiri. `.side-note` — `margin-top: auto` mendorongnya
+  400px di bawah item menu terakhir di jendela tinggi.
+- **Link overlay terpotong di tengah tanpa scrollbar.** `rows={2}` terlihat wajar
+  untuk link pendek dan tidak berguna untuk yang panjang, karena bagian yang
+  dipotong adalah justru bagian yang harus dibaca. Sekarang tautan ditampilkan
+  dari path-nya (origin ditulis sekali di atas halaman, karena sama di semua
+  link), dan teks yang ditampilkan `user-select: none` — tombol Copy selalu
+  menyalin URL utuh, dan tidak ada cara tak sengaja menyalin yang dipotong.
+- **Polling status room bilek tiap 15 detik.** Effect-nya bergantung pada objek
+  `rooms`, yang adalah array baru setiap polling, jadi effect dibongkar-tata ulang
+  tiap tick: interval-nya direset dan langsung menjalankan satu sweep status di
+  atas yang sedang jalan. Sekarang bergantung pada `roomIds` (string).
 - **`PUT` di set `MUTATING` tapi route-nya tidak export `PUT`.** Tidak bisa
   dieksploitasi (Next menolak `PUT` 405 sebelum set itu dibaca), tapi set itu
   adalah daftar "method yang mewajibkan token" dan salah satu isinya tidak pernah
@@ -56,8 +130,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
   Origin-absen **diverifikasi dan memang bukan celah**: `SameSite=Lax` membuat
   cookie tidak dikirim pada POST lintas situs, dan `/api/account/password` tetap
   menanyakan password lama yang penyerang tidak punya. Perilaku tidak diubah —
-  yang ditambahkan hanya penjelasan kenapa dua lapis itu sudah cukup, supaya
-  pembaca berikutnya tidak "sengaja" memperburuknya.
+  yang ditambahkan hanya penjelasan kenapa dua lapis itu sudah cukup.
 
 ## [1.1.0] — 2026-10-14
 
