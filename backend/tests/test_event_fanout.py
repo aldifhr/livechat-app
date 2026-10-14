@@ -1,23 +1,33 @@
 """A burst of events must not be able to starve the event loop.
 
-Every event used to become its own task. Two thousand comments therefore became
-two thousand tasks competing for the same loop, which is the shape that took the
-API down once already: the loop never yielded, so nothing could answer anything,
-and nothing inside the loop could report why.
+The original failure: every event awaited the socket send directly, so one
+stalled browser source back-pressured the whole stream, and a burst of two
+thousand comments became two thousand tasks competing for the same loop. That
+is the shape that took the API down once.
 
-The fix bounds how many fan-outs are in flight. It does not drop events, and
-that is the part worth testing: a room that is being gifted should get every
-gift, even while it is getting two hundred at once.
+The fix is NOT a concurrency gate on the fan-out — an earlier version added one
+(`dispatch()`/`_gate()`/`MAX_INFLIGHT`) and it was dead code that never ran in
+production. Delivery was reworked instead: `hub.broadcast` hands each message to
+a bounded per-client queue with `put_nowait` and a writer task drains it, so
+`emit` never awaits a socket and cannot block. This pins THAT property, which is
+the one that actually holds — plus the overflow policy, since a queue that fills
+is the only place a burst can now turn into a dropped client.
+
+Run with the backend's interpreter:
+
+    .venv/bin/python tests/test_event_fanout.py
 """
 
 import asyncio
 import os
 import sys
 import time
+from typing import Any
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import events  # noqa: E402
+import hub as hub_module  # noqa: E402
 
 CHECKS = 0
 FAILS = 0
@@ -26,109 +36,131 @@ FAILS = 0
 def check(name, cond, extra=None):
     global CHECKS, FAILS
     CHECKS += 1
-    if not cond:
+    if cond:
+        print(f"  ok   {name}")
+    else:
         FAILS += 1
         print("  FAIL", name, "" if extra is None else "—", extra)
 
 
-class FakeEvent:
-    kind = "comment"
-    user = "u"
-    value = "hello"
-    meta = None
+async def emit_never_blocks():
+    """`emit` must return without waiting on a slow client's socket.
+
+    The queue is filled to its limit first, so a `put_nowait`-based `_send` has
+    to either queue or strike — and the call must still return promptly rather
+    than park on a send that is not happening.
+    """
+    hub = hub_module.Hub()
+    client_id = "c1"
+    hub.active[client_id] = object()  # type: ignore[assignment]
+    hub.room_clients[client_id] = "ov"
+    hub._queues[client_id] = asyncio.Queue(maxsize=4)
+
+    # Nothing drains the queue, so the first few fit and the rest overflow.
+    burst = 200
+    t0 = time.perf_counter()
+    for _ in range(burst):
+        hub._send(client_id, {"type": "comment", "text": "hi"})
+    elapsed = time.perf_counter() - t0
+
+    check("a 200-message burst to a stuck client returns at once", elapsed < 0.5, f"{elapsed*1000:.1f}ms")
+
+    # A stuck client is dropped once it has been behind CLIENT_OVERFLOW_STRIKES
+    # times, not on the first overflow. The drop also clears its queue, so the
+    # "held its bound" claim is checked on a client that has NOT yet been dropped.
+    check("the stuck client was eventually dropped",
+          client_id not in hub.active, sorted(hub.active))
+    check("and that is counted as a disconnect", hub.disconnected_clients_count == 1,
+          hub.disconnected_clients_count)
+
+    # A fresh client keeps its bound and is NOT dropped: more messages than it
+    # can hold, but the overflows stay under CLIENT_OVERFLOW_STRIKES.
+    hub2 = hub_module.Hub()
+    hub2.active["c2"] = object()  # type: ignore[assignment]
+    hub2._queues["c2"] = asyncio.Queue(maxsize=4)
+    for _ in range(6):
+        hub2._send("c2", {"type": "comment", "text": "hi"})
+    check("a client under the strike limit keeps its bound",
+          hub2._queues["c2"].qsize() == 4, hub2._queues["c2"].qsize())
+    check("and is still connected", "c2" in hub2.active, sorted(hub2.active))
 
 
-async def run_burst(n):
-    """Fire n events and watch how many fan-outs are alive at once."""
-    live = 0
-    peak = 0
-    done = 0
+async def one_slow_client_does_not_delay_others():
+    """Two clients, one draining and one stuck: the healthy one keeps receiving.
 
-    async def fake_emit(room_id, event):
-        nonlocal live, peak, done
-        live += 1
-        peak = max(peak, live)
-        # One yield, so siblings can overlap and "in flight" means something.
-        await asyncio.sleep(0)
-        live -= 1
-        done += 1
+    This is the property the per-client queue and writer exist for. Sending
+    inline would serialise them behind the stuck socket.
+    """
+    hub = hub_module.Hub()
 
-    original = events.emit
-    events.emit = fake_emit
-    try:
-        tasks = [events.dispatch("ov", FakeEvent()) for _ in range(n)]
-        # Let the loop breathe once, then measure the peak inside the burst.
-        await asyncio.sleep(0)
-        peak = max(peak, live)
-        # Keep the loop responsive while it drains: if this loop is starved the
-        # wall clock below blows out and the loop cannot even answer this.
-        marks = []
-        for _ in range(40):
-            t0 = time.perf_counter()
-            await asyncio.sleep(0.002)
-            marks.append(time.perf_counter() - t0)
-            if all(t.done() for t in tasks):
-                break
-        await asyncio.gather(*tasks)
-        return peak, done, max(marks), len(asyncio.all_tasks())
-    finally:
-        events.emit = original
+    class FakeWS:
+        def __init__(self):
+            self.sent: list[str] = []
+
+        async def accept(self) -> None:
+            return None
+
+        async def send_text(self, text: str) -> None:
+            self.sent.append(text)
+
+    healthy_ws = FakeWS()
+    stuck_ws = FakeWS()
+
+    hid = await hub.connect(healthy_ws, hub_module.ROOM, "ov")  # type: ignore[arg-type]
+    sid = await hub.connect(stuck_ws, hub_module.ROOM, "ov")  # type: ignore[arg-type]
+
+    # Make the stuck client's writer never run, so its queue is the only thing
+    # receiving; the healthy one drains normally.
+    hub._writers[sid].cancel()
+
+    for i in range(10):
+        hub._send(sid, {"type": "comment", "text": f"n{i}"})
+        hub._send(hid, {"type": "comment", "text": f"n{i}"})
+
+    # Let the healthy writer drain.
+    for _ in range(50):
+        await asyncio.sleep(0.005)
+        if len(healthy_ws.sent) >= 10:
+            break
+
+    check("the healthy client received everything", len(healthy_ws.sent) >= 10, len(healthy_ws.sent))
+    check("while the stuck one received nothing", stuck_ws.sent == [], stuck_ws.sent)
+
+
+async def viewers_coalesce_rather_than_queue():
+    """A viewer count is held in its own slot, never queued.
+
+    Only the newest count is ever true, so it must not take a place in line
+    behind a backlog of comments — and it must not touch the strike counter,
+    which answers "is this client draining?".
+    """
+    hub = hub_module.Hub()
+    cid = "c1"
+    hub.active[cid] = object()  # type: ignore[assignment]
+    hub._queues[cid] = asyncio.Queue(maxsize=4096)
+    hub._strikes[cid] = 7
+
+    for n in (1, 2, 3):
+        hub._send(cid, {"type": "viewers", "count": n})
+
+    check("the queue stayed empty", hub._queues[cid].qsize() == 0, hub._queues[cid].qsize())
+    check("only the newest count is held", hub._held_viewers[cid]["count"] == 3,
+          hub._held_viewers[cid])
+    check("and the drain-strike counter was not touched", hub._strikes[cid] == 7, hub._strikes[cid])
 
 
 async def main():
-    events._inflight = None
+    print("emit does not block on a stuck client")
+    await emit_never_blocks()
 
-    n = 2000
-    peak, done, worst_lag, leftover = await run_burst(n)
+    print("\none slow client does not delay the others")
+    await one_slow_client_does_not_delay_others()
 
-    print("\nthe burst")
-    print(f"  burst {n}  delivered {done}  peak in flight {peak}  worst wait {worst_lag*1000:.1f}ms")
-    check("every event was delivered", done == n, done)
-    check("none were dropped to make room", done == n, (done, n))
-    check("fan-outs at once stayed bounded", peak <= events.MAX_INFLIGHT, (peak, events.MAX_INFLIGHT))
-    check("and it actually used the room it had", peak > 8, peak)
-
-    # The wall-clock figures are printed for information only. They are NOT
-    # evidence: measured with the gate and without it they came out within a
-    # millisecond of each other, because a stub that yields cannot starve a loop.
-    # Asserting on them would have looked like protection and been decoration.
-    # What actually proves the bound is the in-flight peak above, which differs by
-    # a factor of thirty.
-
-    print("\nnothing was left running")
-    check("no tasks survived the burst", leftover <= 3, leftover)
-
-    print("\nthe gate is a gate")
-    events._inflight = None
-    gate = events._gate()
-    check("the gate is built once", events._gate() is gate)
-    check("it starts with the whole room", gate._value == events.MAX_INFLIGHT, gate._value)
-    check("and a fresh gate is empty of state",
-          (events._inflight is None) is False)
-
-
-async def main_runs_without_a_loop_first():
-    """`dispatch` must not build the semaphore at import time."""
-    check("a semaphore exists only inside a loop", events._inflight is not None, events._inflight)
-
-
-def test_import_time():
-    """Before any loop exists, there is no semaphore."""
-    global CHECKS, FAILS
-    CHECKS += 1
-    import importlib
-
-    importlib.reload(events)
-    if events._inflight is not None:
-        FAILS += 1
-        print("  FAIL a semaphore was built at import time, before any loop existed")
-    else:
-        print("  ok   no semaphore until a loop asks for one")
+    print("\nviewer counts coalesce")
+    await viewers_coalesce_rather_than_queue()
 
 
 if __name__ == "__main__":
-    print("bounded fan-out")
-    test_import_time()
     asyncio.run(main())
     if FAILS:
         print(f"\n{FAILS} failed of {CHECKS}")

@@ -21,7 +21,6 @@ Python side and `test/test-wire.mjs` pins the other two against each other —
 run both after changing a key.
 """
 
-import asyncio
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -220,42 +219,13 @@ async def emit_config(room_id: str, config: dict[str, Any]) -> None:
     await hub.broadcast({"type": "config", "config": config}, room_id=room_id)
 
 
-# How many fan-outs may be in flight at once.
-#
-# Every event became its own task, so a burst of two thousand comments became
-# two thousand tasks all competing for the same event loop — the shape that took
-# the API down once already. Bounding it keeps the loop answering requests while
-# the burst is still going out.
-#
-# Bounded, not dropped. A full room gets every comment; it just does not get
-# them all in the same instant.
-MAX_INFLIGHT = 64
+# There used to be a `dispatch()`/`_gate()`/`MAX_INFLIGHT` trio here, bounding how
+# many fan-outs could be in flight at once. It was written when `emit` awaited the
+# socket send directly and a stalled client could back-pressure the whole stream.
+# That is no longer how delivery works: `hub.broadcast` hands each message to a
+# per-client queue with `put_nowait` and a writer task drains it, so `emit` never
+# blocks and there is nothing for a gate to bound. It was also never called from
+# production — only from its own test — so the safety net was fictional and the
+# docstring in `sources/__init__.py` described an interface nothing used. Both are
+# gone; `emit` is the interface, and it does not block.
 
-_inflight: asyncio.Semaphore | None = None
-
-
-def _gate() -> asyncio.Semaphore:
-    """The fan-out gate, built on first use.
-
-    An asyncio primitive binds to the loop it was made on, and this module is
-    imported long before there is one, so it cannot be built at import time.
-    """
-    global _inflight
-    if _inflight is None:
-        _inflight = asyncio.Semaphore(MAX_INFLIGHT)
-    return _inflight
-
-
-async def _emit_gated(room_id: str, event: Event) -> None:
-    async with _gate():
-        await emit(room_id, event)
-
-
-def dispatch(room_id: str, event: Event) -> asyncio.Task:
-    """Fire an event without making the caller await the fan-out.
-
-    WebSocket sends can block on a stalled client, and a source's handler runs
-    inside TikTokLive's event loop; awaiting here would let one wedged browser
-    source back-pressure the whole live stream.
-    """
-    return asyncio.create_task(_emit_gated(room_id, event))
