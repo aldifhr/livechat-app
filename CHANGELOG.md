@@ -4,6 +4,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-10-14
+
 ### Security
 - **Auth sekarang fail closed.** `token_is_valid` mengembalikan `True` kalau
   `STREAMKIT_TOKEN` tidak di-set, jadi deploy yang kehilangan env file atau salah
@@ -188,5 +190,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
   itu memang overlay yang ditampilkan di atas stream, bukan room yang dibaca
   data chat. Yang di-rename hanya domain data backend.
 
-[Unreleased]: https://github.com/aldifhr/livechat-app/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/aldifhr/livechat-app/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/aldifhr/livechat-app/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/aldifhr/livechat-app/releases/tag/v1.0.0
