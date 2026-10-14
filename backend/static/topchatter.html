@@ -51,16 +51,40 @@
     display: flex;
     flex-direction: column;
     justify-content: var(--align);
-    align-items: stretch;
+    /* Centred horizontally so the title and the list sit in the middle of the
+       frame the way a centred graphic does; align-items: stretch would pin the
+       panel to the left edge. */
+    align-items: center;
     padding: 24px;
     font-family: var(--font);
     font-size: var(--size);
     line-height: 1.3;
   }
 
-  /* The board fills the width the source is given and grows downward from its
-     aligned edge — top by default, so a leaderboard reads from the top of the
-     frame the way a scoreboard does. */
+  /* The whole leaderboard is one gray panel: a title centred across the top and
+     the ranking beneath it. A single card rather than per-row scrims, because a
+     leaderboard is one graphic — "the board" — and ten separate dark bars read as
+     ten things rather than one. The panel hugs its content and grows downward from
+     its aligned edge, so it does not stretch across a canvas it does not fill. */
+  #panel {
+    width: fit-content;
+    max-width: 100%;
+    background: rgba(110, 110, 110, var(--background));
+    border-radius: 12px;
+    padding: 0.7em 1em;
+  }
+
+  #caption {
+    color: var(--name-colour);
+    font-weight: 800;
+    text-align: center;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-size: 0.72em;
+    margin: 0 0 0.5em 0;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  }
+
   #board {
     list-style: none;
     margin: 0;
@@ -72,14 +96,13 @@
     display: flex;
     align-items: baseline;
     gap: 0.6em;
-    /* A scrim behind each row so the text survives a bright part of the video.
-       Transparent at the default 0 so a clean scene shows nothing but type. */
-    background: rgba(0, 0, 0, var(--background));
-    border-radius: 8px;
-    padding: 0.25em 0.6em;
-    margin-bottom: 0.2em;
+    padding: 0.15em 0.1em;
     color: var(--text-colour);
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  }
+
+  #board li + li {
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
   }
 
   .board-rank {
@@ -102,20 +125,6 @@
     font-weight: 700;
     font-variant-numeric: tabular-nums;
     margin-left: auto;
-  }
-
-  /* A tiny caption above the board, so a leaderboard floating on its own says what
-     it is rather than being ten unexplained rows. Hidden with the board until the
-     first ranking arrives. */
-  #caption {
-    color: var(--name-colour);
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    font-size: 0.6em;
-    opacity: 0.85;
-    margin: 0 0 0.4em 0.1em;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
   }
 
   /* The one failure worth saying out loud: a wrong link. Unlike everything else,
@@ -146,8 +155,10 @@
 </style>
 </head>
 <body>
-<ol id="board" hidden aria-live="polite"></ol>
-<p id="caption" hidden>Top chatters</p>
+<div id="panel" hidden>
+  <p id="caption"></p>
+  <ol id="board" aria-live="polite"></ol>
+</div>
 <div id="unconfigured">no handle in this link — add <code>?room=yourhandle</code></div>
 <div id="status"></div>
 
@@ -187,13 +198,25 @@
     return Math.min(max, Math.max(min, raw))
   }
 
+  // The heading's own bound, mirrored here so the page decides for itself rather
+  // than trusting the link. 40 characters is one line in a panel sized for one.
+  function resolveTitle(value) {
+    var text = String(value == null ? '' : value).trim()
+    return text === '' || text.length > 40 ? 'Top Yapping' : text
+  }
+
   var config = {
-    baseUrl: String(param('base', baked.baseUrl || 'https://kit-backend.aldifhr.my.id')).replace(/\/+$/, ''),
+    // Defaults to this page's own origin. The page and its websocket are served
+    // by the same vhost, so an overlay link names one host and nothing has to be
+    // rewritten to work; `base` is still honoured for a page hosted elsewhere.
+    baseUrl: String(param('base', baked.baseUrl || location.origin)).replace(/\/+$/, ''),
     username: String(param('room', baked.username || '')).replace(/^@/, '').trim(),
     size: number('size', typeof baked.size === 'number' ? baked.size : 28, 8, 96),
     nameColour: param('name', baked.nameColour || '#ffd76a'),
     textColour: param('color', baked.textColour || '#ffffff'),
-    background: number('bg', typeof baked.background === 'number' ? baked.background : 0.35, 0, 1),
+    // How opaque the gray panel is. Defaults high now that it is a card
+    // rather than a per-row scrim: a leaderboard panel should read as a panel.
+    background: number('bg', typeof baked.background === 'number' ? baked.background : 0.9, 0, 1),
     // How many chatters to show. Ten is the ranking the backend keeps; asking for
     // more than it has simply shows all of them.
     max: Math.round(number('max', typeof baked.max === 'number' ? baked.max : 10, 1, 50)),
@@ -203,7 +226,12 @@
     // busy stream can tighten it without a redeploy.
     poll: number('poll', 5, 2, 60) * 1000,
     align: param('align', 'top'),
-    debug: param('debug', '') !== ''
+    debug: param('debug', '') !== '',
+    // The heading above the ranking. Read from the link rather than baked into
+    // the page, so a streamer calls their board whatever fits the channel. A
+    // blank or an overlong value falls back to the default rather than being
+    // cut mid-word, so the heading is always a complete title.
+    title: resolveTitle(param('title', baked.title || 'Top Yapping'))
   }
 
   document.documentElement.style.setProperty('--size', config.size + 'px')
@@ -218,6 +246,9 @@
     '--align',
     config.align === 'bottom' ? 'flex-end' : 'flex-start'
   )
+  // As text, never markup: it comes from a query string the operator controls but
+  // which is still a string on the wire.
+  document.getElementById('caption').textContent = config.title
 
   var status = document.getElementById('status')
   function say(message) {
@@ -226,8 +257,39 @@
 
   // ---- the board -----------------------------------------------------------
 
+  var panel = document.getElementById('panel')
   var board = document.getElementById('board')
-  var caption = document.getElementById('caption')
+
+  /**
+   * Reports the rendered height of the board to whoever embedded this page.
+   *
+   * The overlay itself is a fixed rectangle in OBS — that is what a browser
+   * source IS — and its own `overflow: hidden` is deliberate there: content that
+   * does not fit is content the operator chose not to size the source for.
+   *
+   * The dashboard's preview is a different thing. It has no size of its own to
+   * honour; it is a window onto this page, and when it is shorter than the board
+   * it clips the bottom rows with no scrollbar and no error. A ten-row board in
+   * a 520px window reads as a broken overlay rather than as a frame that is
+   * simply too small, and the operator has no way to tell the difference.
+   *
+   * So the height is reported and the preview grows to it. Measured only while
+   * the panel is shown, because a `hidden` element has no box to measure.
+   * Silently ignored when nothing is listening — OBS does not read it, and a page
+   * must not crash posting into a void.
+   */
+  function reportHeight() {
+    if (panel.hidden) return
+    try {
+      // `scrollHeight` is the body's content box; the body's own 24px padding is
+      // outside it, so it is added back or the last row sits on the very edge of
+      // a frame that is exactly tall enough.
+      parent.postMessage({ streamkitHeight: document.body.scrollHeight + 48 }, '*')
+    } catch (error) {}
+  }
+
+  new ResizeObserver(reportHeight).observe(document.body)
+  window.addEventListener('load', reportHeight)
 
   /**
    * Draws the leaderboard: the chattiest viewers, most messages first.
@@ -239,13 +301,14 @@
    * talked in yet reserves no space for an empty box.
    */
   function renderBoard(chatters) {
+    // The panel hides as one unit — title and list together — so a room nobody
+    // has talked in yet reserves no space rather than showing an empty gray card
+    // with a heading and nothing under it.
     if (!chatters || chatters.length === 0) {
-      board.hidden = true
-      caption.hidden = true
+      panel.hidden = true
       return
     }
-    board.hidden = false
-    caption.hidden = false
+    panel.hidden = false
     board.textContent = ''
     for (var i = 0; i < chatters.length; i++) {
       var c = chatters[i]
@@ -268,6 +331,8 @@
 
       board.appendChild(row)
     }
+    // After the rows are in, so the measurement includes them.
+    reportHeight()
   }
 
   // ---- the connection ------------------------------------------------------

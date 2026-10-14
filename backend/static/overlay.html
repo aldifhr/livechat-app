@@ -134,47 +134,6 @@
     to   { opacity: 1; transform: none; }
   }
 
-  /* The leaderboard, pinned to the top-left apart from the scrolling chat. Absolute
-     so it never pushes the chat or takes part in its alignment — the chat keeps
-     growing from its own edge whether the board is showing or not. */
-  #board {
-    position: absolute;
-    top: 24px;
-    left: 24px;
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    max-width: 40%;
-  }
-
-  #board li {
-    display: flex;
-    align-items: baseline;
-    gap: 0.5em;
-    color: var(--text-colour);
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
-  }
-
-  .board-rank {
-    color: var(--name-colour);
-    font-weight: 700;
-    min-width: 1.2em;
-    text-align: right;
-  }
-
-  .board-name {
-    font-weight: 600;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .board-count {
-    color: var(--name-colour);
-    font-variant-numeric: tabular-nums;
-    margin-left: auto;
-  }
-
   /* No motion asked for: no animation, and no fade. The rows still appear and
      still expire, they just do it all at once. */
   @media (prefers-reduced-motion: reduce) {
@@ -216,6 +175,33 @@
   /* Anything real, and it goes away. */
   body.ready #unconfigured { display: none; }
 
+  /* A reply: text that opens with @someone.
+
+     A message beginning with an @ is a person answering a person, and in a fast
+     chat that is worth seeing before reading the words — it is who is being
+     talked to, which is the context. The mention is split into its own span so it
+     can carry the accent and a little weight, and the rest of the message follows
+     it plainly. Clickable, like a name, because a mention you can act on is the
+     one thing that makes it worth styling separately.
+
+     The chip behind it is what makes the marker survive a colour choice. The
+     name colour is the operator's, and an operator who sets it to white — which
+     is the common choice — would otherwise have a mention that is the same white
+     as the message around it, so the reply marker would vanish exactly when the
+     chat got busy enough to need it. A neutral translucent pill is always visible
+     against video and never collides with the text colour. */
+  .mention {
+    color: var(--name-colour);
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.16);
+    border-radius: 999px;
+    padding: 0.05em 0.45em;
+  }
+
+  .mention a {
+    color: inherit;
+  }
+
   /* A preview of the whole page while the socket is still resolving, so the
      source is not a blank rectangle for the first second of a stream. Hidden as
      soon as anything real arrives. */
@@ -231,13 +217,6 @@
 <ul id="chat" aria-live="polite" aria-relevant="additions"></ul>
 <div id="unconfigured">no handle in this link — add <code>?room=yourhandle</code></div>
 <div id="status"></div>
-
-<!-- The leaderboard: the chattiest viewers this session. Its own panel at the top,
-     apart from the scrolling chat, because it is a standing board rather than a
-     message — it changes slowly and is read at a glance, not followed live. Hidden
-     until the first ranking arrives, so an overlay with no board configured does
-     not reserve space for an empty box. -->
-<ol id="board" hidden></ol>
 
 <script>
 (function () {
@@ -283,10 +262,13 @@
   var bakedBg = baked.background, bakedMax = baked.max, bakedDelay = baked.delay, bakedFont = baked.font
 
   var config = {
-    baseUrl: String(param('base', baked.baseUrl || 'https://kit-backend.aldifhr.my.id')).replace(/\/+$/, ''),
+    // Defaults to this page's own origin. The page and its websocket are served
+    // by the same vhost, so an overlay link names one host and nothing has to be
+    // rewritten to work; `base` is still honoured for a page hosted elsewhere.
+    baseUrl: String(param('base', baked.baseUrl || location.origin)).replace(/\/+$/, ''),
     username: String(param('room', baked.username || '')).replace(/^@/, '').trim(),
     size: number('size', typeof bakedSize === 'number' ? bakedSize : 22, 8, 96),
-    nameColour: param('name', bakedName || '#ffffff'),
+    nameColour: param('name', bakedName || '#ffd76a'),
     textColour: param('color', bakedColor || '#ffffff'),
     // 0 is no backdrop at all, so the video shows straight through; 1 is a solid
     // panel behind each line. A value in 0..1 rather than a percentage, because
@@ -331,45 +313,31 @@
   // ---- the feed ------------------------------------------------------------
 
   var list = document.getElementById('chat')
-  var board = document.getElementById('board')
 
   /**
-   * Draws the leaderboard: the chattiest viewers, most messages first.
+   * Reports the rendered height of the chat to whoever embedded this page.
    *
-   * Rebuilt each poll rather than updated in place — ten rows on a five-second
-   * beat is cheaper to redraw than to diff. Names go in as text, never markup, for
-   * the same reason chat does. The panel is shown only once there is a ranking, so
-   * an overlay with nobody talking yet reserves no space for an empty board.
+   * The overlay itself is a fixed rectangle in OBS — that is what a browser
+   * source IS — and its own `overflow: hidden` is deliberate there: content that
+   * does not fit is content the operator chose not to size the source for.
+   *
+   * The dashboard's preview is a different thing. It has no size of its own to
+   * honour; it is a window onto this page, and when it is shorter than the chat
+   * it clips the top rows with no scrollbar and no error. So the height is
+   * reported and the preview grows to it.
+   *
+   * Measured on the list rather than the body: the body is always the full
+   * height of the frame, because `html, body { height: 100% }`, and it would
+   * report the frame's own height back rather than the chat's.
    */
-  function renderBoard(chatters) {
-    if (!chatters || chatters.length === 0) {
-      board.hidden = true
-      return
-    }
-    board.hidden = false
-    board.textContent = ''
-    for (var i = 0; i < chatters.length; i++) {
-      var c = chatters[i]
-      var row = document.createElement('li')
-
-      var rank = document.createElement('span')
-      rank.className = 'board-rank'
-      rank.textContent = String(i + 1)
-      row.appendChild(rank)
-
-      var name = document.createElement('span')
-      name.className = 'board-name'
-      name.textContent = String(c.nickname || c.id || 'Someone')
-      row.appendChild(name)
-
-      var count = document.createElement('span')
-      count.className = 'board-count'
-      count.textContent = String(c.messages || 0)
-      row.appendChild(count)
-
-      board.appendChild(row)
-    }
+  function reportHeight() {
+    try {
+      parent.postMessage({ streamkitHeight: list.scrollHeight + 48 }, '*')
+    } catch (error) {}
   }
+
+  new ResizeObserver(reportHeight).observe(list)
+  window.addEventListener('load', reportHeight)
 
   /**
    * Messages waiting to be shown, and whether one is on its way in.
@@ -418,6 +386,7 @@
   }
 
   /**
+  /**
    * A name from a chat row, turned into a TikTok username.
    *
    * A leading `@` is dropped, because it is how a handle is written when typed and
@@ -433,12 +402,12 @@
   }
 
   /**
-   * The viewer's name on a chat row, linked to their TikTok profile.
+   * The name, as a link to the viewer's TikTok profile.
    *
-   * The one thing on a row worth following up on — who said that, who sent that
-   * gift — and a chat where the name is dead text answers none of it. Opens in a
-   * new tab; the overlay itself is not navigated away from, because it is a browser
-   * source that has to keep showing.
+   * Clickable because a name on a stream is the one thing a viewer wants to follow
+   * up on — who said that, who sent that gift — and a chat where the name is dead
+   * text answers none of it. Opens in a new tab; the overlay itself is not
+   * navigated away from, because it is a browser source that has to keep showing.
    *
    * `userId` is TikTok's stable handle for the person when the wire carries one,
    * and the display name is the fallback. Built from the handle, not the display
@@ -458,6 +427,45 @@
     return link
   }
 
+  /**
+   * A mention, as a link to the mentioned viewer's TikTok profile.
+   *
+   * Takes a bare handle (no leading @), because the @ is the caller's markup, not
+   * part of the name. Kept separate from `nameLink` because the two answer
+   * different questions: `nameLink` has to choose between a handle and a display
+   * name, and a mention always carries a handle — a display name with a space
+   * could never be typed as `@someone` in the first place.
+   */
+  function mentionLink(handle) {
+    var link = document.createElement('a')
+    var path = tiktokUsername(handle)
+    link.href = 'https://www.tiktok.com/@' + encodeURIComponent(path)
+    link.target = '_blank'
+    link.rel = 'noopener noreferrer'
+    link.title = 'Open @' + path + ' on TikTok'
+    link.textContent = '@' + handle
+    return link
+  }
+
+  /**
+   * Split a message into a leading @mention and the rest, if it opens with one.
+   *
+   * A message that begins with @someone is a reply, and the mention is the whole
+   * point of reading it as one — it says who is being answered before the words
+   * do. Only a mention at the very start counts: an @ in the middle of a sentence
+   * is a word, not an address, and highlighting those would just be noise.
+   *
+   * The handle is TikTok's username shape (letters, digits, dot, underscore), so
+   * "hey @bob" does not match — there is a space — and "email@host" does not match
+   * because it does not begin the string. Returns null when there is no mention,
+   * so the caller renders the plain path unchanged.
+   */
+  function splitMention(body) {
+    var match = /^@([A-Za-z0-9._]{1,24})(?=\s|$)/.exec(body)
+    if (!match) return null
+    return { handle: match[1], rest: body.slice(match[0].length) }
+  }
+
   function render(user, text, userId) {
     var body = String(text == null ? '' : text).trim()
     if (body === '') return
@@ -470,13 +478,30 @@
 
     var message = document.createElement('span')
     message.className = 'text'
-    message.textContent = body
+
+    var mention = splitMention(body)
+    if (mention) {
+      // The mention as its own element, linked like a name so it is something you
+      // can act on rather than just coloured text.
+      var tag = document.createElement('span')
+      tag.className = 'mention'
+      tag.appendChild(mentionLink(mention.handle))
+      message.appendChild(tag)
+      // The remainder after the mention, unchanged. Trimmed so the row does not
+      // open with the gap that sat between the @handle and the words.
+      var rest = mention.rest.trim()
+      if (rest !== '') message.appendChild(document.createTextNode(' ' + rest))
+    } else {
+      message.textContent = body
+    }
+
     row.appendChild(message)
 
     list.appendChild(row)
     document.body.classList.add('ready')
 
     trim()
+    reportHeight()
   }
 
   /**
@@ -512,6 +537,7 @@
     list.appendChild(row)
     document.body.classList.add('ready')
     trim()
+    reportHeight()
   }
 
   /**
@@ -686,13 +712,6 @@
         return
       }
       if (!frame) return
-      // The leaderboard, asked for and answered. Rebuilt from scratch each time
-      // rather than diffed: it is ten rows on a slow beat, and re-rendering ten
-      // rows is cheaper than the bookkeeping to update them in place.
-      if (frame.type === 'topChatters') {
-        renderBoard(frame.chatters || [])
-        return
-      }
       // A gift is shown at once, not paced through the chat queue: it is an event,
       // not a message in a conversation, and holding it behind twenty queued
       // comments would bury the one thing everyone looks up for.
@@ -714,22 +733,7 @@
       enqueue(frame.user, frame.text, frame.userId)
     }
 
-    // Ask for the leaderboard on a slow beat. Asked for rather than pushed by the
-    // backend on every comment, because a ranking changes slowly and a board polled
-    // every few seconds is current enough without a frame per message.
-    function pollBoard() {
-      try {
-        socket.send(JSON.stringify({ type: 'topChatters' }))
-      } catch (error) {
-        // A socket mid-close throws on send; the close handler reconnects and the
-        // next open schedules the poll again.
-      }
-    }
-    pollBoard()
-    var boardTimer = setInterval(pollBoard, 5000)
-
     socket.onclose = function () {
-      clearInterval(boardTimer)
       say('socket closed, retrying')
       setTimeout(connect, 3000)
     }
