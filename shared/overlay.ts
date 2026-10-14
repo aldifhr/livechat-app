@@ -114,24 +114,15 @@ export function clampRows(value: unknown, fallback: number): number {
   return Math.round(clampNumber(value, OVERLAY_MAX_ROWS.min, OVERLAY_MAX_ROWS.max, fallback))
 }
 
-/** A font stack with nothing in it that would end the value. */
-export function resolveFont(value: unknown): string {
-  if (typeof value !== 'string') return OVERLAY_DEFAULT_STYLE.font
-  const text = value.trim()
-  if (text === '' || text.length > 120) return OVERLAY_DEFAULT_STYLE.font
-  // No `;`, no `{`, no newline. Those three are what a CSS declaration is made
-  // of, and this value is written into a custom property without escaping.
-  if (/[;{}\n\r]/.test(text)) return OVERLAY_DEFAULT_STYLE.font
-  return text
-}
-
 /**
  * A font stack with nothing in it that would end the value.
  *
- * Named apart from `theme.ts`'s `resolveFont`, which answers a different
- * question: that one picks from a catalogue, this one decides whether a string is
- * safe to put in a URL. Two functions under one name answering two questions is
- * how a call site ends up quietly asking the wrong one.
+ * The only font resolver on this side. There used to be a second, `resolveFont`,
+ * byte-for-byte identical and called by nobody — it existed only because the name
+ * clashes with `theme.ts`'s `resolveFont`, which answers a different question
+ * (picking from a catalogue rather than validating a string). Two functions under
+ * one name is how a call site ends up asking the wrong one, so the survivor is
+ * named for what it resolves.
  */
 export function resolveOverlayFont(value: unknown): string {
   if (typeof value !== 'string') return OVERLAY_DEFAULT_STYLE.font

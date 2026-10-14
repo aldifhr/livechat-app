@@ -297,7 +297,6 @@ export const host = {
     await resolved.invoke('notify', { title, body })
   },
   /**
-  /**
    * Opens the stream in the default browser.
    *
    * There is no video player in this app and there is not going to be one: TikTok
