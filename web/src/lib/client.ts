@@ -86,18 +86,19 @@ const origin = typeof window === 'undefined' ? '' : window.location.origin
 /**
  * An overlay link.
  *
- * `params` is for the legacy form, where a link carried its own styling so that
- * reading it back described what OBS was pointed at. A styled room no longer needs
- * that — its styling is saved, and the overlay is told over the socket — so a link
- * made for a styled room is just the room. The parameter stays because links made
- * before that are already pasted into somebody's scene collection.
+ * The room and nothing else. This used to carry the whole style in the query string
+ * — about 250 characters for an unstyled room, most of it the default font stack,
+ * URL-encoded — because the styling had nowhere else to live and a link that
+ * described itself was the honest description of what OBS was pointed at.
+ *
+ * It lives in the room's saved config now, and a running overlay is told about a
+ * change over the socket it already holds open. So the link says which room it is
+ * for and the room says how it looks: paste it into OBS once and restyling the
+ * stream never touches it again.
  */
-function overlayUrl(path: string, id: string, params?: Query): string {
+function overlayUrl(path: string, id: string): string {
   const url = new URL(path, origin)
   url.searchParams.set('room', id)
-  for (const [key, value] of Object.entries(params ?? {})) {
-    if (value !== undefined) url.searchParams.set(key, String(value))
-  }
   return url.toString()
 }
 
@@ -128,6 +129,6 @@ export const api = {
   // One URL per overlay so a customiser or a scene collection points at
   // exactly one page. The bare /overlay path still redirects, for links pasted
   // before the split.
-  chatOverlay: (id: string, params?: Query) => overlayUrl('/overlay/chat-overlay', id, params),
-  topChatterOverlay: (id: string, params?: Query) => overlayUrl('/overlay/top-chatter', id, params),
+  chatOverlay: (id: string) => overlayUrl('/overlay/chat-overlay', id),
+  topChatterOverlay: (id: string) => overlayUrl('/overlay/top-chatter', id),
 }

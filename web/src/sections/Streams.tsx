@@ -17,13 +17,6 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
-import {
-  boardStyleToQuery,
-  chatStyleToQuery,
-  resolveBoardStyle,
-  resolveStyle,
-  styleFromStored,
-} from '@shared/overlay'
 import { api, ApiError, isAuthFailure, type Room } from '../lib/client'
 import CopyField from '../components/CopyField'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -45,21 +38,12 @@ function StreamCard({
   busy: boolean
   onDelete: (room: Room) => void
 }) {
-  const stored = styleFromStored(room.config)
-  const hasStyle = Object.keys(stored).length > 0
-
-  // A room that has never been styled keeps carrying its settings in the link,
-  // because that is the only place they exist. Once they are saved the link is just
-  // the room, and the overlay asks the backend for the rest.
-  //
-  // The parameters come from the shared converters rather than being written out
-  // here: they are what the page reads, and a second copy of that mapping is a
-  // second thing to be wrong.
-  const chatUrl = api.chatOverlay(room.id, hasStyle ? undefined : chatStyleToQuery(resolveStyle(stored)))
-  const boardUrl = api.topChatterOverlay(
-    room.id,
-    hasStyle ? undefined : boardStyleToQuery(resolveBoardStyle(stored)),
-  )
+  // Just the room. The styling lives on the room and reaches the overlay over the
+  // socket, so a link pasted into OBS keeps working across every restyle — which
+  // was the whole reason for carrying it in the query string in the first place,
+  // solved properly this time.
+  const chatUrl = api.chatOverlay(room.id)
+  const boardUrl = api.topChatterOverlay(room.id)
 
   return (
     <article className="stream-card">

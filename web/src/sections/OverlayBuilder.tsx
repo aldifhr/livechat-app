@@ -19,11 +19,9 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   chatStyleFromQuery,
-  chatStyleToQuery,
   chatStyleToStored,
   boardStyleFromQuery,
   boardStyleToStored,
-  boardStyleToQuery,
   resolveBoardStyle,
   resolveStyle,
   styleFromStored,
@@ -73,10 +71,12 @@ function ChatCustomizer({ roomId, style, onChange }: {
   onChange: (change: Partial<OverlayStyle>) => void
 }) {
   const chatUrl = useMemo(
-    () => (roomId ? api.chatOverlay(roomId, chatStyleToQuery(style)) : ''),
+    () => (roomId ? api.chatOverlay(roomId) : ''),
     [roomId, style],
   )
-  const preview = `/admin/live-preview?${new URLSearchParams({ room: roomId, ...chatStyleToQuery(style) }).toString()}`
+  // The preview is pointed at by room alone, for the same reason the OBS link is:
+  // the overlay fetches its styling live, so what it shows is what OBS shows.
+  const preview = `/admin/live-preview?room=${encodeURIComponent(roomId)}`
 
   return (
     <>
@@ -140,10 +140,10 @@ function BoardCustomizer({ roomId, style, onChange }: {
   onChange: (change: Partial<BoardStyle>) => void
 }) {
   const boardUrl = useMemo(
-    () => (roomId ? api.topChatterOverlay(roomId, boardStyleToQuery(style)) : ''),
+    () => (roomId ? api.topChatterOverlay(roomId) : ''),
     [roomId, style],
   )
-  const preview = `/admin/live-preview?${new URLSearchParams({ room: roomId, ...boardStyleToQuery(style) }).toString()}`
+  const preview = `/admin/live-preview?room=${encodeURIComponent(roomId)}`
 
   return (
     <>

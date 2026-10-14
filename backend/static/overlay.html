@@ -748,6 +748,14 @@
       if (frame.type === 'config' && frame.config) {
         // Reset first, then apply. The frame is the room's whole style, so a key
         // it does not carry reverts rather than persisting from the last one.
+        // A room with no saved styling sends an empty frame. That is not a
+        // request to go back to defaults — it is the absence of a request — and
+        // acting on it would strip the styling from any link that carried its own
+        // parameters, which is what every link did before styling could be saved.
+        // Un-styling is done by saving actual defaults, which is what the editor's
+        // Reset button does.
+        if (Object.keys(frame.config).length === 0) return
+
         Object.keys(STYLE_DEFAULTS).forEach(function (key) {
           config[key] = STYLE_DEFAULTS[key]
         })

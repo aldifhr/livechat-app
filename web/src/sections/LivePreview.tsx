@@ -20,12 +20,6 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import {
-  chatStyleFromQuery,
-  chatStyleToQuery,
-  boardStyleFromQuery,
-  boardStyleToQuery,
-} from '@shared/overlay'
 import { api, type Room } from '@/lib/client'
 
 export default function LivePreview() {
@@ -62,20 +56,15 @@ export default function LivePreview() {
   // exist, so a stale id shows a real overlay rather than a frame that loads
   // nothing.
   const known = rooms.some((room) => room.id === roomId)
-  const selected = known ? roomId : rooms[0]?.id ?? ''
-  const search = typeof window === 'undefined' ? '' : window.location.search
+  const selected = known ? roomId : (rooms[0]?.id ?? '')
 
-  const chatStyle = useMemo(() => chatStyleFromQuery(search), [search])
-  const boardStyle = useMemo(() => boardStyleFromQuery(search), [search])
-
-  const chatUrl = useMemo(
-    () => (selected ? api.chatOverlay(selected, chatStyleToQuery(chatStyle)) : ''),
-    [selected, chatStyle],
-  )
-  const boardUrl = useMemo(
-    () => (selected ? api.topChatterOverlay(selected, boardStyleToQuery(boardStyle)) : ''),
-    [selected, boardStyle],
-  )
+  // The overlay is pointed at by room alone. Its styling comes from the room's
+  // saved config, delivered over the socket the overlay opens on load — so this
+  // preview is not a snapshot of a style that was current when the page was
+  // opened, it is the same live page OBS is showing. Moving a slider in the builder
+  // shows up here without anything being re-pointed.
+  const chatUrl = useMemo(() => (selected ? api.chatOverlay(selected) : ''), [selected])
+  const boardUrl = useMemo(() => (selected ? api.topChatterOverlay(selected) : ''), [selected])
 
   const shown = which === 'chat' ? chatUrl : boardUrl
 
