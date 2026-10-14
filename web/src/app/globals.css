@@ -709,16 +709,69 @@ code,
 
 /* ---- overlay builder ---- */
 
+/*
+ * The builder: controls on one side, the overlay on the other.
+ *
+ * The preview used to be a separate page, so the right-hand column held nothing
+ * but the link and a button that navigated away. Now it holds the overlay itself.
+ * The frame is sized for a control panel rather than the whole window, because the
+ * thing being judged here is "does this setting look right", not "does this fit a
+ * 1080p canvas" — the full-screen preview is one link away for that.
+ */
 .builder {
   display: grid;
-  grid-template-columns: minmax(280px, 360px) 1fr;
-  gap: 1.5rem;
+  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  gap: 1.25rem;
   align-items: start;
 }
 
+.builder-controls,
+.builder-stage {
+  min-width: 0;
+}
+
+.builder-stage {
+  position: sticky;
+  top: 1rem;
+  padding: 1.1rem 1.15rem;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.builder-stage-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.builder-stage-head .copy-label {
+  margin: 0;
+}
+
+/* The full-screen preview is a convenience, not the thing being done on this
+   page, so it reads as a link and not as a button competing with the copy. */
+.quiet-link {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+}
+
+.quiet-link:hover {
+  color: var(--text);
+}
+
+/* On a narrow window the frame goes under the controls rather than beside them:
+   side by side, both would be too thin to be worth having. */
 @media (max-width: 900px) {
   .builder {
     grid-template-columns: 1fr;
+  }
+
+  .builder-stage {
+    position: static;
+    order: -1;
   }
 }
 

@@ -36,6 +36,7 @@ import {
 } from '@shared/overlay'
 import { api, type Room } from '../lib/client'
 import CopyField from '../components/CopyField'
+import OverlayStage from '../components/OverlayStage'
 import { usePersistedStyle, type SaveState } from './usePersistedStyle'
 
 /** The room picker both customizers share — the room is what an overlay points at. */
@@ -70,13 +71,7 @@ function ChatCustomizer({ roomId, style, onChange }: {
   style: OverlayStyle
   onChange: (change: Partial<OverlayStyle>) => void
 }) {
-  const chatUrl = useMemo(
-    () => (roomId ? api.chatOverlay(roomId) : ''),
-    [roomId, style],
-  )
-  // The preview is pointed at by room alone, for the same reason the OBS link is:
-  // the overlay fetches its styling live, so what it shows is what OBS shows.
-  const preview = `/admin/live-preview?room=${encodeURIComponent(roomId)}`
+  const chatUrl = useMemo(() => (roomId ? api.chatOverlay(roomId) : ''), [roomId])
 
   return (
     <>
@@ -124,9 +119,6 @@ function ChatCustomizer({ roomId, style, onChange }: {
 
       <div>
         <CopyField label="Chat overlay" url={chatUrl} hint="Add as a browser source in OBS, sized to your canvas." />
-        <Link className="btn stack-top" href={preview}>
-          Open live preview
-        </Link>
       </div>
     </>
   )
@@ -139,11 +131,7 @@ function BoardCustomizer({ roomId, style, onChange }: {
   style: BoardStyle
   onChange: (change: Partial<BoardStyle>) => void
 }) {
-  const boardUrl = useMemo(
-    () => (roomId ? api.topChatterOverlay(roomId) : ''),
-    [roomId, style],
-  )
-  const preview = `/admin/live-preview?room=${encodeURIComponent(roomId)}`
+  const boardUrl = useMemo(() => (roomId ? api.topChatterOverlay(roomId) : ''), [roomId])
 
   return (
     <>
@@ -197,9 +185,6 @@ function BoardCustomizer({ roomId, style, onChange }: {
 
       <div>
         <CopyField label="Top chatters" url={boardUrl} hint="Add as a browser source in OBS, sized to your canvas." />
-        <Link className="btn stack-top" href={preview}>
-          Open live preview
-        </Link>
       </div>
     </>
   )
@@ -293,6 +278,8 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
     [],
   )
 
+  const previewHref = `/admin/live-preview?room=${encodeURIComponent(selected)}&which=${which}`
+
   const chat = usePersistedStyle({
     room,
     fallback: OVERLAY_DEFAULT_STYLE,
@@ -330,18 +317,52 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
         </div>
       </div>
 
+      {/*
+        Controls on the left, the overlay itself on the right.
+
+        This used to mean leaving the page: the preview had its own address, so
+        seeing whether a size fitted meant copying the current settings into a
+        query string, opening another tab, and coming back. Now that the overlay
+        fetches its styling live, the frame beside the controls is the same live
+        page OBS is showing — moving a slider changes it directly, with nothing to
+        re-point and nothing to come back from.
+
+        The full-screen preview still exists at its own address. It is worth keeping
+        for the case this frame is bad at: judging an overlay against a real canvas
+        size, full screen, on a second monitor.
+      */}
       <div className="builder">
-        {which === 'chat' ? (
-          <>
+        <div className="builder-controls">
+          {which === 'chat' ? (
             <ChatCustomizer roomId={selected} style={chat.current} onChange={chat.patch} />
-            <SaveBadge state={chat.state} />
-          </>
-        ) : (
-          <>
+          ) : (
             <BoardCustomizer roomId={selected} style={board.current} onChange={board.patch} />
-            <SaveBadge state={board.state} />
-          </>
-        )}
+          )}
+          <SaveBadge state={which === 'chat' ? chat.state : board.state} />
+        </div>
+
+        <div className="builder-stage">
+          {selected ? (
+            <>
+              <div className="builder-stage-head">
+                <span className="copy-label">Preview</span>
+                <Link className="quiet-link" href={previewHref}>
+                  Open full screen
+                </Link>
+              </div>
+              <OverlayStage
+                url={which === 'chat' ? api.chatOverlay(selected) : api.topChatterOverlay(selected)}
+                title={`${which === 'chat' ? 'Chat' : 'Top chatters'} overlay preview`}
+                maxHeight={420}
+              />
+              <p className="faint tight-caption">
+                The overlay itself, on the stream. It changes as you move the controls.
+              </p>
+            </>
+          ) : (
+            <div className="empty">No stream selected, so there is nothing to preview.</div>
+          )}
+        </div>
       </div>
     </>
   )
