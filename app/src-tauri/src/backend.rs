@@ -470,28 +470,21 @@ pub fn to_app_event(frame: &Value, now_ms: i64) -> Option<Value> {
             "type": "like", "platform": platform, "nickname": user(), "id": id(),
             "avatar": avatar, "count": count, "timestamp": timestamp,
         }),
-        "gift" => {
-            let mut gift = json!({
-                "type": "gift", "platform": platform, "nickname": user(), "id": id(),
-                "avatar": avatar,
-                "giftName": frame.get("giftName").and_then(Value::as_str).unwrap_or("Gift"),
-                "count": count,
-                // Already a total, not a unit price: the backend multiplies by the
-                // repeat count before it emits, so this must not be multiplied again
-                // or the diamonds double on every frame of a wave.
-                "diamonds": frame.get("value").and_then(Value::as_i64).unwrap_or(0),
-                "timestamp": timestamp,
-            });
-            // Carried only when TikTok sent one, so a gift with no picture keeps
-            // the frame it had and the feed falls back to the name. The app has
-            // drawn `item.giftImage` since it had a feed and nothing ever set it.
-            if let Some(image) = frame.get("giftImage").and_then(Value::as_str) {
-                if !image.is_empty() {
-                    gift["giftImage"] = json!(image);
-                }
-            }
-            gift
-        }
+        "gift" => json!({
+            "type": "gift", "platform": platform, "nickname": user(), "id": id(),
+            "avatar": avatar,
+            "giftName": frame.get("giftName").and_then(Value::as_str).unwrap_or("Gift"),
+            "count": count,
+            // Already a total, not a unit price: the backend multiplies by the
+            // repeat count before it emits, so this must not be multiplied again
+            // or the diamonds double on every frame of a wave.
+            "diamonds": frame.get("value").and_then(Value::as_i64).unwrap_or(0),
+            // Empty when TikTok sent no picture. Always a string, the way `avatar`
+            // is, because the app checks truthiness and "" already reads as "no
+            // image" — a missing key would be a second spelling of the same answer.
+            "giftImage": frame.get("giftImage").and_then(Value::as_str).unwrap_or(""),
+            "timestamp": timestamp,
+        }),
         "join" => json!({
             "type": "join", "platform": platform, "nickname": user(), "id": id(),
             "avatar": avatar, "timestamp": timestamp,
@@ -911,14 +904,16 @@ mod tests {
     }
 
     #[test]
-    fn a_gift_with_no_picture_has_no_gift_image_key() {
-        // Absent, not empty string: the app checks truthiness and an empty string
-        // would put a broken <img> on the row.
+    fn a_gift_with_no_picture_reports_an_empty_image() {
+        // "" rather than a missing key: the app checks truthiness and "" already
+        // reads as "no image", so a missing key would be a second spelling of the
+        // same answer — and `avatar` on the same frame is a string for the same
+        // reason.
         let out = mapped(json!({
             "type": "gift", "user": "ana", "userId": "ana", "giftName": "Rose",
             "count": 1, "value": 5,
         }));
-        assert!(out.get("giftImage").is_none(), "{}", out);
+        assert_eq!(out["giftImage"], json!(""));
     }
 
     #[test]
