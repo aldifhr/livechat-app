@@ -234,6 +234,24 @@
     title: resolveTitle(param('title', baked.title || 'Top Yapping'))
   }
 
+  // This page's own styling defaults, with no URL and no baked config involved.
+  //
+  // Needed because a pushed style is the room's *whole* style rather than a patch,
+  // so a key the push leaves out means "back to default" — not "keep whatever it
+  // was". Without this, clearing a room's saved styling left the board on the old
+  // values. `poll` is not in here: it is not styling, and a restyle should not
+  // change how often the ranking refreshes.
+  var STYLE_DEFAULTS = {
+    size: 28,
+    nameColour: '#ffd76a',
+    textColour: '#ffffff',
+    background: 0.9,
+    max: 10,
+    font: '"Segoe UI", system-ui, sans-serif',
+    align: 'top',
+    title: 'Top Yapping'
+  }
+
   // Push the current styling onto the page.
   //
   // A function rather than a run of statements at load because it runs again every
@@ -406,6 +424,11 @@
       // `baseUrl` and `username` came from the URL this page was opened with. A
       // replace would take the board offline as soon as somebody nudged a slider.
       if (frame.type === 'config' && frame.config) {
+        // Reset first, then apply. The frame is the room's whole style, so a key
+        // it does not carry reverts rather than persisting from the last one.
+        Object.keys(STYLE_DEFAULTS).forEach(function (key) {
+          config[key] = STYLE_DEFAULTS[key]
+        })
         Object.keys(frame.config).forEach(function (key) {
           if (frame.config[key] !== undefined && frame.config[key] !== null) {
             config[key] = frame.config[key]

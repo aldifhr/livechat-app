@@ -234,21 +234,50 @@
     title: resolveTitle(param('title', baked.title || 'Top Yapping'))
   }
 
-  document.documentElement.style.setProperty('--size', config.size + 'px')
-  document.documentElement.style.setProperty('--name-colour', config.nameColour)
-  document.documentElement.style.setProperty('--text-colour', config.textColour)
-  document.documentElement.style.setProperty('--background', String(config.background))
-  document.documentElement.style.setProperty('--font', config.font)
-  // `top` grows the board downward from the top of the frame (a scoreboard);
-  // `bottom` pins it to the bottom. Anything else is top, rather than a value the
-  // flex model would silently ignore.
-  document.documentElement.style.setProperty(
-    '--align',
-    config.align === 'bottom' ? 'flex-end' : 'flex-start'
-  )
-  // As text, never markup: it comes from a query string the operator controls but
-  // which is still a string on the wire.
-  document.getElementById('caption').textContent = config.title
+  // This page's own styling defaults, with no URL and no baked config involved.
+  //
+  // Needed because a pushed style is the room's *whole* style rather than a patch,
+  // so a key the push leaves out means "back to default" — not "keep whatever it
+  // was". Without this, clearing a room's saved styling left the board on the old
+  // values. `poll` is not in here: it is not styling, and a restyle should not
+  // change how often the ranking refreshes.
+  var STYLE_DEFAULTS = {
+    size: 28,
+    nameColour: '#ffd76a',
+    textColour: '#ffffff',
+    background: 0.9,
+    max: 10,
+    font: '"Segoe UI", system-ui, sans-serif',
+    align: 'top',
+    title: 'Top Yapping'
+  }
+
+  // Push the current styling onto the page.
+  //
+  // A function rather than a run of statements at load because it runs again every
+  // time the backend pushes a new style for this room. Everything it touches is a
+  // custom property the rules already read, plus one text node — so a restyle does
+  // not rebuild the board, does not reconnect, and does not interrupt the polling
+  // that keeps the ranking fresh.
+  function applyConfig() {
+    document.documentElement.style.setProperty('--size', config.size + 'px')
+    document.documentElement.style.setProperty('--name-colour', config.nameColour)
+    document.documentElement.style.setProperty('--text-colour', config.textColour)
+    document.documentElement.style.setProperty('--background', String(config.background))
+    document.documentElement.style.setProperty('--font', config.font)
+    // `top` grows the board downward from the top of the frame (a scoreboard);
+    // `bottom` pins it to the bottom. Anything else is top, rather than a value the
+    // flex model would silently ignore.
+    document.documentElement.style.setProperty(
+      '--align',
+      config.align === 'bottom' ? 'flex-end' : 'flex-start'
+    )
+    // As text, never markup: it comes from a query string the operator controls but
+    // which is still a string on the wire.
+    document.getElementById('caption').textContent = config.title
+  }
+
+  applyConfig()
 
   var status = document.getElementById('status')
   function say(message) {
@@ -390,6 +419,25 @@
         return
       }
       if (!frame) return
+      // A new style for this room, pushed the moment it is saved. Merged into the
+      // live config rather than replacing it: the frame carries styling only, and
+      // `baseUrl` and `username` came from the URL this page was opened with. A
+      // replace would take the board offline as soon as somebody nudged a slider.
+      if (frame.type === 'config' && frame.config) {
+        // Reset first, then apply. The frame is the room's whole style, so a key
+        // it does not carry reverts rather than persisting from the last one.
+        Object.keys(STYLE_DEFAULTS).forEach(function (key) {
+          config[key] = STYLE_DEFAULTS[key]
+        })
+        Object.keys(frame.config).forEach(function (key) {
+          if (frame.config[key] !== undefined && frame.config[key] !== null) {
+            config[key] = frame.config[key]
+          }
+        })
+        applyConfig()
+        say('style updated')
+        return
+      }
       // The ranking, asked for and answered. Everything else on the wire — chat,
       // gifts, joins, likes, viewer counts — is not a leaderboard and is ignored:
       // this source shows the board and nothing else.

@@ -287,17 +287,45 @@
     debug: param('debug', '') !== ''
   }
 
-  document.documentElement.style.setProperty('--size', config.size + 'px')
-  document.documentElement.style.setProperty('--name-colour', config.nameColour)
-  document.documentElement.style.setProperty('--text-colour', config.textColour)
-  document.documentElement.style.setProperty('--font', config.font)
-  // The background goes behind each line and nowhere else. It used to be applied
-  // to the page itself as well, at 60% of this value — which meant the slider the
-  // streamer was dragging was labelled "background" and was doing two things: the
-  // row scrim it names, at full value, and a tint over the whole source at 0.6 of
-  // it, which nobody asked for and which darkened the video behind the chat. One
-  // setting, one thing it does.
-  document.documentElement.style.setProperty('--background', String(config.background))
+  // This page's own styling defaults, with no URL and no baked config involved.
+  //
+  // Needed because a pushed style is the room's *whole* style rather than a patch,
+  // so a key the push leaves out means "back to default" — not "keep whatever it
+  // was". Without this, clearing a room's saved styling left the overlay on the
+  // old values: there was no way to un-style a stream once it had been styled.
+  var STYLE_DEFAULTS = {
+    size: 22,
+    nameColour: '#ffd76a',
+    textColour: '#ffffff',
+    background: 0.05,
+    max: 8,
+    delay: 500,
+    font: '"Segoe UI", system-ui, sans-serif'
+  }
+
+  // Push the current styling onto the page.
+  //
+  // A function rather than four lines at the top because it now runs twice: once
+  // for whatever the URL or the baked config said when this loaded, and again every
+  // time the backend pushes a new style. Setting these four custom properties is
+  // enough — they are what every rule in the page reads — so a restyle does not
+  // touch the DOM, does not reconnect, and does not disturb a message that is
+  // already on screen.
+  function applyConfig() {
+    document.documentElement.style.setProperty('--size', config.size + 'px')
+    document.documentElement.style.setProperty('--name-colour', config.nameColour)
+    document.documentElement.style.setProperty('--text-colour', config.textColour)
+    document.documentElement.style.setProperty('--font', config.font)
+    // The background goes behind each line and nowhere else. It used to be applied
+    // to the page itself as well, at 60% of this value — which meant the slider the
+    // streamer was dragging was labelled "background" and was doing two things: the
+    // row scrim it names, at full value, and a tint over the whole source at 0.6 of
+    // it, which nobody asked for and which darkened the video behind the chat. One
+    // setting, one thing it does.
+    document.documentElement.style.setProperty('--background', String(config.background))
+  }
+
+  applyConfig()
 
   var status = document.getElementById('status')
 
@@ -712,6 +740,26 @@
         return
       }
       if (!frame) return
+      // A new style for this room, pushed the moment it is saved. Merged into the
+      // live config rather than replacing it: the frame carries styling only, and
+      // `baseUrl` and `username` came from the URL this page was opened with. A
+      // replace would blank the overlay's connection as soon as somebody nudged a
+      // slider.
+      if (frame.type === 'config' && frame.config) {
+        // Reset first, then apply. The frame is the room's whole style, so a key
+        // it does not carry reverts rather than persisting from the last one.
+        Object.keys(STYLE_DEFAULTS).forEach(function (key) {
+          config[key] = STYLE_DEFAULTS[key]
+        })
+        Object.keys(frame.config).forEach(function (key) {
+          if (frame.config[key] !== undefined && frame.config[key] !== null) {
+            config[key] = frame.config[key]
+          }
+        })
+        applyConfig()
+        say('style updated')
+        return
+      }
       // A gift is shown at once, not paced through the chat queue: it is an event,
       // not a message in a conversation, and holding it behind twenty queued
       // comments would bury the one thing everyone looks up for.

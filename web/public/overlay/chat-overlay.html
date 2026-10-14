@@ -287,6 +287,22 @@
     debug: param('debug', '') !== ''
   }
 
+  // This page's own styling defaults, with no URL and no baked config involved.
+  //
+  // Needed because a pushed style is the room's *whole* style rather than a patch,
+  // so a key the push leaves out means "back to default" — not "keep whatever it
+  // was". Without this, clearing a room's saved styling left the overlay on the
+  // old values: there was no way to un-style a stream once it had been styled.
+  var STYLE_DEFAULTS = {
+    size: 22,
+    nameColour: '#ffd76a',
+    textColour: '#ffffff',
+    background: 0.05,
+    max: 8,
+    delay: 500,
+    font: '"Segoe UI", system-ui, sans-serif'
+  }
+
   // Push the current styling onto the page.
   //
   // A function rather than four lines at the top because it now runs twice: once
@@ -730,6 +746,11 @@
       // replace would blank the overlay's connection as soon as somebody nudged a
       // slider.
       if (frame.type === 'config' && frame.config) {
+        // Reset first, then apply. The frame is the room's whole style, so a key
+        // it does not carry reverts rather than persisting from the last one.
+        Object.keys(STYLE_DEFAULTS).forEach(function (key) {
+          config[key] = STYLE_DEFAULTS[key]
+        })
         Object.keys(frame.config).forEach(function (key) {
           if (frame.config[key] !== undefined && frame.config[key] !== null) {
             config[key] = frame.config[key]
