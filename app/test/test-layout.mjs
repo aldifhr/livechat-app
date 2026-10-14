@@ -41,7 +41,11 @@ console.log('the toolbar rule that broke the dialog')
 // three items split it differently from a line with two.
 const globalPush = ruleFor('.toggle')
 check('there is no unscoped .toggle rule left', globalPush === null || !/margin-left:\s*auto/.test(globalPush), globalPush)
-check('the push is scoped to the toolbar', /\.toolbar\s+\.toggle\s*\{[^}]*margin-left:\s*auto/.test(css))
+// The toolbar's right-alignment moved to `.view-actions` when the view toggles
+// were split out of one wrapping row. Asserting on `.toolbar .toggle` here was
+// checking a class the toolbar no longer renders, so it failed against correct
+// CSS — and this suite is not in `npm test`, so nothing said so.
+check('the push is scoped to the view actions', /\.view-actions\s*\{[^}]*margin-left:\s*auto/.test(css))
 
 console.log('a run of toggles is a grid, not a wrapping row')
 const toggles = ruleFor('.settings-toggles')
@@ -86,7 +90,10 @@ console.log('and the layout holds up in a real engine')
 // honestly the most a headless run can say about geometry.
 const dom = new JSDOM(
   `<!doctype html><html><head><style>${css}</style></head><body>
-     <div class="toolbar"><div class="toolbar-top"><label class="toggle">toolbar one</label></div></div>
+     <div class="toolbar">
+       <div class="view-toggles"><label class="toggle">views</label></div>
+       <span class="view-actions">actions</span>
+     </div>
      <div class="settings-toggles">
        <label class="toggle">Compact</label>
        <label class="toggle">Moderator badge</label>
@@ -108,8 +115,8 @@ for (const el of window.document.querySelectorAll('.settings-toggles .toggle')) 
   )
 }
 check(
-  'the toolbar one still is, or it is not right-aligned any more',
-  window.getComputedStyle(window.document.querySelector('.toolbar .toggle')).marginLeft === 'auto',
+  'the view actions are still right-aligned',
+  window.getComputedStyle(window.document.querySelector('.view-actions')).marginLeft === 'auto',
 )
 const run = window.document.querySelector('.settings-toggles')
 check('and its container is a grid', window.getComputedStyle(run).display === 'grid', window.getComputedStyle(run).display)
