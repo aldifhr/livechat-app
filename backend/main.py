@@ -552,6 +552,14 @@ async def update_room(room_id: str, req: UpdateRoomRequest):
             source = sources.pop(room_id, None)
         if source is not None:
             await source.stop()
+        # The room's counters belong to the handle that just left. `stop()` does
+        # not emit a status frame — it is a teardown, not a disconnect the wire
+        # hears about — so `eventlog` still believes this room is connected, and
+        # the next handle's `connected=True` frame then looks like a no-op to it
+        # and skips its own reset. The result was the previous streamer's
+        # leaderboard and diamond total showing up under the new handle. Dropping
+        # the counters here is what makes the switch a new session.
+        eventlog.forget(room_id)
 
     return {"room": _summary(room_id, record)}
 

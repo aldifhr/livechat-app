@@ -192,6 +192,28 @@ with TestClient(main.app) as client:
     check("and does not stop it", fake.stopped is False)
     main.sources.pop(oid, None)
 
+    print("changing the handle starts the room's counters over")
+    # The room's leaderboard and diamond total belong to the handle that left.
+    # `stop()` emits no status frame, so `eventlog` still believes the room is
+    # connected and the next handle's `connected=True` frame skips its own reset —
+    # which left the previous streamer's board showing under the new handle.
+    eventlog.record(oid, "comment", user="old_viewer", text="hi", user_id="old_viewer")
+    check("the old handle's chatter is counted",
+          any(c["nickname"] == "old_viewer" for c in eventlog.top_chatters(oid)),
+          json.dumps(eventlog.top_chatters(oid)))
+    client.patch(f"/api/rooms/{oid}", json={"username": "a-new-handle"}, headers=AUTH)
+    check("the counters are dropped with the handle",
+          not any(c["nickname"] == "old_viewer" for c in eventlog.top_chatters(oid)),
+          json.dumps(eventlog.top_chatters(oid)))
+
+    # A rename alone must NOT drop them: the streamer did not change, only the label.
+    eventlog.record(oid, "comment", user="still_here", text="hi", user_id="still_here")
+    client.patch(f"/api/rooms/{oid}", json={"name": "Renamed again"}, headers=AUTH)
+    check("a rename keeps the counters",
+          any(c["nickname"] == "still_here" for c in eventlog.top_chatters(oid)),
+          json.dumps(eventlog.top_chatters(oid)))
+    eventlog.forget(oid)
+
     print("config")
     cfg = {"version": 2, "type": "chat", "padding": 12, "customCSS": "",
            "global": {"fontSize": 16}, "style": {}}
