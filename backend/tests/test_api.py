@@ -215,16 +215,33 @@ with TestClient(main.app) as client:
     eventlog.forget(oid)
 
     print("config")
+    # Styling keys are in here because they are the only ones a page is ever
+    # handed. `page_config` narrows a room's config to `OVERLAY_STYLE_KEYS`, so a
+    # config of nothing but opaque keys reaches the WebSocket as `{}` — which is
+    # what these two assertions used to send and then call a failure. The page
+    # reads only `STYLE_DEFAULTS` names, so the rest is stored and never transmitted.
     cfg = {"version": 2, "type": "chat", "padding": 12, "customCSS": "",
-           "global": {"fontSize": 16}, "style": {}}
+           "global": {"fontSize": 16}, "style": {},
+           "overlaySize": 30, "overlayBg": 0.4}
     check("config save", client.post(f"/api/rooms/{oid}/config", json={"config": cfg}, headers=AUTH).status_code == 200)
+    # The store keeps all of it, including the keys no page reads.
     check("config persisted", client.get(f"/api/rooms/{oid}", headers=AUTH).json()["config"] == cfg)
     check("config on missing is 404", client.post("/api/rooms/nope/config", json={"config": cfg}, headers=AUTH).status_code == 404)
 
     print("websocket attach")
     with client.websocket_connect(f"/ws/room/{oid}") as ws:
         first = ws.receive_json()
-        check("first frame is config", first["type"] == "config" and first["config"] == cfg, str(first))
+        check("first frame is config", first["type"] == "config", str(first))
+        # Under the *page's* names, not the store's. This is the whole point of
+        # `page_config`: a frame carrying `overlayBg` to a page reading `background`
+        # restyles the link without restyling the screen.
+        check("and it carries the styling translated",
+              first["config"] == {"size": 30, "background": 0.4}, str(first))
+        # And deliberately nothing else. The narrowing is the contract, so it is
+        # asserted rather than left implied: a frame that started echoing the stored
+        # config back would pass a test that only looked for the styling.
+        check("and nothing the page cannot read",
+              "padding" not in first["config"] and "customCSS" not in first["config"], str(first))
         second = ws.receive_json()
         check("status snapshot on attach", second["type"] == "status" and second["connected"] is False, str(second))
 
@@ -239,14 +256,16 @@ with TestClient(main.app) as client:
         check("userId carried through", keyed["userId"] == "kei_tiktok", str(keyed))
 
         print("customizer clients also see config updates")
-        # An opaque type string. The backend never validates this against the
-        # widget registry, which is the point being asserted here: config comes
-        # back byte-for-byte so the front end is the only thing that decides what
-        # a type means.
-        client.post(f"/api/rooms/{oid}/config", json={"config": {"type": "chat", "padding": 20}}, headers=AUTH)
+        # A restyle reaching a socket that is already open, under the page's name.
+        # This used to assert the config came back byte-for-byte so the front end
+        # could decide what an opaque `type` meant — which stopped being true when
+        # `page_config` began narrowing to the styling a page reads, and was left
+        # asserting the old contract against the new behaviour.
+        client.post(f"/api/rooms/{oid}/config", json={"config": {"overlaySize": 44}}, headers=AUTH)
         pushed_cfg = ws.receive_json()
-        check("config broadcast", pushed_cfg["type"] == "config" and pushed_cfg["config"] == {"type": "chat", "padding": 20},
-              str(pushed_cfg))
+        check("config broadcast",
+              pushed_cfg["type"] == "config" and pushed_cfg["config"] == {"size": 44}, str(pushed_cfg))
+
 
     print("triggers")
     check("trigger on missing is 404", client.post("/api/rooms/nope/trigger", json={}, headers=AUTH).status_code == 404)

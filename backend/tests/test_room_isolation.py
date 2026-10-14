@@ -167,14 +167,23 @@ async def run() -> None:
             check("B received no gift", await sock_b.expect_nothing(), "the gift crossed to B")
 
             print("config for one room does not reach the other")
-            await emit_config(a, {"type": "city", "style": {"max-people": 45}})
+            # Real styling keys, not arbitrary ones. This used to send
+            # `{"type": "city", "style": {...}}` and look for "city" in the reply,
+            # which cannot work: `page_config` narrows a config to
+            # `OVERLAY_STYLE_KEYS`, so an opaque type is stored and never
+            # transmitted, and both rooms' frames came back as `{}` — identical,
+            # and so proving nothing about isolation either way. A value that
+            # survives the translation distinguishes the two rooms as sharply as
+            # the type string did, and the assertion checks the value instead of
+            # searching a string for a substring.
+            await emit_config(a, {"overlaySize": 22})
             cfg_a = await sock_a.take("A's config")
-            check("A gets its own config", "city" in str(cfg_a), f"got {cfg_a}")
+            check("A gets its own config", cfg_a.get("config", {}).get("size") == 22, f"got {cfg_a}")
             check("B received no config", await sock_b.expect_nothing(), "A's config crossed to B")
-            await emit_config(b, {"type": "chat", "style": {"size": "small"}})
+            await emit_config(b, {"overlaySize": 48})
             cfg_b = await sock_b.take("B's config")
-            check("B gets its own config", "chat" in str(cfg_b), f"got {cfg_b}")
-            check("and only its own", "city" not in str(cfg_b), f"got {cfg_b}")
+            check("B gets its own config", cfg_b.get("config", {}).get("size") == 48, f"got {cfg_b}")
+            check("and only its own", cfg_b.get("config", {}).get("size") != 22, f"got {cfg_b}")
 
             print("status for one room does not reach the other")
             await emit_status(a, connected=True, message="Live A")
