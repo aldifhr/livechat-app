@@ -34,7 +34,8 @@ import {
   type BoardStyle,
   type OverlayStyle,
 } from '@shared/overlay'
-import { api, type Room } from '../lib/client'
+import { api } from '../lib/client'
+import type { Room } from '../lib/types'
 import CopyField from '../components/CopyField'
 import OverlayStage from '../components/OverlayStage'
 import { usePersistedStyle, type SaveState } from './usePersistedStyle'

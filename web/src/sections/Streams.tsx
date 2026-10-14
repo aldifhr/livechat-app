@@ -17,7 +17,8 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
-import { api, ApiError, isAuthFailure, type Room } from '../lib/client'
+import { api, ApiError, isAuthFailure } from '../lib/client'
+import type { Room } from '../lib/types'
 import CopyField from '../components/CopyField'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { useToast } from '../components/Toast'

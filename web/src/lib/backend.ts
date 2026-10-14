@@ -85,19 +85,3 @@ export class BackendError extends Error {
     this.name = 'BackendError'
   }
 }
-
-/** A room as the backend describes it. */
-export interface Room {
-  id: string
-  name: string
-  username: string
-  config: Record<string, unknown>
-  createdAt: number
-}
-
-export interface RoomStatus {
-  connected: boolean
-  username?: string
-  message?: string
-  viewers?: number
-}

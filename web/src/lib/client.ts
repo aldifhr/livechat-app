@@ -14,6 +14,8 @@
 
 'use client'
 
+import type { Room, RoomStatus } from './types'
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -57,21 +59,6 @@ async function request<T>(method: string, path: string, body?: unknown, query?: 
     throw new ApiError(response.status, payload.detail ?? `${method} ${path} failed`)
   }
   return (await response.json()) as T
-}
-
-export interface Room {
-  id: string
-  name: string
-  username: string
-  config: Record<string, unknown>
-  createdAt: number
-}
-
-export interface RoomStatus {
-  connected: boolean
-  username?: string
-  message?: string
-  viewers?: number
 }
 
 /**

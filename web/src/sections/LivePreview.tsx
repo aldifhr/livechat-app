@@ -16,7 +16,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { api, type Room } from '@/lib/client'
+import { api } from '@/lib/client'
+import type { Room } from '@/lib/types'
 import OverlayStage from '@/components/OverlayStage'
 
 /**
