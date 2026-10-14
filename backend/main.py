@@ -274,163 +274,19 @@ app.include_router(rooms_router)
 # --------------------------------------------------------------------------
 
 
-@router.post("/api/room-connect/{room_id}")
-async def room_connect(room_id: str):
-    """Connect the room an room is already configured for, with no login.
+# Live connection routes (room-connect, connect, disconnect, status) live in
+# `routes/live`. State is bound from this module so the handler layer reaches
+# the real source map and hub without importing `main`.
+from routes.live import (  # noqa: E402
+    AUTO_ROOM_LIMIT,
+    USERNAME_RE,
+    bind_state as bind_live_state,
+    normalise_username,
+)
+from routes.live import router as live_router  # noqa: E402
 
-    The desktop app connects by handle through /api/room-connect-by-username, so
-    this stays for a caller that names a room it does not have a username for —
-    the editor, or anything scripting against the backend. /api/connect, which
-    takes the username from the request and can therefore aim the global room at
-    anything, is closed to it. That left the room unable to ever reach a stream
-    and showing the sample room forever.
-
-    The difference here is that the username is not taken from the request. It is
-    read from the room's own saved config, so this can only ever connect the
-    room that room already names. A caller who wants a different room has to
-    change the config first, which is behind the session. There is no body to
-    forge and no path to hijack another room's stream.
-    """
-    username = (await store.username_of_async(room_id)).strip().lstrip("@")
-    if not username:
-        # No config to honour is a configuration error, not an auth error, and
-        # saying "not signed in" would send the caller looking for a password
-        # that cannot possibly help.
-        raise HTTPException(
-            status_code=409,
-            detail="room has no username configured; set one in the editor",
-        )
-    return await _connect_room(room_id, username)
-
-
-@router.post("/api/connect")
-async def connect(req: ConnectRequest):
-    room_id = req.room_id or "default"
-    username = req.username.strip().lstrip("@")
-    if not username:
-        raise HTTPException(status_code=400, detail="username is required")
-    return await _connect_room(room_id, username)
-
-
-#: A TikTok handle. Deliberately narrow: letters, digits, dot and underscore, 2
-#: to 24 characters, which is what the platform actually issues. This is the only
-#: check standing between an unauthenticated caller and a connection attempt, so
-#: it rejects anything that is not shaped like a handle — a URL, a path, a shell
-#: fragment, a thousand-character string — rather than forwarding a guess to
-#: TikTok and letting someone else's server find out what it does with junk.
-USERNAME_RE = re.compile(r"^[A-Za-z0-9._]{2,24}$")
-
-
-def _handle_is_sane(username: str) -> bool:
-    """Whether the handle is not merely well-shaped but a plausible one.
-
-    The pattern above says "no URL, no shell fragment, no thousand characters".
-    It still lets `..`, `...` and `.` through, because a dot is legal in a real
-    handle — `bittersweet.by` is a streamer. What it cannot tell is whether the
-    string is a name or a path fragment, and a path fragment is the one shape
-    worth refusing here: it is the shape a caller reaches for when probing
-    something other than a handle.
-    """
-    if username in {".", "..", "..."}:
-        return False
-    return True
-
-#: How many rooms this endpoint may bring into existence. The route is exempt
-#: from the token gate, so without a ceiling anyone who found the URL could
-#: slowly fill the store and open a connection per entry — bounded cost rather
-#: than a data leak, but still someone else's resources to pay for. Rooms made
-#: through the token-gated route are not counted, so a dashboard user is never
-#: blocked by this.
-AUTO_ROOM_LIMIT = 20
-
-
-def normalise_username(raw: str) -> str:
-    return raw.strip().lstrip("@").strip()
-
-
-@router.post("/api/room-connect-by-username")
-async def room_connect_by_username(req: ConnectByUsernameRequest):
-    """Connect a handle, creating its room on the way. No token, no id.
-
-    The flow the desktop app wants is one field: type a handle, watch the chat.
-    Making that true needed a path that does not require a room to exist first,
-    and `POST /api/rooms` is behind the write token — a token deliberately not
-    shipped in the app, because one embedded in a binary is extractable and
-    grants full write access to the backend.
-
-    So this route creates the room it needs. That makes it an open proxy for
-    "connect to any handle": unauthenticated callers can name a streamer and
-    have the server open a connection to them. That is a cost and an IP exposure
-    problem, not a data leak — the room belongs to whoever named it and no room
-    can be read or pointed elsewhere through here. Three things bound it: the
-    handle must be shaped like a handle, one room per handle, and the number of
-    rooms this route may create is capped.
-
-    Existing rooms are reused, so a room made in the dashboard still connects and
-    keeps its config.
-    """
-    username = normalise_username(req.username)
-    if not USERNAME_RE.fullmatch(username) or not _handle_is_sane(username):
-        raise HTTPException(
-            status_code=400,
-            detail="username must be 2-24 characters of letters, digits, dot or underscore",
-        )
-
-    try:
-        record, created = await store.find_or_create_room_for_username_async(username)
-    except ValueError as exc:  # pragma: no cover — the regex above already rejected it
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    # Only rooms this route had to invent count against the ceiling. Counting
-    # every room would let someone fill the cap with junk handles and lock a
-    # real streamer out of connecting; counting every room *except* junk is the
-    # same problem. The store therefore marks a room at the moment it invents one,
-    # and that marker is what is counted — the previous test, "has a username but
-    # no source", could never be true here, because this route connects the room
-    # it just created on the very next statement. The log says when it rejects, so
-    # the failure mode is visible rather than silent.
-    if created:
-        # Counted once. The check and the log line both used to call
-        # count_auto_rooms_async, which is a second full read of the store on a
-        # path an unauthenticated caller can drive — the count cannot change
-        # between the two calls here, so the extra read was pure churn.
-        auto = await store.count_auto_rooms_async()
-        if auto > AUTO_ROOM_LIMIT:
-            logger.warning(
-                "room-connect-by-username: refusing to create a room for @%s — "
-                "%d auto-created rooms already exist (limit %d)",
-                username,
-                auto,
-                AUTO_ROOM_LIMIT,
-            )
-            await store.delete_room_async(record["id"])
-            raise HTTPException(
-                status_code=429,
-                detail=f"too many auto-created rooms (limit {AUTO_ROOM_LIMIT}); delete some first",
-            )
-
-    room_id = record["id"]
-
-    # Remember the overlay styling on the room, if the app sent any. Merged into
-    # the existing config rather than replacing it, so a room configured elsewhere
-    # keeps everything else. This is what lets the overlay link be a bare
-    # `?room=<id>`: the room carries the look, the link only names it.
-    #
-    # Applied only when this call invented the room. This route is exempt from the
-    # write token, so accepting styling for a room that already exists would let
-    # anyone who knows a room id restyle someone else's overlay without a
-    # credential — an unauthenticated write to a config the dashboard owns. A room
-    # this call just created has no prior config to clobber, and an existing room
-    # keeps the styling set where it was made.
-    overlay = _clean_overlay(req.overlay)
-    if created and overlay:
-        existing = record.get("config") or {}
-        await store.set_config_async(room_id, {**existing, **overlay})
-
-    result = await _connect_room(room_id, username)
-    return {"room_id": room_id, **result}
-
-
+bind_live_state(sources, _sources_lock, hub)
+app.include_router(live_router)
 async def _connect_room(room_id: str, username: str) -> dict:
     """Point the one global room at `username`, replacing any previous source.
 
@@ -494,24 +350,6 @@ async def _observe_source(room_id: str, source: TikTokAdapter) -> None:
         pass
     except Exception as e:
         logger.error("Observer task failed for room %s: %s", room_id, e)
-
-
-@router.post("/api/disconnect")
-async def disconnect(req: ConnectRequest):
-    room_id = req.room_id or "default"
-    # Under the same lock as the connect path, so a Stop cannot land in the middle
-    # of a replace and take the newly installed source down with the old one.
-    async with _sources_lock:
-        source = sources.pop(room_id, None)
-    if source is not None:
-        await source.stop()
-    return {"status": "disconnected"}
-
-
-@router.get("/api/rooms/{room_id}/status")
-async def connection_status(room_id: str):
-    source = sources.get(room_id)
-    return source.status_payload() if source else {"type": "status", "connected": False, "message": "Offline"}
 
 
 # --------------------------------------------------------------------------

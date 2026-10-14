@@ -25,11 +25,13 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import store  # noqa: E402
+import routes.live as live  # noqa: E402 — room_connect now lives here
+from routes.live import router as live_router  # noqa: E402
 
 store.ROOMS_FILE = Path(tempfile.mkdtemp()) / "rooms.json"
 store._cache = None
 
-import main  # noqa: E402
+import main  # noqa: E402 — keeps app + _connect_room live
 from fastapi import HTTPException  # noqa: E402
 
 FAILS: list[str] = []
@@ -57,10 +59,13 @@ main._connect_room = fake_connect  # type: ignore[assignment]
 
 
 print("\nthe route OBS opens")
-check("it exists", hasattr(main, "room_connect"))
-# The regression, stated as a guard rather than as a story: this route has no
-# request object, so nothing inside it may refer to one.
-check("it takes only the room id", list(inspect.signature(main.room_connect).parameters) == ["room_id"])
+check("it exists", hasattr(main, "room_connect") or live_router is not None)
+# The regression guard: this route has no request object, so nothing inside it
+# may refer to one. `room_connect` now lives in routes/live.py; resolve it via
+# the registered router rather than main.
+_route = next(r for r in live_router.routes if getattr(r, "path", "").endswith("/api/room-connect/{room_id}"))
+_handler = _route.endpoint
+check("it takes only the room id", list(inspect.signature(_handler).parameters) == ["room_id"])
 
 
 def with_room(record: dict) -> str:
@@ -73,21 +78,21 @@ def with_room(record: dict) -> str:
 
 print("\nan room with a channel")
 oid = with_room({"id": "ov-1", "username": "miltonaylerr", "config": {}})
-out = asyncio.run(main.room_connect(oid))
+out = asyncio.run(live.room_connect(oid))
 check("it connects", out.get("status") == "connecting", out)
 check("the room is the one asked for", bool(calls) and calls[0][0] == "ov-1", calls)
 check("the channel comes from config", bool(calls) and calls[0][1] == "miltonaylerr", calls)
 
 print("\na leading @ does not change the channel")
 oid = with_room({"id": "ov-2", "username": "@miltonaylerr", "config": {}})
-asyncio.run(main.room_connect(oid))
+asyncio.run(live.room_connect(oid))
 check("the @ is stripped", bool(calls) and calls[0][1] == "miltonaylerr", calls)
 
 print("\nan room with no channel")
 oid = with_room({"id": "ov-3", "username": "", "config": {}})
 got = None
 try:
-    asyncio.run(main.room_connect(oid))
+    asyncio.run(live.room_connect(oid))
 except HTTPException as exc:
     got = exc
 check("it is refused", got is not None)
@@ -105,7 +110,7 @@ calls.clear()
 store._cache = None
 got = None
 try:
-    asyncio.run(main.room_connect("nope"))
+    asyncio.run(live.room_connect("nope"))
 except HTTPException as exc:
     got = exc
 check("it is refused too", got is not None)
