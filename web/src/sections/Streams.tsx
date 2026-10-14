@@ -1,16 +1,31 @@
 /**
- * The rooms the backend knows about.
+ * The operator's streams.
  *
- * Each room is one stream the backend is watching. The list is the console's home
- * because every other thing here is an argument to it: an overlay link needs a
- * room, and a room is what connects to TikTok in the first place.
+ * This used to be a list of rows: handle, a badge, and two buttons. The link that
+ * actually goes into OBS was two clicks away, inside the builder, on a page showing
+ * one room at a time. For somebody with more than one stream that was the whole
+ * cost of the product: to answer "which link goes on this scene" you had to go and
+ * find out.
+ *
+ * So a stream is a card here, and it carries everything about that stream in one
+ * place — both links, both copy buttons, whether it is live right now — and styling
+ * is the one thing that needs its own page. The terminal action of this product is
+ * copying a link, so it should not be behind anything.
  */
 
 'use client'
 
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
+import {
+  boardStyleToQuery,
+  chatStyleToQuery,
+  resolveBoardStyle,
+  resolveStyle,
+  styleFromStored,
+} from '@shared/overlay'
 import { api, ApiError, isAuthFailure, type Room } from '../lib/client'
+import CopyField from '../components/CopyField'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { useToast } from '../components/Toast'
 
@@ -18,7 +33,92 @@ import { useToast } from '../components/Toast'
  *  enough that going offline is noticed while somebody is watching. */
 const POLL_MS = 15_000
 
-export default function Rooms() {
+/** What one stream looks like on the card. */
+function StreamCard({
+  room,
+  live,
+  busy,
+  onDelete,
+}: {
+  room: Room
+  live: boolean | undefined
+  busy: boolean
+  onDelete: (room: Room) => void
+}) {
+  const stored = styleFromStored(room.config)
+  const hasStyle = Object.keys(stored).length > 0
+
+  // A room that has never been styled keeps carrying its settings in the link,
+  // because that is the only place they exist. Once they are saved the link is just
+  // the room, and the overlay asks the backend for the rest.
+  //
+  // The parameters come from the shared converters rather than being written out
+  // here: they are what the page reads, and a second copy of that mapping is a
+  // second thing to be wrong.
+  const chatUrl = api.chatOverlay(room.id, hasStyle ? undefined : chatStyleToQuery(resolveStyle(stored)))
+  const boardUrl = api.topChatterOverlay(
+    room.id,
+    hasStyle ? undefined : boardStyleToQuery(resolveBoardStyle(stored)),
+  )
+
+  return (
+    <article className="stream-card">
+      <header className="stream-head">
+        <div className="grow">
+          {/* The handle is the name. A label is what the operator chose to call it,
+              and the handle is what the streamer recognises — so the handle leads and
+              the label sits under it, rather than the same text twice in two fonts. */}
+          <h3 className="stream-name">
+            @{room.username || 'no handle'}
+            {live === undefined ? null : (
+              <span className={live ? 'badge live' : 'badge off'}>{live ? 'live' : 'offline'}</span>
+            )}
+          </h3>
+          {room.name && room.name !== room.username && <p className="faint stream-label">{room.name}</p>}
+        </div>
+      </header>
+
+      <div className="stream-links">
+        <CopyField label="Chat overlay" url={chatUrl} />
+        <CopyField label="Top chatters" url={boardUrl} />
+      </div>
+
+      <footer className="stream-actions">
+        <Link className="btn" href={`/admin/overlay?room=${encodeURIComponent(room.id)}`}>
+          Style
+        </Link>
+        <button className="danger" onClick={() => onDelete(room)} disabled={busy}>
+          Delete
+        </button>
+      </footer>
+    </article>
+  )
+}
+
+/** What the page shows before there is anything to show. */
+function GettingStarted() {
+  return (
+    <div className="panel getting-started">
+      <h3>Nothing is connected yet</h3>
+      <ol className="steps">
+        <li>
+          <strong>Connect a TikTok username.</strong> StreamKit starts watching it straight away — a
+          stream that is not live yet is fine, it connects when it goes live.
+        </li>
+        <li>
+          <strong>Style the overlay.</strong> Size, colours, how many messages sit on screen. It
+          saves as you go, and the overlay on your stream changes with it.
+        </li>
+        <li>
+          <strong>Add the link as a browser source in OBS.</strong> Sized to your canvas. The link
+          does not change when you restyle, so this is a one-time step per stream.
+        </li>
+      </ol>
+    </div>
+  )
+}
+
+export default function Streams() {
   const [rooms, setRooms] = useState<Room[]>([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -29,6 +129,7 @@ export default function Rooms() {
   // room, and naming it from the room that raised it is the one way the name on
   // screen cannot drift from the room that gets deleted.
   const [pendingDelete, setPendingDelete] = useState<Room | null>(null)
+  const [loaded, setLoaded] = useState(false)
   const toast = useToast()
 
   const load = useCallback(async () => {
@@ -37,7 +138,9 @@ export default function Rooms() {
       setRooms(found)
       setError('')
     } catch (cause) {
-      setError(cause instanceof ApiError ? cause.message : 'The room list could not be loaded')
+      setError(cause instanceof ApiError ? cause.message : 'The stream list could not be loaded')
+    } finally {
+      setLoaded(true)
     }
   }, [])
 
@@ -51,11 +154,8 @@ export default function Rooms() {
   // endpoint does not carry it — a room that was created by a test is not
   // necessarily connected, and showing both as "live" would be a lie.
   //
-  // Keyed on the room IDS rather than on `rooms`. That object is a fresh array
-  // every poll, so depending on it tore this effect down and rebuilt it on every
-  // tick — which restarted the interval each time and fired an immediate status
-  // sweep on top of the one already in flight. The ids are a string, so the effect
-  // only restarts when the set of rooms genuinely changes.
+  // Keyed on the room ids rather than on `rooms`. That object is a fresh array every
+  // poll, so depending on it tore this effect down and rebuilt it on every tick.
   const roomIds = rooms.map((room) => room.id).join(',')
 
   useEffect(() => {
@@ -70,8 +170,8 @@ export default function Rooms() {
             return [id, status.connected] as const
           } catch {
             // A status that cannot be read is not evidence the room is down, so
-            // the room is left out and keeps whatever it last showed. Reporting
-            // it as offline would be a guess dressed as a reading.
+            // the room keeps whatever it last showed. Reporting it as offline
+            // would be a guess dressed as a reading.
             return null
           }
         }),
@@ -122,8 +222,8 @@ export default function Rooms() {
       setLabel('')
       setError('')
       toast(`Connected to @${handle}.`)
-      // A room that was just created is not in the list yet, so this cannot
-      // wait for the next poll to show the streamer's own room.
+      // A room that was just created is not in the list yet, so this cannot wait
+      // for the next poll to show the streamer's own room.
       setRooms((current) => (current.some((r) => r.id === room.id) ? current : [room, ...current]))
     } catch (cause) {
       setError(
@@ -153,18 +253,15 @@ export default function Rooms() {
       await api.deleteRoom(room.id)
       await load()
       setPendingDelete(null)
-      toast(`Deleted “${room.name || room.username || 'room'}”. Its overlay link no longer works.`)
+      toast(`Deleted @${room.username || room.name || 'stream'}. Its overlay links stop working.`)
     } catch (cause) {
-      // Same treatment as create: a refused token and a backend that is down are
-      // different problems, and the raw "Invalid or missing STREAMKIT_TOKEN" says
-      // nothing about which one happened or what to do about it.
       setPendingDelete(null)
       setError(
         cause instanceof ApiError && isAuthFailure(cause.status)
           ? 'Your login was refused. Reload the page and sign in again.'
           : cause instanceof ApiError
             ? cause.message
-            : 'The room could not be deleted',
+            : 'The stream could not be deleted',
       )
     } finally {
       setBusy(false)
@@ -175,10 +272,15 @@ export default function Rooms() {
     <>
       <div className="page-head">
         <div>
-          <h2>Rooms</h2>
+          <h2>Streams</h2>
           <p className="muted">
-            Every stream the backend is watching. A room is what an overlay link points at.
+            Every stream StreamKit is watching. Each card carries the links you paste into OBS.
           </p>
+          {/* The origin is on every one of these links and is the same on all of
+              them, so the field scrolls to the end of the URL where the part that
+              differs actually is. Saying where they point once is cheaper than
+              repeating it on every card. */}
+          <p className="faint mono stream-origin">{typeof window !== 'undefined' ? window.location.origin : ''}</p>
         </div>
         <div className="actions">
           <button onClick={() => void load()} disabled={busy}>
@@ -204,79 +306,59 @@ export default function Rooms() {
             placeholder="Label (optional)"
             value={label}
             onChange={(event) => setLabel(event.target.value)}
-            aria-label="Room label"
+            aria-label="Stream label"
           />
-          <button className="primary" onClick={() => void connect()} disabled={busy || newHandle.trim() === ''}>
+          <button
+            className="primary"
+            onClick={() => void connect()}
+            disabled={busy || newHandle.trim() === ''}
+          >
             Connect
           </button>
         </div>
         <p className="faint tight-caption">
-          The room is created for you and starts watching straight away — a stream that is not live yet is fine,
-          it connects when it goes live. Connecting a handle that already has a room reuses it and keeps its
-          styling.
+          Connecting a handle that already has a room reuses it and keeps its styling.
         </p>
       </div>
 
-      {rooms.length === 0 ? (
-        <div className="empty">No rooms yet. Connect a username above and its room appears here.</div>
+      {loaded && rooms.length === 0 ? (
+        <GettingStarted />
       ) : (
-        rooms.map((room) => (
-          <div className="panel" key={room.id}>
-            <div className="row">
-              <div className="grow">
-                <div className="name">
-                  {/* A room connected without a label has an empty name, and an
-                      empty heading beside the status badge reads as broken data
-                      rather than as "nobody named this". The handle is the thing
-                      the streamer will recognise, so it stands in. */}
-                  {room.name || room.username || 'unnamed room'}{' '}
-                  <span className={live[room.id] ? 'badge live' : 'badge off'}>{live[room.id] ? 'live' : 'not connected'}</span>
-                </div>
-                <div className="faint mono">{room.username || 'no handle connected yet'}</div>
-              </div>
-              {/* A link, not a button: the builder's address is the style, and a
-                  style you cannot send to somebody is not much of a style. The
-                  room travels in the query string rather than in state, so the
-                  back button comes back here rather than to the tab that happened
-                  to be open. */}
-              <Link className="btn" href={`/admin/overlay?room=${encodeURIComponent(room.id)}`}>
-                Style the overlay
-              </Link>
-              <button
-                className="danger"
-                onClick={() => setPendingDelete(room)}
-                disabled={busy}
-                aria-label={`Delete ${room.name}`}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        ))
+        <div className="stream-grid">
+          {rooms.map((room) => (
+            <StreamCard
+              key={room.id}
+              room={room}
+              live={live[room.id]}
+              busy={busy}
+              onDelete={setPendingDelete}
+            />
+          ))}
+        </div>
       )}
 
-      {/* One dialog for the list, not one per row: it is a single question at a
-          time, and a dialog per room would put a <dialog> in the DOM for every
-          row on the page. */}
+      {/* One dialog for the list, not one per card: it is a single question at a
+          time, and a dialog per stream would put a <dialog> in the DOM for every
+          card on the page. */}
       <ConfirmDialog
         open={pendingDelete !== null}
-        title="Delete this room?"
+        title="Delete this stream?"
         body={
           <>
             <p className="flush-top">
-              <strong>{pendingDelete?.name || pendingDelete?.username || 'This room'}</strong> will be removed
-              from the backend.
+              <strong>@{pendingDelete?.username || pendingDelete?.name || 'This stream'}</strong> will
+              be removed from the backend.
             </p>
             {/* The consequence, stated plainly: this is the whole reason the
                 question is asked, and it is what the browser's own dialog could
                 not say — it offered "OK". */}
             <p className="muted flush-top">
-              Its overlay link stops working immediately. Anything you have pasted into OBS will go blank until
-              you point it at another room.
+              Its overlay links stop working immediately. Anything you have pasted into OBS will go
+              blank until you point it at another stream.
             </p>
           </>
         }
-        confirmLabel="Delete room"
+        confirmLabel="Delete stream"
         busy={busy}
         onConfirm={() => void confirmRemove()}
         onCancel={() => setPendingDelete(null)}

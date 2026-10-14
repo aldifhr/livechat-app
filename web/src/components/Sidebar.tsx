@@ -15,12 +15,12 @@ import { usePathname } from 'next/navigation'
  * The active item is read from the URL, so it cannot drift from what is on screen:
  * there is no second copy of "where am I" to fall out of sync.
  *
- * "Rooms" is the index of this layout rather than /admin/rooms, so the address of
+ * "Streams" is the index of this layout rather than /admin/streams, so the address of
  * the console's home is the address you land on after signing in.
  */
 const ITEMS = [
-  { href: '/admin', label: 'Rooms', hint: 'Streams on the backend', exact: true },
-  { href: '/admin/overlay', label: 'Overlay builder', hint: 'Style and get the link', exact: false },
+  { href: '/admin', label: 'Streams', hint: 'Links and styling for each stream', exact: true },
+  { href: '/admin/overlay', label: 'Overlay builder', hint: 'Restyle one stream in detail', exact: false },
   { href: '/admin/live-preview', label: 'Live preview', hint: 'Watch it at OBS size', exact: false },
   { href: '/admin/about', label: 'About', hint: 'Addresses and account', exact: false },
 ]
@@ -52,9 +52,6 @@ export default function Sidebar() {
         {ITEMS.find((item) =>
           item.exact ? pathname === item.href : pathname.startsWith(item.href),
         )?.hint}
-        <br />
-        <br />
-        The overlay is served over the web, so it keeps working when this dashboard is closed.
       </p>
     </>
   )

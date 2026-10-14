@@ -37,6 +37,7 @@ import {
   type OverlayStyle,
 } from '@shared/overlay'
 import { api, type Room } from '../lib/client'
+import CopyField from '../components/CopyField'
 import { usePersistedStyle, type SaveState } from './usePersistedStyle'
 
 /** The room picker both customizers share — the room is what an overlay points at. */
@@ -60,45 +61,6 @@ function RoomPicker({
           </option>
         ))}
       </select>
-    </div>
-  )
-}
-
-/** A read-only link with a copy button — the thing that ends up in OBS. */
-function CopyLink({ label, hint, url }: { label: string; hint: string; url: string }) {
-  const [copied, setCopied] = useState(false)
-  // The timer is cleared on unmount. Without it, copying and then navigating away
-  // inside the 1.5s window leaves a callback that sets state on a component that
-  // is gone — harmless in React 18, but a leak the next reader has to re-derive.
-  const resetTimer = useRef<number | null>(null)
-  useEffect(() => () => {
-    if (resetTimer.current !== null) window.clearTimeout(resetTimer.current)
-  }, [])
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(url)
-      setCopied(true)
-      if (resetTimer.current !== null) window.clearTimeout(resetTimer.current)
-      resetTimer.current = window.setTimeout(() => {
-        resetTimer.current = null
-        setCopied(false)
-      }, 1500)
-    } catch {
-      // Clipboard access is refused in some contexts and there is no honest way to
-      // paste on the operator's behalf; the field is selectable, so they can.
-    }
-  }
-  return (
-    <div className="panel">
-      <h3>{label}</h3>
-      <div className="copy-row">
-        <textarea readOnly value={url} onFocus={(e) => e.target.select()} aria-label={label} rows={2} />
-        <button onClick={() => void copy()} disabled={!url}>
-          {copied ? 'Copied' : 'Copy'}
-        </button>
-      </div>
-      {hint && <p className="faint">{hint}</p>}
     </div>
   )
 }
@@ -161,11 +123,7 @@ function ChatCustomizer({ roomId, style, onChange }: {
       </div>
 
       <div>
-        <CopyLink
-          label="Chat overlay link"
-          hint="Add this as a browser source in OBS, sized to your canvas."
-          url={chatUrl}
-        />
+        <CopyField label="Chat overlay" url={chatUrl} hint="Add as a browser source in OBS, sized to your canvas." />
         <Link className="btn stack-top" href={preview}>
           Open live preview
         </Link>
@@ -238,7 +196,7 @@ function BoardCustomizer({ roomId, style, onChange }: {
       </div>
 
       <div>
-        <CopyLink label="Top chatters link" hint="" url={boardUrl} />
+        <CopyField label="Top chatters" url={boardUrl} hint="Add as a browser source in OBS, sized to your canvas." />
         <Link className="btn stack-top" href={preview}>
           Open live preview
         </Link>

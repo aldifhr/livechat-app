@@ -46,12 +46,20 @@ sudo systemctl restart streamtools-web
 sleep 2
 
 # A build that succeeded can still ship a page that cannot hydrate, and that is
-# invisible from here. Assert the two things that would catch it, both of which
-# changed meaning when the dashboard stopped being a static build behind
-# nginx's `auth_basic`:
+# invisible from here. Assert the things that would catch it, all of which changed
+# meaning when the dashboard stopped being a static build behind nginx's
+# `auth_basic`:
 #
 #   - /login must SERVE. It is the one page reachable with no session, so it is
-#     the only page whose chunks can be fetched without a cookie.
+#     the only page whose assets can be fetched without a cookie.
+#   - Its JS chunks must load. Without them the page never hydrates.
+#   - Its stylesheet must load. This one was missing for a reason nobody caught:
+#     the checks above covered `*.js`, and `next build` writes `.next/static` to the
+#     same place it writes the chunks, so the copy above omitted the stylesheet
+#     alone and nothing went red. The result was a dashboard serving every page
+#     with no styling at all — which reads as "the design is bad" rather than "the
+#     deploy is broken", and sent the redesign looking for a problem in the CSS
+#     that was in fact absent.
 #   - /admin must NOT serve. A 200 here would mean the gate is off, and the
 #     /api/backend/* proxy beside it attaches STREAMKIT_TOKEN to every call it
 #     forwards — an ungated dashboard is a confused deputy, not a cosmetic bug.
@@ -67,6 +75,17 @@ if [ "$code" != "200" ]; then
   exit 1
 fi
 
+sheet=$(printf '%s' "$login" | grep -o '/_next/static/[^"]*\.css' | head -1)
+if [ -z "$sheet" ]; then
+  echo "FAIL: /login referenced no stylesheet — the page would render unstyled" >&2
+  exit 1
+fi
+code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "http://127.0.0.1:5184$sheet")
+if [ "$code" != "200" ]; then
+  echo "FAIL: $sheet answered $code — the page would render unstyled" >&2
+  exit 1
+fi
+
 status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:5184/admin)
 case "$status" in
   30*) : ;; # sent to /login, which is the point
@@ -76,4 +95,4 @@ case "$status" in
     ;;
 esac
 
-echo "OK: deployed, /login serves and its chunks load ($chunk), /admin is gated ($status)"
+echo "OK: deployed, /login serves, its chunks ($chunk) and stylesheet ($sheet) load, /admin is gated ($status)"

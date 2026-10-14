@@ -358,10 +358,67 @@ code,
   border-left-color: var(--accent);
 }
 
+/*
+ * The note under the navigation.
+ *
+ * `margin-top: auto` pushed it to the bottom of the sidebar, which on a tall window
+ * put it four hundred pixels below the last navigation item with nothing between —
+ * it read as a floating caption rather than as part of the menu. It is the menu's
+ * footnote, so it sits under the menu. Sign-out keeps `auto` below it and stays
+ * pinned, because that is an action and belongs at the end.
+ */
 .sidebar .side-note {
-  margin-top: auto;
   font-size: 0.8rem;
   color: var(--text-faint);
+}
+
+.sidebar .signout {
+  margin-top: auto;
+}
+
+/*
+ * A link that navigates, dressed as a button.
+ *
+ * This class is used by the room cards and by the builder's preview link, and it
+ * had no rule at all — so both rendered as bare anchors: no border, no padding, no
+ * surface. They looked like stray text rather than something you could click, which
+ * is the reason the only route from a room to its styling looked like part of the
+ * sentence next to it.
+ *
+ * Built on the same box as `button` so the two read as one set: same border, same
+ * radius, same fill when hovered.
+ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  color: var(--text);
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--radius-sm);
+  line-height: 1.4;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.btn:hover {
+  text-decoration: none;
+  border-color: var(--accent-dim);
+  background: var(--bg);
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.btn.primary:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent-dim);
 }
 
 .content {
@@ -722,39 +779,13 @@ code,
   margin: 0.4rem 0 0;
 }
 
+/* `flex-start`, not `stretch`: a link that wraps to four lines made a four-line
+   tall Copy button beside it, which looked like the button was the thing being
+   read. The button keeps its own height and sits at the top of the row. */
 .copy-row {
   display: flex;
   gap: 0.5rem;
-  align-items: center;
-  margin-bottom: 0.6rem;
-}
-
-/* The link is ~200 characters and the whole point is that reading it tells you
-   what OBS was pointed at — so it wraps across lines rather than being a 426px
-   window onto 1621px of text. One line scrolled would defeat the promise that
-   the link is the configuration, readable at a glance. */
-.copy-row {
   align-items: flex-start;
-}
-
-/* A textarea, not an input: an <input> is always one line no matter the CSS, so a
-   ~200-character overlay link would be a 426px window onto 1621px of text. The
-   link is the whole configuration — reading it tells you what OBS was pointed at
-   — so it has to wrap and be readable, not just copyable. */
-.copy-row textarea {
-  flex: 1;
-  min-width: 0;
-  font-family: var(--mono);
-  font-size: 0.82rem;
-  line-height: 1.5;
-  padding: 0.6rem;
-  resize: vertical;
-  overflow-wrap: anywhere;
-  word-break: break-all;
-  background: var(--bg-sunken);
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
 }
 
 .empty {
@@ -825,9 +856,13 @@ code,
   border-left: 1px solid var(--line);
 }
 
+/* The selected tab is the one filled in the frame, so it has to be the frame's
+   ink on the fill — `--accent-ink`, not white. Both are white here, which made
+   the selected tab invisible against its own background. */
 .seg button.on {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-ink);
+  font-weight: 600;
 }
 
 .seg button:disabled {
@@ -961,4 +996,169 @@ button.danger-solid:hover:not(:disabled) {
   background: var(--accent-dim);
   border-color: var(--accent-dim);
   color: var(--accent-ink);
+}
+/* ---- the stream hub ------------------------------------------------------
+   One card per stream, and the card carries the links.
+
+   This was a single-column list of full-width rows, so five streams were five
+   nearly identical bands with the links two clicks away. A grid gives each stream
+   its own box, and the links sit inside it — copying one is the thing the operator
+   came to do, so it is on the card rather than behind "Style". */
+
+.stream-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 1rem;
+  margin-top: 1.25rem;
+  /* Each card is its own height. Stretching them to match the tallest left the
+     shorter ones with a pool of empty space above the buttons, which read as a card
+     that failed to load. */
+  align-items: start;
+}
+
+@media (max-width: 560px) {
+  .stream-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.stream-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1.1rem 1.15rem;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.stream-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.stream-name {
+  margin: 0;
+  font-size: 1.02rem;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.stream-label {
+  margin: 0.15rem 0 0;
+}
+
+.stream-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.stream-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: auto;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--line-soft);
+}
+
+.stream-actions .danger {
+  margin-left: auto;
+}
+
+/* On a card, the link is the whole point and the label above already names it, so
+   there is no room for a sentence under it. */
+.stream-links .copy-field .faint {
+  display: none;
+}
+
+/* ---- the empty state -----------------------------------------------------
+   Three steps rather than one sentence, because the question a new operator has is
+   not "is the list empty" — it is "what do I do next, and in what order". */
+
+.getting-started {
+  margin-top: 1.25rem;
+}
+
+.getting-started .steps {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  color: var(--text-dim);
+}
+
+.getting-started .steps strong {
+  color: var(--text);
+}
+
+/* ---- the copy field -----------------------------------------------------
+   `CopyField` measures itself, so `overflow: hidden` is what keeps the box from
+   growing a scrollbar over a link that is one line shorter than the last. */
+
+.copy-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+/* The name of the overlay, above the link rather than under it. Under, it read as
+   a caption on the URL — which is what it was, and what made every card look like
+   it was made of links. */
+.copy-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* One line, never wrapped.
+   Wrapping was tried first and it is unreadable: an unstyled room's link is about
+   250 characters of URL-encoded settings, and letting it wrap filled half a card
+   with noise that nobody reads before pasting. The link scrolls sideways instead,
+   which keeps every card the same height and keeps the field honest — what is in
+   the field is what gets copied, elided or not. */
+/*
+ * The link as shown. Not a textarea: the thing on screen is a shortened view of a
+ * value, and a textarea invites selecting it and copying something that would not
+ * open. `user-select: none` says that plainly — the Copy button beside it is the one
+ * way to get the link, and it hands over the whole thing.
+ *
+ * It wraps rather than scrolls. By the time the origin is off, what is left is
+ * short enough that one line is usually right, and when a room's link still carries
+ * its styling it is two lines of something rather than five of noise.
+ */
+.copy-value {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-dim);
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.6rem;
+  overflow-wrap: anywhere;
+  user-select: none;
+}
+
+.copy-row:hover .copy-value {
+  border-color: var(--line);
+  color: var(--text-dim);
+}
+
+/* Where the links on this page point. Said once here rather than repeated on
+   every card, because the field scrolls to the end of the URL — which is where
+   the part that differs between links lives, and the origin is not it. */
+.stream-origin {
+  margin: 0.25rem 0 0;
 }
