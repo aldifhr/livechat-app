@@ -327,7 +327,14 @@
     size: 22,
     nameColour: '#ffd76a',
     textColour: '#ffffff',
-    background: 0.05,
+    // The same 0 the `config` literal above falls back to, and deliberately so:
+    // this object and that literal are two copies of one question — what does an
+    // un-styled overlay look like — and they were answering it differently. This
+    // was 0.05, so an overlay opened with the video straight through it and then
+    // grew a faint scrim the first time the backend pushed a style for a room
+    // whose saved config carried no `bg`. Both are now 0, and
+    // `test-overlay-sync.mjs` holds them together.
+    background: 0,
     max: 8,
     delay: 500,
     font: '"Segoe UI", system-ui, sans-serif'

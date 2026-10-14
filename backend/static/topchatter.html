@@ -257,7 +257,15 @@
   // values. `poll` is not in here: it is not styling, and a restyle should not
   // change how often the ranking refreshes.
   var STYLE_DEFAULTS = {
-    size: 28,
+    // 36, not the 28 this was raised from. The size was fixed once already, and
+    // only in half the places: the `config` literal below and `shared/overlay.ts`
+    // moved to 36 while this copy stayed at 28, so a board opened at 36 dropped to
+    // 28 — 1.5% of a 1920px canvas — the first time the backend pushed a style for
+    // a room with no saved `size`. That is the regression, returned by the path the
+    // original fix did not cover. `test-overlay-sync.mjs` now compares this object
+    // against the load default as well as against the shared module, because a
+    // check that only reads one of the two copies cannot see the other one drift.
+    size: 36,
     nameColour: '#ffd76a',
     textColour: '#ffffff',
     background: 0.9,

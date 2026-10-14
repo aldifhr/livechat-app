@@ -149,5 +149,58 @@ for (const [label, a, b] of DEFAULTS) {
   )
 }
 
+console.log('and each page agrees with itself')
+// The comparisons above are page-against-shared. This one is a page against its own
+// second copy of the same idea, which is the pair that had drifted.
+//
+// `STYLE_DEFAULTS` is what the merge resets to before applying a pushed style, so
+// it is the page's answer to "what does no styling look like". The `config` literal
+// a few lines up is the page's answer to the same question, on load. Two copies of
+// one concept, in one file, written out separately — so they can differ, and a
+// test comparing either against `shared/` alone will not see it, because each of
+// them still matches the shared module.
+//
+// It did differ, on the chat page: `background` was 0 on load and 0.05 in
+// `STYLE_DEFAULTS`, so an overlay that opened fully transparent acquired a faint
+// scrim the first time the backend pushed a style for a room whose saved config had
+// no `bg` in it. Nothing errored and no assertion failed: the page rendered, and
+// rendered differently than it had a moment earlier.
+//
+// Both pages, because a check covering only the one that happened to be wrong
+// leaves the other free to drift the same way.
+const RESET_CHECKS = [
+  ['chat', chat, "number\\('size', typeof bakedSize === 'number' \\? bakedSize : ([\\d.]+)",
+    "number\\('max', typeof bakedMax === 'number' \\? bakedMax : ([\\d.]+)",
+    "number\\('delay', typeof bakedDelay === 'number' \\? bakedDelay : ([\\d.]+)",
+    "number\\('bg', typeof bakedBg === 'number' \\? bakedBg : ([\\d.]+)"],
+  ['board', board, "number\\('size', typeof baked\\.size === 'number' \\? baked\\.size : ([\\d.]+)",
+    "number\\('max', typeof baked\\.max === 'number' \\? baked\\.max : ([\\d.]+)",
+    null,
+    "number\\('bg', typeof baked\\.background === 'number' \\? baked\\.background : ([\\d.]+)"],
+]
+// Only the numbers. Colours and font stacks are strings, and a string has no
+// single spelling to read out of both places — that is what `shared/overlay.ts` and
+// `test:overlay.mjs` are for.
+const NUMERIC_RESET_KEYS = ['size', 'max', 'delay', 'background']
+
+for (const [pageName, source, ...patterns] of RESET_CHECKS) {
+  const styleDefaults = source.slice(source.indexOf('var STYLE_DEFAULTS = {'))
+  NUMERIC_RESET_KEYS.forEach((key, index) => {
+    const pattern = patterns[index]
+    if (!pattern) return
+    const onLoad = pageDefault(source, pattern)
+    if (onLoad === undefined) return
+    const reset = new RegExp(`\\b${key}:\\s*([^,\\n]+)`)
+      .exec(styleDefaults)?.[1]
+      ?.trim()
+      .replace(/^['"]|['"]$/g, '')
+    check(
+      `${pageName}: resetting ${key} gives back what loading with no styling gives`,
+      reset === onLoad,
+      reset === onLoad ? '' : `on load=${onLoad} after a reset=${reset}`,
+    )
+  })
+}
+
 console.log(failed === 0 ? '\nall passed' : `\n${failed} failed`)
 process.exit(failed === 0 ? 0 : 1)
