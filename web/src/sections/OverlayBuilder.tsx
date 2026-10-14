@@ -20,11 +20,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   chatStyleFromQuery,
   chatStyleToQuery,
+  chatStyleToStored,
   boardStyleFromQuery,
+  boardStyleToStored,
   boardStyleToQuery,
+  resolveBoardStyle,
+  resolveStyle,
+  styleFromStored,
   BOARD_DEFAULT_STYLE,
-  OVERLAY_DEFAULT_STYLE,
   OVERLAY_DELAY,
+  OVERLAY_DEFAULT_STYLE,
   OVERLAY_MAX_ROWS,
   OVERLAY_SIZE,
   OVERLAY_TITLE_MAX,
@@ -32,6 +37,7 @@ import {
   type OverlayStyle,
 } from '@shared/overlay'
 import { api, type Room } from '../lib/client'
+import { usePersistedStyle, type SaveState } from './usePersistedStyle'
 
 /** The room picker both customizers share — the room is what an overlay points at. */
 function RoomPicker({
@@ -245,30 +251,38 @@ function BoardCustomizer({ roomId, style, onChange }: {
 
 type Which = 'chat' | 'board'
 
+/** What the operator is told about the save. Never a guess, never a silence. */
+function SaveBadge({ state }: { state: SaveState }) {
+  const text =
+    state === 'pending'
+      ? 'Menyimpan…'
+      : state === 'saved'
+        ? 'Tersimpan'
+        : state === 'failed'
+          ? 'Gagal menyimpan'
+          : ''
+  return (
+    <span className={state === 'failed' ? 'save-state failed' : 'save-state'} role="status">
+      {text}
+    </span>
+  )
+}
+
 export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }) {
   const [rooms, setRooms] = useState<Room[]>([])
   const [roomId, setRoomId] = useState(initialRoom ?? '')
-  // Each overlay keeps its own style: the board's row count and the chat's message
-  // gap are unrelated, and sharing one object would let one overwrite the other's
-  // meaning whenever the tab switched.
-  const [chatStyle, setChatStyle] = useState<OverlayStyle>(OVERLAY_DEFAULT_STYLE)
-  const [boardStyle, setBoardStyle] = useState<BoardStyle>(BOARD_DEFAULT_STYLE)
   const [which, setWhich] = useState<Which>('chat')
 
-  // The query string is read here, not in the `useState` initialisers above.
-  // Those run during the server render too, where `window` does not exist — the
-  // page answered 500 with `ReferenceError: window is not defined` on every
-  // request, and only a client-side navigation ever reached it. Reading it after
-  // mount is the same string a moment later, and the first paint shows the
-  // defaults rather than nothing.
+  // The query string, read after mount rather than in a state initialiser: those run
+  // during the server render too, where `window` does not exist, and the page
+  // answered 500 with `ReferenceError: window is not defined` on every request.
+  const search = useRef('')
   useEffect(() => {
-    const search = window.location.search
+    search.current = window.location.search
     if (!initialRoom) {
-      const fromQuery = new URLSearchParams(search).get('room')
+      const fromQuery = new URLSearchParams(search.current).get('room')
       if (fromQuery) setRoomId(fromQuery)
     }
-    setChatStyle(chatStyleFromQuery(search))
-    setBoardStyle(boardStyleFromQuery(search))
   }, [initialRoom])
 
   useEffect(() => {
@@ -285,20 +299,55 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
       })
   }, [])
 
-  const patchChat = useCallback(
-    (change: Partial<OverlayStyle>) => setChatStyle((current) => ({ ...current, ...change })),
-    [],
-  )
-  const patchBoard = useCallback(
-    (change: Partial<BoardStyle>) => setBoardStyle((current) => ({ ...current, ...change })),
-    [],
-  )
-
   // A room named by the query string only counts once it has been confirmed to
   // exist, so a stale id produces a fallback rather than a link pointing at a
   // room nobody is watching.
   const known = rooms.some((room) => room.id === roomId)
-  const selected = known ? roomId : rooms[0]?.id ?? ''
+  const selected = known ? roomId : (rooms[0]?.id ?? '')
+  const room = rooms.find((r) => r.id === selected)
+
+  /**
+   * Read a room's saved styling, falling back to whatever the link carried.
+   *
+   * The fallback is for a room that has never been styled, which is exactly where a
+   * link pasted before styles were saved carries its own settings. Once a room has
+   * something stored, that is what the editor opens on — a link's parameters are a
+   * snapshot from whenever it was copied, and letting one win would make every saved
+   * change invisible.
+   */
+  const readChat = useCallback(
+    (config: Record<string, unknown>) => {
+      const stored = styleFromStored(config)
+      return Object.keys(stored).length > 0
+        ? resolveStyle(stored)
+        : chatStyleFromQuery(search.current)
+    },
+    [],
+  )
+
+  const readBoard = useCallback(
+    (config: Record<string, unknown>) => {
+      const stored = styleFromStored(config)
+      return Object.keys(stored).length > 0
+        ? resolveBoardStyle(stored)
+        : boardStyleFromQuery(search.current)
+    },
+    [],
+  )
+
+  const chat = usePersistedStyle({
+    room,
+    fallback: OVERLAY_DEFAULT_STYLE,
+    read: readChat,
+    write: chatStyleToStored,
+  })
+
+  const board = usePersistedStyle({
+    room,
+    fallback: BOARD_DEFAULT_STYLE,
+    read: readBoard,
+    write: boardStyleToStored,
+  })
 
   return (
     <>
@@ -325,9 +374,15 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
 
       <div className="builder">
         {which === 'chat' ? (
-          <ChatCustomizer roomId={selected} style={chatStyle} onChange={patchChat} />
+          <>
+            <ChatCustomizer roomId={selected} style={chat.current} onChange={chat.patch} />
+            <SaveBadge state={chat.state} />
+          </>
         ) : (
-          <BoardCustomizer roomId={selected} style={boardStyle} onChange={patchBoard} />
+          <>
+            <BoardCustomizer roomId={selected} style={board.current} onChange={board.patch} />
+            <SaveBadge state={board.state} />
+          </>
         )}
       </div>
     </>

@@ -75,7 +75,7 @@ export interface RoomStatus {
 }
 
 /**
- * The overlay pages as this app serves them.
+ * The overlay links as this app serves them.
  *
  * Read from the page itself rather than a build-time constant, so a deployment
  * that moves the frontend domain does not have to rebuild for the links handed
@@ -83,6 +83,15 @@ export interface RoomStatus {
  */
 const origin = typeof window === 'undefined' ? '' : window.location.origin
 
+/**
+ * An overlay link.
+ *
+ * `params` is for the legacy form, where a link carried its own styling so that
+ * reading it back described what OBS was pointed at. A styled room no longer needs
+ * that — its styling is saved, and the overlay is told over the socket — so a link
+ * made for a styled room is just the room. The parameter stays because links made
+ * before that are already pasted into somebody's scene collection.
+ */
 function overlayUrl(path: string, id: string, params?: Query): string {
   const url = new URL(path, origin)
   url.searchParams.set('room', id)
@@ -100,6 +109,22 @@ export const api = {
   updateRoom: (id: string, change: { name?: string; username?: string }) =>
     request<Room>('PATCH', `/rooms/${id}`, change),
   deleteRoom: (id: string) => request<null>('DELETE', `/rooms/${id}`),
+
+  /**
+   * Save a room's overlay styling.
+   *
+   * `base` is the room's config as it was last read, and it matters: the store
+   * replaces a room's whole config rather than merging into it, so sending only
+   * the fields being changed would drop the other overlay's settings. The caller
+   * spreads its own fields over the config it already had, which is the only way
+   * to save one overlay without erasing the other.
+   *
+   * The backend broadcasts what was stored to every overlay already watching that
+   * room, so a style reaches OBS without the link being copied again.
+   */
+  saveStyle: (id: string, base: Record<string, unknown>, fields: Record<string, unknown>) =>
+    request<{ status: string }>('POST', `/rooms/${id}/config`, { config: { ...base, ...fields } }),
+
   // One URL per overlay so a customiser or a scene collection points at
   // exactly one page. The bare /overlay path still redirects, for links pasted
   // before the split.

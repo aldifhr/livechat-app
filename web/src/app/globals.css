@@ -452,6 +452,23 @@ code,
   color: var(--text-faint);
 }
 
+/* Where a style change has got to. It is a status, not a button: it never takes a
+   click, and when there is nothing to report it renders as nothing rather than as
+   a label. An operator who has just dragged a slider should not have to wonder
+   whether it stuck, and the honest answer is quiet most of the time. */
+.save-state {
+  display: block;
+  min-height: 1.4em;
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--text-faint);
+  text-align: right;
+}
+
+.save-state.failed {
+  color: var(--bad);
+}
+
 /* ---- login ---- */
 
 /* The sign-in page is the product's front door, not a lone card in a void. Two

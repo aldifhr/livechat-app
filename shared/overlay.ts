@@ -271,3 +271,116 @@ export function resolveStyle(saved: Partial<OverlayStyle> | null | undefined): O
     font: resolveOverlayFont(saved?.font),
   }
 }
+
+/** A board styling read out of storage, with anything unusable replaced. */
+export function resolveBoardStyle(saved: Partial<BoardStyle> | null | undefined): BoardStyle {
+  return {
+    size: clampNumber(saved?.size, OVERLAY_SIZE.min, OVERLAY_SIZE.max, BOARD_DEFAULT_STYLE.size),
+    max: clampRows(saved?.max, BOARD_DEFAULT_STYLE.max),
+    bg: clampNumber(saved?.bg, 0, 1, BOARD_DEFAULT_STYLE.bg),
+    nameColour: resolveColour(saved?.nameColour, BOARD_DEFAULT_STYLE.nameColour),
+    textColour: resolveColour(saved?.textColour, BOARD_DEFAULT_STYLE.textColour),
+    font: resolveOverlayFont(saved?.font),
+    title: resolveTitle(saved?.title),
+  }
+}
+
+// --------------------------------------------------------------------------
+// the stored form
+// --------------------------------------------------------------------------
+
+/**
+ * The keys a room's styling is saved under, and the field each one means.
+ *
+ * The store spells them `overlaySize`, `overlayBg` and the rest — namespaced,
+ * because a room's config can hold more than the overlay's styling and an
+ * unnamespaced `size` would be ambiguous. `resolveStyle` above reads plain field
+ * names. Handing it a stored config unchanged therefore resets every field to its
+ * default without a word of complaint, which is how a room's saved styling is lost
+ * without anything looking broken.
+ *
+ * So every crossing between the stored form and the field names goes through here.
+ * It is a rename and nothing else: no clamping, no defaults — that is
+ * `resolveStyle`'s job, and doing it once in one place is what keeps a value from
+ * being treated two different ways on the way in and on the way out.
+ *
+ * `overlayTitle` is here because the board's heading is part of what the operator
+ * sets. It is deliberately not in the backend's `OVERLAY_STORE_KEYS` whitelist —
+ * that whitelist guards the unauthenticated connect path, and this writes through
+ * the config route, which is behind the session gate.
+ */
+const STORED_TO_FIELD = {
+  overlaySize: 'size',
+  overlayMax: 'max',
+  overlayDelay: 'delay',
+  overlayBg: 'bg',
+  overlayNameColour: 'nameColour',
+  overlayTextColour: 'textColour',
+  overlayFont: 'font',
+  overlayTitle: 'title',
+} as const
+
+/** A field name a stored config can carry. */
+type StyleField = (typeof STORED_TO_FIELD)[keyof typeof STORED_TO_FIELD]
+
+/**
+ * The fields a stored config can carry, once renamed.
+ *
+ * One type for both shapes, because a single stored config carries fields for both
+ * overlays: a chat style is read from the subset that means something to it, and a
+ * board style from the subset that means something to it. Neither is wrong about a
+ * field the other owns.
+ */
+export type StoredStyle = Partial<OverlayStyle> & Partial<Pick<BoardStyle, 'title'>>
+
+/**
+ * A room's stored config as style fields, ready for `resolveStyle`.
+ *
+ * An empty object for a room that has never been styled, which `resolveStyle`
+ * turns into the defaults — the same thing a room with no config has always shown,
+ * so an unstyled room looks exactly as it did.
+ */
+export function styleFromStored(config: Record<string, unknown> | null | undefined): StoredStyle {
+  const out: Record<string, unknown> = {}
+  if (!config || typeof config !== 'object') return out as StoredStyle
+  for (const [stored, field] of Object.entries(STORED_TO_FIELD) as [string, StyleField][]) {
+    const value = (config as Record<string, unknown>)[stored]
+    if (value !== undefined && value !== null) out[field] = value
+  }
+  return out as StoredStyle
+}
+
+/** A chat style as the config to save it under — the inverse of `styleFromStored`. */
+export function chatStyleToStored(style: OverlayStyle): Record<string, unknown> {
+  return {
+    overlaySize: style.size,
+    overlayMax: style.max,
+    overlayDelay: style.delay,
+    overlayBg: style.bg,
+    overlayNameColour: style.nameColour,
+    overlayTextColour: style.textColour,
+    overlayFont: style.font,
+  }
+}
+
+/**
+ * A board style as the config to save it under.
+ *
+ * Deliberately carrying no `overlayDelay`. Both overlays save into one room record
+ * and the store replaces that record wholesale rather than merging, so the fields a
+ * save does not mention have to come from somewhere else — and the caller gets
+ * there by sending the room's existing config with this spread over it. The chat's
+ * delay is the board's business only in the sense that overwriting it would be a
+ * change nobody asked for, so it is left out and therefore preserved.
+ */
+export function boardStyleToStored(style: BoardStyle): Record<string, unknown> {
+  return {
+    overlaySize: style.size,
+    overlayMax: style.max,
+    overlayBg: style.bg,
+    overlayNameColour: style.nameColour,
+    overlayTextColour: style.textColour,
+    overlayFont: style.font,
+    overlayTitle: style.title,
+  }
+}
