@@ -98,5 +98,56 @@ for (const [label, served, backend] of PAIRS) {
   )
 }
 
+
+/*
+ * The defaults, on both sides.
+ *
+ * `shared/overlay.ts` holds the settings and their bounds because the builder and
+ * the page are two readers of one thing: a value the dashboard thinks is fine and
+ * the page clamps anyway shows one number in the console and a different one in
+ * OBS. The page cannot import that module — it is a standalone file, served by a
+ * backend that has no TypeScript — so it repeats the defaults, and the whole
+ * arrangement rests on the two copies staying equal.
+ *
+ * They did not stay equal. Raising the board's default text size changed the shared
+ * module and left the page at 28, so an unstyled board rendered at 28 while the
+ * slider beside it said 36. This walks both and compares, because the alternative
+ * is finding out from a stream.
+ */
+const shared = readFileSync(`${repoRoot}/shared/overlay.ts`, 'utf8')
+const chat = readFileSync(`${repoRoot}/web/public/overlay/chat-overlay.html`, 'utf8')
+const board = readFileSync(`${repoRoot}/web/public/overlay/top-chatter.html`, 'utf8')
+
+function sharedDefault(block, field) {
+  return new RegExp(`export const ${block}[\\s\\S]*?\\b${field}: ([\\d.]+)`).exec(shared)?.[1]
+}
+function pageDefault(source, pattern) {
+  return new RegExp(pattern).exec(source)?.[1]
+}
+
+console.log('the defaults agree on both sides')
+const DEFAULTS = [
+  ['chat size', sharedDefault('OVERLAY_DEFAULT_STYLE', 'size'),
+    pageDefault(chat, "number\\('size', typeof bakedSize === 'number' \\? bakedSize : ([\\d.]+)")],
+  ['chat max', sharedDefault('OVERLAY_DEFAULT_STYLE', 'max'),
+    pageDefault(chat, "number\\('max', typeof bakedMax === 'number' \\? bakedMax : ([\\d.]+)")],
+  ['chat delay', sharedDefault('OVERLAY_DEFAULT_STYLE', 'delay'),
+    pageDefault(chat, "number\\('delay', typeof bakedDelay === 'number' \\? bakedDelay : ([\\d.]+)")],
+  ['chat bg', sharedDefault('OVERLAY_DEFAULT_STYLE', 'bg'),
+    pageDefault(chat, "number\\('bg', typeof bakedBg === 'number' \\? bakedBg : ([\\d.]+)")],
+  ['board size', sharedDefault('BOARD_DEFAULT_STYLE', 'size'),
+    pageDefault(board, "number\\('size', typeof baked\\.size === 'number' \\? baked\\.size : ([\\d.]+)")],
+  ['board bg', sharedDefault('BOARD_DEFAULT_STYLE', 'bg'),
+    pageDefault(board, "number\\('bg', typeof baked\\.background === 'number' \\? baked\\.background : ([\\d.]+)")],
+]
+
+for (const [label, a, b] of DEFAULTS) {
+  check(
+    `the ${label} default matches`,
+    a !== undefined && a === b,
+    a === b ? '' : `shared=${a} page=${b}`,
+  )
+}
+
 console.log(failed === 0 ? '\nall passed' : `\n${failed} failed`)
 process.exit(failed === 0 ? 0 : 1)

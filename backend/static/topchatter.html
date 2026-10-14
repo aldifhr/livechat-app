@@ -67,7 +67,10 @@
        frame the way a centred graphic does; align-items: stretch would pin the
        panel to the left edge. */
     align-items: center;
-    padding: 24px;
+    /* In `em`, as on the chat overlay: 24px is a hair's breadth on a 1080p source
+       and a visible border on a 720p one, and the canvas is a fixed number of
+       pixels while the text is not. */
+    padding: 1em;
     font-family: var(--font);
     font-size: var(--size);
     line-height: 1.3;
@@ -223,7 +226,7 @@
     // rewritten to work; `base` is still honoured for a page hosted elsewhere.
     baseUrl: String(param('base', baked.baseUrl || location.origin)).replace(/\/+$/, ''),
     username: String(param('room', baked.username || '')).replace(/^@/, '').trim(),
-    size: number('size', typeof baked.size === 'number' ? baked.size : 28, 8, 96),
+    size: number('size', typeof baked.size === 'number' ? baked.size : 36, 8, 96),
     nameColour: param('name', baked.nameColour || '#ffd76a'),
     textColour: param('color', baked.textColour || '#ffffff'),
     // How opaque the gray panel is. Defaults high now that it is a card

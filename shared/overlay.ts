@@ -43,6 +43,11 @@ export const OVERLAY_DEFAULT_STYLE: OverlayStyle = {
   size: 22,
   max: 8,
   delay: 500,
+  // 0, and deliberately: the video is meant to show through. The backdrop sits
+  // behind each line rather than behind the whole list precisely so it can be off
+  // by default — a panel over a stream reads as a dialog box. It is raised by the
+  // slider when a scene is too bright for the text-shadow to carry alone, and
+  // that is a decision about the video, which the dashboard cannot see.
   bg: 0,
   nameColour: '#ffd76a',
   textColour: '#ffffff',
@@ -222,7 +227,12 @@ export interface BoardStyle {
 }
 
 export const BOARD_DEFAULT_STYLE: BoardStyle = {
-  size: 28,
+  // 36 rather than 28. On a 1920px canvas 28px is 1.5% of the width, and the
+  // preview made that visible: the board read as a small card in the corner of a
+  // stream rather than as something the audience is meant to look at. A
+  // leaderboard is the graphic a scene points at, so it is set at a size where it
+  // is legible from the couch.
+  size: 36,
   max: 10,
   bg: 0.9,
   nameColour: OVERLAY_DEFAULT_STYLE.nameColour,
