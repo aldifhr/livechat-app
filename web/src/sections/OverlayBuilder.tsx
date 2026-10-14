@@ -235,15 +235,29 @@ type Which = 'chat' | 'board'
 
 export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }) {
   const [rooms, setRooms] = useState<Room[]>([])
-  const [roomId, setRoomId] = useState(
-    () => initialRoom || new URLSearchParams(window.location.search).get('room') || '',
-  )
+  const [roomId, setRoomId] = useState(initialRoom ?? '')
   // Each overlay keeps its own style: the board's row count and the chat's message
   // gap are unrelated, and sharing one object would let one overwrite the other's
   // meaning whenever the tab switched.
-  const [chatStyle, setChatStyle] = useState<OverlayStyle>(() => chatStyleFromQuery(window.location.search))
-  const [boardStyle, setBoardStyle] = useState<BoardStyle>(() => boardStyleFromQuery(window.location.search))
+  const [chatStyle, setChatStyle] = useState<OverlayStyle>(OVERLAY_DEFAULT_STYLE)
+  const [boardStyle, setBoardStyle] = useState<BoardStyle>(BOARD_DEFAULT_STYLE)
   const [which, setWhich] = useState<Which>('chat')
+
+  // The query string is read here, not in the `useState` initialisers above.
+  // Those run during the server render too, where `window` does not exist — the
+  // page answered 500 with `ReferenceError: window is not defined` on every
+  // request, and only a client-side navigation ever reached it. Reading it after
+  // mount is the same string a moment later, and the first paint shows the
+  // defaults rather than nothing.
+  useEffect(() => {
+    const search = window.location.search
+    if (!initialRoom) {
+      const fromQuery = new URLSearchParams(search).get('room')
+      if (fromQuery) setRoomId(fromQuery)
+    }
+    setChatStyle(chatStyleFromQuery(search))
+    setBoardStyle(boardStyleFromQuery(search))
+  }, [initialRoom])
 
   useEffect(() => {
     api
