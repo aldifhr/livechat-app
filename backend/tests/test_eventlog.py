@@ -38,13 +38,19 @@ def check(label, cond, detail=""):
 
 
 def capture(fn=None):
-    """Run fn with the log pointed at a string buffer."""
+    """Run fn with the log pointed at a string buffer.
+
+    At DEBUG, because that is the level `record` writes its per-event lines at.
+    They were INFO until the volume became the problem — a busy room at ~15
+    events a second is 26 MB a day, which evicts the errors worth reading — so
+    the lines are still there, one level down, and this is what reads them.
+    """
     buf = io.StringIO()
     handler = logging.StreamHandler(buf)
     handler.setFormatter(logging.Formatter("%(message)s"))
     log = logging.getLogger("streamkit.events")
     log.addHandler(handler)
-    log.setLevel(logging.INFO)
+    log.setLevel(logging.DEBUG)
     try:
         if fn is not None:
             fn()

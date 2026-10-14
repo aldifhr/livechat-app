@@ -150,7 +150,16 @@ def record(
     meta: dict[str, Any] | None = None,
     user_id: str = "",
 ) -> None:
-    """One line per event, with a per-kind running count for that room."""
+    """One line per event, with a per-kind running count for that room.
+
+    Logged at DEBUG, not INFO. Every comment, like, join and viewer update used
+    to be an INFO line, and a busy room produces ~15 of those a second: measured
+    at 107k lines and 26 MB in a single day, which is most of the journald budget
+    and evicts the unit's own errors, a deploy, or the kernel. The signal is
+    still there for anyone looking for it — `STREAMKIT_LOG_LEVEL=DEBUG` — while
+    the default level now holds only what is worth reading unasked: a room
+    connecting, a room dropping, and a real error.
+    """
     room = _room(room_id)
 
     if kind == "viewers":
@@ -161,7 +170,7 @@ def record(
         if count > room.peak_viewers:
             room.peak_viewers = count
             room.peak_viewers_at = time.time()
-        log.info("[%s] viewers=%d", room_id, count)
+        log.debug("[%s] viewers=%d", room_id, count)
         return
 
     n = room.totals.get(kind, 0) + 1
@@ -198,7 +207,7 @@ def record(
         parts.append(snippet)
     if meta and meta.get("count") and kind != "viewers":
         parts.append(f"x{meta['count']}")
-    log.info("[%s] %s", room_id, " · ".join(parts))
+    log.debug("[%s] %s", room_id, " · ".join(parts))
 
 
 def note(message: str) -> None:
