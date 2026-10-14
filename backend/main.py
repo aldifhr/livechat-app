@@ -17,9 +17,7 @@ from typing import Any
 import uvicorn
 from fastapi import APIRouter, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from fastapi.responses import JSONResponse
 
 import eventlog
 import events
@@ -619,7 +617,7 @@ async def webhook(room_id: str, req: HookRequest):
 # route serves that file from the domain OBS already points at, so a browser
 # Overlay pages are served by `routes/overlay`, which reads them from the
 # static file on each request and bakes in the named room's saved styling.
-from routes.overlay import router as overlay_router
+from routes.overlay import page_config, router as overlay_router
 
 app.include_router(overlay_router)
 
@@ -635,7 +633,13 @@ async def websocket_endpoint(websocket: WebSocket, client_type: str, room_id: st
     try:
         record = await store.get_room_async(room_id)
         config = record.get("config", DEFAULT_ROOM_CONFIG) if record else DEFAULT_ROOM_CONFIG
-        await websocket.send_text(json.dumps({"type": "config", "config": config}, ensure_ascii=False))
+        # Under the names the page reads, same as every other frame carrying styling.
+        # Sent raw, this was `overlaySize` where the page looks for `size` — an
+        # overlay attaching to a styled room came up on its defaults and stayed
+        # there, so the link and what OBS showed could disagree.
+        await websocket.send_text(
+            json.dumps({"type": "config", "config": page_config(config)}, ensure_ascii=False)
+        )
 
         # Send a status snapshot on attach. Connection-state events are edge
         # triggered, so a client opening the socket after the handshake
@@ -685,72 +689,19 @@ async def websocket_endpoint(websocket: WebSocket, client_type: str, room_id: st
 app.include_router(router)
 
 
-# --------------------------------------------------------------------------
-# the gift sticker gallery
-# --------------------------------------------------------------------------
-#
-# A browsable page over the downloaded gift stickers. Served as a static mount so
-# the page, gifts.json and every .webp come from one directory with no per-file
-# routing — the page loads gifts.json and each sticker by filename, exactly as it
-# would from any static host. Mounted last so it cannot shadow an API route.
+# Health, metrics, and the static gift-sticker gallery now live in
+# `routes/ops`. State is bound from this module so the ops handlers reach the
+# live source map and hub without importing `main`.
+from routes.ops import bind_state, router as ops_router, mount_gifts  # noqa: E402
 
-_GIFTS_DIR = Path(__file__).parent / "static" / "gifts"
-
-
-# `html=True` serves index.html at /gifts/ on its own, so no separate route is
-# needed — and adding one would race the mount for the same path.
-app.mount("/gifts", StaticFiles(directory=str(_GIFTS_DIR), html=True), name="gifts")
-
-
-# --------------------------------------------------------------------------
-# health and metrics endpoints
-# --------------------------------------------------------------------------
-#
-# These are not behind the write gate: they are read-only probes that a deploy
-# needs before it can decide whether to send traffic somewhere, and they carry
-# no room-identifying data, only aggregate counts that are safe by being broad.
-#
-# Defined above the `__main__` block rather than after it. The routes were once
-# declared below it, which works — the module is imported top to bottom, so the
-# decorators ran either way — but it reads as though they are part of the
-# development entry point, and a reader who stops at `uvicorn.run` would not
-# know they exist. Route declarations belong with the other routes.
-
-@app.get("/health")
-async def health(request: Request) -> dict[str, Any]:
-    """Aggregate liveness probe for the backend.
-
-    Returns uptime, active room count, total WebSocket connections, and — to a
-    caller holding the token — per-room provider status. Used by orchestrators
-    and load balancers, which probe without a credential; the per-room map is
-    withheld from them because each entry names the streamer's handle, and this
-    endpoint is open. The counts are what a probe acts on and they stay.
-    """
-    import time
-    uptime_s = int(time.time() - getattr(app.state, "started_at", time.time()))
-    body: dict[str, Any] = {
-        "status": "ok",
-        "uptimeSeconds": uptime_s,
-        "activeRooms": len(sources),
-        "totalConnections": len(hub.active),
-    }
-    if token_is_valid(request):
-        body["rooms"] = {room_id: source.status_payload() for room_id, source in sources.items()}
-    return body
-
-
-@app.get("/metrics")
-async def metrics() -> dict[str, Any]:
-    """Prometheus-style metrics exposed as JSON for simple scraping."""
-    return {
-        "sources_active": len(sources),
-        "websocket_connections": len(hub.active),
-        "queued_messages_total": hub.queued_messages(),
-        # A real counter on the hub, incremented in `disconnect`. This used to read
-        # a `_disconnection_log` attribute that was never defined, so the getattr
-        # default was all it ever returned and the metric was a permanent zero.
-        "clients_disconnected_total": hub.disconnected_clients_count,
-    }
+bind_state(
+    sources=sources,
+    hub=hub,
+    token_is_valid=token_is_valid,
+    default_room_config=DEFAULT_ROOM_CONFIG,
+)
+app.include_router(ops_router)
+mount_gifts(app, str(Path(__file__).parent / "static"))
 
 
 if __name__ == "__main__":

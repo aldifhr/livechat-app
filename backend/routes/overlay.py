@@ -29,7 +29,34 @@ OVERLAY_STYLE_KEYS = {
     "overlayMax": "max",
     "overlayDelay": "delay",
     "overlayFont": "font",
+    # The board's heading. Added with the config route, when saving styling became
+    # something the dashboard could do — see `page_config` for why this key is
+    # absent from `models.OVERLAY_STORE_KEYS`, which guards a different path.
+    "overlayTitle": "title",
 }
+
+
+def page_config(config: dict[str, Any] | None) -> dict[str, Any]:
+    """A room's stored config under the names a page reads.
+
+    The store namespaces the overlay's settings — `overlaySize`, `overlayBg` — so
+    that a room's config can hold more than styling and an unnamespaced `size` would
+    be ambiguous. The page reads plain names. One translation between the two, used
+    by every path that hands styling to a page.
+
+    That is the whole point of this function: it used to exist only inside
+    `baked_config`, so the WebSocket path sent the *stored* names while the HTML
+    path sent the page's. A page asked to read `background` out of a frame carrying
+    `overlayBg` gets nothing back and falls back to its defaults, so restyling a
+    stream changed what OBS was pointed at without changing what OBS showed.
+    """
+    if not isinstance(config, dict):
+        return {}
+    out: dict[str, Any] = {}
+    for room_key, page_key in OVERLAY_STYLE_KEYS.items():
+        if room_key in config and config[room_key] is not None:
+            out[page_key] = config[room_key]
+    return out
 
 
 def overlay_page(name: str = "overlay.html") -> str:
@@ -61,12 +88,7 @@ async def baked_config(room_id: str) -> dict[str, Any]:
         return {}
     if not record:
         return {}
-    config = record.get("config") or {}
-    baked: dict[str, Any] = {}
-    for room_key, page_key in OVERLAY_STYLE_KEYS.items():
-        if room_key in config and config[room_key] is not None:
-            baked[page_key] = config[room_key]
-    return baked
+    return page_config(record.get("config"))
 
 
 async def render_overlay(name: str, request: Request) -> HTMLResponse:

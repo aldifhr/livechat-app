@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from hub import hub
+from routes.overlay import page_config
 
 import eventlog
 
@@ -233,7 +234,20 @@ async def emit_error(room_id: str, message: str) -> None:
 
 
 async def emit_config(room_id: str, config: dict[str, Any]) -> None:
-    await hub.broadcast({"type": "config", "config": config}, room_id=room_id)
+    """Push a room's styling to every overlay already watching it.
+
+    Translated on the way out, not on the way in. The caller is handing over what
+    was stored — `overlaySize`, `overlayBg` and the rest — and the page is waiting
+    for `size`, `background`. Sending the stored names meant a page asked to read
+    `background` out of this frame got `undefined` and fell back to its defaults,
+    so a restyle looked like it had done nothing while the overlay kept running
+    exactly as before.
+
+    Translating here rather than at the two call sites means there is one place
+    that knows the two vocabularies, and the WebSocket handshake and the save path
+    cannot disagree about what a page is sent.
+    """
+    await hub.broadcast({"type": "config", "config": page_config(config)}, room_id=room_id)
 
 
 # There used to be a `dispatch()`/`_gate()`/`MAX_INFLIGHT` trio here, bounding how
