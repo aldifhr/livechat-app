@@ -97,7 +97,10 @@ export default function App() {
   useEffect(() => {
     if (room.status === 'connected') {
       setLiveSince((current) => current ?? Date.now())
-    } else if (room.status !== 'connecting') {
+    } else if (room.status !== 'connecting' && room.status !== 'waiting') {
+      // A live timer runs only while a stream is being read, and survives a
+      // reconnect. `waiting` is left alone for the same reason as `connecting`:
+      // a source is still running, so this is a pause rather than an end.
       setLiveSince(null)
     }
   }, [room.status])

@@ -65,8 +65,18 @@ export function useFeed(collapse: CollapseOptions): UseFeedResult {
           // that repeatCount actually changed. Mutating in place returned the same
           // object twice, so every compared field matched itself and the `x{n}`
           // badge froze at whatever it last painted.
+          //
+          // The timestamp moves to the newest occurrence, and that is what makes
+          // the window slide. It used to be left at the first message's time, so
+          // the window was measured from the *start* of the run: a viewer saying
+          // the same thing every two seconds folded for two and a half seconds and
+          // then stopped, even though every message was well inside the window of
+          // the one before it. The row then claimed a run had ended while it was
+          // still going. Keyed on the key, the row keeps its identity — only the
+          // time it stands for advances.
           const bumped: FeedItem = {
             ...newest,
+            timestamp: item.timestamp,
             repeatCount: (newest.repeatCount ?? 1) + 1,
           }
           return [...previous.slice(0, -1), bumped]

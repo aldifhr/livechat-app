@@ -64,6 +64,19 @@ export function useChat({ collapseWindowMs, collapseThreshold }: UseChatOptions)
     stats.reset()
   }, [clearFeed, stats])
 
+  // Sampled for the whole session, not while the Stats page happens to be open.
+  //
+  // The timer used to live in `useStats`, which the panel mounts — so switching to
+  // Home and back stopped the sampler for as long as the page was elsewhere, and
+  // the chart resumed with a hole where those minutes should be. Its x-axis is
+  // sample indices, so the hole did not even read as one: the line just continued,
+  // claiming a flat stretch nobody measured. The accumulator outlives every page,
+  // so the timer that feeds it does too.
+  useEffect(() => {
+    stats.startSampling()
+    return () => stats.stopSampling()
+  }, [stats])
+
   // Read inside the event handler to tell a dropped connection from a deliberate
   // Disconnect, and by the health check to know whether the room is open. Through
   // a ref so reading it does not rebuild the handler on every viewer count.
@@ -144,15 +157,26 @@ export function useChat({ collapseWindowMs, collapseThreshold }: UseChatOptions)
           }
           setRoom((previous) => ({
             ...previous,
-            status: event.liveEnded
-              ? 'ended'
-              : event.connecting
-                ? 'connecting'
-                : event.connected
-                  ? 'connected'
-                  : previous.status === 'connected'
-                    ? 'idle'
-                    : 'error',
+            // `waiting` is checked before `liveEnded`, and the order matters when
+            // both are set — which is what the backend sends while it polls for a
+            // streamer whose live just ended. That combination means "the live is
+            // over, but a source is still running and will pick the next one up on
+            // its own", and `ended` would be the wrong reading of it: it offers a
+            // Connect button for a room that already has a reader, and the wait
+            // could not be called off. `waiting` renders Stop instead, which is
+            // the only control that matches what the backend is doing. A bare
+            // `liveEnded` — the wait has given up — still reads `ended`.
+            status: event.waiting
+              ? 'waiting'
+              : event.liveEnded
+                ? 'ended'
+                : event.connecting
+                  ? 'connecting'
+                  : event.connected
+                    ? 'connected'
+                    : previous.status === 'connected'
+                      ? 'idle'
+                      : 'error',
             message: event.message,
           }))
           break

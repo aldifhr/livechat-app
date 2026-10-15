@@ -636,7 +636,7 @@ pub fn to_app_event(frame: &Value, now_ms: i64) -> Option<Value> {
         }),
         "share" => json!({
             "type": "share", "platform": platform, "nickname": user(), "id": id(),
-            "avatar": avatar, "timestamp": timestamp,
+            "avatar": avatar, "count": count, "timestamp": timestamp,
         }),
         "viewers" => json!({
             "type": "viewers", "platform": platform,
@@ -650,6 +650,11 @@ pub fn to_app_event(frame: &Value, now_ms: i64) -> Option<Value> {
             // Carried as sent and defaulted false, so a status frame from an older
             // backend that knows nothing about live ends still maps cleanly.
             "liveEnded": frame.get("liveEnded").and_then(Value::as_bool).unwrap_or(false),
+            // The backend is polling for a streamer with no live right now, as
+            // distinct from a handshake in flight. Same rule: carried as sent, and
+            // an older backend that has never heard of it maps to false, which is
+            // what its own statuses meant anyway.
+            "waiting": frame.get("waiting").and_then(Value::as_bool).unwrap_or(false),
             "message": frame.get("message").and_then(Value::as_str).unwrap_or_default(),
         }),
         "error" => json!({

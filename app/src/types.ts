@@ -83,8 +83,15 @@ export interface RoomState {
    * and nothing is wrong, which is the one outcome where the right thing to do
    * next is to stop rather than retry. Folding it into `error` would put a red
    * badge on a normal event.
+   *
+   * `waiting` is its own state for the same reason, in the other direction: the
+   * backend is polling for a streamer who has no live right now, so there is
+   * nothing to read and nothing wrong. It must not be `connecting` — that offers
+   * a disabled "Connecting…" button for a wait that can last two hours, leaving
+   * no way to call it off — and it must not be `ended`, because this streamer has
+   * not been live, so nothing has ended.
    */
-  status: 'idle' | 'connecting' | 'connected' | 'ended' | 'error'
+  status: 'idle' | 'connecting' | 'waiting' | 'connected' | 'ended' | 'error'
   message: string
   /** The streamer handle, as TikTok spells it. */
   target: string

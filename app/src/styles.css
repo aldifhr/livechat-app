@@ -300,6 +300,20 @@ body {
   background: var(--gold);
 }
 
+/*
+ * Waiting for a streamer who has no live right now. The same gold as connecting,
+ * because it is the same kind of thing — nothing is wrong, we are waiting — but
+ * it carries its own class so the two can be styled apart later without touching
+ * the status line's wording.
+ */
+.status-waiting .dot {
+  background: var(--gold);
+}
+
+.status-waiting {
+  color: var(--muted);
+}
+
 .status-error .dot {
   background: var(--accent);
 }

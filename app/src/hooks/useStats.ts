@@ -79,11 +79,29 @@ export interface StatsRecorder {
   /** The room's latest headcount, whenever TikTok reports one. */
   setViewers: (count: number) => void
   /**
-   * Takes one viewer sample. Driven by the panel's timer rather than by events: a
-   * room reports its headcount whether anyone is talking or not, and a flat line
-   * on the sparkline is a real reading rather than a missing sample.
+   * Takes one viewer sample.
+   *
+   * Driven by a timer rather than by events: a room reports its headcount whether
+   * anyone is talking or not, and a flat line on the sparkline is a real reading
+   * rather than a missing sample. The timer is owned by `startSampling` below, so
+   * this is exposed for tests and for a caller that wants a sample on demand.
    */
   sample: () => void
+  /**
+   * Starts taking samples every `SPARK_INTERVAL_MS`, and takes one immediately.
+   *
+   * Called once by `useChat`, which lives for the whole session, rather than by
+   * the panel, which lives only while its page is open. Owned here rather than in
+   * a React effect so it is tied to the accumulator's lifetime — the accumulator
+   * outlives every page, and a chart that stops being sampled while the user is
+   * looking at something else is a chart that lies about the minutes it missed.
+   *
+   * Idempotent: a second call leaves the running timer alone rather than stacking
+   * a second one.
+   */
+  startSampling: () => void
+  /** Stops the sampling timer, for teardown. */
+  stopSampling: () => void
   /** Drops everything, for a new room. */
   reset: () => void
   /**
@@ -227,6 +245,37 @@ export function createStats(): StatsRecorder {
     notify()
   }
 
+  /**
+   * The sampling timer, held here rather than in a React effect.
+   *
+   * A ref-like slot instead of a module-level one: two recorders must not share a
+   * timer, and `stopSampling` has to be able to find its own.
+   */
+  let sampler: ReturnType<typeof setInterval> | null = null
+
+  function startSampling(): void {
+    // Idempotent. `useChat` calls this from an effect, and StrictMode runs those
+    // twice on mount — a second interval would double every sample and halve the
+    // span the chart covers.
+    if (sampler) return
+    // One sample up front, so the chart has a baseline and the peak has something
+    // to compare against before the first tick rather than showing empty for the
+    // first few seconds of a stream.
+    sample()
+    sampler = setInterval(() => {
+      sample()
+      // Bumped even when nothing arrived, so a rate that should be falling does
+      // fall: an idle room must not keep showing the count it had when it went
+      // quiet.
+      notify()
+    }, SPARK_INTERVAL_MS)
+  }
+
+  function stopSampling(): void {
+    if (sampler) clearInterval(sampler)
+    sampler = null
+  }
+
   function reset(): void {
     buckets = emptyBuckets()
     series = []
@@ -276,6 +325,8 @@ export function createStats(): StatsRecorder {
     record,
     setViewers,
     sample,
+    startSampling,
+    stopSampling,
     reset,
     read,
     subscribe: (listener) => {
@@ -290,28 +341,23 @@ export function createStats(): StatsRecorder {
 /**
  * Subscribes a component to a recorder and re-renders it as the numbers move.
  *
- * The timer lives here, mounted once by the panel, so the feed above it never
- * re-renders because a viewer count moved.
+ * The timer that drives sampling does *not* live here, and that is the point: it
+ * used to, which tied it to this hook's lifetime — and this hook is mounted by the
+ * panel, which is mounted only while the Stats page is open. Switching to Home and
+ * back therefore stopped the sampler for as long as the page was elsewhere, and the
+ * chart came back with a hole in it where the missing minutes should be. The
+ * sparkline's labels are sample indices, so the gap did not even read as a gap: the
+ * line simply continued, quietly claiming the session was flat across a period
+ * nobody measured.
+ *
+ * The sampler now runs for the life of the recorder, in `useChat`, which is
+ * mounted for the whole session. This hook only reads and subscribes, so it costs
+ * nothing to mount and nothing to unmount.
  */
 export function useStats(stats: StatsRecorder): StatsSnapshot {
   const [version, setVersion] = useState(0)
 
   useEffect(() => stats.subscribe(() => setVersion((n) => n + 1)), [stats])
-
-  useEffect(() => {
-    // One sample up front, so the chart has a baseline and the peak has something
-    // to compare against before the first tick rather than showing empty for the
-    // first few seconds of a stream.
-    stats.sample()
-    const timer = setInterval(() => {
-      stats.sample()
-      // Bumped even when nothing arrived, so a rate that should be falling does
-      // fall: an idle room must not keep showing the count it had when it went
-      // quiet.
-      setVersion((n) => n + 1)
-    }, SPARK_INTERVAL_MS)
-    return () => clearInterval(timer)
-  }, [stats])
 
   // Keyed on `version` rather than re-reading on every render: `read` walks the
   // leaderboard, and nothing about the result depends on anything else.

@@ -103,8 +103,16 @@ export function Toolbar({
   // Stop has been pressed is the bug — connect, stop, and the button should say
   // Connect again, not invite another Stop on a room that is already closed.
   const isConnected = room.status === 'connected' && !disconnected
+  // The backend is polling for a streamer with no live right now. A source *is*
+  // running — it is what will pick the stream up when it starts — so this needs
+  // Stop, not a disabled "Connecting…". That wait can last two hours, and a state
+  // the user cannot leave is a trap rather than a state.
+  const isWaiting = room.status === 'waiting' && !disconnected
   const wanted = normaliseUsername(handle)
-  const canConnect = wanted !== '' && !isConnecting
+  // Not while waiting: a source is running and the button beside it is Stop, so
+  // offering Connect as well would invite a second connection to a room that
+  // already has one.
+  const canConnect = wanted !== '' && !isConnecting && !isWaiting
   const connectedMessage = room.message.match(/^(Connected to\s+)(@.+)$/i)
 
   /*
@@ -189,13 +197,13 @@ export function Toolbar({
           placeholder="Streamer's handle"
           aria-label="Streamer's TikTok handle"
           value={handle}
-          disabled={isConnected}
+          disabled={isConnected || isWaiting}
           onChange={(e) => setHandle(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && canConnect) connect()
           }}
         />
-        {isConnected ? (
+        {isConnected || isWaiting ? (
           <button className="btn btn-danger" onClick={disconnect}>
             Stop
           </button>

@@ -20,7 +20,19 @@ interface Props {
 export function StatsPanel({ stats }: Props) {
   const snapshot = useStats(stats)
 
-  const live = snapshot.viewers > 0 || snapshot.totalMessages > 0
+  // Anything counted is something to show. Keying only on viewers and messages
+  // meant a session that had received a gift, a follow and three shares still
+  // read "Nothing yet" until somebody spoke — the panel denying events it had
+  // already recorded. `people` is in the list for the same reason: a follower who
+  // never chats is still somebody who was here.
+  const live =
+    snapshot.viewers > 0 ||
+    snapshot.totalMessages > 0 ||
+    snapshot.totalGifts > 0 ||
+    snapshot.totalFollows > 0 ||
+    snapshot.totalShares > 0 ||
+    snapshot.diamonds > 0 ||
+    snapshot.people > 0
   const chatterAvatars = snapshot.topChatters
     .map((chatter) => ({
       imageUrl: chatter.avatar,

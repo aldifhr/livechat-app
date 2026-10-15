@@ -107,7 +107,7 @@ export type SidecarEvent = Tagged &
       }
     | { type: 'like'; nickname: string; id: string; avatar: string; count: number; timestamp: number }
     | { type: 'follow'; nickname: string; id: string; avatar: string; timestamp: number }
-    | { type: 'share'; nickname: string; id: string; avatar: string; timestamp: number }
+    | { type: 'share'; nickname: string; id: string; avatar: string; count?: number; timestamp: number }
     /**
      * A viewer arriving in the room.
      *
@@ -136,6 +136,14 @@ export type SidecarEvent = Tagged &
          * handle that has gone quiet, which reads as a hung app.
          */
         liveEnded?: boolean
+        /**
+         * The backend is polling for a streamer who has no live right now.
+         *
+         * Distinct from `connecting`, which means a handshake is in flight. That
+         * one drives a disabled "Connecting…" button; this wait can last two
+         * hours, so it needs a Stop the user can actually press.
+         */
+        waiting?: boolean
         message: string
       }
     | { type: 'room'; username: string; roomId: string; title: string }

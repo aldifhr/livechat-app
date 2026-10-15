@@ -7,6 +7,23 @@ import { Confetti, type ConfettiRef } from './ui/confetti'
 import { TextAnimate } from './ui/text-animate'
 
 const COOLDOWN_MS = 5_000
+
+/**
+ * How many events may wait behind the one on screen.
+ *
+ * One popup shows for five seconds, so a burst arrives faster than it can be
+ * displayed — a gift train is exactly that. Unbounded, the queue grows without
+ * limit and the backlog is not just late, it is *stale*: a toast about a gift from
+ * two minutes ago, shown over a stream that has moved on. The cost is not only the
+ * wait, either; every queued event holds its frame alive, and a busy room can
+ * produce thousands.
+ *
+ * Twelve is a little over a minute of backlog, which is the point past which a
+ * popup stops being news. Past that the newest events win, because the reason to
+ * show a gift at all is that it just happened.
+ */
+const MAX_QUEUED_POPUPS = 12
+
 type PopupEvent = Extract<SidecarEvent, { type: 'gift' | 'follow' | 'share' }>
 
 interface Props {
@@ -23,7 +40,15 @@ export function EventPopup({ enabled }: Props) {
   useRoomEvents((event) => {
     if (event.type !== 'gift' && event.type !== 'follow' && event.type !== 'share') return
     if (!enabled[event.type]) return
-    setEventQueue((queue) => [...queue, event])
+    setEventQueue((queue) => {
+      const grown = [...queue, event]
+      // Oldest first, so the backlog stays a window onto the recent past rather
+      // than a queue that can never be drained. The event on screen is untouched:
+      // it is not in this list.
+      return grown.length > MAX_QUEUED_POPUPS
+        ? grown.slice(grown.length - MAX_QUEUED_POPUPS)
+        : grown
+    })
   }, [enabled.gift, enabled.follow, enabled.share])
 
   // Applying a setting also removes matching events already waiting in line.

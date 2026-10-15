@@ -452,6 +452,88 @@ check(
 )
 await goHome()
 
+console.log('waiting for a streamer who is not live')
+// The backend polls for a streamer who has no live right now — a state that can
+// last two hours. It used to reach the app as `connecting`, which renders a
+// disabled "Connecting…" button, so there was no way to call the wait off. The
+// bug this pins: `@itswyss` was offline, the backend burned its retry budget and
+// gave up, and the app showed "Connecting" the whole time.
+//
+// Driven on the app that is already mounted rather than a second one: `attach`
+// and `resolve` both latch on first use, so a new `App` would share the first
+// one's listener set and a second `setTransport` would be ignored.
+await act(async () => {
+  fake.emit({
+    platform: 'tiktok',
+    type: 'status',
+    connected: false,
+    connecting: true,
+    waiting: true,
+    message: '@itswyss is not live — waiting',
+  })
+})
+await flush()
+const waitButtons = $$('.room-row .btn')
+check('the status line says the streamer is not live', /not live/.test($('.room-status')?.textContent ?? ''), $('.room-status')?.textContent)
+check('the status is its own, not connecting', Boolean($('.status-waiting')), $('.room-status')?.className)
+// The point of the whole flag: a way out of a two-hour wait.
+check('a Stop button is offered, not a disabled Connecting', Boolean(waitButtons.find((b) => b.textContent.trim() === 'Stop')), waitButtons.map((b) => b.textContent.trim()).join(' | '))
+check('and no Connect button is offered alongside it', !waitButtons.find((b) => b.textContent.trim() === 'Connect'), waitButtons.map((b) => b.textContent.trim()).join(' | '))
+check('the handle field is locked while waiting', $('.handle-input')?.disabled === true)
+
+console.log('a live that ended is still escapable while the backend waits')
+// Found by auditing production: the backend polls for a streamer whose live just
+// ended, and it sent both `liveEnded` and `waiting`. The app checked `liveEnded`
+// first, so it rendered `ended` — a Connect button for a room whose source is
+// still running, with no way to call the wait off. `waiting` must win when both
+// are set; a bare `liveEnded` (the wait has given up) still reads `ended`.
+await act(async () => {
+  fake.emit({
+    platform: 'tiktok',
+    type: 'status',
+    connected: false,
+    connecting: true,
+    waiting: true,
+    liveEnded: true,
+    message: '@kaizeechiato is no longer live',
+  })
+})
+await flush()
+const bothButtons = $$('.room-row .btn')
+check('it is not read as a finished live', Boolean($('.status-waiting')), $('.room-status')?.className)
+check('so Stop is offered rather than Connect', Boolean(bothButtons.find((b) => b.textContent.trim() === 'Stop')), bothButtons.map((b) => b.textContent.trim()).join(' | '))
+check('and the message still says the live ended', /no longer live/.test($('.room-status')?.textContent ?? ''), $('.room-status')?.textContent)
+
+// And with the wait over — a bare `liveEnded` — it is a finished live again.
+await act(async () => {
+  fake.emit({ platform: 'tiktok', type: 'status', connected: false, liveEnded: true, message: '@kaizeechiato is no longer live' })
+})
+await flush()
+const endedButtons = $$('.room-row .btn')
+check('a bare liveEnded reads as ended', Boolean($('.status-ended')), $('.room-status')?.className)
+check('and offers Connect again', Boolean(endedButtons.find((b) => b.textContent.trim() === 'Connect')), endedButtons.map((b) => b.textContent.trim()).join(' | '))
+
+
+// Pressing Stop must actually reach the host, or the wait cannot be called off.
+// Re-emitted first: the block above moved the room on to a finished live, so the
+// state to test Stop from is the waiting one.
+await act(async () => {
+  fake.emit({
+    platform: 'tiktok',
+    type: 'status',
+    connected: false,
+    connecting: true,
+    waiting: true,
+    message: '@itswyss is not live — waiting',
+  })
+})
+await flush()
+const stopWhileWaiting = $$('.room-row .btn').find((b) => b.textContent.trim() === 'Stop')
+check('Stop is offered from the waiting state', Boolean(stopWhileWaiting), $$('.room-row .btn').map((b) => b.textContent.trim()).join(' | '))
+await click(stopWhileWaiting)
+check('Stop asks the host to disconnect', Boolean(fake.commands.find((c) => c.command === 'backend_disconnect')), JSON.stringify(fake.commands.map((c) => c.command)))
+check('and a Connect button takes its place', Boolean($$('.room-row .btn').find((b) => b.textContent.trim() === 'Connect')), $('.room-row')?.textContent)
+
 console.log('a frame from a stopped session is not read')
 // The reported bug. Stop flips the button and the badge to "Not connected", and
 // chat rows keep arriving anyway — because a frame can be in flight when Stop is
@@ -796,7 +878,19 @@ await act(async () => {
 // count set one tick ago has not reached the panel yet — the same wait the other
 // viewer assertions below make. Without it the check races the debounce and reads
 // the previous zero.
-await new Promise((resolve) => setTimeout(resolve, 300))
+//
+// Inside `act`, not beside it: a bare `setTimeout` lets the debounce fire without
+// React flushing the re-render it causes, so the reads below can land on the
+// previous frame. That was the flake — `rollBefore` occasionally caught the panel
+// mid-render with one strip instead of four, and the digit comparison failed for a
+// reason that had nothing to do with digits.
+await act(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 300))
+})
+// A settle pass, so every effect the count triggered has run before the "before"
+// snapshot is taken. The assertion is about a transition, and a transition needs
+// both ends to be steady states.
+await flush()
 // The count is a rolling number now: the visible digit is one of ten in a column,
 // so its value lives in aria-label rather than in textContent, which reads the
 // whole strip.

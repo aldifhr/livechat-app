@@ -23,6 +23,14 @@ function describe(item: FeedItem): string {
       return `sent ${item.giftName} x${item.count ?? 1}`
     case 'like':
       return `liked the stream x${item.count ?? 1}`
+    case 'share':
+      // Only when it is more than one. TikTok reports how many viewers a share
+      // brought in, and `x1` on every ordinary share is noise — but a share that
+      // brought four people is worth saying, and the number only reaches here now
+      // that the bridge passes it on.
+      return (item.count ?? 1) > 1
+        ? `shared the stream · ${item.count} joined`
+        : kindLabel(item.kind)
     case 'join':
       return 'joined the stream'
     default:
