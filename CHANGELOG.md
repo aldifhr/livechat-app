@@ -49,6 +49,37 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
   `/admin/about`, sebagai link karena itu halaman.
 
 ### Changed
+- **`requirements.txt` di-pin, dan satu dependensi yang hilang didaftarkan.**
+  Audit menemukan **nol kerentanan** di dependency runtime (12 CVE yang dilaporkan
+  semuanya di `pip` sendiri — build tool, bukan yang jalan), jadi ini bukan soal
+  versi baru. Ini soal reproducibility:
+  - **`python-json-logger` dipakai kode tapi tidak pernah terdaftar.**
+    `logging_setup.py` mengimpornya untuk memformat tiap baris log sebagai JSON,
+    dan impornya dibungkus `try/except ImportError` — jadi paket yang hilang
+    **tidak crash**, dia diam-diam jatuh ke plain text. Tidak ada paket lain yang
+    menariknya masuk (dicek reverse-deps: kosong). Artinya venv yang dibangun
+    ulang dari `requirements.txt` akan menulis log dengan bentuk berbeda dari
+    yang sekarang, tanpa satu pun error.
+  - **Floor-nya jauh di bawah kenyataan.** `TikTokLive>=0.8.0` duduk di bawah
+    install 7.0.1 — jarak 7 major. Floor yang segitu jauhnya bukan constraint,
+    itu komentar: `pip install -r requirements.txt` di mesin baru bisa resolve ke
+    versi yang belum pernah diuji siapa pun. Sekarang semua di-pin `==` ke versi
+    yang suite-nya hijau.
+  - **Diverifikasi dari nol.** Venv baru dibuat hanya dari `requirements.txt`
+    yang baru, lalu `tests/run_all.py` dijalankan di dalamnya: **17/17 hijau**.
+    Itu pembuktian yang tidak bisa diberikan oleh venv produksi, yang sudah punya
+    paket-paketnya.
+  - Catatan: **jangan** rebuild venv dengan `python3` default host — itu 3.14,
+    sementara venv dan CI sama-sama 3.12. Komentar di `ci.yml` sudah memperingatkan
+    hal yang sama.
+
+- **`pythonjsonlogger.jsonlogger` → `pythonjsonlogger.json`.** Path lama masih
+  resolve tapi memancarkan `DeprecationWarning` di setiap start sejak 4.0, dan
+  file ini jalan sekali per proses — satu warning tiap boot untuk modul yang sudah
+  pindah adalah noise di journal. Karena versinya sekarang di-pin, tidak ada
+  spelling kedua yang perlu di-fallback; install yang tidak menemukannya jatuh ke
+  `except` yang sudah ada dan menulis plain text.
+
 - **`'answer'` dihapus dari `FeedKind`.** Sisa fitur AI yang sudah dihapus di
   `ffbf48e`: `backend/` tidak pernah memproduksinya lagi, tapi `types.ts` masih
   mendeklarasikannya dan `FeedRow.tsx`/`useStats.ts` masih bercabang untuknya.

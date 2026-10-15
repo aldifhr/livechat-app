@@ -16,9 +16,16 @@ logger = logging.getLogger("streamkit.api")
 _LEVEL = os.environ.get("STREAMKIT_LOG_LEVEL", "INFO").upper()
 if _LEVEL != "NONE":
     try:
-        from pythonjsonlogger import jsonlogger
+        # `pythonjsonlogger.json` is where the formatter lives from 3.1 on. The old
+        # `pythonjsonlogger.jsonlogger` path still resolves but warns on every start
+        # from 4.0, and this file runs once per process — a warning per boot for a
+        # module that has already moved is noise in the journal, not information.
+        # `requirements.txt` pins the version this path exists in, so there is no
+        # second spelling to fall back to; an install that cannot find it lands in
+        # the `except` below and logs plain text.
+        from pythonjsonlogger.json import JsonFormatter
 
-        _json_formatter = jsonlogger.JsonFormatter(
+        _json_formatter = JsonFormatter(
             "%(asctime)s %(name)s %(levelname)s %(message)s"
         )
     except ImportError:
