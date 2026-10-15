@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tauri::Emitter as _;
@@ -167,6 +168,24 @@ impl BackendConfig {
     }
 }
 
+/// What the reader is doing right now, as a frame the app can be handed.
+///
+/// Kept beside the generation rather than derived from it because the app needs
+/// the *content* of the current session — which handle, which room, how many
+/// viewers — and none of that is in a counter.
+#[derive(Default, Clone)]
+struct SessionInfo {
+    /// The handle being read, once a connect has named one.
+    username: String,
+    /// The backend's id for the room, once it has been resolved.
+    room_id: String,
+    /// The room's title, when the backend reported one.
+    title: String,
+    /// The last headcount seen. `None` until one arrives, so "no figure yet" is
+    /// not reported as zero viewers.
+    viewers: Option<i64>,
+}
+
 /// Cancels whichever reader loop is running.
 ///
 /// A generation counter rather than a cancellation token: it needs no dependency.
@@ -174,23 +193,137 @@ impl BackendConfig {
 /// every frame — the last two are what make a Stop on a busy room take effect,
 /// because a room that sends a frame every few seconds resolves `stream.next()`
 /// long before the loop would otherwise come back around to check.
-#[derive(Default)]
+///
+/// It also holds the current session's details, because a webview reload throws
+/// the frontend's whole state away while this process keeps reading. The reader
+/// survives the reload, so it is the only thing that can tell the new page what
+/// it is looking at.
 pub struct BackendState {
     generation: AtomicU64,
+    /// Whether a reader loop is running, including while it retries.
+    ///
+    /// Separate from the generation because the generation only says *which*
+    /// session is current, not whether one is: after the last attempt has failed
+    /// the generation is unchanged and nothing is reading. A reloaded page asking
+    /// "is anything connected?" needs the second answer.
+    running: std::sync::atomic::AtomicBool,
+    /// The session details, written by the reader as it learns them.
+    ///
+    /// A `Mutex` rather than atomics: these are a handful of strings updated a
+    /// few times per session, and a lock held for the length of a struct copy is
+    /// not a contention problem next to a websocket. Correctness here is worth
+    /// more than lock-free elegance — a half-updated snapshot handed to the
+    /// frontend would be a status line that lies.
+    session: Mutex<SessionInfo>,
+}
+
+impl Default for BackendState {
+    fn default() -> Self {
+        Self {
+            generation: AtomicU64::default(),
+            running: std::sync::atomic::AtomicBool::new(false),
+            session: Mutex::new(SessionInfo::default()),
+        }
+    }
 }
 
 impl BackendState {
     /// Starts a new generation, making whatever is running stop.
+    ///
+    /// Clears the session details too: a new connect is a new room, and leaving
+    /// the old handle in place would have a snapshot name the previous stream
+    /// until the new one resolved.
     pub fn renew(&self) -> u64 {
+        self.set_session(SessionInfo::default());
+        self.running.store(true, Ordering::SeqCst);
         self.generation.fetch_add(1, Ordering::SeqCst) + 1
     }
 
     pub fn stop(&self) {
+        self.set_session(SessionInfo::default());
+        self.running.store(false, Ordering::SeqCst);
         self.generation.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// The reader has given up for good — retries exhausted, or a client that
+    /// could not be rebuilt.
+    ///
+    /// The generation is left alone: this is not a new session, it is the current
+    /// one ending, and bumping it would make a later snapshot report a session
+    /// number the app has never seen a frame from.
+    pub fn gave_up(&self) {
+        self.running.store(false, Ordering::SeqCst);
     }
 
     fn current(&self) -> u64 {
         self.generation.load(Ordering::SeqCst)
+    }
+
+    /// Records what the current session is reading.
+    fn set_session(&self, info: SessionInfo) {
+        if let Ok(mut held) = self.session.lock() {
+            *held = info;
+        }
+    }
+
+    /// Updates just the handle, keeping whatever else has been learned.
+    fn set_username(&self, username: &str) {
+        if let Ok(mut held) = self.session.lock() {
+            held.username = username.to_string();
+        }
+    }
+
+    /// Updates just the room identity, keeping whatever else has been learned.
+    fn set_room(&self, room_id: &str, title: &str) {
+        if let Ok(mut held) = self.session.lock() {
+            held.room_id = room_id.to_string();
+            if !title.is_empty() {
+                held.title = title.to_string();
+            }
+        }
+    }
+
+    /// Updates the last headcount seen.
+    fn set_viewers(&self, count: i64) {
+        if let Ok(mut held) = self.session.lock() {
+            held.viewers = Some(count);
+        }
+    }
+
+    /// A copy of the session details, for a snapshot.
+    fn session(&self) -> SessionInfo {
+        self.session.lock().map(|held| held.clone()).unwrap_or_default()
+    }
+
+    /// Whether a reader loop is running for the current generation.
+    ///
+    /// `running` is set for the whole life of the pump, including the retries, so
+    /// this is what separates "connected to a room" from "trying to reach one"
+    /// when the frontend asks. It is not the same question as the socket being up
+    /// — the app is told that separately, by the backend's own status frames.
+    pub fn snapshot(&self) -> Value {
+        let info = self.session();
+        let connected = self.running.load(Ordering::SeqCst);
+        let session = self.current();
+        json!({
+            "type": "status",
+            // Room-level, not bridge-level: this describes the stream being read,
+            // and the app treats a bridge status as "the reader itself changed".
+            "platform": "tiktok",
+            "connected": connected,
+            "username": info.username,
+            "roomId": info.room_id,
+            "title": info.title,
+            "viewers": info.viewers,
+            // The session the app should expect frames from. Without it a reloaded
+            // page would adopt whatever session arrived first and could not tell a
+            // straggler from the live one.
+            "session": session,
+            // Marks this as a reconciliation rather than a transition. The app
+            // replays it as the current state and does not log it as an event:
+            // nothing happened, the page simply forgot.
+            "snapshot": true,
+        })
     }
 }
 
@@ -595,8 +728,14 @@ pub async fn pump(
 ) {
     if let Some(missing) = config.describe_missing() {
         report(&app, format!("Backend not configured: {missing} is missing."), generation);
+        state.gave_up();
         return;
     }
+
+    // Recorded before the resolve, so a page that reloads while the POST is still
+    // in flight is told which handle is being connected to rather than showing a
+    // blank field beside a button that says Stop.
+    state.set_username(&config.username);
 
     // Resolved once, outside the retry loop: which room a username means does not
     // change because the network blipped, and re-asking on every attempt would
@@ -605,6 +744,7 @@ pub async fn pump(
         Ok(id) => id,
         Err(why) => {
             report(&app, format!("Backend: {why}"), generation);
+            state.gave_up();
             return;
         }
     };
@@ -618,6 +758,7 @@ pub async fn pump(
         return;
     }
 
+    state.set_room(&room_id, "");
     let url = socket_url(&config.base_url, &room_id);
 
     // Tell the page which room this is, by id. The overlay link prefers the id
@@ -680,6 +821,7 @@ pub async fn pump(
         ),
         generation,
     );
+    state.gave_up();
 }
 
 /// One connection, from open until closed or cancelled.
@@ -761,6 +903,16 @@ async fn run_once(
                     // reason to drop the connection and reconnect-storm.
                     continue;
                 };
+                // The headcount is remembered as it passes, so a page that reloads
+                // gets the last figure rather than zero. Read from the raw frame
+                // because the mapped one is consumed below, and taken only when it
+                // is actually a number — an absent or malformed count must not
+                // overwrite a good one with zero.
+                if frame.get("type").and_then(Value::as_str) == Some("viewers") {
+                    if let Some(count) = frame.get("count").and_then(Value::as_i64) {
+                        state.set_viewers(count);
+                    }
+                }
                 if let Some(event) = to_app_event(&frame, now_ms()) {
                     // Stamped so the app can drop it if a Stop lands before this
                     // reaches the webview. The generation check above is not
@@ -926,6 +1078,84 @@ mod tests {
             stale(&state, generation),
             "the loop must not open a socket for a session that was stopped mid-resolve"
         );
+    }
+
+    #[test]
+    fn a_reloaded_page_is_told_what_the_reader_is_doing() {
+        // A webview reload — which `tauri:dev` does on every code change — throws
+        // the frontend away while this process keeps reading. Without a snapshot
+        // the new page shows "Not connected" and a Connect button over a feed that
+        // is still filling, which is the reported bug.
+        let state = BackendState::default();
+        let generation = state.renew();
+        state.set_username("someone");
+        state.set_room("room-1", "A title");
+        state.set_viewers(1234);
+
+        let snap = state.snapshot();
+        assert_eq!(snap["type"].as_str(), Some("status"));
+        assert_eq!(snap["platform"].as_str(), Some("tiktok"));
+        assert_eq!(snap["connected"].as_bool(), Some(true));
+        assert_eq!(snap["username"].as_str(), Some("someone"));
+        assert_eq!(snap["roomId"].as_str(), Some("room-1"));
+        assert_eq!(snap["title"].as_str(), Some("A title"));
+        assert_eq!(snap["viewers"].as_i64(), Some(1234));
+        // The session is what lets the reloaded page tell a frame from the running
+        // reader apart from a straggler of an older one.
+        assert_eq!(snap["session"].as_u64(), Some(generation));
+        // Marked so the app applies it whole rather than logging it as an event
+        // that never happened.
+        assert_eq!(snap["snapshot"].as_bool(), Some(true));
+    }
+
+    #[test]
+    fn a_snapshot_after_stop_reports_nothing_running() {
+        // Stop must not leave a snapshot claiming a connection: the reloaded page
+        // would then show Stop over a reader that is gone, which is the same lie
+        // in the other direction.
+        let state = BackendState::default();
+        state.renew();
+        state.set_username("someone");
+        state.set_viewers(42);
+
+        state.stop();
+        let snap = state.snapshot();
+        assert_eq!(snap["connected"].as_bool(), Some(false));
+        // The details are cleared too: naming the previous handle beside a Connect
+        // button reads as a connection that never stopped.
+        assert_eq!(snap["username"].as_str(), Some(""));
+        assert_eq!(snap["viewers"].is_null(), true);
+    }
+
+    #[test]
+    fn a_give_up_clears_running_without_changing_the_session() {
+        // Retries exhausted is the session *ending*, not a new one starting. If it
+        // bumped the generation, a later snapshot would name a session number the
+        // app has never seen a frame from, and the guard would drop the next real
+        // session's frames as "older".
+        let state = BackendState::default();
+        let generation = state.renew();
+        state.gave_up();
+
+        let snap = state.snapshot();
+        assert_eq!(snap["connected"].as_bool(), Some(false));
+        assert_eq!(snap["session"].as_u64(), Some(generation));
+    }
+
+    #[test]
+    fn a_new_connect_clears_the_previous_sessions_details() {
+        // Connect over a running room: the snapshot must describe the new handle,
+        // not the old one, or a reload would show the wrong stream's name.
+        let state = BackendState::default();
+        state.renew();
+        state.set_username("first");
+        state.set_viewers(10);
+
+        state.renew();
+        let snap = state.snapshot();
+        assert_eq!(snap["username"].as_str(), Some(""));
+        assert_eq!(snap["viewers"].is_null(), true);
+        assert_eq!(snap["connected"].as_bool(), Some(true));
     }
 
     #[test]

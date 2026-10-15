@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { attach, detachHandler, host, type FramePlatform, type SidecarEvent } from '../lib/sidecar'
+import { adoptSnapshot, attach, detachHandler, host, type FramePlatform, type SidecarEvent } from '../lib/sidecar'
 import { useFeed, type FeedInput } from './useFeed'
 import { useHealth } from './useHealth'
 import { useLog } from './useLog'
@@ -107,6 +107,30 @@ export function useChat({ collapseWindowMs, collapseThreshold }: UseChatOptions)
 
       switch (event.type) {
         case 'status': {
+          // A snapshot is not an event — it is the host telling a freshly-loaded
+          // page what it is already looking at. It must not reach the log, or a
+          // reload would leave a "Connected to @x" line that never happened, and
+          // it must be applied whole rather than merged: it is the complete state,
+          // not a transition from the idle room this page started with.
+          if ((event as { snapshot?: boolean }).snapshot === true) {
+            const snap = event as unknown as {
+              connected?: boolean
+              username?: string
+              roomId?: string
+              title?: string
+              viewers?: number | null
+              message?: string
+            }
+            setRoom({
+              status: snap.connected ? 'connected' : 'idle',
+              message: snap.connected ? `Connected to @${snap.username ?? ''}` : '',
+              target: snap.username ?? '',
+              id: snap.roomId ?? '',
+              title: snap.title ?? '',
+              viewers: typeof snap.viewers === 'number' ? snap.viewers : 0,
+            })
+            break
+          }
           logPush(
             event.connecting || event.connected ? 'info' : 'warn',
             `${inRoom ? 'tiktok: ' : ''}${event.message}`,
@@ -263,6 +287,36 @@ export function useChat({ collapseWindowMs, collapseThreshold }: UseChatOptions)
       if (active) handleRef.current(event)
     }
     attach(onEvent)
+
+    /*
+     * Ask the host what it is reading, because this page cannot know.
+     *
+     * A reload — which `tauri:dev` does on every code change — replaces the whole
+     * webview while the Rust process keeps the stream open. This page therefore
+     * starts from an idle room: the button says Connect and the badge says "Not
+     * connected" while chat rows are still arriving, because the reader was never
+     * stopped. Asking once, here, is what closes that gap.
+     *
+     * Deliberately not a reconnect: the connection is meant to survive a reload,
+     * the same way it survives the window being hidden to the tray. Reconnecting
+     * would open a second socket for a room already being read, and the session
+     * stamp would then reject every frame from the one that is actually running.
+     *
+     * After the listener is attached, so a frame arriving in the same tick is not
+     * lost to a race with the snapshot. The snapshot itself is adopted through the
+     * same guard and the same listeners as a real frame — see `adoptSnapshot`.
+     */
+    void host
+      .backendStatus()
+      .then((snapshot) => {
+        if (!active || !snapshot) return
+        adoptSnapshot(snapshot as unknown as SidecarEvent)
+      })
+      .catch(() => {
+        // A host that cannot answer is one with no reader running, which is
+        // exactly the idle room this page already shows. Nothing to recover.
+      })
+
     return () => {
       active = false
       detachHandler(onEvent)

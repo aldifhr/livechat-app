@@ -204,6 +204,41 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
     itu tidak pernah ada, jadi urutan startup itu tidak pernah berarti apa-apa.
 
 ### Fixed
+- **Status koneksi pulih setelah frontend di-reload saat development.** `tauri:dev`
+  memuat ulang webview setiap kali kode berubah. Reload itu membuang seluruh
+  state frontend, sementara proses Rust **tetap membaca stream** — dan itu memang
+  disengaja, sama seperti koneksi yang bertahan saat window disembunyikan ke tray.
+  Halaman baru karenanya mulai dari room idle: tombolnya bilang Connect dan
+  badge-nya "Not connected" **sementara baris chat masih masuk**, karena tidak ada
+  yang pernah menghentikan reader.
+  - **Host sekarang menyimpan snapshot sesi, bukan cuma penghitung generation.**
+    `BackendState` mencatat handle, room id, judul, dan viewers terakhir; plus
+    `running` yang membedakan "sedang membaca" dari "sudah menyerah setelah retry
+    habis". `snapshot()` merangkainya jadi satu frame `status` bertanda
+    `snapshot: true`.
+  - **Perintah baru `backend_status`.** Host tidak punya cara tahu webview
+    di-reload — Tauri membuat ulang halaman tanpa memberi tahu sisi Rust — jadi
+    tidak ada momen untuk push. Bertanya adalah satu-satunya sinyal yang andal.
+  - **`useChat` bertanya sekali saat mount**, setelah listener terpasang supaya
+    tidak kalah balapan dengan frame yang datang di tick yang sama. Jawabannya
+    diadopsi lewat `adoptSnapshot()`, jalur yang sama dengan frame asli: guard-nya
+    ikut belajar `session` yang sedang berjalan, sehingga straggler dari sesi lama
+    tetap ditolak setelah reload. Snapshot **tidak** ditulis ke log — tidak ada
+    yang terjadi, halaman cuma lupa — supaya tidak muncul baris "Connected to @x"
+    yang tidak pernah ada.
+  - **Bukan reconnect.** Menyambung ulang akan membuka socket kedua untuk room
+    yang sudah dibaca, dan stempel sesi justru akan menolak setiap frame dari
+    reader yang benar-benar berjalan.
+  - **Field handle ikut dipulihkan dari `room.target`.** Dulu hanya di-seed dari
+    config tersimpan, jadi setelah reload — dengan config kosong tapi stream
+    jalan — fieldnya kosong di samping tombol Stop, dan catatan di sebelahnya
+    menyebut room yang handle-nya tidak ada di layar.
+  - **Tes baru `test/test-reload.mjs`** (14 assertion): reload memulihkan status,
+    handle, dan viewers; frame dari sesi yang dipulihkan terbaca; straggler sesi
+    lama **ditolak** (diuji dengan urutan yang benar-benar menguji adopsi sesi —
+    straggler dikirim sebelum frame sesi baru); reload setelah Stop kembali idle;
+    host tanpa jawaban tidak meninggalkan state setengah. Ditambah 4 tes Rust.
+
 - **Stop berhenti di UI tapi event chat tetap masuk.** Setelah menekan Stop, badge
   sudah bilang "Not connected" sementara baris chat baru terus muncul. Ini bukan
   bug kosmetik: sumbernya memang masih menyalurkan, dan UI-nya tidak punya cara

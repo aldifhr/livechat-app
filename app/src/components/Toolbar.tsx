@@ -77,6 +77,20 @@ export function Toolbar({
     savedHandle.current = saved
   }, [backend.username])
 
+  // The same gap, for a page that loaded while a stream was already being read.
+  //
+  // A reload replaces this component while the host keeps reading, so the config
+  // may hold nothing (or a different handle) even though a room is connected —
+  // and the field would sit empty beside a Stop button, with the note naming a
+  // room whose handle is nowhere on screen. `room.target` is what the reader is
+  // actually on, so it fills the field whenever the field is still untouched.
+  // Never over a half-typed handle, for the same reason as the effect above.
+  useEffect(() => {
+    const reading = normaliseUsername(room.target)
+    if (reading === '') return
+    setHandle((current) => (current.trim() === '' ? reading : current))
+  }, [room.target])
+
   // Set when a Stop lands, cleared when a new connect starts. It exists only to
   // make the note beside the field stop naming a room that is no longer being
   // read: the field keeps the handle so reconnecting is one click, but "@handle via

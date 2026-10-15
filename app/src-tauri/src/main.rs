@@ -262,6 +262,27 @@ fn backend_disconnect(state: State<'_, AppState>, app: tauri::AppHandle) {
     );
 }
 
+/// The current connection state, for a frontend that has just started.
+///
+/// A reload of the webview — which `tauri:dev` does on every code change — throws
+/// the whole frontend away while this process keeps reading the stream. The new
+/// page starts from an idle room, so without asking it shows "Not connected" and a
+/// Connect button while chat rows are still arriving. That is not a cosmetic
+/// mismatch: the button offers to connect to a room that is already connected.
+///
+/// So the page asks, once, as it attaches its listener. The answer is a status
+/// frame like any other, carrying the session the reader is on — which is also
+/// what lets the reloaded page tell a frame from that session apart from a
+/// straggler of an older one.
+///
+/// A command rather than a pushed frame because the host has no way to know a
+/// webview reloaded: Tauri re-creates the page without telling the Rust side, so
+/// there is no moment to push at. Asking is the only reliable signal.
+#[tauri::command]
+fn backend_status(state: State<'_, AppState>) -> serde_json::Value {
+    state.backend.snapshot()
+}
+
 /// The tray icon and its menu.
 ///
 /// Exists because closing the window now only hides it � without somewhere to
@@ -349,7 +370,8 @@ fn main() {
         backend_config_get,
         backend_config_save,
         backend_connect,
-        backend_disconnect
+        backend_disconnect,
+        backend_status
     ])
         .setup(|app| {
             // Closing the window hides it rather than ending the app, so a stream keeps

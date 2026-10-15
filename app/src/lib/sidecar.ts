@@ -55,8 +55,25 @@ type Tagged = { platform: FramePlatform }
  */
 type Sessioned = { session?: number }
 
+/**
+ * The host's snapshot of the session it is reading, for a page that just loaded.
+ *
+ * Not a transition — nothing happened — but the same `status` shape plus the room
+ * details a fresh page cannot know. Marked with `snapshot: true` so the app can
+ * tell it from a real status frame and apply it whole instead of logging it as an
+ * event that never occurred.
+ */
+type Snapshotted = {
+  snapshot?: boolean
+  username?: string
+  roomId?: string
+  title?: string
+  viewers?: number | null
+}
+
 export type SidecarEvent = Tagged &
   Sessioned &
+  Snapshotted &
   (
     | {
         type: 'chat'
@@ -142,6 +159,7 @@ type HostCommand =
   | 'backend_config_save'
   | 'backend_connect'
   | 'backend_disconnect'
+  | 'backend_status'
 
 /**
  * How the UI reaches the host.
@@ -271,6 +289,35 @@ function accepts(event: SidecarEvent): boolean {
 /** The host saying the reading stopped. */
 function isStopConfirmation(event: SidecarEvent): boolean {
   return event.platform === 'bridge' && event.type === 'status' && event.connected === false
+}
+
+/**
+ * Delivers the host's snapshot of the current session, as if it had just arrived.
+ *
+ * A reload of the webview throws the frontend away while the Rust process keeps
+ * reading, so the new page starts from an idle room and would show "Not connected"
+ * and a Connect button over a feed that is still filling. This is how it catches
+ * up: `useChat` asks for the snapshot once, and hands it here.
+ *
+ * Routed through the same guard and the same listener set as a real frame rather
+ * than written straight into state, for two reasons. The guard has to learn the
+ * session the reader is on, or the first real frame after the reload would look
+ * like it came from an unknown session; and the listeners have to see it the same
+ * way they see everything else, so there is one path into the app rather than a
+ * second one that has to be kept in step by hand.
+ */
+export function adoptSnapshot(event: SidecarEvent): void {
+  // The snapshot describes the session that is running now, so it is adopted
+  // rather than gated: `accepts` would refuse it only if its session were already
+  // closed, which cannot be true of a snapshot taken after that close.
+  liveSession = typeof event.session === 'number' ? event.session : liveSession
+  for (const handler of listeners) {
+    try {
+      handler(event)
+    } catch (error: unknown) {
+      console.error('a sidecar event handler threw', error)
+    }
+  }
 }
 
 /** Resolved once, so a later `setTransport` cannot swap it out mid-session. */
@@ -465,5 +512,20 @@ export const host = {
   backendDisconnect: async (): Promise<void> => {
     const resolved = await resolve()
     await resolved.invoke('backend_disconnect')
+  },
+  /**
+   * The connection state right now, for a page that has just started.
+   *
+   * Returns the host's snapshot as a frame — `null` when the host answers with
+   * nothing usable, so a caller can tell "not connected" from "could not ask".
+   * The shape is `SidecarEvent`, but it is deliberately not cast to the union
+   * here: it carries fields no ordinary frame does (`username`, `roomId`,
+   * `viewers`, `snapshot`), and asserting it into a variant that does not declare
+   * them is how this seam goes wrong quietly. `useChat` reads what it needs.
+   */
+  backendStatus: async (): Promise<Record<string, unknown> | null> => {
+    const resolved = await resolve()
+    const snapshot = await resolved.invoke('backend_status')
+    return snapshot && typeof snapshot === 'object' ? (snapshot as Record<string, unknown>) : null
   },
 }
