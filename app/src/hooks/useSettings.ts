@@ -249,8 +249,7 @@ export function useSettings(): UseSettingsResult {
     document.body.classList.toggle('compact', settings.compact)
     // One attribute each, read by the stylesheet. The theme restyles the whole
     // app; the font and density are orthogonal to it, so they ride on their own
-    // attributes rather than being baked into each theme — otherwise picking the
-    // pixel theme would lock the font to pixel, and there is no reason it must.
+    // attributes rather than being baked into each theme.
     document.body.dataset.theme = settings.theme
     document.body.dataset.font = settings.font
     document.body.dataset.density = settings.density

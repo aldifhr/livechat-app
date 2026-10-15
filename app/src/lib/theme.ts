@@ -12,8 +12,8 @@
  * empty row it cannot recover from.
  */
 
-export type ThemeId = 'default' | 'brutalism' | 'pixel'
-export type FontId = 'sans' | 'mono' | 'pixel'
+export type ThemeId = 'default' | 'brutalism'
+export type FontId = 'sans' | 'mono'
 /** How much air the layout puts around things. */
 export type DensityId = 'cozy' | 'compact' | 'roomy'
 
@@ -38,13 +38,11 @@ export interface DensityMeta {
 export const THEMES: ThemeMeta[] = [
   { id: 'default', label: 'Default', hint: 'The dark look this app shipped with' },
   { id: 'brutalism', label: 'Brutalism', hint: 'Hard borders, raw blocks, no rounding' },
-  { id: 'pixel', label: 'Pixel 2D', hint: 'Retro pixels, chunky steps, dithered colour' },
 ]
 
 export const FONTS: FontMeta[] = [
   { id: 'sans', label: 'Sans', hint: 'The interface font' },
   { id: 'mono', label: 'Mono', hint: 'One fixed width, for code-like chat' },
-  { id: 'pixel', label: 'Pixel', hint: 'Blocky bitmap type — pairs with the pixel theme' },
 ]
 
 export const DENSITIES: DensityMeta[] = [
