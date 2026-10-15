@@ -37,6 +37,7 @@ export default function LivePreview() {
   const [rooms, setRooms] = useState<Room[]>([])
   const [roomId, setRoomId] = useState('')
   const [which, setWhich] = useState<'chat' | 'board'>('chat')
+  const [chatDesign, setChatDesign] = useState<'original' | 'studio'>('original')
 
   // Read once, on mount. A preview that followed the query string as you typed in
   // another tab would reload under you; this is a thing you navigate to and watch.
@@ -48,16 +49,32 @@ export default function LivePreview() {
     // string — and it no longer carries one, so that test would have silently
     // stopped selecting the board.
     if (q.get('which') === 'board') setWhich('board')
+    if (q.get('design') === 'studio') setChatDesign('studio')
   }, [])
 
   useEffect(() => {
     api
       .rooms()
-      .then(({ rooms: found }) => {
+      .then(async ({ rooms: found }) => {
         setRooms(found)
-        // With no room named, show the first rather than an empty screen, so the
-        // page is worth landing on directly.
-        setRoomId((current) => current || (found[0]?.id ?? ''))
+        const requested = new URLSearchParams(window.location.search).get('room')
+        if (requested) {
+          setRoomId(requested)
+          return
+        }
+
+        // A direct visit should preview the stream that can actually produce
+        // chat, rather than an older offline room that happens to sort first.
+        const statuses = await Promise.all(
+          found.map(async (room) => {
+            try {
+              return { id: room.id, connected: (await api.status(room.id)).connected }
+            } catch {
+              return { id: room.id, connected: false }
+            }
+          }),
+        )
+        setRoomId(statuses.find((status) => status.connected)?.id ?? found[0]?.id ?? '')
       })
       .catch(() => {
         // The room list may be empty before a token is set; an empty picker and an
@@ -76,7 +93,7 @@ export default function LivePreview() {
   // preview is not a snapshot of a style that was current when the page was
   // opened, it is the same live page OBS is showing. Moving a slider in the builder
   // shows up here without anything being re-pointed.
-  const chatUrl = useMemo(() => (selected ? api.chatOverlay(selected) : ''), [selected])
+  const chatUrl = useMemo(() => (selected ? api.chatOverlay(selected, chatDesign) : ''), [selected, chatDesign])
   const boardUrl = useMemo(() => (selected ? api.topChatterOverlay(selected) : ''), [selected])
 
   const shown = which === 'chat' ? chatUrl : boardUrl
@@ -146,6 +163,16 @@ export default function LivePreview() {
               Top chatters
             </button>
           </div>
+          {which === 'chat' && (
+            <div className="seg" aria-label="Chat overlay design">
+              <button className={chatDesign === 'original' ? 'on' : ''} onClick={() => setChatDesign('original')}>
+                Original
+              </button>
+              <button className={chatDesign === 'studio' ? 'on' : ''} onClick={() => setChatDesign('studio')}>
+                Studio
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

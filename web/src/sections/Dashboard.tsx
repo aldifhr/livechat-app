@@ -20,6 +20,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '@/lib/client'
 import type { Room, RoomStatus } from '@/lib/types'
+import NumberTicker from '@/components/magicui/NumberTicker'
 
 /** How often the numbers are re-read. The same beat the streams page uses, so
  *  two pages side by side are not showing different moments. */
@@ -86,12 +87,11 @@ export default function Dashboard() {
     // totals only the rooms that did. A room that dropped out of this read is
     // missing from the total rather than counted as zero — a zero would put a
     // cliff in the line that no viewer count actually produced.
-    const total = readings.reduce(
-      (sum, row) => sum + (typeof row.status?.viewers === 'number' ? row.status.viewers : 0),
-      0,
-    )
+    const connected = readings.filter((row) => row.status?.connected)
+    const countsComplete = connected.every((row) => typeof row.status?.viewers === 'number')
+    const total = connected.reduce((sum, row) => sum + (row.status?.viewers ?? 0), 0)
     const answered = readings.some((row) => row.status)
-    if (answered) {
+    if (answered && (connected.length === 0 || countsComplete)) {
       setHistory((current) => [...current, { at: Date.now(), total }].slice(-HISTORY))
     }
   }, [])
@@ -104,10 +104,12 @@ export default function Dashboard() {
 
   const totals = useMemo(() => {
     const live = rows.filter((row) => row.status?.connected)
-    const viewers = rows.reduce(
-      (sum, row) => sum + (typeof row.status?.viewers === 'number' ? row.status.viewers : 0),
-      0,
-    )
+    const countsComplete = live.every((row) => typeof row.status?.viewers === 'number')
+    const viewers = live.length === 0
+      ? 0
+      : countsComplete
+        ? live.reduce((sum, row) => sum + (row.status?.viewers ?? 0), 0)
+        : null
     return { rooms: rows.length, live: live.length, viewers }
   }, [rows])
 
@@ -133,34 +135,38 @@ export default function Dashboard() {
       <div className="stat-row">
         <div className="stat">
           <span className="stat-label">Viewers now</span>
-          <span className="stat-value">{totals.viewers.toLocaleString()}</span>
+          <span className="stat-value">
+            {totals.viewers === null ? '—' : <NumberTicker value={totals.viewers} />}
+          </span>
           <span className="stat-note">
             across {totals.live} live {totals.live === 1 ? 'stream' : 'streams'}
           </span>
         </div>
         <div className="stat">
           <span className="stat-label">Peak on this page</span>
-          <span className="stat-value">{peak.toLocaleString()}</span>
+          <span className="stat-value">
+            {history.length ? <NumberTicker value={peak} /> : '—'}
+          </span>
           <span className="stat-note">high-water mark since it was opened</span>
         </div>
         <div className="stat">
           <span className="stat-label">Streams</span>
           <span className="stat-value">
-            {totals.live}
-            <span className="stat-of"> / {totals.rooms}</span>
+            <NumberTicker value={totals.live} />
+            <span className="stat-of"> / <NumberTicker value={totals.rooms} /></span>
           </span>
           <span className="stat-note">live of configured</span>
         </div>
       </div>
 
       <div className="panel">
-        <h3>Viewers over the last few minutes</h3>
+        <h3>Viewers trend</h3>
         <Sparkline points={history} />
       </div>
 
       {loaded && rows.length === 0 && !error && (
         <div className="empty">
-          No streams configured yet. Add one from <a href="/admin">Streams</a>.
+          No streams configured yet. Add one from <a href="/admin/streams">Streams</a>.
         </div>
       )}
 
@@ -200,7 +206,9 @@ export default function Dashboard() {
                     )}
                   </td>
                   <td className="num">
-                    {typeof row.status?.viewers === 'number' ? row.status.viewers.toLocaleString() : '—'}
+                    {row.status?.connected && typeof row.status.viewers === 'number'
+                      ? row.status.viewers.toLocaleString()
+                      : '—'}
                   </td>
                 </tr>
               ))}
@@ -243,6 +251,10 @@ function Sparkline({ points }: { points: Reading[] }) {
   const area = coordinates.length
     ? `${coordinates[0].split(',')[0]},${H} ${coordinates.join(' ')} ${W},${H}`
     : ''
+  const elapsedMs = points.length > 1 ? points[points.length - 1].at - points[0].at : 0
+  const elapsedLabel = elapsedMs < 60_000
+    ? `${Math.round(elapsedMs / 1000)} seconds`
+    : `${(elapsedMs / 60_000).toFixed(1)} minutes`
 
   return (
     <>
@@ -253,7 +265,7 @@ function Sparkline({ points }: { points: Reading[] }) {
         role="img"
         aria-label={
           points.length
-            ? `Viewers over the last ${Math.round((points.length * POLL_MS) / 60000)} minutes, peaking at ${peakOf(points)}`
+            ? `Viewers over the last ${points.length === 1 ? 'first reading' : elapsedLabel}, peaking at ${peakOf(points)}`
             : 'No readings yet'
         }
       >

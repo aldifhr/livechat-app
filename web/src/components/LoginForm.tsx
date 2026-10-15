@@ -59,6 +59,7 @@ export default function LoginForm({ next }: { next: string }) {
         <label htmlFor="login-password">Password</label>
         <input
           id="login-password"
+          className="w-full"
           name="password"
           type="password"
           autoComplete="current-password"

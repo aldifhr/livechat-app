@@ -30,10 +30,14 @@
        bare URL renders something rather than nothing. */
     --size: 22px;
     --name-colour: #ffd76a;
+    --gift-colour: #ffd76a;
     --text-colour: #ffffff;
     --background: 0;
+    --bubble-opacity: 0.82;
+    --chat-max-width: 34em;
     --font: "Segoe UI", system-ui, sans-serif;
     --align: flex-end;
+    --cross-align: flex-start;
   }
 
   * { box-sizing: border-box; }
@@ -63,7 +67,7 @@
     display: flex;
     flex-direction: column;
     justify-content: var(--align);
-    align-items: flex-start;
+    align-items: var(--cross-align);
     /* In `em` rather than the fixed 24px it was: the canvas is a fixed number of
        pixels but the text is not, and 24px is a hair's breadth on a 1080p source
        and a visible border on a 720p one. */
@@ -87,7 +91,7 @@
        of the screen, which is the hardest shape there is to read. In `em`, so it
        follows `--size`: one column stays one column whatever the text is set to,
        and at the 22px default this is a little under half the canvas. */
-    max-width: min(100%, 34em);
+    max-width: min(100%, var(--chat-max-width));
     /* Faded at the top, which is where the old messages are.
        This list is pinned to the bottom of the canvas and messages are appended,
        so the newest is always the last line and the ones above it are the ones
@@ -144,7 +148,7 @@
     margin-left: 0.4em;
     padding: 0 0.35em;
     border-radius: 4px;
-    background: rgba(255, 215, 106, 0.18);
+    background: color-mix(in srgb, var(--gift-colour, #ffd76a) 18%, transparent);
     color: var(--gift-colour, #ffd76a);
     font-weight: 700;
   }
@@ -168,16 +172,19 @@
      putting them back where they were typed would mean knowing each one's
      character offset — which the wire does not carry. */
   .emotes {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    margin-top: 3px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.12em;
+    margin-left: 0.15em;
+    vertical-align: middle;
   }
 
   .emote {
-    width: 22px;
-    height: 22px;
+    display: inline-block;
+    width: 1.25em;
+    height: 1.25em;
     object-fit: contain;
+    vertical-align: -0.22em;
   }
 
   /* Newest at the bottom. The app's feed does the same, and a chat that grows
@@ -211,21 +218,6 @@
      stream is if somebody pasted it into OBS without checking — which is exactly
      when they need to see it. It shows before anything has been received and is
      gone the instant a real message arrives. */
-  #status { display: none; }
-  body.debug #status {
-    display: block;
-    position: fixed;
-    top: 4px;
-    left: 4px;
-    font: 11px/1.4 ui-monospace, monospace;
-    color: #ff8a80;
-    background: rgba(0, 0, 0, 0.6);
-    padding: 2px 6px;
-    border-radius: 4px;
-    max-width: 90vw;
-    overflow-wrap: anywhere;
-  }
-
   #unconfigured {
     display: none;
     color: #ffffff;
@@ -272,12 +264,70 @@
     opacity: 0.35;
     font-size: var(--size);
   }
+
+  /* The Studio skin is an opt-in presentation. The default page remains the
+     original overlay, and the room's saved colors, font, size, and row count
+     continue to control both designs. */
+  html.design-studio #chat {
+    max-width: min(100%, 28em);
+    gap: 0.42em;
+    mask-image: linear-gradient(to bottom, transparent 0%, #000 14%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 14%);
+  }
+
+  html.design-studio #chat li {
+    position: relative;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 0.62em;
+    padding: 0.43em 0.68em;
+    background: rgba(8, 13, 18, var(--bubble-opacity, 0.82));
+    box-shadow: 0 0.22em 0.8em rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(9px);
+    -webkit-backdrop-filter: blur(9px);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+  }
+
+  html.design-studio #chat li:not(.gift) {
+    border-left: 0.16em solid var(--name-colour);
+  }
+
+  html.design-studio #chat .name {
+    font-weight: 750;
+  }
+
+  html.design-studio #chat .text {
+    color: var(--text-colour);
+  }
+
+  html.design-studio #chat li.gift {
+    border-color: color-mix(in srgb, var(--gift-colour, #ffd76a) 52%, transparent);
+    background: linear-gradient(110deg, color-mix(in srgb, var(--gift-colour, #ffd76a) 18%, rgba(8, 13, 18, var(--bubble-opacity, 0.82))), rgba(8, 13, 18, var(--bubble-opacity, 0.82)));
+    box-shadow: 0 0.2em 1em color-mix(in srgb, var(--gift-colour, #ffd76a) 16%, transparent);
+  }
+
+  html.design-studio #chat .gift-diamonds {
+    border: 1px solid color-mix(in srgb, var(--gift-colour, #ffd76a) 40%, transparent);
+    background: color-mix(in srgb, var(--gift-colour, #ffd76a) 12%, transparent);
+  }
+
+  html.design-studio #chat .mention {
+    background: rgba(99, 230, 193, 0.14);
+    text-decoration: none;
+  }
+
+  html.design-studio #chat .emote {
+    width: 1.25em;
+    height: 1.25em;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html.design-studio #chat li.entering { animation: none; }
+  }
 </style>
 </head>
 <body>
 <ul id="chat" aria-live="polite" aria-relevant="additions"></ul>
 <div id="unconfigured">no handle in this link — add <code>?room=yourhandle</code></div>
-<div id="status"></div>
 
 <!-- Read by the overlay script below before it opens the backend socket. -->
 <script id="overlay-config" type="application/json">__OVERLAY_CONFIG__</script>
@@ -318,12 +368,25 @@
     return Math.min(max, Math.max(min, raw))
   }
 
+  function safeGiftColour(value) {
+    var text = String(value == null ? '' : value).trim()
+    return /^#[0-9a-fA-F]{6}$/.test(text) ? text : '#ffd76a'
+  }
+
+  function safePosition(value) {
+    return ['top-left', 'top-right', 'bottom-left', 'bottom-right'].indexOf(value) >= 0
+      ? value
+      : 'bottom-left'
+  }
+
   // Baked values, read once. The backend writes the room's saved styling in here
   // when the link names a room by id, so a bare `?room=<id>` link renders as the
   // configured overlay with nothing in the URL. The query string still wins over
   // these, which is what lets a link be edited by hand.
   var bakedSize = baked.size, bakedName = baked.nameColour, bakedColor = baked.textColour
   var bakedBg = baked.background, bakedMax = baked.max, bakedDelay = baked.delay, bakedFont = baked.font
+  var bakedPosition = baked.position, bakedMaxWidth = baked.maxWidth
+  var bakedBubbleOpacity = baked.bubbleOpacity, bakedGiftColour = baked.giftColour
 
   var config = {
     // Defaults to this page's own origin. The page and its websocket are served
@@ -338,6 +401,10 @@
     // panel behind each line. A value in 0..1 rather than a percentage, because
     // "0.35" reads more clearly than "35%" beside a slider.
     background: number('bg', typeof bakedBg === 'number' ? bakedBg : 0, 0, 1),
+    position: safePosition(param('position', bakedPosition || 'bottom-left')),
+    maxWidth: number('width', typeof bakedMaxWidth === 'number' ? bakedMaxWidth : 34, 18, 64),
+    bubbleOpacity: number('bubble', typeof bakedBubbleOpacity === 'number' ? bakedBubbleOpacity : 0.82, 0, 1),
+    giftColour: safeGiftColour(param('gift', bakedGiftColour || '#ffd76a')),
     max: Math.round(number('max', typeof bakedMax === 'number' ? bakedMax : 8, 1, 50)),
     // How long between one message appearing and the next.
     //
@@ -348,8 +415,11 @@
     // message already on screen.
     delay: number('delay', typeof bakedDelay === 'number' ? bakedDelay : 500, 120, 3000),
     font: param('font', bakedFont || '"Segoe UI", system-ui, sans-serif'),
-    debug: param('debug', '') !== ''
+    debug: param('debug', '') !== '',
+    design: param('design', 'original') === 'studio' ? 'studio' : 'original'
   }
+
+  if (config.design === 'studio') document.documentElement.classList.add('design-studio')
 
   // This page's own styling defaults, with no URL and no baked config involved.
   //
@@ -371,7 +441,11 @@
     background: 0,
     max: 8,
     delay: 500,
-    font: '"Segoe UI", system-ui, sans-serif'
+    font: '"Segoe UI", system-ui, sans-serif',
+    position: 'bottom-left',
+    maxWidth: 34,
+    bubbleOpacity: 0.82,
+    giftColour: '#ffd76a'
   }
 
   // Push the current styling onto the page.
@@ -394,19 +468,40 @@
     // it, which nobody asked for and which darkened the video behind the chat. One
     // setting, one thing it does.
     document.documentElement.style.setProperty('--background', String(config.background))
+    document.documentElement.style.setProperty('--gift-colour', config.giftColour)
+    document.documentElement.style.setProperty('--bubble-opacity', String(config.bubbleOpacity))
+    document.documentElement.style.setProperty('--chat-max-width', config.maxWidth + 'em')
+    document.documentElement.style.setProperty('--align', config.position.indexOf('top-') === 0 ? 'flex-start' : 'flex-end')
+    document.documentElement.style.setProperty('--cross-align', config.position.indexOf('-right') > 0 ? 'flex-end' : 'flex-start')
   }
 
   applyConfig()
 
-  var status = document.getElementById('status')
+  // The builder applies unsaved edits to its own preview immediately. OBS still
+  // relies on the persisted room config pushed over the websocket.
+  window.addEventListener('message', function (event) {
+    if (event.origin !== location.origin || !event.data || !event.data.streamkitPreviewStyle) return
+    var style = event.data.streamkitPreviewStyle
+    if (typeof style !== 'object') return
+    if (Number.isFinite(style.size)) config.size = Math.max(8, Math.min(96, style.size))
+    if (typeof style.nameColour === 'string') config.nameColour = style.nameColour
+    if (typeof style.textColour === 'string') config.textColour = style.textColour
+    if (Number.isFinite(style.background)) config.background = Math.max(0, Math.min(1, style.background))
+    if (Number.isFinite(style.max)) config.max = Math.max(1, Math.min(50, Math.round(style.max)))
+    if (Number.isFinite(style.delay)) config.delay = Math.max(120, Math.min(3000, style.delay))
+    if (typeof style.font === 'string') config.font = style.font
+    if (typeof style.position === 'string') config.position = safePosition(style.position)
+    if (Number.isFinite(style.maxWidth)) config.maxWidth = Math.max(18, Math.min(64, style.maxWidth))
+    if (Number.isFinite(style.bubbleOpacity)) config.bubbleOpacity = Math.max(0, Math.min(1, style.bubbleOpacity))
+    if (typeof style.giftColour === 'string') config.giftColour = safeGiftColour(style.giftColour)
+    applyConfig()
+  })
 
   function say(message) {
     // Only ever visible under `?debug=1`. The failure mode of an overlay is
     // shown to a stream full of people, so silence is the default and this is how
     // you ask for the truth.
-    if (!config.debug) return
-    document.body.classList.add('debug')
-    status.textContent = message
+    debugLog('status', message)
   }
 
   function debugLog() {
@@ -419,7 +514,8 @@
   debugLog('loaded', {
     page: location.href,
     backend: config.baseUrl,
-    room: config.username
+    room: config.username,
+    design: config.design
   })
 
   // ---- the feed ------------------------------------------------------------
@@ -585,6 +681,59 @@
     return { handle: match[1], rest: body.slice(match[0].length) }
   }
 
+  function appendTextWithEmotes(parent, text, emotes) {
+    var source = String(text || '')
+    var items = Array.isArray(emotes) ? emotes : []
+    var token = /\[[^\[\]\r\n]{1,40}\]/g
+    var match
+    var cursor = 0
+    var used = 0
+
+    while ((match = token.exec(source)) !== null) {
+      if (used >= items.length) break
+      parent.appendChild(document.createTextNode(source.slice(cursor, match.index)))
+      var emote = items[used]
+      var url = emote && emote.url ? String(emote.url) : ''
+      if (url) {
+        var img = document.createElement('img')
+        img.className = 'emote'
+        img.src = url
+        img.alt = match[0]
+        img.title = match[0]
+        img.loading = 'lazy'
+        img.referrerPolicy = 'no-referrer'
+        parent.appendChild(img)
+      } else {
+        parent.appendChild(document.createTextNode(match[0]))
+      }
+      used++
+      cursor = token.lastIndex
+    }
+
+    parent.appendChild(document.createTextNode(source.slice(cursor)))
+    return used
+  }
+
+  function appendEmoteRemainder(parent, emotes, start) {
+    var items = Array.isArray(emotes) ? emotes : []
+    if (start >= items.length) return
+
+    var strip = document.createElement('span')
+    strip.className = 'emotes'
+    for (var i = start; i < items.length; i++) {
+      var url = items[i] && items[i].url ? String(items[i].url) : ''
+      if (!url) continue
+      var img = document.createElement('img')
+      img.className = 'emote'
+      img.src = url
+      img.alt = ''
+      img.loading = 'lazy'
+      img.referrerPolicy = 'no-referrer'
+      strip.appendChild(img)
+    }
+    if (strip.childNodes.length > 0) parent.appendChild(strip)
+  }
+
   function render(user, text, userId, emotes) {
     var body = String(text == null ? '' : text).trim()
     // A message can be nothing but an emote. Dropping it on an empty body would
@@ -599,11 +748,12 @@
     row.appendChild(nameLink(user, userId))
     row.appendChild(document.createTextNode(': '))
 
-    if (body !== '') {
+    if (body !== '' || list_.length > 0) {
       var message = document.createElement('span')
       message.className = 'text'
 
       var mention = splitMention(body)
+      var usedEmotes = 0
       if (mention) {
         // The mention as its own element, linked like a name so it is something you
         // can act on rather than just coloured text.
@@ -614,32 +764,16 @@
         // The remainder after the mention, unchanged. Trimmed so the row does not
         // open with the gap that sat between the @handle and the words.
         var rest = mention.rest.trim()
-        if (rest !== '') message.appendChild(document.createTextNode(' ' + rest))
+        if (rest !== '') {
+          message.appendChild(document.createTextNode(' '))
+          usedEmotes = appendTextWithEmotes(message, rest, list_)
+        }
       } else {
-        message.textContent = body
+        usedEmotes = appendTextWithEmotes(message, body, list_)
       }
 
+      appendEmoteRemainder(message, list_, usedEmotes)
       row.appendChild(message)
-    }
-
-    // The custom emotes the message carried, under the text. Same field the app
-    // draws and this page used to drop, so a comment full of emotes read as a bare
-    // name on the stream while the operator's window showed the pictures.
-    if (list_.length > 0) {
-      var strip = document.createElement('span')
-      strip.className = 'emotes'
-      list_.forEach(function (emote) {
-        var url = emote && emote.url ? String(emote.url) : ''
-        if (url === '') return
-        var img = document.createElement('img')
-        img.className = 'emote'
-        img.src = url
-        img.alt = ''
-        img.loading = 'lazy'
-        img.referrerPolicy = 'no-referrer'
-        strip.appendChild(img)
-      })
-      if (strip.childNodes.length > 0) row.appendChild(strip)
     }
 
     list.appendChild(row)
@@ -652,8 +786,9 @@
   /**
    * A gift, shown as its own kind of row.
    *
-   * Not paced through the chat queue and not retired on the chat's schedule: a
-   * gift is an event, not a message in a conversation, and the whole point of
+   * Not paced through the chat queue: a gift is an event, not a message in a
+   * conversation, and it expires after five seconds so a quiet chat clears itself.
+   * The whole point of
    * showing it is that a viewer sees who gave what. Rendered at once, in the gift
    * colour, with the sticker and the diamond count — the money that just arrived,
    * which is the one thing on a stream everyone looks up for.
@@ -697,6 +832,11 @@
     document.body.classList.add('ready')
     trim()
     reportHeight()
+    window.setTimeout(function () {
+      if (!row.parentNode || row.dataset.leaving === '1') return
+      retire(row)
+      reportHeight()
+    }, GIFT_DURATION)
   }
 
   /**
@@ -717,14 +857,12 @@
    * by one however slow the removal is.
    */
   /**
-   * How many gift rows stay on screen at once.
-   *
-   * Larger than the chat limit, and counted separately from it: a gift is the one
-   * thing a viewer looks up for, and it should outlast the chat that arrives after
-   * it rather than being pushed off by the next few messages. Three is enough to
-   * show a run of gifts without the list becoming a leaderboard.
+   * How many gift rows stay on screen at once. This caps gift bursts; each row
+   * also expires on its own timer.
    */
   var GIFT_KEEP = 3
+  // A gift should be noticeable, then clear itself even when chat goes quiet.
+  var GIFT_DURATION = 5000
 
   function trim() {
     var live = []
@@ -735,9 +873,8 @@
       live.push(row)
       if (row.classList.contains('gift')) gifts.push(row)
     }
-    // Chat rows go first, oldest first, so the list stays at its limit. A gift is
-    // only retired once the gifts alone exceed their own keep-count, which is what
-    // lets one sit on screen through a stretch of ordinary chat.
+    // Chat rows go first, oldest first, so the list stays at its limit. Gifts are
+    // capped separately so a burst cannot crowd out every chat message.
     var chatCount = live.length - gifts.length
     var over = chatCount - (config.max - gifts.length)
     for (var i = 0; i < live.length && over > 0; i++) {

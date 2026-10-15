@@ -91,6 +91,6 @@ export default async function LoginPage({
  */
 function safeNext(value: string | string[] | undefined): string {
   const raw = Array.isArray(value) ? value[0] : value
-  if (!raw || !raw.startsWith('/') || raw.startsWith('//') || raw.includes('\\')) return '/admin'
+  if (!raw || !raw.startsWith('/') || raw.startsWith('//') || raw.includes('\\')) return '/admin/dashboard'
   return raw
 }

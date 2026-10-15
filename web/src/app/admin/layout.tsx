@@ -3,6 +3,7 @@ import { tokenConfigured, productName, splitWordmark } from '@/lib/config'
 import Sidebar from '@/components/Sidebar'
 import SignOutButton from '@/components/SignOutButton'
 import { ToastProvider } from '@/components/Toast'
+import BlurFade from '@/components/magicui/BlurFade'
 
 // Rendered per request, not at build time. Next would otherwise prerender these
 // pages and freeze whatever STREAMKIT_TOKEN happened to be set to when the build
@@ -29,10 +30,16 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
     <div className="admin">
       <aside className="sidebar">
-        <span className="wordmark">
-          {head}
-          {tail && <span>{tail}</span>}
-        </span>
+        <div className="brand-lockup">
+          <span className="brand-symbol" aria-hidden="true">S</span>
+          <div className="brand-copy">
+            <span className="wordmark">
+              {head}
+              {tail && <span>{tail}</span>}
+            </span>
+            <span className="brand-caption">LIVE STUDIO</span>
+          </div>
+        </div>
         <Sidebar />
         <SignOutButton />
       </aside>
@@ -45,7 +52,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         )}
         {/* Wrapped here rather than around the whole shell: the toasts belong to
             the console's own actions, and the sidebar does not raise any. */}
-        <ToastProvider>{children}</ToastProvider>
+        <ToastProvider>
+          <BlurFade>{children}</BlurFade>
+        </ToastProvider>
       </main>
     </div>
   )

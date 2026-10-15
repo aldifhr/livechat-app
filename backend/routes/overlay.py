@@ -29,6 +29,10 @@ OVERLAY_STYLE_KEYS = {
     "overlayMax": "max",
     "overlayDelay": "delay",
     "overlayFont": "font",
+    "overlayPosition": "position",
+    "overlayMaxWidth": "maxWidth",
+    "overlayBubbleOpacity": "bubbleOpacity",
+    "overlayGiftColour": "giftColour",
     # The board's heading. Added with the config route, when saving styling became
     # something the dashboard could do — see `page_config` for why this key is
     # absent from `models.OVERLAY_STORE_KEYS`, which guards a different path.

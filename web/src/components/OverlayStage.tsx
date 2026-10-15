@@ -36,6 +36,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
+import type { OverlayStyle } from '@shared/overlay'
 
 interface Props {
   /** The overlay's address. Empty renders nothing rather than an empty frame. */
@@ -66,6 +67,8 @@ interface Props {
   maxHeight?: number
   /** The canvas a `canvas` frame represents, in CSS pixels. */
   canvas?: { width: number; height: number }
+  /** Unsaved chat style to apply immediately in the preview iframe. */
+  previewStyle?: OverlayStyle
 }
 
 /** OBS's default stream canvas. */
@@ -77,10 +80,38 @@ export default function OverlayStage({
   variant = 'fit',
   maxHeight = 520,
   canvas = DEFAULT_CANVAS,
+  previewStyle,
 }: Props) {
   const [reportedHeight, setReportedHeight] = useState<number | null>(null)
   const [boxWidth, setBoxWidth] = useState(0)
   const row = useRef<HTMLDivElement | null>(null)
+  const frame = useRef<HTMLIFrameElement | null>(null)
+
+  const syncPreviewStyle = () => {
+    if (!previewStyle) return
+    frame.current?.contentWindow?.postMessage(
+      {
+        streamkitPreviewStyle: {
+          size: previewStyle.size,
+          nameColour: previewStyle.nameColour,
+          textColour: previewStyle.textColour,
+          background: previewStyle.bg,
+          max: previewStyle.max,
+          delay: previewStyle.delay,
+          font: previewStyle.font,
+          position: previewStyle.position,
+          maxWidth: previewStyle.maxWidth,
+          bubbleOpacity: previewStyle.bubbleOpacity,
+          giftColour: previewStyle.giftColour,
+        },
+      },
+      window.location.origin,
+    )
+  }
+
+  useEffect(() => {
+    syncPreviewStyle()
+  }, [previewStyle])
 
   // A new overlay is a new height; the old one belongs to the page being left.
   useEffect(() => {
@@ -157,7 +188,7 @@ export default function OverlayStage({
               transform: `scale(${scale})`,
             }}
           >
-            <iframe src={framed} title={title} />
+            <iframe ref={frame} src={framed} title={title} onLoad={syncPreviewStyle} />
           </div>
         </div>
       </div>
@@ -191,7 +222,7 @@ export default function OverlayStage({
 
   return (
     <div className="preview-stage" style={occupied ? { height: `${occupied}px` } : undefined}>
-      <iframe src={framed} title={title} style={frameStyle} />
+      <iframe ref={frame} src={framed} title={title} style={frameStyle} onLoad={syncPreviewStyle} />
     </div>
   )
 }

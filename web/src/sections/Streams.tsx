@@ -45,6 +45,7 @@ function StreamCard({
   // was the whole reason for carrying it in the query string in the first place,
   // solved properly this time.
   const chatUrl = api.chatOverlay(room.id)
+  const studioChatUrl = api.chatOverlay(room.id, 'studio')
   const boardUrl = api.topChatterOverlay(room.id)
 
   return (
@@ -66,7 +67,8 @@ function StreamCard({
 
       <div className="stream-links">
         <p className="copy-label">3. OBS browser source links</p>
-        <CopyField label="Chat overlay" url={chatUrl} />
+        <CopyField label="Chat overlay · Original" url={chatUrl} />
+        <CopyField label="Chat overlay · Studio" url={studioChatUrl} />
         <CopyField label="Top chatters" url={boardUrl} />
       </div>
 

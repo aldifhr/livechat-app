@@ -29,10 +29,12 @@ import {
   OVERLAY_DELAY,
   OVERLAY_DEFAULT_STYLE,
   OVERLAY_MAX_ROWS,
+  OVERLAY_MAX_WIDTH,
   OVERLAY_SIZE,
   OVERLAY_TITLE_MAX,
   type BoardStyle,
   type OverlayStyle,
+  type OverlayPosition,
 } from '@shared/overlay'
 import { api } from '../lib/client'
 import type { Room } from '../lib/types'
@@ -67,17 +69,20 @@ function RoomPicker({
 
 // ---- the chat customizer --------------------------------------------------
 
-function ChatCustomizer({ roomId, style, onChange }: {
+function ChatCustomizer({ roomId, style, design, onChange }: {
   roomId: string
   style: OverlayStyle
+  design: 'original' | 'studio'
   onChange: (change: Partial<OverlayStyle>) => void
 }) {
-  const chatUrl = useMemo(() => (roomId ? api.chatOverlay(roomId) : ''), [roomId])
+  const chatUrl = useMemo(() => (roomId ? api.chatOverlay(roomId, design) : ''), [roomId, design])
 
   return (
     <>
       <div className="panel">
         <h3>Style</h3>
+
+        <p className="style-group-title">Content</p>
 
         <div className="field">
           <label>Text size <span className="value">{style.size}px</span></label>
@@ -89,15 +94,76 @@ function ChatCustomizer({ roomId, style, onChange }: {
           <input type="range" min={OVERLAY_MAX_ROWS.min} max={OVERLAY_MAX_ROWS.max} value={style.max} onChange={(e) => onChange({ max: Number(e.target.value) })} />
         </div>
 
+        <p className="style-group-title">Position and width</p>
+
         <div className="field">
-          <label>Gap between messages <span className="value">{style.delay}ms</span></label>
-          <input type="range" min={OVERLAY_DELAY.min} max={OVERLAY_DELAY.max} step={20} value={style.delay} onChange={(e) => onChange({ delay: Number(e.target.value) })} />
+          <label htmlFor="chat-position">Chat position</label>
+          <select
+            id="chat-position"
+            value={style.position}
+            onChange={(e) => onChange({ position: e.target.value as OverlayPosition })}
+          >
+            <option value="top-left">Top left</option>
+            <option value="top-right">Top right</option>
+            <option value="bottom-left">Bottom left</option>
+            <option value="bottom-right">Bottom right</option>
+          </select>
         </div>
 
         <div className="field">
-          <label>Background <span className="value">{Math.round(style.bg * 100)}%</span></label>
+          <label>Maximum chat width <span className="value">{style.maxWidth}em</span></label>
+          <input
+            type="range"
+            min={OVERLAY_MAX_WIDTH.min}
+            max={OVERLAY_MAX_WIDTH.max}
+            value={style.maxWidth}
+            onChange={(e) => onChange({ maxWidth: Number(e.target.value) })}
+          />
+        </div>
+
+        <div className="field">
+          <label htmlFor="chat-speed">Message speed</label>
+          <select
+            id="chat-speed"
+            value={style.delay === 200 ? 'fast' : style.delay === 900 ? 'relaxed' : style.delay === 500 ? 'normal' : 'custom'}
+            onChange={(e) => {
+              const delays = { fast: 200, normal: 500, relaxed: 900 }
+              const delay = delays[e.target.value as keyof typeof delays]
+              if (delay) onChange({ delay })
+            }}
+          >
+            <option value="fast">Fast</option>
+            <option value="normal">Normal</option>
+            <option value="relaxed">Relaxed</option>
+            <option value="custom" disabled>Custom ({style.delay}ms)</option>
+          </select>
+        </div>
+
+        <div className="field">
+          <label>Custom message interval <span className="value">{style.delay}ms</span></label>
+          <input type="range" min={OVERLAY_DELAY.min} max={OVERLAY_DELAY.max} step={20} value={style.delay} onChange={(e) => onChange({ delay: Number(e.target.value) })} />
+        </div>
+
+        <p className="style-group-title">Background and color</p>
+
+        <div className="field">
+          <label>Row background opacity <span className="value">{Math.round(style.bg * 100)}%</span></label>
           <input type="range" min={0} max={1} step={0.05} value={style.bg} onChange={(e) => onChange({ bg: Number(e.target.value) })} />
         </div>
+
+        {design === 'studio' && (
+          <div className="field">
+            <label>Studio bubble opacity <span className="value">{Math.round(style.bubbleOpacity * 100)}%</span></label>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={style.bubbleOpacity}
+              onChange={(e) => onChange({ bubbleOpacity: Number(e.target.value) })}
+            />
+          </div>
+        )}
 
         <div className="field-row">
           <div className="field">
@@ -111,6 +177,11 @@ function ChatCustomizer({ roomId, style, onChange }: {
         </div>
 
         <div className="field">
+          <label>Gift colour</label>
+          <input type="color" value={style.giftColour} onChange={(e) => onChange({ giftColour: e.target.value })} />
+        </div>
+
+        <div className="field">
           <label htmlFor="chat-font">Font</label>
           <input id="chat-font" value={style.font} onChange={(e) => onChange({ font: e.target.value })} />
         </div>
@@ -119,7 +190,11 @@ function ChatCustomizer({ roomId, style, onChange }: {
       </div>
 
       <div>
-        <CopyField label="Chat overlay" url={chatUrl} hint="Add as a browser source in OBS, sized to your canvas." />
+        <CopyField
+          label={`Chat overlay · ${design === 'studio' ? 'Studio' : 'Original'}`}
+          url={chatUrl}
+          hint="Add as a browser source in OBS, sized to your canvas."
+        />
       </div>
     </>
   )
@@ -226,6 +301,7 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
   const [rooms, setRooms] = useState<Room[]>([])
   const [roomId, setRoomId] = useState(initialRoom ?? '')
   const [which, setWhich] = useState<Which>('chat')
+  const [chatDesign, setChatDesign] = useState<'original' | 'studio'>('original')
   const [canvas, setCanvas] = useState(CANVASES[0])
 
   // The query string, read after mount rather than in a state initialiser: those run
@@ -234,6 +310,7 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
   const search = useRef('')
   useEffect(() => {
     search.current = window.location.search
+    if (new URLSearchParams(search.current).get('design') === 'studio') setChatDesign('studio')
     if (!initialRoom) {
       const fromQuery = new URLSearchParams(search.current).get('room')
       if (fromQuery) setRoomId(fromQuery)
@@ -290,7 +367,7 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
     [],
   )
 
-  const previewHref = `/admin/live-preview?room=${encodeURIComponent(selected)}&which=${which}`
+  const previewHref = `/admin/live-preview?room=${encodeURIComponent(selected)}&which=${which}&design=${chatDesign}`
 
   const chat = usePersistedStyle({
     room,
@@ -327,6 +404,16 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
             Top chatters
           </button>
         </div>
+        {which === 'chat' && (
+          <div className="seg stack-top" aria-label="Chat overlay design">
+            <button className={chatDesign === 'original' ? 'on' : ''} onClick={() => setChatDesign('original')}>
+              Original
+            </button>
+            <button className={chatDesign === 'studio' ? 'on' : ''} onClick={() => setChatDesign('studio')}>
+              Studio
+            </button>
+          </div>
+        )}
       </div>
 
       {/*
@@ -346,7 +433,12 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
       <div className="builder">
         <div className="builder-controls">
           {which === 'chat' ? (
-            <ChatCustomizer roomId={selected} style={chat.current} onChange={chat.patch} />
+            <ChatCustomizer
+              roomId={selected}
+              style={chat.current}
+              design={chatDesign}
+              onChange={chat.patch}
+            />
           ) : (
             <BoardCustomizer roomId={selected} style={board.current} onChange={board.patch} />
           )}
@@ -383,9 +475,10 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
                   a small box that swells as the room warms up. */}
               <OverlayStage
                 variant="canvas"
-                url={which === 'chat' ? api.chatOverlay(selected) : api.topChatterOverlay(selected)}
+                url={which === 'chat' ? api.chatOverlay(selected, chatDesign) : api.topChatterOverlay(selected)}
                 title={`${which === 'chat' ? 'Chat' : 'Top chatters'} overlay preview`}
                 canvas={canvas}
+                previewStyle={which === 'chat' ? chat.current : undefined}
               />
               <p className="faint tight-caption">
                 The overlay on a {canvas.width}×{canvas.height} canvas — what OBS shows. It changes as

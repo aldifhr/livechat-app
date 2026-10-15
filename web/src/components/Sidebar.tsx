@@ -15,15 +15,15 @@ import { usePathname } from 'next/navigation'
  * The active item is read from the URL, so it cannot drift from what is on screen:
  * there is no second copy of "where am I" to fall out of sync.
  *
- * "Streams" is the index of this layout rather than /admin/streams, so the address of
- * the console's home is the address you land on after signing in.
+ * Streams has its own address, separate from the overview and the legacy /admin
+ * entry point, so the selected section is clear in the URL.
  */
 const ITEMS = [
-  { href: '/admin', label: 'Streams', hint: 'Links and styling for each stream', exact: true },
-  { href: '/admin/dashboard', label: 'Overview', hint: 'Live status and viewers across streams', exact: false },
-  { href: '/admin/overlay', label: 'Overlay builder', hint: 'Restyle one stream in detail', exact: false },
-  { href: '/admin/live-preview', label: 'Live preview', hint: 'Watch it at OBS size', exact: false },
-  { href: '/admin/about', label: 'About', hint: 'Addresses and account', exact: false },
+  { href: '/admin/dashboard', label: 'Overview', icon: '◫', hint: 'Live status and viewers across streams', exact: false },
+  { href: '/admin/streams', label: 'Streams', icon: '◉', hint: 'Links and styling for each stream', exact: true },
+  { href: '/admin/overlay', label: 'Overlay builder', icon: '✦', hint: 'Restyle one stream in detail', exact: false },
+  { href: '/admin/live-preview', label: 'Live preview', icon: '▣', hint: 'Watch it at OBS size', exact: false },
+  { href: '/admin/about', label: 'About', icon: '⚙', hint: 'Addresses and account', exact: false },
 ]
 
 export default function Sidebar() {
@@ -32,10 +32,10 @@ export default function Sidebar() {
   return (
     <>
       <nav>
+        <p className="side-caption">Workspace</p>
         {ITEMS.map((item) => {
-          // Exact matching only for the index: without it /admin would light up
-          // while sitting on /admin/overlay, and the sidebar would claim you are
-          // somewhere you are not.
+          // Exact matching for the Streams page prevents /admin from lighting it
+          // up while sitting on Overview or another section.
           const active = item.exact ? pathname === item.href : pathname.startsWith(item.href)
           return (
             <Link
@@ -44,6 +44,7 @@ export default function Sidebar() {
               className="side-item"
               aria-current={active ? 'page' : undefined}
             >
+              <span className="nav-icon" aria-hidden="true">{item.icon}</span>
               {item.label}
             </Link>
           )

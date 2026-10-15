@@ -37,7 +37,17 @@ export interface OverlayStyle {
   textColour: string
   /** A CSS font stack, quoted names and all. */
   font: string
+  /** Which corner of the OBS canvas the chat grows from. */
+  position: OverlayPosition
+  /** Maximum chat column width, measured in ems at the current text size. */
+  maxWidth: number
+  /** Studio bubble opacity, from transparent to opaque. */
+  bubbleOpacity: number
+  /** Accent for gift rows and their diamond count. */
+  giftColour: string
 }
+
+export type OverlayPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
 
 export const OVERLAY_DEFAULT_STYLE: OverlayStyle = {
   size: 22,
@@ -52,6 +62,10 @@ export const OVERLAY_DEFAULT_STYLE: OverlayStyle = {
   nameColour: '#ffd76a',
   textColour: '#ffffff',
   font: '"Segoe UI", system-ui, sans-serif',
+  position: 'bottom-left',
+  maxWidth: 34,
+  bubbleOpacity: 0.82,
+  giftColour: '#ffd76a',
 }
 
 /**
@@ -72,6 +86,17 @@ export const OVERLAY_MAX_ROWS = { min: 1, max: 50 }
  * message sitting alone long enough for the room to have moved on.
  */
 export const OVERLAY_DELAY = { min: 120, max: 3000 }
+export const OVERLAY_MAX_WIDTH = { min: 18, max: 64 }
+
+const OVERLAY_POSITIONS: readonly OverlayPosition[] = [
+  'top-left', 'top-right', 'bottom-left', 'bottom-right',
+]
+
+export function resolveOverlayPosition(value: unknown): OverlayPosition {
+  return typeof value === 'string' && OVERLAY_POSITIONS.includes(value as OverlayPosition)
+    ? value as OverlayPosition
+    : OVERLAY_DEFAULT_STYLE.position
+}
 
 /**
  * A colour, or nothing.
@@ -161,6 +186,10 @@ export function chatStyleFromQuery(search: string): OverlayStyle {
     nameColour: resolveColour(raw('name'), OVERLAY_DEFAULT_STYLE.nameColour),
     textColour: resolveColour(raw('color'), OVERLAY_DEFAULT_STYLE.textColour),
     font: resolveOverlayFont(raw('font')),
+    position: resolveOverlayPosition(raw('position')),
+    maxWidth: clampNumber(raw('width'), OVERLAY_MAX_WIDTH.min, OVERLAY_MAX_WIDTH.max, OVERLAY_DEFAULT_STYLE.maxWidth),
+    bubbleOpacity: clampNumber(raw('bubble'), 0, 1, OVERLAY_DEFAULT_STYLE.bubbleOpacity),
+    giftColour: resolveColour(raw('gift'), OVERLAY_DEFAULT_STYLE.giftColour),
   }
 }
 
@@ -174,6 +203,10 @@ export function chatStyleToQuery(style: OverlayStyle): Record<string, string> {
     name: style.nameColour,
     color: style.textColour,
     font: style.font,
+    position: style.position,
+    width: String(style.maxWidth),
+    bubble: String(style.bubbleOpacity),
+    gift: style.giftColour,
   }
 }
 
@@ -279,6 +312,10 @@ export function resolveStyle(saved: Partial<OverlayStyle> | null | undefined): O
     nameColour: resolveColour(saved?.nameColour, OVERLAY_DEFAULT_STYLE.nameColour),
     textColour: resolveColour(saved?.textColour, OVERLAY_DEFAULT_STYLE.textColour),
     font: resolveOverlayFont(saved?.font),
+    position: resolveOverlayPosition(saved?.position),
+    maxWidth: clampNumber(saved?.maxWidth, OVERLAY_MAX_WIDTH.min, OVERLAY_MAX_WIDTH.max, OVERLAY_DEFAULT_STYLE.maxWidth),
+    bubbleOpacity: clampNumber(saved?.bubbleOpacity, 0, 1, OVERLAY_DEFAULT_STYLE.bubbleOpacity),
+    giftColour: resolveColour(saved?.giftColour, OVERLAY_DEFAULT_STYLE.giftColour),
   }
 }
 
@@ -327,6 +364,10 @@ const STORED_TO_FIELD = {
   overlayNameColour: 'nameColour',
   overlayTextColour: 'textColour',
   overlayFont: 'font',
+  overlayPosition: 'position',
+  overlayMaxWidth: 'maxWidth',
+  overlayBubbleOpacity: 'bubbleOpacity',
+  overlayGiftColour: 'giftColour',
   overlayTitle: 'title',
 } as const
 
@@ -370,6 +411,10 @@ export function chatStyleToStored(style: OverlayStyle): Record<string, unknown> 
     overlayNameColour: style.nameColour,
     overlayTextColour: style.textColour,
     overlayFont: style.font,
+    overlayPosition: style.position,
+    overlayMaxWidth: style.maxWidth,
+    overlayBubbleOpacity: style.bubbleOpacity,
+    overlayGiftColour: style.giftColour,
   }
 }
 

@@ -140,6 +140,10 @@ export const api = {
   // One URL per overlay so a customiser or a scene collection points at
   // exactly one page. The bare /overlay path still redirects, for links pasted
   // before the split.
-  chatOverlay: (id: string) => overlayUrl('/overlay/chat-overlay', id),
+  chatOverlay: (id: string, design: 'original' | 'studio' = 'original') => {
+    const url = new URL(overlayUrl('/overlay/chat-overlay', id))
+    if (design === 'studio') url.searchParams.set('design', 'studio')
+    return url.toString()
+  },
   topChatterOverlay: (id: string) => overlayUrl('/overlay/top-chatter', id),
 }
