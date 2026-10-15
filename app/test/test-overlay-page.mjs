@@ -67,12 +67,18 @@ const DEFAULTS = (() => {
  * that connects to something the test does not control is a page the test cannot
  * assert anything about.
  */
-function load(search = '?room=ana&max=8', source = CHAT_PAGE) {
+function load(search = '?room=ana&max=8', source = CHAT_PAGE, referrer = undefined) {
   const sockets = []
   let resolveRoom = null
 
   const dom = new JSDOM(source, {
     url: `http://127.0.0.1:4319/${search}`,
+    // Only set when asked for. The preview-sample test needs one, because the
+    // page's `message` listener reads `document.referrer` to decide whether the
+    // sender is its embedder — and `referrer` is a getter, so it cannot be
+    // assigned after construction. Every other test leaves it off, as a page
+    // opened directly has none.
+    ...(referrer ? { referrer } : {}),
     runScripts: 'dangerously',
     pretendToBeVisual: true,
     // Injected here rather than after construction because the page's script runs
@@ -578,6 +584,45 @@ check('the pushed row limit is the one it enforces', liveAfter() <= 3, String(li
 check('and it is reached, not merely respected', liveAfter() === 2, String(liveAfter()))
 check('not the eight the link asked for', liveAfter() !== 8, String(liveAfter()))
 check('and the page is still taking messages', restyled.rows().length > before)
+
+console.log('the preview sample does not hold a slot for ever')
+// Found by watching the preview: the sample row sat there while real messages
+// stacked up behind it, so the list ran one row over `max` for the whole session.
+// `trim()` skipped anything marked `data-preview-sample`, which meant it was never
+// counted and therefore never retired — an immortal row.
+//
+// The sample is pushed the way the dashboard pushes it: a `message` event from the
+// parent frame carrying `streamkitPreviewSample`. jsdom has no parent frame, so
+// the listener's `event.source === window.parent` check is satisfied by dispatching
+// on the window itself and letting `source` be null — which is what the real check
+// compares against when nothing is embedded. The page's guard also needs a
+// referrer, so the origin check passes.
+const sampled = load('?room=ana&max=3', CHAT_PAGE, 'http://127.0.0.1:4319/')
+sampled.openRoom()
+await settle()
+
+// `window.parent` is the window itself in jsdom when nothing is embedded, so a
+// dispatched MessageEvent with `source: window` is what the page accepts.
+sampled.window.dispatchEvent(
+  new sampled.window.MessageEvent('message', {
+    data: { streamkitPreviewStyle: { max: 3 }, streamkitPreviewSample: true },
+    source: sampled.window,
+    origin: 'http://127.0.0.1:4319',
+  }),
+)
+await settle()
+const sampleRows = () => sampled.rows().filter((row) => row.dataset.previewSample === 'true')
+check('the sample is shown', sampleRows().length === 1, String(sampleRows().length))
+
+// Now real messages, more than the limit. The sample must be retired like any
+// other row rather than sitting at the bottom of the list for ever.
+for (let n = 0; n < 6; n += 1) sampled.say(`v${n}`, `m${n}`)
+await new Promise((resolve) => setTimeout(resolve, 2000))
+const sampledLive = sampled.rows().filter((row) => row.dataset.leaving !== '1')
+check('the list stays within its limit', sampledLive.length <= 3, String(sampledLive.length))
+// The bug in one line: the sample is gone, so it is not occupying a slot.
+check('and the sample was retired like any other row', sampleRows().length === 0, String(sampleRows().length))
+check('leaving room for the real messages', sampledLive.length === 3, String(sampledLive.length))
 
 console.log(failures === 0 ? '\nall passed' : `\n${failures} failed`)
 process.exit(failures === 0 ? 0 : 1)

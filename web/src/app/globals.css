@@ -384,21 +384,41 @@
      is stretched to the box, so the stroke width is in user units and varies with
      the box; that is the one cost of not using an SVG library, and it is cheaper
      than shipping one. */
-  .spark {
-    @apply block h-[120px] w-full;
+  .chart {
+    /* A real aspect ratio now, not `preserveAspectRatio="none"`: the labels would
+       be stretched sideways by a non-uniform scale, and a squashed axis label is
+       worse than no label. The height is fixed so the panel does not resize as
+       readings arrive. */
+    @apply block h-[200px] w-full;
   }
 
-  .spark-line {
-    /* `vector-effect` as a plain declaration rather than an `@apply`: the
-       utility does not exist, and the property is what stops the 2px stroke
-       becoming a hairline on a tall box — the svg is stretched to its box with
-       `preserveAspectRatio="none"`, so user units are not screen units. */
+  .chart-line {
+    /* `vector-effect` as a plain declaration rather than an `@apply`: the utility
+       does not exist, and the property is what stops the 2px stroke becoming a
+       hairline on a tall box. */
     @apply fill-none stroke-accent stroke-[2];
     vector-effect: non-scaling-stroke;
+    stroke-linejoin: round;
+    stroke-linecap: round;
   }
 
-  .spark-area {
+  .chart-area {
     @apply fill-accent/10;
+  }
+
+  .chart-point {
+    /* Filled with the panel's own background so the dot reads as a marker on the
+       line rather than a thickening of it. */
+    @apply fill-accent stroke-raised stroke-[2];
+  }
+
+  .chart-grid {
+    @apply stroke-line stroke-[1];
+    stroke-dasharray: 3 4;
+  }
+
+  .chart-axis {
+    @apply fill-faint text-[11px];
   }
 
   .stat-table {
@@ -1560,11 +1580,11 @@
     background: rgb(255 255 255 / 2%);
   }
 
-  .spark-line {
+  .chart-line {
     stroke: var(--accent);
   }
 
-  .spark-area {
+  .chart-area {
     fill: rgb(99 230 193 / 12%);
   }
 

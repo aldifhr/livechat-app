@@ -871,6 +871,12 @@
   }
 
   /**
+   * How many gift rows stay on screen at once. This caps gift bursts; each row
+   * also expires on its own timer.
+   */
+  var GIFT_KEEP = 3
+
+  /**
    * Keeps the list at its limit.
    *
    * Counting only the rows that have not started to leave, and retiring from a
@@ -886,12 +892,13 @@
    * Iterating a list of the live rows makes the loop's progress visible in its
    * own body: each pass shifts one row off and retires it, so the count goes down
    * by one however slow the removal is.
+   *
+   * The preview sample counts like any other row. It used to be skipped, and that
+   * made it immortal: never counted, so never retired, so it held a slot for the
+   * whole session while real messages queued behind it. The preview then showed
+   * one row more than `max`, with the sample pinned at the bottom of them and
+   * nothing the operator could do about it from the page.
    */
-  /**
-   * How many gift rows stay on screen at once. This caps gift bursts; each row
-   * also expires on its own timer.
-   */
-  var GIFT_KEEP = 3
   // A gift should be noticeable, then clear itself even when chat goes quiet.
   var GIFT_DURATION = 5000
 
@@ -901,7 +908,6 @@
     for (var i = 0; i < list.children.length; i++) {
       var row = list.children[i]
       if (row.dataset.leaving === '1') continue
-      if (row.dataset.previewSample === 'true') continue
       live.push(row)
       if (row.classList.contains('gift')) gifts.push(row)
     }

@@ -161,7 +161,7 @@ export default function Dashboard() {
 
       <div className="panel">
         <h3>Viewers trend</h3>
-        <Sparkline points={history} />
+        <ViewerChart points={history} />
       </div>
 
       {loaded && rows.length === 0 && !error && (
@@ -233,66 +233,105 @@ export default function Dashboard() {
 }
 
 /**
- * The viewer series, as a line.
+ * The viewer series, as a line chart.
  *
- * Drawn from a list of readings rather than a canvas or an SVG library, because
- * the shape is one polygon and the honest way to say a number is to put it on
- * the page.
+ * Drawn as SVG rather than pulled from a charting library: the shape is one
+ * polyline over a fixed set of readings, and a library for that would be a
+ * dependency, a bundle and a styling surface to keep in step with the theme for a
+ * graph the theme already has colours for. It was a sparkline before — a bare line
+ * with no axes — which showed the shape and hid every number behind it: you could
+ * see the line rise and not tell whether it went from 3 to 8 or from 3,000 to 8,000.
  *
- * The newest reading sits at the right edge however few readings there are, so
- * the line grows leftwards into the past as they arrive. The other anchoring —
- * the oldest at the left — was the obvious one and is wrong here: this is a time
+ * The newest reading sits at the right edge however few readings there are, so the
+ * line grows leftwards into the past as they arrive. The other anchoring — the
+ * oldest at the left — was the obvious one and is wrong here: this is a time
  * series, time runs left to right, and the right edge is now. It also means the
- * line does not re-stretch every time a reading lands, which a left-anchored
- * line does, and a graph that shifts under the eye is not read.
+ * line does not re-stretch every time a reading lands, which a left-anchored line
+ * does, and a graph that shifts under the eye is not read.
  */
-function Sparkline({ points }: { points: Reading[] }) {
+function ViewerChart({ points }: { points: Reading[] }) {
   const W = 720
-  const H = 120
+  const H = 200
+  // Room for the y-axis labels on the left and the time labels under the plot.
+  const PAD = { top: 12, right: 12, bottom: 26, left: 48 }
+  const plotW = W - PAD.left - PAD.right
+  const plotH = H - PAD.top - PAD.bottom
+
   // Headroom above the high-water mark, so the peak is a line on the chart rather
   // than the top edge of it — a flat-topped peak reads as a clipped axis.
-  const scale = Math.max(1, peakOf(points)) * 1.15
-  const step = points.length > 1 ? W / (HISTORY - 1) : W
+  const peak = peakOf(points)
+  const scale = Math.max(1, peak) * 1.15
+  const step = points.length > 1 ? plotW / (HISTORY - 1) : plotW
 
-  const coordinates = points.map((point, i) => {
-    const x = W - (points.length - 1 - i) * step
-    const y = H - (point.total / scale) * H
-    return `${x.toFixed(1)},${y.toFixed(1)}`
+  const x = (i: number) => PAD.left + plotW - (points.length - 1 - i) * step
+  const y = (value: number) => PAD.top + plotH - (value / scale) * plotH
+
+  const coordinates = points.map((point, i) => `${x(i).toFixed(1)},${y(point.total).toFixed(1)}`)
+  const area = coordinates.length
+    ? `${x(0).toFixed(1)},${(PAD.top + plotH).toFixed(1)} ${coordinates.join(' ')} ${x(points.length - 1).toFixed(1)},${(PAD.top + plotH).toFixed(1)}`
+    : ''
+
+  // Four gridlines, top to bottom, each labelled with the value it stands for.
+  // Derived from the same `scale` the line is drawn against, so a label can never
+  // disagree with the height it sits at.
+  const ticks = [0, 1, 2, 3].map((n) => {
+    const value = (scale / 3) * n
+    return { value, y: y(value) }
   })
 
-  const area = coordinates.length
-    ? `${coordinates[0].split(',')[0]},${H} ${coordinates.join(' ')} ${W},${H}`
-    : ''
   const elapsedMs = points.length > 1 ? points[points.length - 1].at - points[0].at : 0
   const elapsedLabel = elapsedMs < 60_000
     ? `${Math.round(elapsedMs / 1000)} seconds`
     : `${(elapsedMs / 60_000).toFixed(1)} minutes`
+  const last = points[points.length - 1]
 
   return (
     <>
       <svg
-        className="spark"
+        className="chart"
         viewBox={`0 0 ${W} ${H}`}
-        preserveAspectRatio="none"
         role="img"
         aria-label={
           points.length
-            ? `Viewers over the last ${points.length === 1 ? 'first reading' : elapsedLabel}, peaking at ${peakOf(points)}`
+            ? `Viewers over the last ${points.length === 1 ? 'first reading' : elapsedLabel}, now ${last?.total ?? 0}, peaking at ${peak}`
             : 'No readings yet'
         }
       >
-        {/* The zero line, always. A flat-at-zero series drawn without it is a
-            short mark floating near the right edge, which reads as a broken chart
-            rather than as a measurement of nothing — and a dashboard that is
-            showing zero is showing the most important thing it can show. */}
-        <line className="spark-base" x1="0" y1={H} x2={W} y2={H} />
-        {area && <polygon className="spark-area" points={area} />}
-        {coordinates.length > 0 && <polyline className="spark-line" points={coordinates.join(' ')} />}
+        {/* The grid, behind everything. Values are rounded for display only — the
+            lines themselves sit at the exact positions the data is drawn against. */}
+        {ticks.map((tick) => (
+          <g key={tick.value}>
+            <line className="chart-grid" x1={PAD.left} y1={tick.y} x2={W - PAD.right} y2={tick.y} />
+            <text className="chart-axis" x={PAD.left - 8} y={tick.y + 4} textAnchor="end">
+              {Math.round(tick.value).toLocaleString()}
+            </text>
+          </g>
+        ))}
+
+        {area && <polygon className="chart-area" points={area} />}
+        {coordinates.length > 0 && <polyline className="chart-line" points={coordinates.join(' ')} />}
+
+        {/* The newest reading, marked. Without it a line ending mid-chart looks
+            like data that stopped rather than a number that is still current. */}
+        {last && <circle className="chart-point" cx={x(points.length - 1)} cy={y(last.total)} r={4} />}
+
+        {/* Time runs left to right, so the ends are the only two labels needed:
+            the first reading and now. */}
+        {points.length > 1 && (
+          <>
+            <text className="chart-axis" x={PAD.left} y={H - 6} textAnchor="start">
+              {elapsedLabel} ago
+            </text>
+            <text className="chart-axis" x={W - PAD.right} y={H - 6} textAnchor="end">
+              now
+            </text>
+          </>
+        )}
       </svg>
       <p className="faint tight-caption">
         {points.length < 2
           ? 'One reading so far — the line appears after the next poll.'
-          : `${points.length} readings, every ${POLL_MS / 1000}s, highest ${peakOf(points)}.`}
+          : `${points.length} readings, every ${POLL_MS / 1000}s · now ${last?.total ?? 0} · highest ${peak}.`}
       </p>
     </>
   )
