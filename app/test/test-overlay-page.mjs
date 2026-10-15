@@ -256,6 +256,57 @@ check('it shows the diamond count', /20/.test(giftRow?.textContent ?? ''), giftR
 check('the gifter name is a link to their profile', giftRow?.querySelector('a.name')?.getAttribute('href') === 'https://www.tiktok.com/@ana', giftRow?.querySelector('a.name')?.getAttribute('href'))
 check('and it did not enter the chat queue as a chat row', page.rows().filter((row) => !row.classList.contains('gift')).length === chatBefore, String(page.rows().length))
 
+// The sticker. `giftImage` has been on the wire and drawn in the app since the
+// app had a feed; this page read the frame and dropped the field, so the stream
+// showed the name of a gift whose picture was available to everyone else.
+page.frame({
+  type: 'gift',
+  user: 'ana',
+  userId: 'ana',
+  giftName: 'Rose',
+  count: 1,
+  value: 1,
+  giftImage: 'https://p16.example.test/rose.webp',
+})
+await new Promise((resolve) => setTimeout(resolve, 50))
+const pictured = page.dom.window.document.querySelector('#chat li.gift .gift-image')
+check('a gift with a picture draws it', pictured?.getAttribute('src') === 'https://p16.example.test/rose.webp', pictured?.getAttribute('src') ?? 'no image')
+check('and the row still names the gift', /Rose/.test(pictured?.closest('li')?.textContent ?? ''), pictured?.closest('li')?.textContent)
+
+// A gift with no picture must not gain an empty <img> — a broken image beside the
+// name is worse than the name alone, which is what it had before.
+page.frame({ type: 'gift', user: 'ana', userId: 'ana', giftName: 'Lily', count: 1, value: 1 })
+await new Promise((resolve) => setTimeout(resolve, 50))
+const plainGift = [...page.dom.window.document.querySelectorAll('#chat li.gift')].at(-1)
+check('a gift with no picture adds no image element', plainGift?.querySelector('.gift-image') === null, plainGift?.innerHTML)
+
+console.log('custom emotes reach the page')
+// The same field the app draws and this page dropped: a comment carrying TikTok
+// emotes read as bare text on the stream while the operator saw the pictures.
+page.frame({
+  type: 'comment',
+  user: 'ana',
+  userId: 'ana',
+  text: 'nice',
+  emotes: [{ url: 'https://p16.example.test/a.webp', id: '1' }, { url: 'https://p16.example.test/b.webp', id: '2' }],
+})
+const emoted = await waitFor(() => page.dom.window.document.querySelector('#chat .emotes') !== null)
+const strip = page.dom.window.document.querySelector('#chat .emotes')
+check('the emotes are drawn', emoted, 'no .emotes element')
+check('one image per emote', strip?.querySelectorAll('img.emote').length === 2, String(strip?.querySelectorAll('img.emote').length))
+check('each points at its own url', strip?.querySelectorAll('img.emote')[1]?.getAttribute('src') === 'https://p16.example.test/b.webp', strip?.querySelectorAll('img.emote')[1]?.getAttribute('src'))
+check('and the text is still there', /nice/.test(page.rows().at(-1)?.textContent ?? ''), page.rows().at(-1)?.textContent)
+
+// An emote-only comment: no text at all. Returning early on the empty body threw
+// the picture away, which is the whole message.
+page.frame({ type: 'comment', user: 'ana', userId: 'ana', text: '', emotes: [{ url: 'https://p16.example.test/solo.webp', id: '9' }] })
+const solo = await waitFor(() =>
+  [...page.dom.window.document.querySelectorAll('#chat .emotes img.emote')].some(
+    (img) => img.getAttribute('src') === 'https://p16.example.test/solo.webp',
+  ),
+)
+check('a comment that is only an emote still renders', solo, 'the emote-only row was dropped')
+
 console.log('likes and viewer counts are still not rendered')
 const afterGift = page.rows().length
 page.frame({ type: 'like', user: 'ana', count: 5 })

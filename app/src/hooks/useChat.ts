@@ -19,10 +19,9 @@ export interface UseChatResult {
   /**
    * Writes a row the app invented rather than received.
    *
-   * Skips the counters on purpose: a model's answer is not a chat message and the
-   * model is not a viewer, so a "Messages" total that climbs because the AI spoke
-   * is a total that lies about the room, and the chatters board that answers to it
-   * would list a bot.
+   * Skips the counters on purpose: the app is not a viewer, so a "Messages" total
+   * that climbs because the app spoke is a total that lies about the room, and the
+   * chatters board that answers to it would list a bot.
    */
   post: (item: FeedInput) => void
   log: ReturnType<typeof useLog>
@@ -93,10 +92,10 @@ export function useChat({ collapseWindowMs, collapseThreshold }: UseChatOptions)
   )
 
   /*
-   * The two hooks below are handed the feed's write functions rather than being
-   * wired into the event path. A model's answer, a blocked message and a flagged
-   * row are all decisions made *after* an event has already been shown, and
-   * putting any of them here would mean a slow provider could hold up the feed.
+   * The hooks below are handed the feed's write functions rather than being wired
+   * into the event path. A reply the app decides to write is a decision made
+   * *after* an event has already been shown, and putting it here would mean a
+   * slow provider could hold up the feed.
    */
 
   // Read inside the event handler to tell a dropped connection from a

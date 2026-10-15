@@ -22,6 +22,41 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
     terakhir dibaca sebagian parser dan ditolak yang lain; yang pertama dibaca
     semua, termasuk decoder-nya Next.js sendiri saat build.
 
+- **Overlay OBS sekarang menampilkan gambar gift dan custom emote.** Dua field yang
+  backend sudah kirim sejak lama — `giftImage` di `events.py` dan `emotes` di
+  `_comment` — dirender oleh app desktop tapi **dibuang** oleh halaman overlay.
+  Penonton dapat versi yang lebih jelek dari operator: gift tampil sebagai teks
+  `sent Rose x2` tanpa stickernya, dan komentar berisi emote TikTok tampil sebagai
+  teks kosong.
+  - `renderGift()` membaca `giftImage` dan menggambar `.gift-image`; gift tanpa
+    gambar tidak menambah `<img>` kosong, karena gambar rusak lebih buruk daripada
+    nama saja.
+  - `render()` membaca `emotes` dan menggambar strip `.emotes` di bawah teks.
+    TikTok mengirim emote sebagai list di samping pesan, bukan disisipkan ke
+    dalam kata-katanya, jadi menaruhnya kembali di posisi asli butuh offset
+    karakter yang tidak dibawa wire — strip di bawah adalah bentuk yang jujur.
+  - Komentar yang **hanya** berisi emote tidak lagi dibuang: dulu `render()`
+    return lebih awal saat teks kosong, yang membuang gambar yang justru seluruh
+    isi pesannya.
+  - 8 assertion baru di `test-overlay-page.mjs`. Diverifikasi menangkap regresi:
+    dengan wiring `giftImage` dikembalikan ke keadaan lama, 2 assertion gagal.
+
+- **Galeri sticker gift akhirnya ada yang menautkan.** `/gifts` sudah di-mount
+  sejak sticker-nya diunduh — `StaticFiles` + `gifts.json` 82 KB + 795 `.webp`,
+  plus halaman `index.html` yang self-contained dengan search dan sort — tapi
+  tidak ada satu pun referensi ke sana di `web/src` atau `app/src`, jadi
+  satu-satunya cara menemukannya adalah tahu path-nya. Sekarang ada barisnya di
+  `/admin/about`, sebagai link karena itu halaman.
+
+### Changed
+- **`'answer'` dihapus dari `FeedKind`.** Sisa fitur AI yang sudah dihapus di
+  `ffbf48e`: `backend/` tidak pernah memproduksinya lagi, tapi `types.ts` masih
+  mendeklarasikannya dan `FeedRow.tsx`/`useStats.ts` masih bercabang untuknya.
+  Cabang mati seperti itu membuat `FeedKind` berbohong soal apa yang bisa
+  datang dari wire. Komentar yang masih menyebut "model" di `useChat.ts` dan
+  `useFeed.ts` diperbarui ke auto-reply, satu-satunya penulis baris lokal yang
+  tersisa.
+
 - **Volume, language, dan Tester untuk suara.** Tiga setelan yang selalu ada di
   produk lain dan tidak ada sama sekali di sini: suara dari app selalu pada level
   tetap, selalu bahasa Indonesia, dan satu-satunya cara tahu itu benar adalah

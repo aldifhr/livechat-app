@@ -15,12 +15,12 @@ export interface UseFeedResult {
   items: FeedItem[]
   push: (item: FeedInput) => void
   /**
-   * A row the app wrote rather than received: a model speaking in the room.
+   * A row the app wrote rather than received: the auto-reply speaking in the room.
    *
    * Separate from `push` because it skips the counters, and that is the whole
-   * distinction — an answer is not a chat message and the model is not a viewer,
-   * so a "Messages" total that climbs because the AI answered is a total that
-   * lies about the room.
+   * distinction — a reply is not a chat message and the app is not a viewer, so a
+   * "Messages" total that climbs because the app spoke is a total that lies about
+   * the room.
    */
   post: (item: FeedInput) => void
   /** Takes rows out of the feed by key. How strict moderation blocks a message. */

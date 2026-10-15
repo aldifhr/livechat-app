@@ -6,7 +6,7 @@
  * saying anything about any protocol.
  */
 
-export type FeedKind = 'chat' | 'gift' | 'like' | 'follow' | 'share' | 'join' | 'answer'
+export type FeedKind = 'chat' | 'gift' | 'like' | 'follow' | 'share' | 'join'
 
 /**
  * Which room a row came from.

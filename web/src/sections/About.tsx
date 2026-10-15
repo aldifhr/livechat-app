@@ -20,12 +20,22 @@ export default function About({ backend }: { backend?: string }) {
   // this module is first evaluated on the server.
   const origin = typeof window === 'undefined' ? '' : window.location.origin
 
-  const addresses = [
+  // `href` only where there is something to open. The overlay addresses are for
+  // pasting into OBS, and a click there would open a bare canvas in a tab rather
+  // than do the thing the row is for — so those stay text, and the rows that lead
+  // somewhere real are the ones that are links.
+  const addresses: { label: string; value: string; href?: string }[] = [
     { label: 'This dashboard', value: origin },
     { label: 'Chat overlay (paste into OBS)', value: `${origin}/overlay/chat-overlay` },
     { label: 'Top chatters overlay', value: `${origin}/overlay/top-chatter` },
   ]
-  if (backend) addresses.push({ label: 'Backend API', value: backend })
+  if (backend) {
+    addresses.push({ label: 'Backend API', value: backend })
+    // The sticker gallery has been served since the gifts were downloaded and
+    // nothing linked it, so the only way to reach it was to know the path. It is a
+    // page, not an API, so it opens in a tab.
+    addresses.push({ label: 'Gift sticker gallery', value: `${backend}/gifts/`, href: `${backend}/gifts/` })
+  }
 
   return (
     <>
@@ -45,7 +55,13 @@ export default function About({ backend }: { backend?: string }) {
           <div className="row" key={entry.label}>
             <div className="grow">
               <div>{entry.label}</div>
-              <div className="faint mono">{entry.value}</div>
+              {entry.href ? (
+                <a className="faint mono" href={entry.href} target="_blank" rel="noopener noreferrer">
+                  {entry.value}
+                </a>
+              ) : (
+                <div className="faint mono">{entry.value}</div>
+              )}
             </div>
           </div>
         ))}
