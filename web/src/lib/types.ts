@@ -34,3 +34,24 @@ export interface RoomStatus {
    *  that is not there. */
   liveEnded?: boolean
 }
+
+/** One line from the backend's log. */
+export interface LogEntry {
+  /** ISO timestamp, UTC. */
+  at: string
+  level: 'debug' | 'info' | 'warning' | 'error' | 'critical'
+  /** Which part of the backend said it, with the `streamkit.` prefix trimmed. */
+  source: string
+  message: string
+  /** Present only when the record carried an exception. */
+  traceback?: string
+}
+
+export interface LogPage {
+  /** Newest first, which is how a log is read. */
+  entries: LogEntry[]
+  /** How many matched the filter, before the limit was applied. */
+  total: number
+  /** How many the backend keeps in total, so the page can say what it is not showing. */
+  capacity: number
+}

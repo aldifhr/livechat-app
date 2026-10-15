@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 
 import eventlog
 import events
+import logbuffer
 import store
 from watchdog import LivenessWatchdog
 from events import ALERT
@@ -68,6 +69,11 @@ liveness = LivenessWatchdog()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Before anything else that can log, so the ring catches the boot sequence —
+    # which is where a misconfiguration says so, and the one part of the log a
+    # restarted process cannot otherwise be asked about.
+    logbuffer.install()
+
     # Re-aim every room that was pointed at a room when the process last went
     # down.
     #

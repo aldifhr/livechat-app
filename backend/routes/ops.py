@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 
 import events
+import logbuffer
 import store
 from fastapi import HTTPException
 from models import HookRequest, TriggerRequest
@@ -136,6 +137,27 @@ async def webhook(room_id: str, req: HookRequest):
         ),
     )
     return {"status": "ok"}
+
+
+@router.get("/api/logs")
+async def logs(request: Request, limit: int = 200, level: str = "info", q: str = "") -> dict[str, Any]:
+    """The backend's recent log records, for the dashboard's log page.
+
+    Token-gated, unlike `/health` and `/metrics`. Those carry aggregate counts an
+    orchestrator needs without a credential; this carries whatever the backend has
+    said, and a backend says things like room handles, URLs and the reason a
+    request was refused. It is a read, so the middleware does not gate it on method
+    — the check is here instead.
+
+    Answers 401 rather than 403 for a missing token: there is no session to be
+    missing, only a credential, and the dashboard's own error handling already
+    treats both as "the credential was refused".
+    """
+    if not _state["token_is_valid"](request):
+        raise HTTPException(status_code=401, detail="Invalid or missing STREAMKIT_TOKEN")
+    # `limit` is clamped inside `read` rather than rejected, so a page asking for
+    # more than exists gets what there is instead of an error.
+    return logbuffer.read(limit=limit, min_level=level, search=q)
 
 
 async def _require_room(room_id: str) -> None:

@@ -14,7 +14,7 @@
 
 'use client'
 
-import type { Room, RoomStatus } from './types'
+import type { LogPage, Room, RoomStatus } from './types'
 
 export class ApiError extends Error {
   constructor(
@@ -146,4 +146,19 @@ export const api = {
     return url.toString()
   },
   topChatterOverlay: (id: string) => overlayUrl('/overlay/top-chatter', id),
+
+  /**
+   * The backend's recent log records.
+   *
+   * `level` is a floor, not a match: `warning` returns warnings, errors and
+   * criticals. The backend clamps `limit` and falls back to `info` for a level it
+   * does not know, so a mistyped filter answers with the default view rather than
+   * an error.
+   */
+  logs: (opts: { limit?: number; level?: string; q?: string } = {}) =>
+    request<LogPage>('GET', '/logs', undefined, {
+      limit: opts.limit,
+      level: opts.level,
+      q: opts.q,
+    }),
 }

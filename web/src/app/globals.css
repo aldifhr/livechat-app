@@ -421,6 +421,101 @@
     @apply fill-faint text-[11px];
   }
 
+  /* ---- the backend log page ----
+   *
+   * A list of records rather than a table: a log line is prose with a prefix, and
+   * a table would force the message into a column narrow enough to wrap the one
+   * thing you came to read. Monospace, because it is diagnostic text and a
+   * proportional font makes a stack trace and a handle harder to scan. */
+  .log-controls {
+    @apply mb-4 flex flex-wrap items-end gap-3;
+  }
+
+  .log-controls .field {
+    @apply mb-0;
+  }
+
+  .log-controls .grow {
+    @apply min-w-[12rem] flex-1;
+  }
+
+  .log-entries {
+    @apply m-0 flex list-none flex-col gap-[2px] p-0;
+    /* Tall, and it scrolls on its own so the filters above stay put while you read
+       down a long list. */
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+
+  .log-entry {
+    @apply grid items-start gap-x-3 rounded-[6px] px-2 py-[5px] font-mono text-[0.82rem] leading-[1.45];
+    grid-template-columns: auto auto auto 1fr;
+  }
+
+  .log-entry:hover {
+    background: rgb(255 255 255 / 3%);
+  }
+
+  /* The error rows carry a tint as well as a coloured level, so a run of them is
+     visible while scrolling without reading every label. */
+  .log-entry.level-error,
+  .log-entry.level-critical {
+    background: rgb(255 90 90 / 7%);
+  }
+
+  .log-entry.level-warning {
+    background: rgb(255 200 90 / 5%);
+  }
+
+  .log-time {
+    @apply text-faint tabular-nums;
+  }
+
+  .log-level {
+    @apply text-[0.72rem] tracking-[0.04em] uppercase;
+  }
+
+  .log-level.level-debug {
+    @apply text-faint;
+  }
+
+  .log-level.level-info {
+    @apply text-dim;
+  }
+
+  /* The theme is greyscale plus one accent, so a warning is the accent dimmed and
+     an error is the one colour that means "something is wrong". Inventing a gold
+     and a red here would be two more colours in a palette that deliberately has
+     two. */
+  .log-level.level-warning {
+    @apply text-accent-dim;
+  }
+
+  .log-level.level-error,
+  .log-level.level-critical {
+    @apply text-bad;
+  }
+
+  .log-source {
+    @apply text-faint;
+  }
+
+  .log-message {
+    @apply text-text break-words;
+  }
+
+  .log-more {
+    @apply cursor-pointer border-0 bg-transparent p-0 font-mono text-[0.78rem] text-faint underline;
+  }
+
+  .log-more:hover {
+    @apply text-text;
+  }
+
+  .log-trace {
+    @apply mt-2 overflow-x-auto rounded-[6px] bg-sunken p-3 text-[0.76rem] whitespace-pre text-dim;
+  }
+
   .stat-table {
     @apply w-full border-collapse text-[0.9rem];
   }
