@@ -478,10 +478,11 @@
   applyConfig()
 
   // The builder applies unsaved edits to its own preview immediately. OBS still
-  // relies on the persisted room config pushed over the websocket.
-  window.addEventListener('message', function (event) {
-    if (event.origin !== location.origin || !event.data || !event.data.streamkitPreviewStyle) return
-    var style = event.data.streamkitPreviewStyle
+  // relies on the persisted room config pushed over the websocket. Keep the
+  // preview override on top of later socket frames so a stale room snapshot cannot
+  // make the editor jump back while a change is being saved.
+  var previewOverride = null
+  function applyPreviewStyle(style) {
     if (typeof style !== 'object') return
     if (Number.isFinite(style.size)) config.size = Math.max(8, Math.min(96, style.size))
     if (typeof style.nameColour === 'string') config.nameColour = style.nameColour
@@ -495,6 +496,16 @@
     if (Number.isFinite(style.bubbleOpacity)) config.bubbleOpacity = Math.max(0, Math.min(1, style.bubbleOpacity))
     if (typeof style.giftColour === 'string') config.giftColour = safeGiftColour(style.giftColour)
     applyConfig()
+  }
+
+  window.addEventListener('message', function (event) {
+    var parentOrigin = ''
+    try { parentOrigin = new URL(document.referrer).origin } catch (_) {}
+    if (event.source !== window.parent || !parentOrigin || event.origin !== parentOrigin ||
+        !event.data || !event.data.streamkitPreviewStyle) return
+    previewOverride = event.data.streamkitPreviewStyle
+    applyPreviewStyle(previewOverride)
+    if (event.data.streamkitPreviewSample === true) showPreviewSample()
   })
 
   function say(message) {
@@ -521,6 +532,26 @@
   // ---- the feed ------------------------------------------------------------
 
   var list = document.getElementById('chat')
+
+  function showPreviewSample() {
+    if (!list) return
+    var previous = list.querySelector('[data-preview-sample]')
+    if (previous) previous.remove()
+    var row = document.createElement('li')
+    row.className = 'preview-sample'
+    row.setAttribute('data-preview-sample', 'true')
+    var name = document.createElement('span')
+    name.className = 'name'
+    name.textContent = 'Viewer sample'
+    var message = document.createElement('span')
+    message.className = 'text'
+    message.textContent = 'This is a sample chat message'
+    row.appendChild(name)
+    row.appendChild(document.createTextNode(': '))
+    row.appendChild(message)
+    list.appendChild(row)
+    document.body.classList.add('ready')
+  }
 
   /**
    * Reports the rendered height of the chat to whoever embedded this page.
@@ -870,6 +901,7 @@
     for (var i = 0; i < list.children.length; i++) {
       var row = list.children[i]
       if (row.dataset.leaving === '1') continue
+      if (row.dataset.previewSample === 'true') continue
       live.push(row)
       if (row.classList.contains('gift')) gifts.push(row)
     }
@@ -1036,6 +1068,7 @@
             config[key] = frame.config[key]
           }
         })
+        if (previewOverride) applyPreviewStyle(previewOverride)
         applyConfig()
         say('style updated')
         return

@@ -69,10 +69,11 @@ function RoomPicker({
 
 // ---- the chat customizer --------------------------------------------------
 
-function ChatCustomizer({ roomId, style, design, onChange }: {
+function ChatCustomizer({ roomId, style, design, saveState, onChange }: {
   roomId: string
   style: OverlayStyle
   design: 'original' | 'studio'
+  saveState: SaveState
   onChange: (change: Partial<OverlayStyle>) => void
 }) {
   const chatUrl = useMemo(() => (roomId ? api.chatOverlay(roomId, design) : ''), [roomId, design])
@@ -108,6 +109,17 @@ function ChatCustomizer({ roomId, style, design, onChange }: {
             <option value="bottom-left">Bottom left</option>
             <option value="bottom-right">Bottom right</option>
           </select>
+          <div className="flex items-center justify-between gap-3 mt-2">
+            <button
+              type="button"
+              className="btn btn-small"
+              onClick={() => onChange({ position: OVERLAY_DEFAULT_STYLE.position })}
+              disabled={style.position === OVERLAY_DEFAULT_STYLE.position}
+            >
+              Reset position
+            </button>
+            <SaveBadge state={saveState} />
+          </div>
         </div>
 
         <div className="field">
@@ -437,12 +449,13 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
               roomId={selected}
               style={chat.current}
               design={chatDesign}
+              saveState={chat.state}
               onChange={chat.patch}
             />
           ) : (
             <BoardCustomizer roomId={selected} style={board.current} onChange={board.patch} />
           )}
-          <SaveBadge state={which === 'chat' ? chat.state : board.state} />
+          {which === 'board' && <SaveBadge state={board.state} />}
         </div>
 
         <div className="builder-stage">

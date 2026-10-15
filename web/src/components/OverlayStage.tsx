@@ -89,6 +89,8 @@ export default function OverlayStage({
 
   const syncPreviewStyle = () => {
     if (!previewStyle) return
+    const targetOrigin = frame.current ? new URL(frame.current.src).origin : ''
+    if (!targetOrigin) return
     frame.current?.contentWindow?.postMessage(
       {
         streamkitPreviewStyle: {
@@ -104,8 +106,9 @@ export default function OverlayStage({
           bubbleOpacity: previewStyle.bubbleOpacity,
           giftColour: previewStyle.giftColour,
         },
+        streamkitPreviewSample: true,
       },
-      window.location.origin,
+      targetOrigin,
     )
   }
 
