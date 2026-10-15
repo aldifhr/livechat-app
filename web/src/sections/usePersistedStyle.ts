@@ -141,11 +141,12 @@ export function usePersistedStyle<S extends object>({
       timer.current = window.setTimeout(() => {
         timer.current = null
         const fields = write(next)
+        const before = base.current
         api
-          .saveStyle(roomId, base.current, fields)
+          .saveStyle(roomId, before, fields)
           .then(() => {
             if (disposed.current) return
-            base.current = { ...base.current, ...fields }
+            if (base.current === before) base.current = { ...before, ...fields }
             setState('saved')
           })
           .catch(() => {

@@ -124,12 +124,16 @@ def is_connected(room_id: str) -> bool:
 def set_connected(room_id: str, connected: bool, detail: str = "") -> None:
     """Note one room's state. A reconnect resets that room's counters."""
     room = _room(room_id)
-    room.connected = connected
     if connected:
+        room.connected = True
         room.reset()
         log.info("[%s] connected %s", room_id, detail or "")
     else:
+        # Capture the summary before reset — disconnect is the end of the session
+        # and the totals are what we want to log, not the cleared values.
+        room.connected = False
         summary = ", ".join(f"{k}={v}" for k, v in sorted(room.totals.items())) or "no events"
+        room.reset()
         log.info("[%s] disconnected %s (%s)", room_id, detail or "", summary)
 
 

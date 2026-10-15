@@ -302,16 +302,10 @@ async def _observe_source(room_id: str, source: TikTokAdapter) -> None:
 
     try:
         async for event in source.observe():
-            # Route through the shared event layer rather than hand-building a
-            # frame here. This used to emit {"kind", "user", "value", "meta"},
-            # but the wire format every consumer reads is {"type", "text", ...}
-            # (see events.to_wire): the chat overlay does `frame.type !==
-            # 'comment'` and reads `frame.text`, so the hand-built frame matched
-            # nothing and the overlay rendered an empty chat while the backend
-            # looked perfectly healthy. events.emit also records the eventlog,
-            # so the separate eventlog.record call that stood here was both
-            # redundant and the only copy that ran.
-            await events.emit(room_id, event)
+            try:
+                await events.emit(room_id, event)
+            except Exception as e:
+                logger.error("Per-event emit failed (room %s, event %r): %s", room_id, getattr(event, 'kind', '<nokind>'), e)
     except asyncio.CancelledError:
         pass
     except Exception as e:
