@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
 ## [Unreleased]
 
 ### Added
+- **Favicon untuk dashboard.** Halaman web tidak punya ikon sama sekali: tidak
+  ada `public/`, tidak ada `favicon.ico`, dan `metadata` di `layout.tsx` cuma
+  menyebut title dan description — jadi tab-nya milik halaman terakhir yang
+  pernah dibuka, atau ikon globe generik.
+  - Tiga file, semua lewat Next.js file convention di `web/src/app/` supaya
+    tidak ada `<link>` yang ditulis tangan dan bisa hilang tanpa jejak:
+    `icon.svg` (browser modern), `favicon.ico` (16/32/48, buat request default
+    ke `/favicon.ico`), dan `apple-icon.png` (180×180, buat iOS "add to home
+    screen" yang tanpa ini cuma screenshot halaman).
+  - Warna diambil dari `--bg`/`--accent` di `globals.css` supaya ikon dan header
+    produk yang sama. Penuh bleed, bukan tile bersudut transparan: theme terang
+    akan memunculkan sudut putih di tab yang gelap — lebih buruk daripada tidak
+    ada ikon sama sekali.
+  - `favicon.ico` ditulis sebagai DIB 32-bit, bukan PNG-di-dalam-ICO. Yang
+    terakhir dibaca sebagian parser dan ditolak yang lain; yang pertama dibaca
+    semua, termasuk decoder-nya Next.js sendiri saat build.
+
 - **Volume, language, dan Tester untuk suara.** Tiga setelan yang selalu ada di
   produk lain dan tidak ada sama sekali di sini: suara dari app selalu pada level
   tetap, selalu bahasa Indonesia, dan satu-satunya cara tahu itu benar adalah

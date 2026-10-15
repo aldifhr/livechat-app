@@ -1,0 +1,25 @@
+<!--
+  The favicon, by Next.js's file convention.
+
+  Placed in the app directory rather than in public/ so no <link> has to be
+  written by hand: Next.js picks this up and emits the tag itself, which means
+  the file cannot be present while the link to it is forgotten.
+
+  Full-bleed rather than a rounded tile with transparent corners. A light
+  browser theme shows those corners, and a tab with a white notch cut out of a
+  dark icon is worse than no icon at all.
+
+  One white bubble and two lines in it, nothing else. Detail is the first thing
+  a favicon loses: at 16px this is an 11px white shape with a gap in it, and
+  anything finer than that is a grey blur. The colours are the two from the
+  stylesheet's --bg and --accent, so it is the same product the header is.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <rect width="32" height="32" fill="#0a0a0a" />
+  <path
+    fill="#ffffff"
+    d="M9 6h14a4 4 0 0 1 4 4v7a4 4 0 0 1-4 4h-5.6l-4.4 3.6a.7.7 0 0 1-1.2-.55V21H9a4 4 0 0 1-4-4v-7a4 4 0 0 1 4-4z"
+  />
+  <rect x="9" y="10" width="14" height="2.2" rx="1.1" fill="#0a0a0a" />
+  <rect x="9" y="14.2" width="8.5" height="2.2" rx="1.1" fill="#0a0a0a" />
+</svg>
