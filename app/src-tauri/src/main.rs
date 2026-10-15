@@ -229,6 +229,10 @@ fn backend_connect(
     if let Some(missing) = config.describe_missing() {
         return Err(format!("backend not configured: {missing} is missing"));
     }
+    // The new generation, taken before the spawn so the frames the pump emits are
+    // stamped with the session the app is about to be told about. `renew` also
+    // invalidates whatever was running, which is what makes Connect over a live
+    // session replace it rather than double it.
     let generation = state.backend.renew();
     let shared = Arc::clone(&state.backend);
     tauri::async_runtime::spawn(async move {
@@ -239,19 +243,23 @@ fn backend_connect(
 
 /// Stops reading from the backend.
 ///
-/// Emits a status frame before cancelling, because a stop that only closes the
-/// socket is a stop with no record: the reader loop ends, nothing is said, and the
-/// log shows connections appearing and never ending — which reads as a feed that
-/// hung rather than one that was stopped on purpose. The frontend levels this as
-/// `warn` on a `connected: false`, so it lands in the log beside the connects it
-/// closes out.
+/// The order of the two statements is the whole point. `stop()` bumps the
+/// generation first, so every frame still in flight from the session being closed
+/// is stamped with a generation the app has already been told to forget; the
+/// status frame is emitted afterwards and deliberately carries no session, so it
+/// gets through where those do not.
+///
+/// Doing it the other way round — emit, then stop — is what the reported bug was:
+/// the confirmation was queued while the reader was still live, so frames emitted
+/// in the same instant arrived *after* the app had been told the reading stopped,
+/// and the feed kept growing under a "Not connected" badge.
 #[tauri::command]
 fn backend_disconnect(state: State<'_, AppState>, app: tauri::AppHandle) {
+    state.backend.stop();
     let _ = app.emit(
         backend::EVENT,
         json!({ "type": "status", "platform": "bridge", "connected": false, "message": "Disconnected" }),
     );
-    state.backend.stop();
 }
 
 /// The tray icon and its menu.

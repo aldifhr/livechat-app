@@ -444,6 +444,90 @@ check(
 )
 await click('.log-toggle')
 
+console.log('a frame from a stopped session is not read')
+// The reported bug. Stop flips the button and the badge to "Not connected", and
+// chat rows keep arriving anyway — because a frame can be in flight when Stop is
+// pressed: the host hands it to the webview and returns, so one emitted a moment
+// before the Stop is still delivered after it.
+//
+// The host stamps every frame with the session that produced it, and the app
+// drops anything from a session it has stopped. The stamp is simulated here
+// exactly as `with_session` in backend.rs writes it.
+//
+// The room is connected first, so this is a session that Stop genuinely ends
+// rather than one that was never open. Connect is pressed rather than the status
+// emitted directly because the toolbar's stopped note is only cleared by a
+// connect — emitting "connected" alone would leave the button reading Connect.
+await click(connectButton2())
+await act(async () => {
+  fake.emit({ platform: 'tiktok', type: 'status', connected: true, session: 1, message: 'Connected' })
+})
+await click('.room-row .btn-danger')
+
+const rowsBefore = $$('.row').length
+const eventsBefore = Number(($('.summary')?.textContent ?? '0').replace(/[^0-9]/g, '')) || 0
+
+await act(async () => {
+  // In flight when Stop was pressed: stamped with the session that has just been
+  // closed, and delivered after it.
+  fake.emit({ platform: 'tiktok', type: 'chat', ...viewer(), text: 'stale row', session: 1, timestamp: 1700000009000 })
+  fake.emit({ platform: 'tiktok', type: 'gift', ...viewer(), giftName: 'Rose', count: 1, diamonds: 5, session: 1, timestamp: 1700000009100 })
+  fake.emit({ platform: 'tiktok', type: 'viewers', count: 999, session: 1 })
+  fake.emit({ platform: 'tiktok', type: 'status', connected: true, session: 1, message: 'stale connected' })
+})
+
+check('no row was added', $$('.row').length === rowsBefore, `${$$('.row').length} vs ${rowsBefore}`)
+check(
+  'the stale row is not on screen',
+  !$$('.row').some((r) => /stale row/.test(r.textContent ?? '')),
+  $$('.row').map((r) => r.textContent).join(' | '),
+)
+check(
+  'the event count did not move',
+  (Number(($('.summary')?.textContent ?? '0').replace(/[^0-9]/g, '')) || 0) === eventsBefore,
+  $('.summary')?.textContent,
+)
+// The viewer figure and the status are the other two halves of "consistent":
+// a stale headcount or a stale "Connected" under a Connect button is the same
+// bug in a different panel.
+check(
+  'a stale viewer count did not land',
+  !/999/.test($('.room-status')?.textContent ?? ''),
+  $('.room-status')?.textContent,
+)
+check(
+  'and a stale status did not turn the badge back on',
+  !$('.room-row .btn-danger'),
+  $('.room-row')?.textContent,
+)
+check('the button is still Connect', Boolean(connectButton2()), $('.room-row')?.textContent)
+
+console.log('a new session is read, and its stamp is what says so')
+// The other half: the gate must not latch. A Connect after a Stop gets a higher
+// session number, and frames from it have to arrive normally.
+await act(async () => {
+  fake.emit({ platform: 'tiktok', type: 'status', connected: true, session: 2, message: 'Connected again' })
+})
+await click('.room-row .btn-primary')
+await act(async () => {
+  fake.emit({ platform: 'tiktok', type: 'chat', ...viewer(), text: 'fresh row', session: 2, timestamp: 1700000010000 })
+})
+check(
+  'a frame from the new session is shown',
+  $$('.row').some((r) => /fresh row/.test(r.textContent ?? '')),
+  $$('.row').map((r) => r.textContent).join(' | '),
+)
+// And the old session stays closed even after a newer one opened: this is the
+// straggler that arrives late, which is the realistic shape of the race.
+await act(async () => {
+  fake.emit({ platform: 'tiktok', type: 'chat', ...viewer(), text: 'late straggler', session: 1, timestamp: 1700000010100 })
+})
+check(
+  'a late frame from the closed session is still dropped',
+  !$$('.row').some((r) => /late straggler/.test(r.textContent ?? '')),
+  $$('.row').map((r) => r.textContent).join(' | '),
+)
+
 console.log('failures are shown, not swallowed')
 await act(async () => {
   fake.emit({ platform: 'tiktok', type: 'error', message: 'Streamer is not live right now.' })

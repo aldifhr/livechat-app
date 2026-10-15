@@ -39,7 +39,24 @@ export type FramePlatform = Platform | 'bridge'
 
 type Tagged = { platform: FramePlatform }
 
+/**
+ * The reader session a frame belongs to.
+ *
+ * Stamped by the host on everything the reader loop produces — room frames,
+ * status, errors, chat — and absent on frames the host raises about the reader
+ * itself, which is what the Stop confirmation is.
+ *
+ * It exists because a frame can be in flight when Stop is pressed: the host hands
+ * it to the webview and returns, so a frame emitted a moment before the Stop is
+ * still delivered after it. Without this the app cannot tell that frame from one
+ * belonging to the session it is now reading, and the feed grows under a "Not
+ * connected" badge. Optional in the type because the frames that have to survive
+ * a Stop are exactly the ones without it.
+ */
+type Sessioned = { session?: number }
+
 export type SidecarEvent = Tagged &
+  Sessioned &
   (
     | {
         type: 'chat'
@@ -189,6 +206,73 @@ async function tauriTransport(): Promise<Transport> {
 
 const listeners = new Set<EventHandler>()
 
+/*
+ * The session guard.
+ *
+ * Every frame the host's reader produces carries the session that produced it.
+ * This is where frames enter the app, so this is where a frame from a session
+ * that has been stopped is dropped — before the feed, the counters, the status
+ * line or any of the alert hooks see it.
+ *
+ * It has to be here rather than in `useChat` because the feed is not the only
+ * consumer: a gift sound, a spoken mention and an auto-reply all read the same
+ * frames, and a stopped session must not ring a bell or answer a greeting
+ * either. One gate at the door covers all of them.
+ *
+ * Why a stamp is needed at all: the host hands a frame to the webview and
+ * returns, so a frame emitted a moment before Stop is still delivered after it.
+ * The host cannot close that window by itself. Stamping lets this side tell
+ * which session a frame came from, and the reader is genuinely stopped on the
+ * other end — this drops the stragglers, it does not hide a running source.
+ */
+
+/** The session being read, or null when nothing is. */
+let liveSession: number | null = null
+
+/** The highest session that has been closed. */
+let closedSession = 0
+
+/**
+ * Closes the session being read, so frames already in flight from it are
+ * dropped.
+ *
+ * Called when Stop is pressed, and again when the host confirms it. Closing it
+ * at the click is what makes the feed agree with the toolbar immediately: the
+ * button flips to Connect on the press, and without this a frame delivered in
+ * the moment between the press and the confirmation would still land under a
+ * badge that already says the reading stopped.
+ */
+export function endSession(): void {
+  if (liveSession !== null) closedSession = Math.max(closedSession, liveSession)
+  liveSession = null
+}
+
+/**
+ * Whether a frame belongs to a session worth reading.
+ *
+ * A frame with no stamp is the host's own — the Stop confirmation, a tray
+ * message — and is never gated: those are exactly the frames that have to get
+ * through after the session they close has been dropped.
+ *
+ * A newer session is adopted rather than refused, which is what lets Connect
+ * work after a Stop without anything having to re-open the gate: the host
+ * numbers sessions in increasing order, so the next one is always above the
+ * closed floor.
+ */
+function accepts(event: SidecarEvent): boolean {
+  const session = event.session
+  if (typeof session !== 'number') return true
+  if (session <= closedSession) return false
+  if (liveSession !== null && session < liveSession) return false
+  liveSession = session
+  return true
+}
+
+/** The host saying the reading stopped. */
+function isStopConfirmation(event: SidecarEvent): boolean {
+  return event.platform === 'bridge' && event.type === 'status' && event.connected === false
+}
+
 /** Resolved once, so a later `setTransport` cannot swap it out mid-session. */
 let active: Promise<Transport> | null = null
 
@@ -222,6 +306,13 @@ export async function attach(onEvent?: EventHandler): Promise<void> {
   attaching = (async () => {
     const resolved = await resolve()
     await resolved.listen((event) => {
+      // Dropped here, once, for every consumer. See the session guard above.
+      if (!accepts(event)) return
+      // The host's own confirmation closes the session too, so the guarantee
+      // does not depend on the click having been the thing that asked for the
+      // stop — a stop from anywhere lands the same way.
+      if (isStopConfirmation(event)) endSession()
+
       // One throwing handler must not take the rest of them down with it. The
       // loop used to be bare, so an exception in an early subscriber aborted it
       // and every handler after it silently stopped seeing frames — which looks

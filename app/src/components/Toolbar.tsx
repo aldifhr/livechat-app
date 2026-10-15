@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { host } from '../lib/sidecar'
+import { endSession, host } from '../lib/sidecar'
 import { PLATFORM, PLATFORMS, tiktokUsername } from '../lib/platforms'
 import { backendUrl, normaliseUsername, type BackendConfig } from '../lib/backend'
 import type { FeedFilters, KindFilter } from '../hooks/useVisibleItems'
@@ -144,6 +144,12 @@ export function Toolbar({
 
   async function disconnect() {
     setBusy(true)
+    // Closed before the host is asked, so the feed stops at the click rather than
+    // at the confirmation. A frame already in flight when Stop is pressed arrives
+    // after the press, and without this it would land under a badge that already
+    // says the reading stopped. The host is genuinely stopped too — this closes
+    // the door on frames that were already on their way through it.
+    endSession()
     try {
       await host.backendDisconnect()
       // The handle stays in the field — it is what makes reconnecting one click —

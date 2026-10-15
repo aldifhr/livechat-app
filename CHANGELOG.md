@@ -204,6 +204,48 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
     itu tidak pernah ada, jadi urutan startup itu tidak pernah berarti apa-apa.
 
 ### Fixed
+- **Stop berhenti di UI tapi event chat tetap masuk.** Setelah menekan Stop, badge
+  sudah bilang "Not connected" sementara baris chat baru terus muncul. Ini bukan
+  bug kosmetik: sumbernya memang masih menyalurkan, dan UI-nya tidak punya cara
+  membedakan frame dari sesi yang sudah ditutup.
+  - **`backend_disconnect` meng-emit dulu, baru `stop()`.** Urutannya terbalik:
+    frame yang di-emit beberapa mikrodetik sebelum Stop sudah masuk antrean
+    Tauri, jadi mendarat **setelah** konfirmasi "Disconnected" — dan di bawah
+    badge yang sudah bilang berhenti. Sekarang `stop()` menaikkan generation
+    lebih dulu, baru status di-emit.
+  - **`pump()` tidak memeriksa generation setelah `resolve_and_start()`.** Resolve
+    itu POST dengan timeout 20 detik, jadi Stop yang ditekan saat Connect masih
+    berjalan akan dilewati: loop-nya lanjut membuka socket dan mengumumkan room —
+    persis "Stop bilang berhenti, lalu tetap connect". Sekarang dicek lagi tepat
+    setelah resolve, dan juga sebelum backoff pada percobaan yang gagal.
+  - **Frontend tidak punya konsep sesi.** Host sekarang menstempel setiap frame
+    yang diproduksi reader dengan generation-nya (`with_session`), dan `sidecar.ts`
+    menjatuhkan frame dari sesi yang sudah ditutup **di titik masuk frame** —
+    sebelum feed, counter, status line, atau hook alert mana pun melihatnya.
+    Ditaruh di sana, bukan di `useChat`, karena feed bukan satu-satunya pembaca:
+    suara gift, mention yang diucapkan, dan auto-reply membaca frame yang sama,
+    dan sesi yang sudah berhenti tidak boleh membunyikan bel atau menjawab sapaan.
+  - **Frame tanpa stempel tidak pernah digerbang** — itu frame host tentang reader
+    itu sendiri, termasuk konfirmasi Stop, yang justru harus lolos setelah sesi
+    yang ditutupnya sudah dijatuhkan.
+  - **Stop menutup sesi saat diklik**, bukan saat dikonfirmasi, jadi feed berhenti
+    bersamaan dengan tombolnya. Konfirmasi host menutupnya juga, supaya jaminannya
+    tidak bergantung pada klik sebagai pemicunya.
+  - Sesi yang lebih baru **diadopsi**, bukan ditolak, jadi Connect setelah Stop
+    langsung jalan tanpa ada yang perlu membuka gerbang lagi; dan straggler dari
+    sesi lama tetap dijatuhkan meski sesi baru sudah terbuka.
+  - **Sumbernya benar-benar berhenti**, bukan disembunyikan: reader memeriksa
+    generation sebelum dan sesudah setiap tunggu lalu menutup socket, dan `pump`
+    tidak mencoba ulang. Gerbang di frontend hanya untuk frame yang sudah telanjur
+    dalam perjalanan — jendela yang tidak bisa ditutup host sendirian, karena
+    `emit` menyerahkan frame ke webview lalu langsung kembali.
+  - **3 tes Rust baru** (61 total) untuk stempel sesi, staleness setelah Stop, dan
+    Stop yang mendarat saat resolve masih in-flight. **8 assertion UI baru** di
+    `test-ui.mjs` menutupi baris/event count/viewer/status yang basi, adopsi sesi
+    baru, dan straggler yang datang terlambat. Diverifikasi menangkap bug aslinya:
+    dengan gerbang sesi dimatikan, 5 assertion gagal — termasuk
+    `stale connected999 watching`, yang persis gejalanya.
+
 - **Live yang berakhir membuat source mati permanen, jadi "offline" padahal live.**
   Dilaporkan langsung: `@bittersweetbynajla` dibilang offline padahal sedang live.
   Dicek ke TikTok: `liveRoom.status=2`, judul `FLASH SALE 1000🔥😱🥳 (UNII)`.

@@ -194,6 +194,14 @@ impl BackendState {
     }
 }
 
+/// Whether the loop holding `generation` has been superseded.
+///
+/// Named rather than written inline at each site because it is asked in six
+/// places, and the one that gets forgotten is the one that emits after a Stop.
+fn stale(state: &BackendState, generation: u64) -> bool {
+    state.current() != generation
+}
+
 /// Joins a base URL and a path, without doubling or dropping the slash.
 ///
 /// Written out rather than borrowed from a URL parser because providers disagree
@@ -524,19 +532,48 @@ pub fn to_app_event(frame: &Value, now_ms: i64) -> Option<Value> {
 
 
 
+/// Adds the session a frame belongs to.
+///
+/// The generation is the host's own answer to "which reader produced this", and
+/// the app needs it to drop a frame that was already in flight when Stop was
+/// pressed. The host cannot close that window by itself: `emit` hands the frame
+/// to the webview and returns, so a frame emitted a microsecond before a Stop is
+/// still delivered after it. Stamping is what lets the other side tell.
+///
+/// Bridge frames are deliberately left unstamped by the callers that emit them —
+/// they are about the reader rather than a session, and the confirmation that a
+/// Stop happened has to get through after the session it closes has been
+/// dropped.
+fn with_session(mut event: Value, session: u64) -> Value {
+    if let Some(object) = event.as_object_mut() {
+        object.insert("session".to_string(), json!(session));
+    }
+    event
+}
+
 /// Reports a failure the way the rest of the app reports one.
 ///
 /// The log line is for the panel; the status frame is what the toolbar shows. A
 /// backend that is down has to be visible on the status line, not only in a log
 /// nobody has open.
-fn report(app: &tauri::AppHandle, message: String) {
+///
+/// Both frames carry the session, because a failure belongs to the attempt that
+/// hit it: a "could not reach the backend" from a connection the user has since
+/// stopped must not appear under a newer one.
+fn report(app: &tauri::AppHandle, message: String, session: u64) {
     let _ = app.emit(
         EVENT,
-        json!({ "type": "log", "platform": "bridge", "level": "warn", "message": message.clone() }),
+        with_session(
+            json!({ "type": "log", "platform": "bridge", "level": "warn", "message": message.clone() }),
+            session,
+        ),
     );
     let _ = app.emit(
         EVENT,
-        json!({ "type": "status", "platform": "tiktok", "connected": false, "message": message }),
+        with_session(
+            json!({ "type": "status", "platform": "tiktok", "connected": false, "message": message }),
+            session,
+        ),
     );
     let _ = app
         .notification()
@@ -557,7 +594,7 @@ pub async fn pump(
     generation: u64,
 ) {
     if let Some(missing) = config.describe_missing() {
-        report(&app, format!("Backend not configured: {missing} is missing."));
+        report(&app, format!("Backend not configured: {missing} is missing."), generation);
         return;
     }
 
@@ -567,10 +604,20 @@ pub async fn pump(
     let room_id = match resolve_and_start(&config.base_url, &config.username, &config.overlay).await {
         Ok(id) => id,
         Err(why) => {
-            report(&app, format!("Backend: {why}"));
+            report(&app, format!("Backend: {why}"), generation);
             return;
         }
     };
+
+    // Checked again after the resolve, and this one is not redundant. Resolving is
+    // a POST with a twenty-second timeout, so a Stop pressed during a slow Connect
+    // lands while this is still in flight — and without this the loop would carry
+    // on to open the socket and announce the room, which is the whole reported
+    // bug: Stop says it stopped, and then the reader connects anyway.
+    if stale(&state, generation) {
+        return;
+    }
+
     let url = socket_url(&config.base_url, &room_id);
 
     // Tell the page which room this is, by id. The overlay link prefers the id
@@ -580,23 +627,32 @@ pub async fn pump(
     // the host, and the link falls back to the handle.
     let _ = app.emit(
         EVENT,
-        json!({
-            "type": "room",
-            "platform": "bridge",
-            "username": config.username,
-            "roomId": room_id,
-            "title": "",
-        }),
+        with_session(
+            json!({
+                "type": "room",
+                "platform": "bridge",
+                "username": config.username,
+                "roomId": room_id,
+                "title": "",
+            }),
+            generation,
+        ),
     );
 
     let mut delay = Duration::from_secs(BACKOFF_START_SECS);
     for attempt in 1..=ATTEMPTS {
-        if state.current() != generation {
+        if stale(&state, generation) {
             return;
         }
         match run_once(&app, &url, &state, generation).await {
             Ok(()) => return,
             Err(why) => {
+                // A failed attempt still has to be cancellable: the backoff below
+                // is up to fifteen seconds, and a Stop during it must not be
+                // followed by another connect.
+                if stale(&state, generation) {
+                    return;
+                }
                 let said = if attempt == 1 {
                     format!("Connecting to the backend at {url}…")
                 } else {
@@ -604,7 +660,10 @@ pub async fn pump(
                 };
                 let _ = app.emit(
                     EVENT,
-                    json!({ "type": "log", "platform": "bridge", "level": "warn", "message": said }),
+                    with_session(
+                        json!({ "type": "log", "platform": "bridge", "level": "warn", "message": said }),
+                        generation,
+                    ),
                 );
                 tokio::time::sleep(delay).await;
                 delay = (delay * 2).min(Duration::from_secs(BACKOFF_MAX_SECS));
@@ -619,6 +678,7 @@ pub async fn pump(
         format!(
             "Could not read from the backend at {url}. Check the address under Set up, and that the backend is running."
         ),
+        generation,
     );
 }
 
@@ -644,7 +704,7 @@ async fn run_once(
     // dead one until enough time has passed to make it unlikely.
     let mut last_frame_at = std::time::Instant::now();
     loop {
-        if state.current() != generation {
+        if stale(state, generation) {
             return Ok(());
         }
         // Two waits that used to be one, and the conflation was the bug.
@@ -687,7 +747,7 @@ async fn run_once(
         // a frame was in flight arrives here, and reading the generation before
         // emitting is what makes the stop take effect on the next frame rather
         // than the next idle one.
-        if state.current() != generation {
+        if stale(state, generation) {
             return Ok(());
         }
 
@@ -702,7 +762,13 @@ async fn run_once(
                     continue;
                 };
                 if let Some(event) = to_app_event(&frame, now_ms()) {
-                    let _ = app.emit(EVENT, event);
+                    // Stamped so the app can drop it if a Stop lands before this
+                    // reaches the webview. The generation check above is not
+                    // enough on its own: it is read here, and the emit that follows
+                    // can still be overtaken by a Stop that arrives a moment later
+                    // — the frame is then delivered after the user has been told
+                    // the reading stopped, which is the reported bug.
+                    let _ = app.emit(EVENT, with_session(event, generation));
                 }
             }
             Ok(tokio_tungstenite::tungstenite::Message::Close(_)) => {
@@ -807,6 +873,59 @@ mod tests {
         assert_ne!(first, second);
         assert_eq!(state.current(), second);
         assert!(state.current() != first);
+    }
+
+    #[test]
+    fn a_frame_carries_the_session_that_produced_it() {
+        // The stamp is what lets the app drop a frame that was already in flight
+        // when Stop was pressed. Without it the app cannot tell that frame from
+        // one belonging to the session it is now reading, and the feed grows
+        // under a "Not connected" badge.
+        let state = BackendState::default();
+        let generation = state.renew();
+        let stamped = with_session(json!({ "type": "chat", "text": "hi" }), generation);
+        assert_eq!(stamped.get("session").and_then(Value::as_u64), Some(generation));
+        // The rest of the frame survives: this adds a field, it does not rewrite
+        // the event.
+        assert_eq!(stamped.get("text").and_then(Value::as_str), Some("hi"));
+        assert_eq!(stamped.get("type").and_then(Value::as_str), Some("chat"));
+    }
+
+    #[test]
+    fn a_stopped_session_is_stale_and_a_new_one_is_not() {
+        // The comparison the reader makes before and after every wait. A Stop
+        // must make the running generation stale; a Connect after it must make
+        // the *new* one current, or the reader would refuse to start.
+        let state = BackendState::default();
+        let first = state.renew();
+        assert!(!stale(&state, first));
+
+        state.stop();
+        assert!(stale(&state, first), "a stop must invalidate the running loop");
+
+        let second = state.renew();
+        assert!(!stale(&state, second), "a new connect must be current");
+        assert!(stale(&state, first), "and the old loop stays stale");
+    }
+
+    #[test]
+    fn a_stop_lands_after_the_resolve_that_is_still_in_flight() {
+        // The reported bug's shape. Resolving the room is a POST with a twenty
+        // second timeout, so Stop can land while it is still in flight. The loop
+        // checks the generation again after the resolve for exactly this, and
+        // without that check it would carry on to open the socket and announce
+        // the room — a Stop that says it stopped, followed by a connect.
+        let state = BackendState::default();
+        let generation = state.renew();
+
+        // The resolve is in flight here; the user presses Stop.
+        state.stop();
+
+        // What the loop does the moment the resolve returns.
+        assert!(
+            stale(&state, generation),
+            "the loop must not open a socket for a session that was stopped mid-resolve"
+        );
     }
 
     #[test]
