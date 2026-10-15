@@ -113,17 +113,6 @@ export type SidecarEvent = Tagged &
 
 export type LogLevel = 'info' | 'warn' | 'error'
 
-/** One sound from myinstant, as the host reports it. */
-export interface Instant {
-  /** What the site calls it. */
-  title: string
-  /**
-   * The mp3 path, relative and already validated host-side. Sent back verbatim to
-   * fetch the sound, and never treated as a URL here — the host re-checks it.
-   */
-  path: string
-}
-
 /** Every `#[tauri::command]` the host exposes. Must match src-tauri/src/main.rs. */
 type HostCommand =
   | 'minimize_to_tray'
@@ -349,34 +338,6 @@ export const host = {
     const resolved = await resolve()
     const path = await resolved.invoke('pick_sound_file')
     return typeof path === 'string' ? path : ''
-  },
-  /**
-   * Searches myinstant for sounds.
-   *
-   * Empty array rather than a rejection when nothing matches: the site is a
-   * user-upload board, so a word nobody has used yet is an ordinary answer. Only
-   * an unreachable or refused site rejects, and its message says which — `436`
-   * in particular means the site refused this kind of client, and retrying will
-   * not help, so the page can say that rather than looking like a flaky network.
-   */
-  myinstantSearch: async (query: string): Promise<Instant[]> => {
-    const resolved = await resolve()
-    const found = await resolved.invoke('myinstant_search', { query })
-    return Array.isArray(found) ? found : []
-  },
-  /**
-   * Downloads one of those sounds and returns where it landed.
-   *
-   * The result is a path like the one a picked file returns, and it is stored in
-   * the same setting, because from this page's side it is the same thing: a sound
-   * the app is allowed to play. The host registers it with the asset protocol and
-   * remembers it across launches, so a sound chosen from myinstant survives a
-   * restart exactly like one chosen from disk.
-   */
-  myinstantFetch: async (path: string): Promise<string> => {
-    const resolved = await resolve()
-    const saved = await resolved.invoke('myinstant_fetch', { path })
-    return typeof saved === 'string' ? saved : ''
   },
   /**
    * The stored backend settings.

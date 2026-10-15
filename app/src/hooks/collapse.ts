@@ -7,7 +7,7 @@
  */
 
 /** Roughly the last few minutes in a busy room. */
-export const MAX_ITEMS = 500
+export const MAX_ITEMS = 200
 
 export interface CollapseOptions {
   windowMs: number

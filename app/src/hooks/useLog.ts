@@ -10,8 +10,11 @@ import type { LogLevel } from '../lib/sidecar'
  * that explain a connection that stopped updating.
  */
 
-/** Roughly the last few hundred lines. */
-const MAX_ENTRIES = 500
+/**
+ * The app's log buffer cap — matches MAX_ITEMS on the feed so neither panel
+ * grows unbounded, and both shed the oldest rows at the same threshold.
+ */
+const MAX_ENTRIES = 200
 
 export interface LogEntry {
   key: string
