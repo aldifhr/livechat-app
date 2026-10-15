@@ -65,13 +65,14 @@ function StreamCard({
       </header>
 
       <div className="stream-links">
+        <p className="copy-label">3. OBS browser source links</p>
         <CopyField label="Chat overlay" url={chatUrl} />
         <CopyField label="Top chatters" url={boardUrl} />
       </div>
 
       <footer className="stream-actions">
         <Link className="btn" href={`/admin/overlay?room=${encodeURIComponent(room.id)}`}>
-          Style
+          2. Style overlay
         </Link>
         <button className="danger" onClick={() => onDelete(room)} disabled={busy}>
           Delete
@@ -109,7 +110,6 @@ export default function Streams() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [newHandle, setNewHandle] = useState('')
-  const [label, setLabel] = useState('')
   const [live, setLive] = useState<Record<string, boolean>>({})
   // The room waiting to be deleted, rather than a boolean: the dialog names the
   // room, and naming it from the room that raised it is the one way the name on
@@ -194,26 +194,8 @@ export default function Streams() {
     if (handle === '') return
     setBusy(true)
     try {
-      // The label is applied afterwards rather than sent with the connect, so a
-      // label typed for one stream does not end up naming the next one when the
-      // backend reuses an existing room instead of making a new one.
-      //
-      // Compared against nothing, because the connect answer carries no name to
-      // compare it with. It used to compare against `room.name`, which was
-      // `undefined` on an answer that has no `name` — so the comparison was always
-      // true and the write always happened anyway.
-      const connected = await api.connectHandle(handle)
-      const wanted = label.trim()
-      if (wanted) {
-        try {
-          await api.updateRoom(connected.room_id, { name: wanted })
-        } catch {
-          // The stream is connected either way; a label that would not save is
-          // not a reason to tell the operator the connect failed.
-        }
-      }
+      await api.connectHandle(handle)
       setNewHandle('')
-      setLabel('')
       setError('')
       toast(`Connected to @${handle}.`)
       // Re-read rather than pushing the connect answer in.
@@ -274,7 +256,7 @@ export default function Streams() {
         <div>
           <h2>Streams</h2>
           <p className="muted">
-            Every stream StreamKit is watching. Each card carries the links you paste into OBS.
+            Connect a TikTok username, style its overlay, then copy a browser source link into OBS.
           </p>
           {/* The origin is on every one of these links and is the same on all of
               them, so the field scrolls to the end of the URL where the part that
@@ -292,7 +274,7 @@ export default function Streams() {
       {error && <div className="notice error">{error}</div>}
 
       <div className="panel">
-        <h3>Connect a stream</h3>
+        <h3>1. Connect a stream</h3>
         <div className="row">
           <input
             className="grow"
@@ -301,12 +283,6 @@ export default function Streams() {
             onChange={(event) => setNewHandle(event.target.value)}
             onKeyDown={(event) => event.key === 'Enter' && void connect()}
             aria-label="TikTok username"
-          />
-          <input
-            placeholder="Label (optional)"
-            value={label}
-            onChange={(event) => setLabel(event.target.value)}
-            aria-label="Stream label"
           />
           <button
             className="primary"

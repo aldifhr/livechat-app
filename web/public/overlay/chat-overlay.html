@@ -279,6 +279,9 @@
 <div id="unconfigured">no handle in this link — add <code>?room=yourhandle</code></div>
 <div id="status"></div>
 
+<!-- Read by the overlay script below before it opens the backend socket. -->
+<script id="overlay-config" type="application/json">__OVERLAY_CONFIG__</script>
+
 <script>
 (function () {
   'use strict'
@@ -405,6 +408,19 @@
     document.body.classList.add('debug')
     status.textContent = message
   }
+
+  function debugLog() {
+    if (!config.debug || !window.console) return
+    var args = Array.prototype.slice.call(arguments)
+    args.unshift('[StreamKit overlay]')
+    console.log.apply(console, args)
+  }
+
+  debugLog('loaded', {
+    page: location.href,
+    backend: config.baseUrl,
+    room: config.username
+  })
 
   // ---- the feed ------------------------------------------------------------
 
@@ -779,6 +795,7 @@
   // they are watching.
   function socketFor(base, roomId) {
     var url = base.replace(/^http/, 'ws') + '/ws/overlay/' + encodeURIComponent(roomId)
+    debugLog('opening websocket', url)
     return new WebSocket(url)
   }
 
@@ -844,6 +861,7 @@
     }
 
     socket.onopen = function () {
+      debugLog('websocket open')
       say('connected to ' + config.username)
     }
 
@@ -852,8 +870,10 @@
       try {
         frame = JSON.parse(event.data)
       } catch (error) {
+        debugLog('invalid websocket frame', error, event.data)
         return
       }
+      debugLog('websocket frame', frame)
       if (!frame) return
       // A new style for this room, pushed the moment it is saved. Merged into the
       // live config rather than replacing it: the frame carries styling only, and
@@ -905,6 +925,7 @@
     }
 
     socket.onclose = function () {
+      debugLog('websocket closed; retrying in 3 seconds')
       say('socket closed, retrying')
       setTimeout(connect, 3000)
     }
@@ -912,6 +933,7 @@
     socket.onerror = function () {
       // `close` always follows `error`, and it is `close` that schedules the
       // retry. Doing it here too would open two connections per failure.
+      debugLog('websocket error', { readyState: socket.readyState, url: socket.url })
       say('socket error')
     }
   }
@@ -920,10 +942,5 @@
 })()
 </script>
 
-<!-- Filled in by the host before the page is served. The id is what the script
-     above reads it by; the text is JSON so it is inert until something parses it.
-     A `<script type="application/json">` rather than an inline assignment
-     because this one is data, not code. -->
-<script id="overlay-config" type="application/json">__OVERLAY_CONFIG__</script>
 </body>
 </html>

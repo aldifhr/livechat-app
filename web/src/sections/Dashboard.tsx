@@ -120,7 +120,7 @@ export default function Dashboard() {
     <>
       <div className="page-head">
         <div>
-          <h2>Dashboard</h2>
+          <h2>Overview</h2>
           <p className="muted">
             Every stream at once, re-read every {POLL_MS / 1000} seconds. Counts are since this page was
             opened — nothing is stored.

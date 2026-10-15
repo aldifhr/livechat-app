@@ -28,16 +28,13 @@ const config: NextConfig = {
   // correct in production and dead in development is worse than either, because
   // the only place it can be tested is the place it does not work.
   //
-  // The same four spellings nginx answers, so a pasted URL behaves identically:
-  // the bare `/overlay` and `/topchatter` that older scene collections still
-  // point at, and both overlays by their short names. Trailing-slash variants are
-  // left to Next's own normalisation, which redirects before these are consulted.
+  // The two older short spellings stay available. The full overlay routes are
+  // handled by app route handlers, which inject the backend socket origin while
+  // keeping the page itself on this web host.
   async rewrites() {
     return [
-      { source: '/overlay', destination: '/overlay/chat-overlay.html' },
-      { source: '/topchatter', destination: '/overlay/top-chatter.html' },
-      { source: '/overlay/chat-overlay', destination: '/overlay/chat-overlay.html' },
-      { source: '/overlay/top-chatter', destination: '/overlay/top-chatter.html' },
+      { source: '/overlay', destination: '/overlay/chat-overlay' },
+      { source: '/topchatter', destination: '/overlay/top-chatter' },
     ]
   },
 }
