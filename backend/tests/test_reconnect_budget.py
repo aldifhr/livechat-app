@@ -446,6 +446,92 @@ check("but UserOfflineError is", tk._is_offline_error(UserOfflineError("offline"
 check("and a reworded copy of it is still caught",
       tk._is_offline_error(RuntimeError("TikTokLive v7.0.1 -> UserOfflineError")) is True)
 
+print("\na teardown clears the waiting flag with the rest of the session")
+# Found by reading `disconnect()` against the flags it clears: it reset
+# `_live_ended` but not `_offline_waiting`, so a Stop during a wait followed by a
+# Connect reported "not live — waiting" over an attempt that had not started yet.
+# Both flags describe the session that just ended; a teardown is where it stops
+# being current.
+import asyncio as _asyncio  # noqa: E402
+
+
+def teardown(adapter):
+    _asyncio.run(adapter.disconnect())
+
+
+adapter = tk.TikTokAdapter("someone", "room-10")
+adapter._running = True
+adapter._connected = False
+adapter._offline_waiting = True
+teardown(adapter)
+check("the offline flag is cleared", adapter._offline_waiting is False, adapter._offline_waiting)
+check("and the ended flag too", adapter._live_ended is False, adapter._live_ended)
+payload = adapter.status_payload()
+check("so a fresh look does not claim the streamer is offline",
+      "waiting" not in payload, payload)
+check("and it reports Offline rather than a wait",
+      payload.get("message") == "Offline", payload)
+
+adapter = tk.TikTokAdapter("someone", "room-11")
+adapter._running = True
+adapter._live_ended = True
+teardown(adapter)
+check("an ended live is cleared the same way", adapter._live_ended is False, adapter._live_ended)
+
+print("\nand a fresh connect clears them too")
+# The same gap on the other entry point: `connect()` cleared `_live_ended` but not
+# `_offline_waiting`, so Stop-during-a-wait then Connect reported a wait over an
+# attempt that had not started. Driven through the real `connect()`, with the
+# library's client replaced so nothing opens a socket.
+import TikTokLive as _tl  # noqa: E402
+
+
+class QuietClient:
+    def __init__(self, unique_id=None, **kw):
+        self._handlers: dict = {}
+
+    def on(self, event):
+        def deco(fn):
+            self._handlers[event] = fn
+            return fn
+        return deco
+
+    async def start(self):
+        # Never returns: the loop parks here, which is what a live socket does.
+        await _asyncio.sleep(3600)
+
+    async def disconnect(self):
+        return None
+
+
+_real_client = _tl.TikTokLiveClient
+_real_sleep = _asyncio.sleep
+
+
+async def _instant(_):
+    await _real_sleep(0)
+
+
+_tl.TikTokLiveClient = QuietClient
+_asyncio.sleep = _instant
+try:
+    adapter = tk.TikTokAdapter("someone", "room-12")
+    adapter._offline_waiting = True
+    adapter._live_ended = True
+    started = _asyncio.run(adapter.connect())
+    check("connect reported success", started is True, started)
+    check("the offline flag is cleared by connect", adapter._offline_waiting is False, adapter._offline_waiting)
+    check("and the ended flag too", adapter._live_ended is False, adapter._live_ended)
+    # Read before the loop has had a chance to fail: a source that was just told to
+    # connect is "connecting", not "waiting".
+    payload = adapter.status_payload()
+    check("so it reads as connecting, not waiting",
+          payload.get("connecting") is True and "waiting" not in payload, payload)
+    _asyncio.run(adapter.disconnect())
+finally:
+    _asyncio.sleep = _real_sleep
+    _tl.TikTokLiveClient = _real_client
+
 print()
 if FAILS:
     print(f"{len(FAILS)} failed of {COUNT}")

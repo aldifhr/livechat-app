@@ -485,6 +485,12 @@ class TikTokAdapter(EventAdapter):
         self._running = True
         self._connected = False
         self._live_ended = False
+        # Cleared with `_live_ended`: both describe the session that ended, and a
+        # fresh connect is a fresh session. Left set, the status of a source that
+        # has just been told to connect would read "not live — waiting" before it
+        # had made a single attempt — a Stop during a wait, then Connect, and the
+        # app shows a wait that has not begun.
+        self._offline_waiting = False
         # A fresh connect is a fresh intent to run. Without this a source that was
         # stopped and started again would carry the previous Stop into its new
         # live-wait loop and refuse to wait.
@@ -750,6 +756,13 @@ class TikTokAdapter(EventAdapter):
 
         self._connected = False
         self._live_ended = False
+        # Cleared with the others. Left set, the next `status_payload()` on this
+        # object claims the streamer is not live before the new connect has even
+        # tried — a Stop during a wait followed by Connect showed "not live —
+        # waiting" over an attempt that had not started. The two flags describe
+        # the session that just ended, and a teardown is where that session stops
+        # being current.
+        self._offline_waiting = False
         self._gift_streaks.clear()
 
     async def observe(self) -> AsyncGenerator[Event, None]:
