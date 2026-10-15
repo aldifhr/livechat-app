@@ -652,7 +652,7 @@
     // only retired once the gifts alone exceed their own keep-count, which is what
     // lets one sit on screen through a stretch of ordinary chat.
     var chatCount = live.length - gifts.length
-    var over = live.length - config.max
+    var over = chatCount - (config.max - gifts.length)
     for (var i = 0; i < live.length && over > 0; i++) {
       if (live[i].classList.contains('gift')) continue
       retire(live[i])

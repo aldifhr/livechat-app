@@ -17,7 +17,7 @@ import { fakeTransport, flush, installDom, loadApp } from './dom.mjs'
 process.env.NODE_ENV = 'development'
 
 const { entry } = await loadApp()
-const { App, setTransport, DEFAULT_BASE_URL: DEFAULT_BACKEND } = await import(entry)
+const { App, setTransport, DEFAULT_BASE_URL: DEFAULT_BACKEND, MAX_ITEMS } = await import(entry)
 
 const harness = installDom()
 const React = (await import('react')).default
@@ -235,15 +235,20 @@ await act(async () => {
   }
 })
 const capped = $$('.row').length
-check('the list is capped rather than unbounded', capped <= 500, String(capped))
+// The cap is read from the app rather than written here. A literal is a second
+// copy of the number, and when the cap moved 500 -> 200 the copy did not — so
+// this suite stayed red over a number the app was right about.
+check('the list is capped rather than unbounded', capped <= MAX_ITEMS, `${capped} vs ${MAX_ITEMS}`)
 // The feed reads like a chat log: oldest first, newest at the bottom.
 const texts = $$('.row .text').map((el) => el.textContent)
 check('the newest message is at the bottom', texts.at(-1) === 'msg 599', texts.slice(-2).join(' | '))
 // Not "the first message is at the top": the cap evicted it long ago. What
-// matters is that the order runs oldest to newest.
+// matters is that the order runs oldest to newest, starting from the oldest row
+// the cap kept — 600 messages were emitted, so the surviving run is the last
+// MAX_ITEMS of them.
 check(
   'the order runs oldest to newest',
-  texts.every((t, i) => i === 0 || t === `msg ${100 + i}`),
+  texts.every((t, i) => i === 0 || t === `msg ${600 - MAX_ITEMS + i}`),
   texts.slice(0, 3).join(' | '),
 )
 check('the newest row is the highlighted one', $$('.row').at(-1)?.classList.contains('row-new') === true)

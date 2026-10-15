@@ -121,6 +121,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
     itu tidak pernah ada, jadi urutan startup itu tidak pernah berarti apa-apa.
 
 ### Fixed
+- **Tiga suite merah, dan tiga-tiganya soal salinan kedua dari satu angka.**
+  `aefaa72` ("fix: 6 bugs from audit") mengubah perilaku di tiga tempat dan
+  meninggalkan tes yang mengunci perilaku lama, jadi CI merah di commit itu dan
+  di tiga commit sebelumnya.
+  - **Cap feed: 500 di tes, 200 di app.** `f58c150` menurunkan `MAX_ITEMS`
+    500→200 dan tidak menyentuh `test-ui.mjs`, yang masih menulis `<= 500` dan
+    menghitung urutan dari `msg 100`. Tes sekarang membaca `MAX_ITEMS` dari app
+    lewat `ui-entry.ts` — angka yang di-hardcode di tes adalah salinan kedua, dan
+    itulah persis yang membuat suite tetap merah atas angka yang app-nya benar.
+  - **Counter eventlog dihapus saat disconnect.** "Bug 4" di `aefaa72` memanggil
+    `room.reset()` di cabang `connected=False`, padahal docstring modul dan
+    `test_eventlog.py` (dari `e65c9f4`) menginginkan counter **bertahan** sampai
+    room connect lagi: `B still reports what it sent before it dropped`. Reset
+    tetap di jalur connect saja — reconnect adalah sesi baru, disconnect bukan.
+  - **Halaman overlay melenceng, dan yang diluruskan justru sisi yang salah.**
+    "Bug 7" memperbaiki `backend/static/topchatter.html` ke 36px/0.9 tanpa
+    menyentuh `web/public/overlay/top-chatter.html` (28px/0.35) — padahal
+    `test-overlay-sync.mjs` menyebut `web/public` sebagai salinan kanonik. Dan
+    "Bug 6" menulis ulang `var over` di `backend/static/overlay.html` sementara
+    `web/public` dibiarkan. Kedua pasangan kini identik, ke arah nilai yang
+    sudah disepakati `shared/overlay.ts` (`size: 36`, `bg: 0.9`).
+  - Diverifikasi: backend 17/17 suite, app 808 assertion, web hijau.
+
 - **Dua halaman tidak sepakat dengan dirinya sendiri soal "tanpa styling".**
   `STYLE_DEFAULTS` adalah yang di-reset sebelum style hasil push diterapkan,
   jadi itu jawaban halaman atas "seperti apa overlay tanpa style". Literal
