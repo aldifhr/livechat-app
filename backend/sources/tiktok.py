@@ -256,6 +256,41 @@ _LIVE_POLL_INTERVAL = 60.0
 _LIVE_WAIT_POLLS = 120
 
 
+def _is_offline_error(exc: BaseException) -> bool:
+    """Whether this exception means "there is no live to read", not "we failed".
+
+    The two need opposite responses and used to get the same one. A network
+    failure is worth retrying — that is what the backoff budget is for. A streamer
+    who is not live is not a failure at all: retrying cannot change it, and the
+    budget spent on it is budget the source no longer has when TikTok actually
+    blocks us.
+
+    Measured on the real thing: `@itswyss` was offline, and the loop spent ten
+    attempts and about two minutes of backoff (2s, 4s, 8s … 30s) rediscovering
+    that, with the app reading "Connecting" the whole time. At the end of it the
+    source gave up for good — so when that streamer did start, nothing picked the
+    live up and the room stayed dead until somebody pressed Connect.
+
+    Matched on the class rather than the message where the class is available,
+    because TikTokLive raises `UserOfflineError` with a plain sentence and a
+    substring test would also catch a reworded unrelated error. The message test
+    is the fallback for a wrapped or re-raised error, where the type is lost and
+    the sentence is all that survives.
+    """
+    try:
+        from TikTokLive.client.errors import UserNotFoundError, UserOfflineError
+
+        if isinstance(exc, (UserOfflineError, UserNotFoundError)):
+            return True
+    except ImportError:
+        # The library is optional at import time elsewhere in this file, so a
+        # missing module must not turn a real failure into an "offline".
+        pass
+
+    text = str(exc).lower()
+    return "userofflineerror" in text or "is offline" in text
+
+
 class TikTokAdapter(EventAdapter):
     """TikTok Live event adapter. Implements the EventAdapter protocol.
 
@@ -311,6 +346,15 @@ class TikTokAdapter(EventAdapter):
         # "no longer live" through a stream that is on the air. This flag is what
         # separates "the live is over" from "we have stopped watching for it".
         self._awaiting_live = False
+        # The streamer simply has no live stream right now — as opposed to one
+        # that ended. Kept apart from `_live_ended` because the two need different
+        # words: "is no longer live" is false about a streamer who has not started
+        # yet, and this codebase treats a status line that says something untrue
+        # as a bug rather than a wording choice.
+        #
+        # It also keeps the retry budget honest. An offline error is not a
+        # failure, so it must not be counted as one — see `_is_offline_error`.
+        self._offline_waiting = False
         # Set by `disconnect()` so the wait loop stops immediately instead of
         # sitting out its remaining interval after the user pressed Stop.
         self._stopping = False
@@ -320,20 +364,67 @@ class TikTokAdapter(EventAdapter):
         # `_live_ended` while `_running` is still true (the connect loop has not
         # unwound yet), so with the running check ahead of this one a client
         # attaching in that window was told "Connecting" over a stream that had
-        # already finished. It is also the only terminal state here: nothing
-        # reconnects after it, so it outranks both flags below.
+        # already finished.
+        #
+        # But an ended live is not always the end of watching. The source waits for
+        # the streamer to start again — up to two hours — and `_awaiting_live` is
+        # set for exactly that window. Reporting a bare `liveEnded` through it was
+        # the same trap the offline case had: the app showed "Connect" for a source
+        # that is still running and will pick the stream up on its own, and the
+        # wait could not be called off from the UI. `waiting` is what gives it a
+        # Stop, so it is carried whenever a wait is actually in progress.
         if self._live_ended:
-            return {
+            payload: dict[str, Any] = {
                 "type": "status",
                 "connected": False,
                 "message": f"@{self.username} is no longer live",
                 "liveEnded": True,
             }
+            if self._awaiting_live and self._running:
+                # Both flags: `liveEnded` so the client says the live ended rather
+                # than reconnecting, and `waiting` so it offers a way out instead
+                # of a dead end.
+                payload["connecting"] = True
+                payload["waiting"] = True
+            return payload
         if self._connected:
             return {
                 "type": "status",
                 "connected": True,
                 "message": f"Connected to @{self.username}",
+                # The headcount, so a client that attaches mid-stream has it
+                # without waiting for the next `RoomUserSeqEvent`. That event is
+                # edge-triggered and a quiet room can go a long while between
+                # reports, so the Overview page — which reads this endpoint rather
+                # than the socket — otherwise showed nothing to begin with.
+                #
+                # `_last_viewers` is the value `judge()` accepted, not the raw
+                # field: an out-of-range count is dropped before it is stored, so
+                # this cannot put an implausible figure in front of anyone.
+                "viewers": self._last_viewers,
+            }
+        # Not connected and not trying to be: we are waiting for the streamer to
+        # go live. Checked before the `_running` branch because `_running` stays
+        # true across the wait, and reporting "Connecting" for up to two hours of
+        # polling is the false statement this exists to avoid — the app showed
+        # exactly that for two minutes while the old code burned its retry budget
+        # on an offline streamer.
+        #
+        # No `liveEnded`: this streamer has not been live, so nothing has ended.
+        # `connecting` is carried so the client keeps waiting rather than reading
+        # it as a disconnect, and the message names the wait because a status that
+        # just says "Offline" invites somebody to press Connect again.
+        if self._offline_waiting:
+            return {
+                "type": "status",
+                "connected": False,
+                "connecting": True,
+                # Its own flag, so the app can offer a way out. `connecting` alone
+                # drives a disabled "Connecting…" button, and this wait can last
+                # two hours — a state the user cannot leave is not a state, it is a
+                # trap. The app shows "Waiting" with a working Stop instead.
+                "waiting": True,
+                "message": f"@{self.username} is not live — waiting",
             }
         if self._running:
             return {
@@ -728,6 +819,46 @@ class TikTokAdapter(EventAdapter):
                     if self._live_ended or not self._running:
                         break
 
+                    # "There is no live to read" is not a failure, so it must not
+                    # spend the retry budget. It is also not something retrying can
+                    # fix: the answer will be the same until the streamer starts.
+                    # Treated exactly like a live that ended — a pause, handled by
+                    # the same wait — because from the room's point of view the two
+                    # are the same situation, and the wait is what brings the
+                    # source back on its own instead of dying until someone
+                    # notices and presses Connect.
+                    #
+                    # Measured before this: `@itswyss` offline, ten attempts and
+                    # about two minutes of backoff, the app reading "Connecting"
+                    # throughout, and then the source gave up permanently — so the
+                    # stream that came later was never picked up at all.
+                    if _is_offline_error(e):
+                        logger.info(
+                            "@%s has no live stream right now — watching for it to start: %s",
+                            self.username, e,
+                        )
+                        self._offline_waiting = True
+                        self._attempt = 0
+                        # Told before the wait, so a client already attached stops
+                        # reading "Connecting" now rather than at the first poll a
+                        # minute from now.
+                        try:
+                            await events.emit_status(
+                                self.room_id,
+                                connected=False,
+                                connecting=True,
+                                waiting=True,
+                                message=f"@{self.username} is not live — waiting",
+                            )
+                        except Exception as emit_err:  # noqa: BLE001 — a status frame must not stop the wait
+                            logger.debug(
+                                "Could not announce @%s being offline: %s", self.username, emit_err
+                            )
+                        # The wait itself is the outer loop's job, below: it owns
+                        # the "one wait per session, and stop when the budget is
+                        # spent" rule, and doing it here as well would wait twice.
+                        break
+
                     self._attempt += 1
                     err_str = str(e)
 
@@ -813,20 +944,21 @@ class TikTokAdapter(EventAdapter):
                     self._running = False
                     break
 
-            # The live ended rather than the connection failing. Wait for the
-            # streamer to come back before giving up: stopping and starting again a
-            # few minutes later is ordinary, and until now it left the source dead
-            # and the app reading "no longer live" over a stream that was on air.
-            if self._live_ended and self._running and not self._stopping:
+            # There is no live to read — the streamer stopped, or has not started.
+            # Wait for one rather than giving up: stopping and starting again a few
+            # minutes later is ordinary, and until this existed the source died and
+            # the app kept reading "no longer live" over a stream that was on air,
+            # or "Connecting" over one that had not begun.
+            if (self._live_ended or self._offline_waiting) and self._running and not self._stopping:
                 await self._wait_for_live()
 
-            # The wait either brought the live back — the flag is cleared and the
-            # outer loop opens a fresh session — or it spent its budget and left
-            # the flag set. The second case has to stop here: the inner loop's
-            # condition is already false, so without this the outer loop would
-            # spin straight back into another wait, resetting the budget each
-            # time and never giving up.
-            if self._live_ended:
+            # The wait either found a live — the flags are cleared and the outer
+            # loop opens a fresh session — or it spent its budget and left one set.
+            # The second case has to stop here: the inner loop's condition is
+            # already false, so without this the outer loop would spin straight
+            # back into another wait, resetting the budget each time and never
+            # giving up.
+            if self._live_ended or self._offline_waiting:
                 self._running = False
                 break
 
@@ -860,32 +992,40 @@ class TikTokAdapter(EventAdapter):
         self._release_observer()
 
     async def _wait_for_live(self) -> None:
-        """Wait for a streamer who stopped to start again, then reconnect.
+        """Wait for a streamer with no live stream to start one, then reconnect.
 
-        A live ending is not the end of watching. Streamers stop and start again
-        within minutes — a break, a scene change, a dropped phone — and each time
-        they did, this source used to die: the connect loop's condition includes
-        `not self._live_ended`, so the loop exited and nothing brought it back but
-        a manual connect. The app then showed "no longer live" through a stream
-        that was on the air, which is the worst kind of wrong: not a missing
-        feature, a false statement about the room.
+        Two situations arrive here and they are the same problem from the room's
+        point of view: the streamer stopped and will start again (a break, a scene
+        change, a dropped phone), or the streamer was never live when we tried.
+        Either way there is nothing to read and nothing retrying can fix — only
+        asking again later. Both used to end the source for good: the connect
+        loop's condition includes `not self._live_ended`, so it exited and nothing
+        brought it back but a manual connect, while the app showed "no longer
+        live" through a stream that was on the air, or "Connecting" over one that
+        had not started.
 
         The old socket cannot be reused. A new live gets a new room id — measured
         live: `7696774047573838612` ended, `7696866940727397126` started — so
         there is nothing to reconnect to. The only way to learn about the new one
         is to ask, which is what the poll does.
 
-        Returns with `_live_ended` cleared and `_client` rebuilt when the
-        streamer is back, so the caller can loop into a fresh connection. Leaves
-        both flags as they are when the budget runs out, so the app keeps saying
-        the live ended — which by then is true.
+        Returns with the flags cleared and `_client` rebuilt when the streamer is
+        live, so the caller can loop into a fresh connection. Leaves them as they
+        are when the budget runs out, so the app keeps saying the streamer is not
+        live — which by then is true.
         """
         from TikTokLive.client.errors import UserOfflineError
 
         self._awaiting_live = True
+        # Which of the two situations this is decides the wording. A streamer who
+        # has not started has not "come back", and a status line that says they
+        # did is a statement the codebase treats as a bug rather than a nicety.
+        was_live = self._live_ended
         logger.info(
-            "@%s is no longer live — watching for it to come back, up to %.0f minutes",
-            self.username, (_LIVE_WAIT_POLLS * _LIVE_POLL_INTERVAL) / 60,
+            "@%s %s — watching for it, up to %.0f minutes",
+            self.username,
+            "is no longer live" if was_live else "has no live stream",
+            (_LIVE_WAIT_POLLS * _LIVE_POLL_INTERVAL) / 60,
         )
 
         try:
@@ -927,32 +1067,63 @@ class TikTokAdapter(EventAdapter):
                 if not live_now:
                     continue
 
-                # Back on the air. Clear the ended flag *before* rebuilding, so a
-                # client attaching in this window reads "connecting" rather than
-                # the "no longer live" that is no longer true.
-                logger.info("@%s is live again — reconnecting", self.username)
+                # Back on the air. Clear the flags *before* rebuilding, so a client
+                # attaching in this window reads "connecting" rather than the "no
+                # longer live" that is no longer true.
+                logger.info("@%s is live — reconnecting", self.username)
                 self._live_ended = False
+                self._offline_waiting = False
                 self._attempt = 0
                 self._consecutive_sign_failures = 0
                 self._connected = False
+                # And tell the clients that are already attached, not just the ones
+                # that arrive later. Clearing the flag only fixes the snapshot a
+                # new socket is handed at attach; an overlay that has been open
+                # the whole time — which is every overlay — was last told the
+                # streamer was not live and would keep saying it until the new
+                # handshake completed, which is seconds of a false statement about
+                # the room this whole path exists to avoid. `connecting=True` so the
+                # frame reads as "coming back" rather than a disconnect, and so
+                # `emit_status` skips its own bookkeeping: this is a transition,
+                # and the session counters are reset by the `connected=True` frame
+                # the new handshake produces, not by a status about to be replaced.
+                try:
+                    await events.emit_status(
+                        self.room_id,
+                        connected=False,
+                        connecting=True,
+                        message=(
+                            f"@{self.username} is live again — reconnecting"
+                            if was_live
+                            else f"@{self.username} is live — connecting"
+                        ),
+                    )
+                except Exception as emit_err:  # noqa: BLE001 — a status frame must not stop the reconnect
+                    logger.debug(
+                        "Could not announce @%s coming back: %s", self.username, emit_err
+                    )
                 try:
                     from TikTokLive import TikTokLiveClient as Client
                     self._client = Client(unique_id=self.username)
                     self._setup_handlers(self._client)
                 except Exception as rebuild_err:  # noqa: BLE001
                     logger.error(
-                        "Could not rebuild the client for @%s: %s",
-                        self.username, rebuild_err,
+                        "Could not rebuild the client for @%s: %s", self.username, rebuild_err,
                     )
-                    # Put the flag back: we are not connected, and saying the
-                    # live ended is closer to the truth than saying nothing.
-                    self._live_ended = True
+                    # Put the flag back: we are not connected, and saying the live
+                    # ended is closer to the truth than saying nothing. Which flag
+                    # depends on which situation we were waiting out — a streamer
+                    # who never started did not end a live.
+                    if was_live:
+                        self._live_ended = True
+                    else:
+                        self._offline_waiting = True
                     return
                 return
 
-            # The loop ran out of polls without the streamer coming back.
+            # The loop ran out of polls without the streamer going live.
             logger.info(
-                "@%s did not come back within %.0f minutes — giving up",
+                "@%s did not go live within %.0f minutes — giving up",
                 self.username, (_LIVE_WAIT_POLLS * _LIVE_POLL_INTERVAL) / 60,
             )
         finally:

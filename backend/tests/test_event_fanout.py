@@ -109,6 +109,11 @@ async def one_slow_client_does_not_delay_others():
     hid = await hub.connect(healthy_ws, hub_module.ROOM, "ov")  # type: ignore[arg-type]
     sid = await hub.connect(stuck_ws, hub_module.ROOM, "ov")  # type: ignore[arg-type]
 
+    # Both clients' opening frames are already sent in production before the
+    # drain starts, so priming here is what the socket handler does.
+    hub.prime(hid)
+    hub.prime(sid)
+
     # Make the stuck client's writer never run, so its queue is the only thing
     # receiving; the healthy one drains normally.
     hub._writers[sid].cancel()

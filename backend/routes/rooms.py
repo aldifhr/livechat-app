@@ -93,6 +93,19 @@ async def update_room(room_id: str, req: UpdateRoomRequest):
         # leaderboard and diamond total showing up under the new handle.
         # Dropping the counters here is what makes the switch a new session.
         eventlog.forget(room_id)
+        # Tell the wire too, for the same reason as `/api/disconnect`: a client
+        # watching this room — an OBS overlay, most of all — was last told the
+        # previous handle was connected, and nothing else in this path produces a
+        # frame. Emitted after the counters are dropped so it cannot be counted
+        # against the room that is on its way out, and only when there was a
+        # source to stop: renaming a room nobody is reading changed nothing, and
+        # a client attaching to a source-less room is told "Offline" at attach.
+        if source is not None:
+            await events.emit_status(
+                room_id,
+                connected=False,
+                message="Streamer changed — reconnecting",
+            )
 
     return {"room": summary(room_id, record)}
 
@@ -117,6 +130,14 @@ async def delete_room(room_id: str):
     # leaderboard request with the viewers it used to have, which is a room
     # answering for a room that no longer exists.
     eventlog.forget(room_id)
+    # And tell whoever was watching. A deleted room's clients are the ones with
+    # the least chance of noticing on their own: nothing else will ever be
+    # produced for this room id again, so the last frame they received stands
+    # forever. Emitted after `forget`, deliberately — `is_connected` then reads
+    # False and `emit_status` skips its own bookkeeping, so the frame cannot
+    # bring back the counters that were just dropped.
+    if source is not None:
+        await events.emit_status(room_id, connected=False, message="Room deleted")
     return {"status": "ok"}
 
 

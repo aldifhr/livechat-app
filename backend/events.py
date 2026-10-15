@@ -209,6 +209,7 @@ async def emit_status(
     message: str,
     connecting: bool = False,
     live_ended: bool = False,
+    waiting: bool = False,
 ) -> None:
     # A snapshot sent at the start of a session is connecting=True, not a state
     # change, and treating it as a disconnect would reset the counters before
@@ -225,6 +226,12 @@ async def emit_status(
     # cannot tell them apart from the stream of events alone.
     if live_ended:
         payload["liveEnded"] = True
+    # Also carried only when true, and also its own flag: the backend is polling
+    # for a streamer with no live right now. Distinct from `connecting`, which
+    # means "a handshake is in flight" and drives a button the user cannot press;
+    # this one can last two hours and needs a way out.
+    if waiting:
+        payload["waiting"] = True
     await hub.broadcast(payload, room_id=room_id)
 
 

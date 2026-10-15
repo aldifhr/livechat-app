@@ -80,16 +80,53 @@ class Hub:
         self.disconnected_clients_count = 0
 
     async def connect(self, websocket: WebSocket, client_type: str, room_id: str | None = None) -> str:
+        """Register a client and give it a queue, but start nothing yet.
+
+        Delivery does not begin here. The caller still has frames to send that
+        must arrive first — the room's config and its connection snapshot — and
+        those are written to the socket directly, outside this queue. Starting the
+        writer now meant an event broadcast in the gap landed in the queue, was
+        picked up by the writer, and reached the client *before* the config it was
+        supposed to be styled by: an overlay attaching to a styled room came up on
+        its defaults and stayed there until something else restyled it.
+
+        So the socket is registered here and the drain starts at `prime()`, once
+        the caller has finished its opening frames. Registration is still eager
+        because `room_clients` is what `broadcast` routes on, and a room's first
+        event must find this client already in the map — queued behind the config
+        it is waiting for, not lost.
+        """
         await websocket.accept()
         client_id = str(uuid.uuid4())
         self.active[client_id] = websocket
         self._queues[client_id] = asyncio.Queue(maxsize=CLIENT_QUEUE_LIMIT)
-        self._writers[client_id] = asyncio.create_task(self._writer(client_id, websocket))
         if room_id:
             self.room_clients[client_id] = room_id
         if client_type == CUSTOMIZER:
             self.customizer_clients.add(client_id)
         return client_id
+
+    def prime(self, client_id: str) -> None:
+        """Start draining a client's queue, after its opening frames are sent.
+
+        Called once by the socket handler, immediately after the config and status
+        frames are written. Everything queued in the meantime — events that
+        arrived while those were being sent — is delivered now, in order, behind
+        them.
+
+        Idempotent in effect: a second call replaces the task, and a call for a
+        client that has already disconnected does nothing. The latter matters
+        because `disconnect` can run from the writer itself (a send that timed
+        out), so this is reachable with the id already gone.
+        """
+        if client_id not in self.active or client_id not in self._queues:
+            return
+        existing = self._writers.pop(client_id, None)
+        if existing is not None:
+            existing.cancel()
+        self._writers[client_id] = asyncio.create_task(
+            self._writer(client_id, self.active[client_id])
+        )
 
     def queued_messages(self) -> int:
         """How many messages are waiting across every client.

@@ -371,6 +371,15 @@ async def websocket_endpoint(websocket: WebSocket, client_type: str, room_id: st
         payload = source.status_payload() if source else {"type": "status", "connected": False, "message": "Offline"}
         await websocket.send_text(json.dumps(payload, ensure_ascii=False))
 
+        # Only now start draining this client's queue. Both frames above are the
+        # ones the page needs *first* — the config it styles itself from and the
+        # state it opens on — and they are written straight to the socket rather
+        # than queued, so a writer already running could deliver an event ahead of
+        # them. An overlay attaching to a styled room then came up on its defaults
+        # and stayed there. Events broadcast during these two sends are queued, not
+        # lost, and are delivered in order behind them.
+        hub.prime(client_id)
+
         # The leaderboard, sent to this socket only — never fanned out to the room.
         # It is asked for, not pushed on a timer: a periodic room-wide broadcast
         # would interleave with the event stream every client reads frame by frame,

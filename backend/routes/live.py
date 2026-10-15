@@ -15,6 +15,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 import eventlog
+import events
 import store
 from logging_setup import logger
 from models import ConnectByUsernameRequest, ConnectRequest, clean_overlay as _clean_overlay
@@ -154,6 +155,18 @@ async def disconnect(req: ConnectRequest):
         source = _state["sources"].pop(room_id, None)
     if source is not None:
         await source.stop()
+        # Say so on the wire. `stop()` is a teardown and emits nothing — it is
+        # not the adapter's `disconnect()`, which is a lost socket the run loop
+        # means to retry — so every client already attached to this room kept the
+        # last status it was handed: "Connected", over a stream that has ended.
+        # An OBS overlay is the one that matters, because it is attached for the
+        # whole stream and has no way to ask again.
+        #
+        # Sent after the stop rather than before, so the frame cannot overtake the
+        # teardown and describe a connection that is still up. Guarded on there
+        # having been a source at all: with nothing to stop, nothing changed, and
+        # a client attaching to a source-less room is told "Offline" at attach.
+        await events.emit_status(room_id, connected=False, message="Disconnected")
     return {"status": "disconnected"}
 
 
