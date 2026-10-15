@@ -232,6 +232,29 @@ def gift_image_url(event: Any) -> str:
 
 logger = logging.getLogger("streamkit.tiktok")
 
+#: How often we ask TikTok whether a streamer who stopped has come back.
+#:
+#: A poll rather than a socket, because the old room is gone: the streamer starts
+#: a new live with a new room id, so there is nothing left to reconnect *to*. The
+#: only way to learn about the new one is to ask.
+_LIVE_POLL_INTERVAL = 60.0
+
+#: How many times that question is worth asking — 120 polls at a minute each is
+#: two hours.
+#:
+#: Counted rather than measured against the clock, and deliberately: the budget is
+#: really "how many requests are we willing to spend on this", and a count says
+#: that directly. It is also what makes the wait testable — a wall-clock budget
+#: checked against `time.monotonic()` does not move when a test shortens the
+#: sleeps, so the loop would spin without ever expiring.
+#:
+#: Two hours, because the case this exists for is a streamer taking a break — not
+#: a channel watched around the clock. Past it the source gives up for real, and
+#: pressing Connect is the deliberate act it should be. The cost of the whole
+#: window is one request a minute, which is less traffic than the socket it
+#: replaced was generating every second.
+_LIVE_WAIT_POLLS = 120
+
 
 class TikTokAdapter(EventAdapter):
     """TikTok Live event adapter. Implements the EventAdapter protocol.
@@ -278,6 +301,19 @@ class TikTokAdapter(EventAdapter):
         # combo in progress. `repeat_count` is cumulative, so this holds the
         # latest value rather than a sum of the frames.
         self._gift_streaks: dict[str, dict[str, int]] = {}
+        # Whether we are waiting for a streamer who stopped to come back.
+        #
+        # `_live_ended` on its own used to be terminal: the connect loop's
+        # condition is `while self._running and not self._live_ended`, so a live
+        # ending ended the source for good and only a manual connect brought it
+        # back. That is wrong for the common case — a streamer who stops and
+        # starts again a few minutes later, on a new room id — and the app shows
+        # "no longer live" through a stream that is on the air. This flag is what
+        # separates "the live is over" from "we have stopped watching for it".
+        self._awaiting_live = False
+        # Set by `disconnect()` so the wait loop stops immediately instead of
+        # sitting out its remaining interval after the user pressed Stop.
+        self._stopping = False
 
     def status_payload(self) -> dict[str, Any]:
         # The live ending is checked first, and deliberately. `on_live_end` sets
@@ -358,6 +394,10 @@ class TikTokAdapter(EventAdapter):
         self._running = True
         self._connected = False
         self._live_ended = False
+        # A fresh connect is a fresh intent to run. Without this a source that was
+        # stopped and started again would carry the previous Stop into its new
+        # live-wait loop and refuse to wait.
+        self._stopping = False
         # A fresh connect starts a fresh retry budget. `_run_client` reads this
         # instance counter (cleared again by `on_connect`), so it must begin at
         # zero rather than carrying a previous session's spent attempts.
@@ -593,6 +633,10 @@ class TikTokAdapter(EventAdapter):
     async def disconnect(self) -> None:
         """Stop connection and cleanup."""
         self._running = False
+        # Tells the live-wait loop to stop now rather than sitting out the rest of
+        # its poll interval. Stop means stop; the user pressing it should not have
+        # to wait up to a minute for the next tick to notice.
+        self._stopping = True
         # Release the observer before awaiting the client teardown. `observe()`
         # parks in `queue.get()`, which `_running` alone cannot interrupt, so
         # without this the observer task for every disconnected room stayed
@@ -647,119 +691,142 @@ class TikTokAdapter(EventAdapter):
         _max_delay = 30.0
         _max_retries = 10
         _max_sign_failures = 3
-        # Both counters live on the instance, not in this frame, so `on_connect`
-        # can clear them. The budget and the circuit breaker both promise to
-        # bound *consecutive* failures; frame-local counters instead accumulated
-        # every failure over the life of the source, so a long stream that
-        # blipped now and then eventually spent a budget it had already earned
-        # back by connecting.
-        self._attempt = 0
-        self._consecutive_sign_failures = 0
 
-        while self._running and not self._live_ended:
-            try:
-                if self._client is not None:
-                    # `start()` is NOT blocking: it returns the websocket
-                    # heartbeat Task and comes straight back. Await that task,
-                    # or the loop spins and calls `start()` again on a client
-                    # whose socket is still up — which is exactly what raises
-                    # AlreadyConnectedError ("You can only make one connection
-                    # per client!"). Awaiting it parks this loop for as long as
-                    # the socket lives and returns only when it drops.
-                    _ws_task = await self._client.start()
-                    if _ws_task is not None:
-                        await _ws_task
-                else:
-                    logger.warning("No TikTok client to start for @%s", self.username)
-                    break
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                if self._live_ended or not self._running:
-                    break
+        # Outer loop: one pass is one session. A live that ends and comes back is
+        # a *new* session — a new room id, a new socket — so it cannot be handled
+        # inside the inner loop, whose condition is already false by then. This is
+        # what turns "the live ended" from a terminal state into a pause.
+        while self._running:
+            # Both counters live on the instance, not in this frame, so `on_connect`
+            # can clear them. The budget and the circuit breaker both promise to
+            # bound *consecutive* failures; frame-local counters instead accumulated
+            # every failure over the life of the source, so a long stream that
+            # blipped now and then eventually spent a budget it had already earned
+            # back by connecting.
+            self._attempt = 0
+            self._consecutive_sign_failures = 0
 
-                self._attempt += 1
-                err_str = str(e)
+            while self._running and not self._live_ended:
+                try:
+                    if self._client is not None:
+                        # `start()` is NOT blocking: it returns the websocket
+                        # heartbeat Task and comes straight back. Await that task,
+                        # or the loop spins and calls `start()` again on a client
+                        # whose socket is still up — which is exactly what raises
+                        # AlreadyConnectedError ("You can only make one connection
+                        # per client!"). Awaiting it parks this loop for as long as
+                        # the socket lives and returns only when it drops.
+                        _ws_task = await self._client.start()
+                        if _ws_task is not None:
+                            await _ws_task
+                    else:
+                        logger.warning("No TikTok client to start for @%s", self.username)
+                        break
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    if self._live_ended or not self._running:
+                        break
 
-                # Circuit breaker: sign server / TikTok blocking is permanent,
-                # not transient. Stop immediately instead of hammering it.
-                is_sign_failure = (
-                    "Expecting value" in err_str
-                    or "sign" in err_str.lower()
-                    or "blocked" in err_str.lower()
-                    or "captcha" in err_str.lower()
-                    or "403" in err_str
-                )
-                if is_sign_failure:
-                    self._consecutive_sign_failures += 1
-                else:
-                    self._consecutive_sign_failures = 0
+                    self._attempt += 1
+                    err_str = str(e)
 
-                if self._consecutive_sign_failures >= _max_sign_failures:
-                    logger.error(
-                        "Circuit breaker tripped for @%s after %d consecutive "
-                        "sign/block failures: %s — giving up permanently",
-                        self.username, self._consecutive_sign_failures, err_str,
+                    # Circuit breaker: sign server / TikTok blocking is permanent,
+                    # not transient. Stop immediately instead of hammering it.
+                    is_sign_failure = (
+                        "Expecting value" in err_str
+                        or "sign" in err_str.lower()
+                        or "blocked" in err_str.lower()
+                        or "captcha" in err_str.lower()
+                        or "403" in err_str
                     )
-                    self._running = False
-                    break
+                    if is_sign_failure:
+                        self._consecutive_sign_failures += 1
+                    else:
+                        self._consecutive_sign_failures = 0
 
-                logger.warning(
-                    "TikTok connection failed for @%s (attempt %d/%d): %s",
-                    self.username, self._attempt, _max_retries, e,
-                )
-                if self._attempt >= _max_retries:
-                    logger.error(
-                        "Max reconnect attempts reached for @%s — giving up",
-                        self.username,
+                    if self._consecutive_sign_failures >= _max_sign_failures:
+                        logger.error(
+                            "Circuit breaker tripped for @%s after %d consecutive "
+                            "sign/block failures: %s — giving up permanently",
+                            self.username, self._consecutive_sign_failures, err_str,
+                        )
+                        self._running = False
+                        break
+
+                    logger.warning(
+                        "TikTok connection failed for @%s (attempt %d/%d): %s",
+                        self.username, self._attempt, _max_retries, e,
                     )
-                    self._running = False
-                    break
+                    if self._attempt >= _max_retries:
+                        logger.error(
+                            "Max reconnect attempts reached for @%s — giving up",
+                            self.username,
+                        )
+                        self._running = False
+                        break
 
-                delay = min(_base_delay * (2 ** (self._attempt - 1)), _max_delay)
-                delay = delay * (0.5 + random.random())
-                logger.info(
-                    "Reconnecting to @%s in %.1fs (attempt %d/%d)",
-                    self.username, delay, self._attempt, _max_retries,
-                )
-                await asyncio.sleep(delay)
-            else:
-                # The awaited websocket task returned without raising: the
-                # socket closed (stream ended or a plain drop). If we are still
-                # meant to run, back off and reconnect.
+                    delay = min(_base_delay * (2 ** (self._attempt - 1)), _max_delay)
+                    delay = delay * (0.5 + random.random())
+                    logger.info(
+                        "Reconnecting to @%s in %.1fs (attempt %d/%d)",
+                        self.username, delay, self._attempt, _max_retries,
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    # The awaited websocket task returned without raising: the
+                    # socket closed (stream ended or a plain drop). If we are still
+                    # meant to run, back off and reconnect.
+                    if not self._running or self._live_ended:
+                        break
+
+                    self._attempt += 1
+                    if self._attempt >= _max_retries:
+                        logger.error(
+                            "Max reconnect attempts reached for @%s — giving up",
+                            self.username,
+                        )
+                        self._running = False
+                        break
+
+                    delay = min(_base_delay * (2 ** (self._attempt - 1)), _max_delay)
+                    delay = delay * (0.5 + random.random())
+                    logger.info(
+                        "Reconnecting to @%s in %.1fs (attempt %d/%d)",
+                        self.username, delay, self._attempt, _max_retries,
+                    )
+                    await asyncio.sleep(delay)
+
+                # Rebuild the client before the next attempt — every path that
+                # reaches here (error-retry or normal drop) must start from a fresh
+                # client. Reusing the old one is what triggers AlreadyConnectedError:
+                # its websocket can still read as connected after the task returned.
+                # _setup_handlers only registers handlers, so this stays one loop.
                 if not self._running or self._live_ended:
                     break
-
-                self._attempt += 1
-                if self._attempt >= _max_retries:
-                    logger.error(
-                        "Max reconnect attempts reached for @%s — giving up",
-                        self.username,
-                    )
+                try:
+                    from TikTokLive import TikTokLiveClient as Client
+                    self._client = Client(unique_id=self.username)
+                    self._setup_handlers(self._client)
+                except Exception as retry_err:
+                    logger.error("Failed to recreate client on retry: %s", retry_err)
                     self._running = False
                     break
 
-                delay = min(_base_delay * (2 ** (self._attempt - 1)), _max_delay)
-                delay = delay * (0.5 + random.random())
-                logger.info(
-                    "Reconnecting to @%s in %.1fs (attempt %d/%d)",
-                    self.username, delay, self._attempt, _max_retries,
-                )
-                await asyncio.sleep(delay)
+            # The live ended rather than the connection failing. Wait for the
+            # streamer to come back before giving up: stopping and starting again a
+            # few minutes later is ordinary, and until now it left the source dead
+            # and the app reading "no longer live" over a stream that was on air.
+            if self._live_ended and self._running and not self._stopping:
+                await self._wait_for_live()
 
-            # Rebuild the client before the next attempt — every path that
-            # reaches here (error-retry or normal drop) must start from a fresh
-            # client. Reusing the old one is what triggers AlreadyConnectedError:
-            # its websocket can still read as connected after the task returned.
-            # _setup_handlers only registers handlers, so this stays one loop.
-            if not self._running or self._live_ended:
-                break
-            try:
-                from TikTokLive import TikTokLiveClient as Client
-                self._client = Client(unique_id=self.username)
-                self._setup_handlers(self._client)
-            except Exception as retry_err:
-                logger.error("Failed to recreate client on retry: %s", retry_err)
+            # The wait either brought the live back — the flag is cleared and the
+            # outer loop opens a fresh session — or it spent its budget and left
+            # the flag set. The second case has to stop here: the inner loop's
+            # condition is already false, so without this the outer loop would
+            # spin straight back into another wait, resetting the budget each
+            # time and never giving up.
+            if self._live_ended:
                 self._running = False
                 break
 
@@ -791,6 +858,105 @@ class TikTokAdapter(EventAdapter):
         # `queue.get()` still has to be woken here. Without this the observer
         # for every room that failed to connect outlived its source.
         self._release_observer()
+
+    async def _wait_for_live(self) -> None:
+        """Wait for a streamer who stopped to start again, then reconnect.
+
+        A live ending is not the end of watching. Streamers stop and start again
+        within minutes — a break, a scene change, a dropped phone — and each time
+        they did, this source used to die: the connect loop's condition includes
+        `not self._live_ended`, so the loop exited and nothing brought it back but
+        a manual connect. The app then showed "no longer live" through a stream
+        that was on the air, which is the worst kind of wrong: not a missing
+        feature, a false statement about the room.
+
+        The old socket cannot be reused. A new live gets a new room id — measured
+        live: `7696774047573838612` ended, `7696866940727397126` started — so
+        there is nothing to reconnect to. The only way to learn about the new one
+        is to ask, which is what the poll does.
+
+        Returns with `_live_ended` cleared and `_client` rebuilt when the
+        streamer is back, so the caller can loop into a fresh connection. Leaves
+        both flags as they are when the budget runs out, so the app keeps saying
+        the live ended — which by then is true.
+        """
+        from TikTokLive.client.errors import UserOfflineError
+
+        self._awaiting_live = True
+        logger.info(
+            "@%s is no longer live — watching for it to come back, up to %.0f minutes",
+            self.username, (_LIVE_WAIT_POLLS * _LIVE_POLL_INTERVAL) / 60,
+        )
+
+        try:
+            for _ in range(_LIVE_WAIT_POLLS):
+                if not self._running or self._stopping:
+                    return
+
+                await asyncio.sleep(_LIVE_POLL_INTERVAL)
+                if not self._running or self._stopping:
+                    return
+
+                # A fresh client per probe: `is_live()` resolves the user id and
+                # the client that carried the finished session is not ours to
+                # reuse. Its own failure is not the room's — a probe that throws
+                # must not end the wait, or one bad request would look like a
+                # streamer who never came back.
+                probe = None
+                try:
+                    from TikTokLive import TikTokLiveClient as Client
+                    probe = Client(unique_id=self.username)
+                    live_now = await probe.is_live(self.username)
+                except UserOfflineError:
+                    live_now = False
+                except asyncio.CancelledError:
+                    raise
+                except Exception as probe_err:  # noqa: BLE001
+                    logger.debug(
+                        "Live check for @%s failed, will ask again: %s",
+                        self.username, probe_err,
+                    )
+                    live_now = False
+                finally:
+                    if probe is not None:
+                        try:
+                            await asyncio.wait_for(probe.disconnect(), timeout=5)
+                        except Exception:  # noqa: BLE001
+                            pass
+
+                if not live_now:
+                    continue
+
+                # Back on the air. Clear the ended flag *before* rebuilding, so a
+                # client attaching in this window reads "connecting" rather than
+                # the "no longer live" that is no longer true.
+                logger.info("@%s is live again — reconnecting", self.username)
+                self._live_ended = False
+                self._attempt = 0
+                self._consecutive_sign_failures = 0
+                self._connected = False
+                try:
+                    from TikTokLive import TikTokLiveClient as Client
+                    self._client = Client(unique_id=self.username)
+                    self._setup_handlers(self._client)
+                except Exception as rebuild_err:  # noqa: BLE001
+                    logger.error(
+                        "Could not rebuild the client for @%s: %s",
+                        self.username, rebuild_err,
+                    )
+                    # Put the flag back: we are not connected, and saying the
+                    # live ended is closer to the truth than saying nothing.
+                    self._live_ended = True
+                    return
+                return
+
+            # The loop ran out of polls without the streamer coming back.
+            logger.info(
+                "@%s did not come back within %.0f minutes — giving up",
+                self.username, (_LIVE_WAIT_POLLS * _LIVE_POLL_INTERVAL) / 60,
+            )
+        finally:
+            self._awaiting_live = False
 
     async def start(self) -> None:
         """Alias for connect()."""

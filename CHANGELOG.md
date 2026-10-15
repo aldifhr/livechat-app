@@ -204,6 +204,40 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
     itu tidak pernah ada, jadi urutan startup itu tidak pernah berarti apa-apa.
 
 ### Fixed
+- **Live yang berakhir membuat source mati permanen, jadi "offline" padahal live.**
+  Dilaporkan langsung: `@bittersweetbynajla` dibilang offline padahal sedang live.
+  Dicek ke TikTok: `liveRoom.status=2`, judul `FLASH SALE 1000🔥😱🥳 (UNII)`.
+  - **Penyebabnya `_live_ended` bersifat terminal.** Kondisi loop-nya
+    `while self._running and not self._live_ended`, jadi begitu satu live berakhir
+    source-nya keluar dan tidak ada yang membangkitkannya selain Connect manual.
+    Komentar di kode bahkan menyatakannya sebagai desain: *"nothing reconnects
+    after it"*. Padahal berhenti lalu mulai lagi beberapa menit kemudian itu biasa.
+  - **Socket lama tidak bisa dipakai ulang** — dan ini bagian yang membuat
+    perbaikannya harus berupa poll, bukan reconnect. Live baru dapat room id baru;
+    terukur: `7696774047573838612` berakhir, `7696866940727397126` mulai. Tidak ada
+    yang bisa di-reconnect, jadi satu-satunya cara tahu adalah bertanya.
+  - Loop sekarang punya **loop luar**: satu putaran = satu sesi. Live yang berakhir
+    masuk ke `_wait_for_live()` yang menanyakan `is_live()` tiap 60 detik, sampai
+    **120 kali (2 jam)**. Kalau streamer kembali, flag dibersihkan lalu loop luar
+    membuka sesi baru. Kalau tidak, source menyerah — dan pada titik itu "live
+    berakhir" memang benar.
+  - **Batasnya dihitung, bukan diukur jam.** Budget `time.monotonic()` tidak maju
+    saat tes memperpendek `sleep`, jadi loop-nya berputar tanpa pernah kedaluwarsa
+    — itu benar-benar terjadi saat dikerjakan: `test_reconnect_budget.py`
+    menggantung sampai timeout. Menghitung poll juga lebih jujur soal apa yang
+    dibatasi ("berapa request yang mau dibelanjakan").
+  - **Stop berarti stop.** `disconnect()` menyalakan `_stopping`, jadi menekan Stop
+    saat menunggu berhenti saat itu juga, bukan menunggu sampai satu menit tick
+    berikutnya. `connect()` membersihkannya lagi, kalau tidak source yang
+    di-stop-lalu-start akan mewarisi Stop lama dan menolak menunggu.
+  - Probe yang gagal **bukan** berarti "streamer tidak kembali": satu request jelek
+    di-log di DEBUG dan ditanya lagi, bukan mengakhiri penantian.
+  - **18 assertion baru** di `tests/test_live_return.py`, seluruhnya menggerakkan
+    `TikTokAdapter` asli dengan hanya client dan clock yang diganti. Diverifikasi
+    menangkap bug aslinya: dengan penantian dikembalikan ke perilaku lama, 2
+    assertion gagal (`the loop opened a second session`, `and it asked TikTok`).
+  - Suite backend sekarang **18/18**.
+
 - **Tiga suite merah, dan tiga-tiganya soal salinan kedua dari satu angka.**
   `aefaa72` ("fix: 6 bugs from audit") mengubah perilaku di tiga tempat dan
   meninggalkan tes yang mengunci perilaku lama, jadi CI merah di commit itu dan
