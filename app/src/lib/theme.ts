@@ -6,7 +6,7 @@
  * attribute for the type — one attribute each, read by one stylesheet, rather
  * than inline styles the components would have to carry around.
  *
- * `default` is the original dark look. It stays in the list rather than being
+ * `default` is the black and white look. It stays in the list rather than being
  * the absence of a theme, because "no theme" and "the first theme" are the same
  * code path here and pretending otherwise is how a switcher ends up with an
  * empty row it cannot recover from.
@@ -36,7 +36,7 @@ export interface DensityMeta {
 }
 
 export const THEMES: ThemeMeta[] = [
-  { id: 'default', label: 'Default', hint: 'The dark look this app shipped with' },
+  { id: 'default', label: 'Black & White', hint: 'Monochrome dark theme' },
   { id: 'brutalism', label: 'Brutalism', hint: 'Hard borders, raw blocks, no rounding' },
 ]
 

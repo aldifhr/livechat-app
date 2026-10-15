@@ -1,6 +1,5 @@
 import type { UseSettingsResult } from '../../hooks/useSettings'
 import { LookSection } from './LookSection'
-import { PanelsSection } from './PanelsSection'
 import { FeedSection } from './FeedSection'
 import { SoundsSection } from './SoundsSection'
 
@@ -62,7 +61,6 @@ export function SettingsDialog({ open, settings, onClose }: Props) {
         </div>
 
         <LookSection settings={settings} set={settings.set} />
-        <PanelsSection settings={settings} set={settings.set} />
         <FeedSection settings={settings} set={settings.set} />
         <SoundsSection settings={settings} set={settings.set} />
       </div>

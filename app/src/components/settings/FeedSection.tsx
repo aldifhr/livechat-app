@@ -11,6 +11,8 @@ interface Props {
   set: SetSetting
 }
 
+type ToggleOption = { key: keyof ViewSettings; label: string; hint: string }
+
 /**
  * What the feed looks like.
  *
@@ -45,10 +47,18 @@ const FEED_TOGGLES: { key: keyof ViewSettings; label: string; hint: string }[] =
 const EVENT_TOGGLES: { key: keyof ViewSettings; label: string; hint: string }[] = [
   { key: 'giftSound', label: 'Gift sound', hint: 'Chime when a gift arrives' },
   { key: 'joinSound', label: 'Join sound', hint: 'A soft tap when somebody new arrives' },
+  { key: 'followSound', label: 'Follow sound', hint: 'Play a short sound when somebody follows' },
+  { key: 'shareSound', label: 'Share sound', hint: 'Play a short sound when somebody shares' },
   { key: 'giftNotice', label: 'Gift notice', hint: 'Raise a desktop toast when a gift arrives' },
   { key: 'giftVoice', label: 'Say gifts', hint: 'Announce each gift with the neural voice' },
   { key: 'mentionAlert', label: 'Mention alert', hint: 'A sound when a message names you' },
   { key: 'autoReply', label: 'Auto-reply', hint: 'Answer a greeting (hi, halo, hai) with a line of its own' },
+]
+
+const POPUP_TOGGLES: { key: keyof ViewSettings; label: string; hint: string }[] = [
+  { key: 'giftPopup', label: 'Gift popup', hint: 'Show a popup when somebody sends a gift' },
+  { key: 'followPopup', label: 'Follow popup', hint: 'Show a popup when somebody follows' },
+  { key: 'sharePopup', label: 'Share popup', hint: 'Show a popup when somebody shares the stream' },
 ]
 
 /**
@@ -213,64 +223,69 @@ function VoiceSettings({ settings, set }: Props) {
  * a test that awaits a network round trip has nowhere else to say what came of it.
  */
 export function FeedSection({ settings, set }: Props) {
+  const [category, setCategory] = useState<'display' | 'popups' | 'events' | 'chat'>('display')
+  const categories = [
+    { id: 'display', label: 'Tampilan' },
+    { id: 'popups', label: 'Popups' },
+    { id: 'events', label: 'Event alerts' },
+    { id: 'chat', label: 'Chat & voice' },
+  ] as const
+
+  function toggles(options: ToggleOption[]) {
+    return options.map((option) => (
+      <label key={option.key} className="toggle" title={option.hint}>
+        <input
+          type="checkbox"
+          checked={Boolean(settings[option.key])}
+          onChange={(e) => set(option.key, e.target.checked)}
+        />
+        <span>{option.label}</span>
+      </label>
+    ))
+  }
+
   return (
     <Section title="Feed" section="feed">
-      <ToggleGroup label="What the feed looks like">
-        {FEED_TOGGLES.map((option) => (
-          <label key={option.key} className="toggle" title={option.hint}>
-            <input
-              type="checkbox"
-              checked={Boolean(settings[option.key])}
-              onChange={(e) => set(option.key, e.target.checked)}
-            />
-            <span>{option.label}</span>
-          </label>
+      <div className="feed-category-tabs" role="tablist" aria-label="Feed setting categories">
+        {categories.map((item) => (
+          <button
+            key={item.id}
+            className={`feed-category-tab${category === item.id ? ' is-active' : ''}`}
+            type="button"
+            role="tab"
+            aria-selected={category === item.id}
+            onClick={() => setCategory(item.id)}
+          >
+            {item.label}
+          </button>
         ))}
-      </ToggleGroup>
+      </div>
 
-      <ToggleGroup label="What fires on a gift or mention">
-        {EVENT_TOGGLES.map((option) => (
-          <label key={option.key} className="toggle" title={option.hint}>
+      <div className="feed-category-panel" role="tabpanel">
+        {category === 'display' && <ToggleGroup label="Feed appearance and visibility">{toggles(FEED_TOGGLES)}</ToggleGroup>}
+        {category === 'popups' && <ToggleGroup label="Choose which events show a popup">{toggles(POPUP_TOGGLES)}</ToggleGroup>}
+        {category === 'events' && <ToggleGroup label="Sounds and alerts for live events">{toggles(EVENT_TOGGLES)}</ToggleGroup>}
+        {category === 'chat' && <>
+          <ToggleGroup label="Chat alerts">
+            {toggles(ALERT_TOGGLES.filter((option) => !option.needs || settings[option.needs]))}
+          </ToggleGroup>
+          <label className="field">
+            <span className="field-label">My handles</span>
             <input
-              type="checkbox"
-              checked={Boolean(settings[option.key])}
-              onChange={(e) => set(option.key, e.target.checked)}
+              className="input"
+              placeholder="yourname, othername"
+              value={settings.myHandle}
+              onChange={(e) => set('myHandle', e.target.value)}
+              spellCheck={false}
+              autoComplete="off"
             />
-            <span>{option.label}</span>
+            <span className="field-note">
+              Comma-separated. Messages naming these handles are highlighted and can trigger mention alerts.
+            </span>
           </label>
-        ))}
-      </ToggleGroup>
-
-      <label className="field">
-        <span className="field-label">My handles</span>
-        <input
-          className="input"
-          placeholder="yourname, othername"
-          value={settings.myHandle}
-          onChange={(e) => set('myHandle', e.target.value)}
-          spellCheck={false}
-          autoComplete="off"
-        />
-        <span className="field-note">
-          Comma-separated. A message naming any of these is highlighted, and alerted on if the mention
-          alert is on. Leave empty for no highlights at all.
-        </span>
-      </label>
-
-      <ToggleGroup label="How messages are spoken">
-        {ALERT_TOGGLES.filter((option) => !option.needs || settings[option.needs]).map((option) => (
-          <label key={option.key} className="toggle" title={option.hint}>
-            <input
-              type="checkbox"
-              checked={Boolean(settings[option.key])}
-              onChange={(e) => set(option.key, e.target.checked)}
-            />
-            <span>{option.label}</span>
-          </label>
-        ))}
-      </ToggleGroup>
-
-      <VoiceSettings settings={settings} set={set} />
+          <VoiceSettings settings={settings} set={set} />
+        </>}
+      </div>
     </Section>
   )
 }

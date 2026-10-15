@@ -89,10 +89,34 @@ function overlayUrl(path: string, id: string): string {
   return url.toString()
 }
 
+/**
+ * What connecting a handle actually answers with.
+ *
+ * Not a `Room`, and that is the point of naming it. `/api/room-connect-by-username`
+ * starts a connection and hands back `{ room_id, status, username, connected, ... }` —
+ * there is no `id`, no `name`, no `config` in it. It was typed as `Room` anyway,
+ * because `Room` is the shape the rest of this file speaks in, and the lie stayed
+ * invisible until a caller believed it: the stream list pushed the answer in as a
+ * room, `room.id` was `undefined`, and React reported that children in a list had
+ * no key. Nothing broke by accident — the answer simply was not the thing its type
+ * claimed.
+ *
+ * So the type says what arrives, and a caller that needs a `Room` re-reads the list
+ * rather than dressing this up as one.
+ */
+export interface ConnectResult {
+  room_id: string
+  status: string
+  username?: string
+  connected?: boolean
+  message?: string
+  liveEnded?: boolean
+}
 export const api = {
   rooms: () => request<{ rooms: Room[] }>('GET', '/rooms'),
   status: (id: string) => request<RoomStatus>('GET', `/rooms/${id}/status`),
-  connectHandle: (username: string) => request<Room>('POST', '/room-connect-by-username', { username }),
+  connectHandle: (username: string) =>
+    request<ConnectResult>('POST', '/room-connect-by-username', { username }),
   connectRoom: (id: string) => request<Room>('POST', `/room-connect/${id}`),
   updateRoom: (id: string, change: { name?: string; username?: string }) =>
     request<Room>('PATCH', `/rooms/${id}`, change),

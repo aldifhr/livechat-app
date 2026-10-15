@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { RollingNumber } from './RollingNumber'
 import { endSession, host } from '../lib/sidecar'
 import { PLATFORM, PLATFORMS, tiktokUsername } from '../lib/platforms'
 import { backendUrl, normaliseUsername, type BackendConfig } from '../lib/backend'
@@ -9,6 +10,7 @@ import type { RoomState } from '../types'
 
 interface Props {
   room: RoomState
+  liveSince: number | null
   counts: Record<string, number>
   totalReceived: number
   kind: KindFilter
@@ -20,7 +22,6 @@ interface Props {
   items: number
   onFiltersChange: (filters: Partial<FeedFilters>) => void
   onClearChat: () => void
-  onOpenSettings: () => void
 }
 
 /**
@@ -35,14 +36,12 @@ interface Props {
  * a field for it is a field to get wrong. Set up still has it for the cases where
  * it is genuinely a different address.
  *
- * This row used to carry three switches — collapse spam, gift sound, gift notice
- * — as a glanceable shortcut. They are all behind the gear now, which is the same
- * place the rest of the settings live and the reason this row is only the stream:
- * the handle, the filters, the count, and Clear. Nothing here is a preference
- * anyone reaches for mid-stream.
+ * This row carries the stream controls: the handle, filters, event count, and
+ * Clear. Navigation to the other pages lives in the Dock.
  */
 export function Toolbar({
   room,
+  liveSince,
   counts,
   totalReceived,
   kind,
@@ -53,7 +52,6 @@ export function Toolbar({
   items,
   onFiltersChange,
   onClearChat,
-  onOpenSettings,
 }: Props) {
   const spec = PLATFORMS[PLATFORM]
   const [busy, setBusy] = useState(false)
@@ -91,6 +89,7 @@ export function Toolbar({
   const isConnected = room.status === 'connected' && !disconnected
   const wanted = normaliseUsername(handle)
   const canConnect = wanted !== '' && !isConnecting
+  const connectedMessage = room.message.match(/^(Connected to\s+)(@.+)$/i)
 
   /*
     Remembered as soon as it stops changing, not on connect: being made to
@@ -157,6 +156,7 @@ export function Toolbar({
       // Leaving it there reads as a connection that is still live, which is the
       // one thing a Stop button must never appear to have failed to do.
       setDisconnected(true)
+      onClearChat()
     } finally {
       setBusy(false)
     }
@@ -203,6 +203,8 @@ export function Toolbar({
           <span>
             {health === 'stalled'
               ? 'No messages for a while — the stream may have ended'
+              : connectedMessage
+                ? <>{connectedMessage[1]}<strong>{connectedMessage[2]}</strong></>
               : room.message ||
                 (room.status === 'connected'
                   ? 'Live'
@@ -210,9 +212,10 @@ export function Toolbar({
                     // repeats it; nothing else in the toolbar does.
                     'Not connected — enter a handle and press Connect')}
           </span>
-          {room.viewers > 0 && (
-            <span className="viewers">{room.viewers.toLocaleString()} watching</span>
+          {isConnected && room.viewers > 0 && (
+            <span className="viewers"><RollingNumber value={room.viewers} /> watching</span>
           )}
+        {isConnected && liveSince !== null && <LiveTimer startedAt={liveSince} />}
         </div>
         {room.title && <p className="room-title">{room.title}</p>}
       </div>
@@ -249,9 +252,7 @@ export function Toolbar({
 
       {/*
         The stream itself: the handle, connect, filters, and what is left worth
-        reading mid-stream. Everything else — theme, font, density, the panels, the
-        model, and every standing preference like the collapse switch and the gift
-        sounds — is behind the gear.
+        reading mid-stream. The Dock owns navigation to the other pages.
 
         Two ends, one row: what happened on the left, what you can do on the right.
         The count is the thing you watch and the buttons are the thing you reach
@@ -276,14 +277,6 @@ export function Toolbar({
             Clear
           </button>
 
-          <button
-            className="btn btn-small settings-btn"
-            onClick={onOpenSettings}
-            title="Look, panels, feed and voice, sounds, model and webhook"
-            aria-label="Settings"
-          >
-            ⚙
-          </button>
           <span className="font-hint" title="Ctrl + scroll anywhere in the window">
             {Math.round(settings.fontScale * 100)}%
           </span>
@@ -291,4 +284,20 @@ export function Toolbar({
       </div>
     </div>
   )
+}
+
+function LiveTimer({ startedAt }: { startedAt: number }) {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(interval)
+  }, [])
+
+  const elapsedSeconds = Math.max(0, Math.floor((now - startedAt) / 1000))
+  const hours = Math.floor(elapsedSeconds / 3600)
+  const minutes = Math.floor((elapsedSeconds % 3600) / 60)
+  const seconds = elapsedSeconds % 60
+  const time = [hours, minutes, seconds].map((part) => String(part).padStart(2, '0')).join(':')
+
+  return <span className="live-timer" title="Durasi terhubung ke live">LIVE {time}</span>
 }

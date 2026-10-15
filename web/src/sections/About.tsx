@@ -14,11 +14,13 @@
  */
 
 import PasswordPanel from '@/components/PasswordPanel'
+import { useOrigin } from '@/lib/browser'
 
 export default function About({ backend }: { backend?: string }) {
-  // Read during render rather than at module scope: `window` does not exist when
-  // this module is first evaluated on the server.
-  const origin = typeof window === 'undefined' ? '' : window.location.origin
+  // After mount rather than during render: the server has no window, and a
+  // `typeof window` branch here means the addresses arrive with the wrong origins
+  // and React throws the page away to rebuild it.
+  const origin = useOrigin()
 
   // `href` only where there is something to open. The overlay addresses are for
   // pasting into OBS, and a click there would open a bare canvas in a tab rather

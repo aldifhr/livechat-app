@@ -17,6 +17,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '@/lib/client'
+import { useViewportHeight, useViewportWidth } from '@/lib/browser'
 import type { Room } from '@/lib/types'
 import OverlayStage from '@/components/OverlayStage'
 
@@ -85,10 +86,15 @@ export default function LivePreview() {
   // How much height the canvas may take: the window, less the page head and the
   // controls above it. Enough to read a board at size, short enough that the
   // header stays on screen with it.
-  const maxHeight =
-    typeof window === 'undefined'
-      ? 560
-      : Math.max(320, window.innerHeight - (window.innerWidth > 720 ? 210 : 300))
+  //
+  // Both fallbacks are chosen so the server's answer is the one this page had
+  // before anything was measured: 770 - 210 is the 560 it used to hardcode, and
+  // 1280 is wide enough to take the same branch the desktop layout takes. A
+  // server fallback that is some other number makes the first paint and the
+  // corrected layout two different designs, which is what this is avoiding.
+  const width = useViewportWidth(1280)
+  const height = useViewportHeight(770)
+  const maxHeight = Math.max(320, height - (width > 720 ? 210 : 300))
 
   return (
     <>

@@ -19,4 +19,13 @@ export interface RoomStatus {
   username?: string
   message?: string
   viewers?: number
+  /** The backend is still working on it. Distinct from `connected: false` because
+   *  "connecting" and "offline" are different answers and collapsing them into
+   *  one badge tells an operator to wait when they should press Connect. */
+  connecting?: boolean
+  /** The stream ended and nothing will retry it. A terminal state the backend goes
+   *  out of its way to name: a room in it needs a fresh Connect, and a badge that
+   *  only said "offline" would send the reader looking for a connection problem
+   *  that is not there. */
+  liveEnded?: boolean
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { LogLine } from './LogLine'
+import { AnimatedSpan, Terminal } from './ui/terminal'
 import type { LogEntry } from '../hooks/useLog'
 
 interface Props {
@@ -13,11 +14,10 @@ const LEVELS: ('all' | 'info' | 'warn' | 'error')[] = ['all', 'info', 'warn', 'e
 /**
  * The in-app log.
  *
- * Collapsed by default so it does not compete with the chat, but one click from
- * there when a stream stops updating and the reason is not on the status line.
+ * Rendered as a full page from the Dock, with filters and clear controls in its
+ * header.
  */
 export function LogPanel({ entries, tallies, onClear }: Props) {
-  const [open, setOpen] = useState(false)
   const [level, setLevel] = useState<'all' | 'info' | 'warn' | 'error'>('all')
   const listRef = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
@@ -28,7 +28,7 @@ export function LogPanel({ entries, tallies, onClear }: Props) {
     const node = listRef.current
     if (!node || !pinned.current) return
     node.scrollTop = node.scrollHeight
-  }, [entries, open])
+  }, [entries])
 
   // `warn` includes errors, since a reader who wants warnings wants to see what
   // went wrong too. Every other level is an exact match.
@@ -40,55 +40,49 @@ export function LogPanel({ entries, tallies, onClear }: Props) {
         : entries.filter((entry) => entry.level === level)
 
   return (
-    <div className={`log-panel${open ? ' log-open' : ''}`}>
+    <div className="log-panel">
       <div className="log-bar">
-        <button className="log-toggle" onClick={() => setOpen((value) => !value)}>
-          <span className={`log-caret${open ? ' log-caret-open' : ''}`}>▸</span>
-          Log
-        </button>
+        <span className="log-title">Event log</span>
 
         {entries.length > 0 && <span className="log-count">{entries.length}</span>}
         {errors > 0 && <span className="log-badge">{errors} error{errors === 1 ? '' : 's'}</span>}
 
-        {open && (
-          <>
-            <div className="log-filters">
-              {LEVELS.map((value) => (
-                <button
-                  key={value}
-                  className={`chip chip-small${level === value ? ' chip-active' : ''}`}
-                  onClick={() => setLevel(value)}
-                >
-                  {value}
-                </button>
-              ))}
-            </div>
-            {/* Disabled rather than hidden when there is nothing to clear: the
-                button keeps its position, so the bar does not reflow under the
-                pointer every time the last line is removed. */}
-            <button className="btn btn-small" onClick={onClear} disabled={entries.length === 0}>
-              Clear
+        <div className="log-filters">
+          {LEVELS.map((value) => (
+            <button
+              key={value}
+              className={`chip chip-small${level === value ? ' chip-active' : ''}`}
+              onClick={() => setLevel(value)}
+            >
+              {value}
             </button>
-          </>
-        )}
+          ))}
+        </div>
+        <button className="btn btn-small" onClick={onClear} disabled={entries.length === 0}>
+          Clear
+        </button>
       </div>
 
-      {open && (
-        <div
-          className="log-list"
-          ref={listRef}
-          onScroll={(e) => {
-            const node = e.currentTarget
-            pinned.current = node.scrollHeight - node.scrollTop - node.clientHeight < 24
-          }}
-        >
+      <div
+        className="log-list"
+        ref={listRef}
+        onScroll={(e) => {
+          const node = e.currentTarget
+          pinned.current = node.scrollHeight - node.scrollTop - node.clientHeight < 24
+        }}
+      >
+        <Terminal sequence={false} startOnView={false} className="event-terminal">
           {visible.length === 0 ? (
-            <p className="log-empty">Nothing logged yet.</p>
+            <AnimatedSpan className="event-terminal-empty">Nothing logged yet.</AnimatedSpan>
           ) : (
-            visible.map((entry) => <LogLine key={entry.key} entry={entry} />)
+            visible.map((entry) => (
+              <AnimatedSpan key={entry.key} className="event-terminal-entry">
+                <LogLine entry={entry} />
+              </AnimatedSpan>
+            ))
           )}
-        </div>
-      )}
+        </Terminal>
+      </div>
     </div>
   )
 }

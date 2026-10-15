@@ -1,15 +1,24 @@
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 
 // Tauri serves the frontend from a fixed port in dev and expects the build in
 // dist/. Do not change this without updating devUrl in tauri.conf.json.
 export default defineConfig({
-  plugins: [react()],
+  // Tailwind, for the one component that is vendored from a component library
+  // rather than written here (`number-ticker`). Everything else in this app is
+  // still hand-written CSS in styles.css; see the note on the import there for
+  // why the utility layer sits beside it rather than replacing it.
+  plugins: [react(), tailwindcss()],
   // shared/ is a sibling of app/, not a part of it, so it needs a name rather
   // than a relative path that would climb out of the package on every import.
   resolve: {
     alias: {
+      // `@/*` is what the component library's generated files import, so it is
+      // declared here as well as in tsconfig — Vite resolves the alias itself and
+      // would fail the build on an import the type checker was happy with.
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
       '@shared': fileURLToPath(new URL('../shared', import.meta.url)),
     },
   },

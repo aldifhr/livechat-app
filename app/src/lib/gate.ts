@@ -26,7 +26,7 @@ import { playSound, releaseAudio, resolveAudio } from './player'
  * `play` shares the one context across calls, so two sounds chained together use
  * one context rather than each asking for another.
  */
-export function useAudioPlayer(): { play: (templateId: string, customPath: string) => Promise<void> } {
+export function useAudioPlayer(): { play: (templateId: string, customPath: string, volume?: number) => Promise<void> } {
   const contextRef = useRef<AudioContext | null>(null)
 
   useEffect(
@@ -37,9 +37,9 @@ export function useAudioPlayer(): { play: (templateId: string, customPath: strin
   )
 
   return {
-    play: async (templateId: string, customPath: string) => {
+    play: async (templateId: string, customPath: string, volume = 1) => {
       contextRef.current ??= resolveAudio()
-      const used = await playSound(contextRef.current, templateId, customPath)
+      const used = await playSound(contextRef.current, templateId, customPath, volume)
       contextRef.current = used
     },
   }

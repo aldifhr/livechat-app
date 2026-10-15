@@ -12,7 +12,11 @@
 
 export default function SignOutButton() {
   return (
-    <form action="/api/auth/logout" method="post">
+    // `signout` is what pins this to the bottom of the sidebar: the column is
+    // 100vh tall and the auto margin takes whatever height is left over. Without
+    // it the button sat directly under the last navigation item, which is where a
+    // menu item goes and not where an action belongs.
+    <form className="signout" action="/api/auth/logout" method="post">
       <button type="submit" className="side-item">
         Sign out
       </button>

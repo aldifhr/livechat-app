@@ -1,12 +1,53 @@
 /*
- * One stylesheet for both pages.
+ * One stylesheet for the whole app.
  *
  * Values live in custom properties on :root rather than being repeated, because
  * the landing page and the admin console are read side by side and a colour that
- * drifts between them reads as two products rather than one. No framework: the
- * whole thing is a landing page and a console, and the CSS that would come with a
- * framework is larger than everything it would style.
+ * drifts between them reads as two products rather than one.
+ *
+ * Tailwind drives all of it. `@layer components` below exists so the pieces that
+ * genuinely repeat — a button, a field, a panel — are written once, rather than
+ * the same seven utilities pasted into fourteen files and left to drift. Nothing
+ * here is styling on its own: every declaration is an `@apply`, or a rule about
+ * an element or a descendant that utilities cannot express.
+ *
+ * Preflight is on. It was deliberately off while the console was hand-written
+ * against the browser's own defaults; it is safe now because nothing hand-written
+ * is left to depend on them.
+ *
+ * The theme is the greyscale below, and nothing else. `--color-*: initial` clears
+ * Tailwind's default palette so `text-red-500` is a build error rather than a
+ * colour that reaches a stream the operator is styling themselves.
  */
+
+@import 'tailwindcss';
+
+@theme {
+  --color-*: initial;
+  --color-bg: var(--bg);
+  --color-raised: var(--bg-raised);
+  --color-sunken: var(--bg-sunken);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-text: var(--text);
+  --color-dim: var(--text-dim);
+  --color-faint: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-accent-dim: var(--accent-dim);
+  --color-accent-ink: var(--accent-ink);
+  --color-good: var(--good);
+  --color-bad: var(--bad);
+  /* Put back the two the reset above took, which are keywords rather than
+     palette entries and are what `border-current` and `bg-transparent` mean. */
+  --color-current: currentColor;
+  --color-transparent: transparent;
+
+  --radius-card: 10px;
+  --radius-field: 6px;
+
+  --font-sans: var(--sans);
+  --font-mono: var(--mono);
+}
 
 :root {
   color-scheme: dark;
@@ -34,940 +75,854 @@
   --good: #e8e8e8;
   --bad: #d0d0d0;
 
-  --radius: 10px;
-  --radius-sm: 6px;
-
   --sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, SFMono-Regular, 'Cascadia Code', Consolas, monospace;
 }
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
+/*
+ * Element defaults. Preflight has most of this already; what is here is the part
+ * that is this product's rather than Tailwind's — the type scale, the smoothing,
+ * and the link colour.
+ *
+ * In `@layer base` on purpose. Unlayered CSS outranks every layer whatever its
+ * specificity, so an `a` rule written here without a layer would beat
+ * `text-accent-ink` from `@layer utilities` — a white button on a white page,
+ * with the class visibly present in the markup and doing nothing.
+ */
+@layer base {
+  /*
+   * Two things preflight takes away that this design was standing on.
+   *
+   * Every heading in a UA stylesheet is bold, and every `<p>` carries `1em` of
+   * margin. Turning preflight on silently removed both: headings across the whole
+   * app came back at weight 400, and the air between a heading and the paragraph
+   * under it lost 15px — which is where a 9px shift on one page and a 25px shift
+   * on the next were coming from, with nothing broken and nothing obviously
+   * wrong anywhere.
+   *
+   * Restored here rather than added back one component at a time. A heading that
+   * quietly lost its weight on whichever page somebody forgot is exactly the
+   * regression a screenshot of one page does not catch, and this way the fix
+   * cannot be incomplete.
+   */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-weight: 700;
+  }
+
+  p {
+    margin: 1em 0;
+  }
+
+  /* The landing page is the one place that manages its own vertical rhythm —
+     utility classes on the element, no document spacing underneath it. Without
+     this it picks up the `1em` restored just above and every gap in the hero
+     grows by a line's worth. */
+  .landing :is(h1, h2, h3, p, ul, ol, li, figure, blockquote) {
+    margin: 0;
+    padding: 0;
+  }
+
+  .landing :is(ul, ol) {
+    list-style: none;
+  }
+
+  /* Preflight does not set this, and `min-h-full` is the whole mechanism the
+     landing page and the login page fill the window with. Without a height to
+     resolve against, `100%` is a percentage of an auto height — which is zero —
+     and both pages shrink to their content: the login pitch's `mt-auto` has
+     nothing to push against and the card floats halfway up a short page. */
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+
+  a:hover {
+    text-decoration: underline;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 }
 
-html,
-body {
-  height: 100%;
-}
+@layer components {
+  /* ---- form controls ---- */
 
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--sans);
-  font-size: 15px;
-  line-height: 1.55;
-  -webkit-font-smoothing: antialiased;
-}
+  button {
+    @apply cursor-pointer rounded-field border border-line bg-raised text-text px-[0.9rem] py-2 transition-[border-color,background] duration-120;
+  }
 
-a {
-  color: var(--accent);
-  text-decoration: none;
-}
+  button:hover:not(:disabled) {
+    @apply border-accent-dim;
+  }
 
-a:hover {
-  text-decoration: underline;
-}
+  button:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
 
-/* A link that looks like a button. The landing page ships no JavaScript, so
-   these have to be links rather than buttons that navigate on click — a real
-   anchor is the only thing here that can be bookmarked or middle-clicked. */
-.cta {
-  display: inline-block;
-  border: 1px solid var(--line);
-  background: var(--bg-raised);
-  color: var(--text);
-  padding: 0.5rem 0.9rem;
-  border-radius: var(--radius-sm);
-  line-height: 1.4;
-}
+  button.primary {
+    @apply border-accent bg-accent font-semibold text-accent-ink;
+  }
 
-.cta:hover {
-  text-decoration: none;
-  border-color: var(--accent-dim);
-}
+  button.primary:hover:not(:disabled) {
+    @apply border-accent-dim bg-accent-dim;
+  }
 
-.cta.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-ink);
-  font-weight: 600;
-}
+  button.danger:hover:not(:disabled) {
+    @apply border-bad text-bad;
+  }
 
-.cta.primary:hover {
-  background: var(--accent-dim);
-  border-color: var(--accent-dim);
-}
+  /* The palette has no red on purpose, so the destructive button is not signalled
+     by a hue. It is the solid one — the strongest contrast in the frame — and the
+     label says exactly what it does. Position is the other signal: it sits last,
+     after Cancel. */
+  button.danger-solid {
+    @apply border-accent bg-accent font-semibold text-accent-ink;
+  }
 
-.hero-actions .cta {
-  padding: 0.7rem 1.4rem;
-  font-size: 1rem;
-}
+  button.danger-solid:hover:not(:disabled) {
+    @apply border-accent-dim bg-accent-dim;
+  }
 
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
+  input,
+  select {
+    @apply min-w-0 rounded-field border border-line bg-sunken px-[0.6rem] py-2 text-text;
+  }
 
-/* ---- shared bits ---- */
+  input:focus,
+  select:focus {
+    @apply border-accent-dim;
+  }
 
-button {
-  font: inherit;
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--line);
-  background: var(--bg-raised);
-  color: var(--text);
-  padding: 0.5rem 0.9rem;
-  transition: border-color 120ms ease, background 120ms ease;
-}
+  /* A field is a label and its control, and it is the one piece of this list that
+     is really a component rather than a style. */
+  .field {
+    @apply mb-[0.9rem];
+  }
 
-button:hover:not(:disabled) {
-  border-color: var(--accent-dim);
-}
+  .field label {
+    @apply mb-[0.3rem] block text-[0.85rem] text-dim;
+  }
 
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+  .field input[type='range'] {
+    @apply w-full border-none bg-transparent p-0 accent-accent;
+  }
 
-button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-ink);
-  font-weight: 600;
-}
+  .field input[type='color'] {
+    @apply h-[2.2rem] w-full cursor-pointer p-[0.15rem];
+  }
 
-button.primary:hover:not(:disabled) {
-  background: var(--accent-dim);
-  border-color: var(--accent-dim);
-}
+  .field-row {
+    @apply grid grid-cols-2 gap-3;
+  }
 
-button.danger:hover:not(:disabled) {
-  border-color: var(--bad);
-  color: var(--bad);
-}
+  /* The reading beside a slider's label. Floated rather than a flex child so it
+     stays on the label's own line whatever the label is called — a slider called
+     "Gap between messages" is long enough that a flex row would push the number
+     onto a second line. */
+  .value {
+    @apply float-right font-mono text-[0.8rem] text-faint;
+  }
 
-input,
-select {
-  font: inherit;
-  color: var(--text);
-  background: var(--bg-sunken);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 0.5rem 0.6rem;
-  min-width: 0;
-}
+  /* ---- shared bits ---- */
 
-input:focus,
-select:focus {
-  border-color: var(--accent-dim);
-}
+  code,
+  .mono {
+    @apply font-mono text-[0.9em];
+  }
 
-code,
-.mono {
-  font-family: var(--mono);
-  font-size: 0.9em;
-}
+  .muted {
+    @apply text-dim;
+  }
 
-.muted {
-  color: var(--text-dim);
-}
+  .faint {
+    @apply text-[0.86rem] text-faint;
+  }
 
-.faint {
-  color: var(--text-faint);
-  font-size: 0.86rem;
-}
+  .flush {
+    @apply m-0;
+  }
 
-/* ---- landing ---- */
+  .flush-top {
+    @apply mt-0;
+  }
 
-.landing {
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-}
+  .stack-top {
+    @apply mt-4;
+  }
 
-.topbar {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 1rem clamp(1rem, 5vw, 3rem);
-  border-bottom: 1px solid var(--line-soft);
-}
+  .tight-caption {
+    @apply mt-[0.4rem] mb-0;
+  }
 
-.wordmark {
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  color: var(--text);
-}
+  .empty {
+    @apply p-12 px-4 text-center text-faint;
+  }
 
-.wordmark span {
-  color: var(--accent);
-}
+  /* ---- the wordmark ---- */
 
-.topbar nav {
-  margin-left: auto;
-  display: flex;
-  gap: 1.25rem;
-  align-items: center;
-}
+  .wordmark {
+    @apply font-bold tracking-[-0.01em] text-text;
+  }
 
-.hero {
-  flex: 1;
-  display: grid;
-  place-items: center;
-  padding: clamp(2rem, 8vw, 5rem) clamp(1rem, 5vw, 3rem);
-  text-align: center;
-}
+  .wordmark span {
+    @apply text-accent;
+  }
 
-.hero h1 {
-  font-size: clamp(2rem, 6vw, 3.4rem);
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-  margin: 0 0 1rem;
-  max-width: 18ch;
-}
+  /* ---- panels, lists ---- */
 
-.hero p {
-  color: var(--text-dim);
-  font-size: clamp(1rem, 2vw, 1.15rem);
-  max-width: 56ch;
-  margin: 0 auto 2rem;
-}
+  .panel {
+    @apply mb-4 rounded-card border border-line-soft bg-raised px-[1.25rem] py-[1.1rem];
+  }
 
-.hero-actions {
-  display: flex;
-  gap: 0.75rem;
-  justify-content: center;
-  flex-wrap: wrap;
-}
+  .panel > h3:first-child,
+  .panel > h4:first-child {
+    @apply mt-0;
+  }
 
-.features {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 1rem;
-  padding: 0 clamp(1rem, 5vw, 3rem) clamp(2rem, 6vw, 4rem);
-  max-width: 1100px;
-  margin: 0 auto;
-  width: 100%;
-}
+  .row {
+    @apply flex flex-wrap items-center gap-3 border-b border-line-soft py-[0.7rem] last:border-b-0;
+  }
 
-.feature {
-  background: var(--bg-raised);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius);
-  padding: 1.25rem;
-}
+  .row .grow {
+    @apply min-w-[180px] flex-1;
+  }
 
-.feature h3 {
-  margin: 0 0 0.4rem;
-  font-size: 1rem;
-}
+  .row .name {
+    @apply font-semibold;
+  }
 
-.feature p {
-  margin: 0;
-  color: var(--text-dim);
-  font-size: 0.92rem;
-}
+  .badge {
+    @apply inline-block rounded-full border border-line px-[0.45rem] py-[0.15rem] text-[0.72rem] tracking-[0.06em] whitespace-nowrap text-dim uppercase;
+  }
 
-.footer {
-  border-top: 1px solid var(--line-soft);
-  padding: 1.25rem clamp(1rem, 5vw, 3rem);
-  color: var(--text-faint);
-  font-size: 0.85rem;
-  display: flex;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
+  .badge.live {
+    @apply border-good/40 text-good;
+  }
 
-/* ---- admin ---- */
+  .badge.off {
+    @apply text-faint;
+  }
 
-.admin {
-  display: grid;
-  grid-template-columns: 232px 1fr;
-  min-height: 100%;
-}
+  /* Where a style change has got to. It is a status, not a button: it never takes a
+     click, and when there is nothing to report it renders as nothing rather than as
+     a label. An operator who has just dragged a slider should not have to wonder
+     whether it stuck, and the honest answer is quiet most of the time. */
+  .save-state {
+    @apply mt-2 block min-h-[1.4em] text-right text-[0.78rem] text-faint;
+  }
 
-/* The sidebar collapses to a horizontal bar rather than disappearing: on a narrow
-   screen the navigation still has to be reachable, and a hamburger that hides the
-   only way back is worse than a scroller. */
-@media (max-width: 720px) {
+  .save-state.failed {
+    @apply text-bad;
+  }
+
+  .notice {
+    @apply mb-4 rounded-field border border-line px-[0.9rem] py-[0.7rem] text-[0.92rem];
+  }
+
+  /* In a greyscale UI, status is carried by the border and weight, not hue: an
+     error is a full-weight border, a notice is a quieter one. */
+  .notice.error {
+    @apply border-text bg-sunken font-medium text-text;
+  }
+
+  /* ---- the dashboard ----
+   *
+   * Three numbers across the top, then the series, then the per-stream table.
+   * The tiles are a border and a size rather than a fill: the graph below them is
+   * the thing worth looking at, and a row of bright boxes in front of it is
+   * competing with the answer to the question it is asking. */
+  .stat-row {
+    @apply mb-4 grid gap-4 sm:grid-cols-3;
+  }
+
+  .stat {
+    @apply flex flex-col gap-1 rounded-card border border-line-soft bg-raised px-[1.25rem] py-[1.1rem];
+  }
+
+  .stat-label {
+    @apply text-[0.78rem] tracking-[0.06em] text-faint uppercase;
+  }
+
+  .stat-value {
+    /* Tabular so a changing number does not make the tile breathe: the viewers
+       count updates every five seconds, and proportional digits change width as
+       they change value, so the row reflows on every reading for no reason. */
+    @apply text-[2rem] leading-none font-bold tracking-tight text-text tabular-nums;
+  }
+
+  /* The denominator inside a tile — "3 / 5" — is not a second number and must not
+     read as one. */
+  .stat-of {
+    @apply text-[1rem] font-normal text-dim;
+  }
+
+  .stat-note {
+    @apply text-[0.8rem] text-faint;
+  }
+
+  /* The viewer series. `preserveAspectRatio="none"` on the svg means the drawing
+     is stretched to the box, so the stroke width is in user units and varies with
+     the box; that is the one cost of not using an SVG library, and it is cheaper
+     than shipping one. */
+  .spark {
+    @apply block h-[120px] w-full;
+  }
+
+  .spark-line {
+    /* `vector-effect` as a plain declaration rather than an `@apply`: the
+       utility does not exist, and the property is what stops the 2px stroke
+       becoming a hairline on a tall box — the svg is stretched to its box with
+       `preserveAspectRatio="none"`, so user units are not screen units. */
+    @apply fill-none stroke-accent stroke-[2];
+    vector-effect: non-scaling-stroke;
+  }
+
+  .spark-area {
+    @apply fill-accent/10;
+  }
+
+  .stat-table {
+    @apply w-full border-collapse text-[0.9rem];
+  }
+
+  .stat-table th {
+    @apply border-b border-line-soft pb-2 text-left text-[0.78rem] font-semibold tracking-[0.02em] text-dim uppercase;
+  }
+
+  .stat-table td {
+    @apply border-b border-line-soft py-2 align-top;
+  }
+
+  .stat-table tr:last-child td {
+    @apply border-b-0;
+  }
+
+  .stat-table .num {
+    @apply text-right tabular-nums;
+  }
+
+  /* ---- the admin shell ---- */
+
   .admin {
-    grid-template-columns: 1fr;
+    @apply grid min-h-full grid-cols-[232px_1fr];
   }
 
   .sidebar {
-    border-right: none;
-    border-bottom: 1px solid var(--line);
-    position: static !important;
-    height: auto !important;
+    @apply sticky top-0 flex h-screen flex-col gap-5 overflow-y-auto border-r border-line bg-sunken px-4 py-5;
+  }
+
+  .sidebar .wordmark {
+    @apply text-[1.05rem];
   }
 
   .sidebar nav {
-    flex-direction: row;
-    flex-wrap: wrap;
-    overflow-x: auto;
+    @apply flex flex-col gap-1;
   }
-}
 
-.sidebar {
-  border-right: 1px solid var(--line);
-  background: var(--bg-sunken);
-  padding: 1.25rem 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  overflow-y: auto;
-}
+  /* A navigation item, and anything in the sidebar that acts like one. Scoped to
+     `.sidebar` rather than to `.sidebar nav` because sign-out is a button in a
+     form, not a link in the nav, and it looked like nothing else in the column:
+     the button reset gave it a border and a fill that no navigation item has, so
+     the one item that is not a destination was the only one that looked like a
+     button. */
+  .sidebar .side-item {
+    /* Longhand on purpose: `border-0` and `border-l-2` are different properties,
+       and the shorthand written second would take the left one with it. */
+    border-width: 0;
+    border-left-width: 2px;
+    border-left-color: transparent;
+    @apply rounded-none border-none bg-transparent px-[0.6rem] py-[0.45rem] text-left text-dim;
+  }
 
-.sidebar .wordmark {
-  font-size: 1.05rem;
-}
+  .sidebar .side-item:hover {
+    @apply bg-raised text-text;
+  }
 
-.sidebar nav {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
+  .sidebar .side-item[aria-current='page'] {
+    @apply border-l-accent bg-raised text-accent;
+  }
 
-/* Buttons, not links: the sections are views of one page. Reset to a text
-   button so only the selected item carries an accent. */
-.sidebar nav .side-item {
-  text-align: left;
-  background: transparent;
-  border: none;
-  border-left: 2px solid transparent;
-  border-radius: 0;
-  color: var(--text-dim);
-  padding: 0.45rem 0.6rem;
-}
+  /*
+   * The note under the navigation.
+   *
+   * `margin-top: auto` pushed it to the bottom of the sidebar, which on a tall window
+   * put it four hundred pixels below the last navigation item with nothing between —
+   * it read as a floating caption rather than as part of the menu. It is the menu's
+   * footnote, so it sits under the menu. Sign-out keeps `auto` below it and stays
+   * pinned, because that is an action and belongs at the end.
+   */
+  .sidebar .side-note {
+    @apply text-[0.8rem] text-faint;
+  }
 
-.sidebar nav .side-item:hover {
-  background: var(--bg-raised);
-  color: var(--text);
-}
+  .sidebar .signout {
+    @apply mt-auto;
+  }
 
-.sidebar nav .side-item[aria-current='page'] {
-  color: var(--accent);
-  background: var(--bg-raised);
-  border-left-color: var(--accent);
-}
+  /* The narrow layout turns the sidebar into a bar at the top of the page, where
+     "the end of the sidebar" is the end of a row of links rather than the bottom of
+     a column, and there is no leftover height for an auto margin to eat. Left
+     alone it is a no-op, which is the right answer here: the button joins the nav
+     row's flow rather than being stranded below it. */
 
-/*
- * The note under the navigation.
- *
- * `margin-top: auto` pushed it to the bottom of the sidebar, which on a tall window
- * put it four hundred pixels below the last navigation item with nothing between —
- * it read as a floating caption rather than as part of the menu. It is the menu's
- * footnote, so it sits under the menu. Sign-out keeps `auto` below it and stays
- * pinned, because that is an action and belongs at the end.
- */
-.sidebar .side-note {
-  font-size: 0.8rem;
-  color: var(--text-faint);
-}
+  .content {
+    @apply w-full max-w-[1000px] px-[clamp(1.25rem,3vw,2.25rem)] py-[clamp(1.25rem,3vw,2.25rem)];
+  }
 
-.sidebar .signout {
-  margin-top: auto;
-}
+  .content h2 {
+    @apply mb-[0.35rem] text-[1.5rem] tracking-[-0.01em];
+  }
 
-/*
- * A link that navigates, dressed as a button.
- *
- * This class is used by the room cards and by the builder's preview link, and it
- * had no rule at all — so both rendered as bare anchors: no border, no padding, no
- * surface. They looked like stray text rather than something you could click, which
- * is the reason the only route from a room to its styling looked like part of the
- * sentence next to it.
- *
- * Built on the same box as `button` so the two read as one set: same border, same
- * radius, same fill when hovered.
- */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  border: 1px solid var(--line);
-  background: var(--bg-raised);
-  color: var(--text);
-  padding: 0.5rem 0.9rem;
-  border-radius: var(--radius-sm);
-  line-height: 1.4;
-  text-decoration: none;
-  white-space: nowrap;
-  transition: border-color 120ms ease, background 120ms ease;
-}
+  .content h3 {
+    @apply mt-8 mb-3 text-[1.05rem];
+  }
 
-.btn:hover {
-  text-decoration: none;
-  border-color: var(--accent-dim);
-  background: var(--bg);
-}
+  .page-head {
+    @apply mb-6 flex flex-wrap items-start gap-4;
+  }
 
-.btn.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-ink);
-  font-weight: 600;
-}
+  .page-head .actions {
+    @apply ml-auto flex gap-2;
+  }
 
-.btn.primary:hover {
-  background: var(--accent-dim);
-  border-color: var(--accent-dim);
-}
+  /* ---- a link that navigates, dressed as a button ----
+   *
+   * Used by the room cards and by the builder's preview link. Built on the same box
+   * as `button` so the two read as one set: same border, same radius, same fill
+   * when hovered. */
+  .btn {
+    @apply inline-flex items-center gap-[0.4rem] rounded-field border border-line bg-raised px-[0.9rem] py-2 text-text leading-[1.4] whitespace-nowrap no-underline transition-[border-color,background] duration-120;
+  }
 
-.content {
-  padding: clamp(1.25rem, 3vw, 2.25rem);
-  max-width: 1000px;
-  width: 100%;
-}
+  .btn:hover {
+    @apply border-accent-dim bg-bg;
+  }
 
-.content h2 {
-  margin: 0 0 0.35rem;
-  font-size: 1.5rem;
-  letter-spacing: -0.01em;
-}
+  .btn.primary {
+    @apply border-accent bg-accent font-semibold text-accent-ink;
+  }
 
-.content h3 {
-  margin: 2rem 0 0.75rem;
-  font-size: 1.05rem;
-}
+  .btn.primary:hover {
+    @apply border-accent-dim bg-accent-dim;
+  }
 
-.page-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 1rem;
-  flex-wrap: wrap;
-  margin-bottom: 1.5rem;
-}
-
-.page-head .actions {
-  margin-left: auto;
-  display: flex;
-  gap: 0.5rem;
-}
-
-/* ---- panels, lists ---- */
-
-.panel {
-  background: var(--bg-raised);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius);
-  padding: 1.1rem 1.25rem;
-  margin-bottom: 1rem;
-}
-
-.panel > h3:first-child,
-.panel > h4:first-child {
-  margin-top: 0;
-}
-
-.row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.7rem 0;
-  border-bottom: 1px solid var(--line-soft);
-  flex-wrap: wrap;
-}
-
-.row:last-child {
-  border-bottom: none;
-}
-
-.row .grow {
-  flex: 1;
-  min-width: 180px;
-}
-
-.row .name {
-  font-weight: 600;
-}
-
-.badge {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 0.15rem 0.45rem;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  color: var(--text-dim);
-  white-space: nowrap;
-}
-
-.badge.live {
-  color: var(--good);
-  border-color: color-mix(in srgb, var(--good) 40%, transparent);
-}
-
-.badge.off {
-  color: var(--text-faint);
-}
-
-/* Where a style change has got to. It is a status, not a button: it never takes a
-   click, and when there is nothing to report it renders as nothing rather than as
-   a label. An operator who has just dragged a slider should not have to wonder
-   whether it stuck, and the honest answer is quiet most of the time. */
-.save-state {
-  display: block;
-  min-height: 1.4em;
-  margin-top: 0.5rem;
-  font-size: 0.78rem;
-  color: var(--text-faint);
-  text-align: right;
-}
-
-.save-state.failed {
-  color: var(--bad);
-}
-
-/* ---- login ---- */
-
-/* The sign-in page is the product's front door, not a lone card in a void. Two
-   halves: what this is on the left, the way in on the right. A single form
-   floating on a black page reads as a staging page; the same form beside the
-   product reads as somewhere you meant to arrive. The left half is dropped on a
-   narrow screen — there it would only push the form off the edge — and the card
-   carries its own small wordmark so it is never anonymous. */
-.login {
-  min-height: 100%;
-  display: grid;
-  grid-template-columns: 1.1fr 1fr;
-}
-
-.login-brand {
-  display: flex;
-  flex-direction: column;
-  gap: 2rem;
-  padding: clamp(2rem, 5vw, 3.5rem);
-  border-right: 1px solid var(--line-soft);
-  /* A single soft highlight in the corner, so the panel is a surface with a
-     light on it rather than a flat black rectangle. Greyscale, like everything
-     else: the point is depth, not colour. */
-  background: radial-gradient(120% 90% at 0% 0%, rgba(255, 255, 255, 0.06), transparent 60%), var(--bg);
-}
-
-.login-lockup {
-  font-size: 1.15rem;
-}
-
-/* Pushed to the middle and the bottom respectively, so the pitch sits low and
-   the note sits on the floor however tall the window is. */
-.login-pitch {
-  margin-top: auto;
-  max-width: 42ch;
-}
-
-.login-pitch h2 {
-  margin: 0 0 0.5rem;
-  font-size: clamp(1.6rem, 3vw, 2.2rem);
-  line-height: 1.15;
-  letter-spacing: -0.02em;
-}
-
-.login-points {
-  list-style: none;
-  margin: 1.5rem 0 0;
-  padding: 0;
-  display: grid;
-  gap: 0.65rem;
-}
-
-.login-points li {
-  position: relative;
-  padding-left: 1.5rem;
-  color: var(--text-dim);
-}
-
-.login-points li::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0.55em;
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  background: var(--accent);
-}
-
-.login-foot {
-  margin-top: auto;
-  padding-top: 1rem;
-  border-top: 1px solid var(--line-soft);
-  max-width: 46ch;
-}
-
-.login-panel {
-  display: grid;
-  place-items: center;
-  padding: clamp(2rem, 5vw, 3rem) 1.5rem;
-}
-
-.login-card {
-  width: 100%;
-  max-width: 380px;
-  background: var(--bg-raised);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius);
-  padding: 1.75rem 1.5rem;
-}
-
-/* Only shown when the brand half is hidden. */
-.login-lockup-sm {
-  display: none;
-  margin-bottom: 0.75rem;
-  font-size: 1.05rem;
-}
-
-.login-card h1 {
-  margin: 0 0 0.25rem;
-  font-size: 1.5rem;
-  letter-spacing: -0.01em;
-}
-
-/* The shared input style is a sunken field for dense forms, where a dozen of
-   them in a grid want to recede. Here there are two, on a card, and the sunken
-   black made the password box read as a hole with no edge. Raised and clearly
-   bordered instead: on the only form in the product's front door, the fields
-   should look like fields. */
-.login-card input {
-  background: var(--bg);
-  border-color: var(--line);
-  padding: 0.6rem 0.7rem;
-}
-
-.login-card input:hover {
-  border-color: var(--accent-dim);
-}
-
-/* The global focus style is a 2px white outline, which is right for a button in
-   a dense panel and harsh on a black field — it read as a browser default. A
-   ring plus a lifted border says the same thing more quietly, and the ring is
-   offset from the border so it reads as focus rather than as a second edge. */
-.login-card input:focus {
-  border-color: var(--accent);
-  outline: 2px solid rgba(255, 255, 255, 0.25);
-  outline-offset: 1px;
-}
-
-.login-card form {
-  margin-top: 1.25rem;
-}
-
-.login-card button {
-  width: 100%;
-  padding: 0.6rem;
-  margin-top: 0.25rem;
-}
-
-/* Not the shared `.faint`: that grey is for captions on pages you have already
-   decided to read. This note carries the one thing a streamer must not
-   misunderstand — that the overlay link is public — so it is set at the
-   readable dim grey, not the faint one. */
-.login-foot {
-  color: var(--text-dim);
-  font-size: 0.86rem;
-}
-
-@media (max-width: 860px) {
+  /* ---- the login page ----
+   *
+   * The product's front door, not a lone card in a void. Two halves: what this is on
+   * the left, the way in on the right. A single form floating on a black page reads
+   * as a staging page; the same form beside the product reads as somewhere you
+   * meant to arrive. The left half is dropped on a narrow screen — there it would
+   * only push the form off the edge — and the card carries its own small wordmark
+   * so it is never anonymous. */
   .login {
-    grid-template-columns: 1fr;
+    @apply grid min-h-full grid-cols-[1.1fr_1fr];
   }
 
   .login-brand {
-    display: none;
+    @apply flex flex-col gap-8 border-r border-line-soft bg-bg px-[clamp(2rem,5vw,3.5rem)] py-[clamp(2rem,5vw,3.5rem)];
+    /* A single soft highlight in the corner, so the panel is a surface with a
+       light on it rather than a flat black rectangle. Greyscale, like everything
+       else: the point is depth, not colour. */
+    background-image: radial-gradient(120% 90% at 0% 0%, rgb(255 255 255 / 0.06), transparent 60%);
   }
 
+  .login-lockup {
+    @apply text-[1.15rem];
+  }
+
+  /* Pushed to the middle and the bottom respectively, so the pitch sits low and
+     the note sits on the floor however tall the window is. */
+  .login-pitch {
+    @apply mt-auto max-w-[42ch];
+  }
+
+  .login-pitch h2 {
+    @apply mb-2 text-[clamp(1.6rem,3vw,2.2rem)] leading-[1.15] tracking-[-0.02em];
+  }
+
+  .login-points {
+    @apply mt-6 grid list-none gap-[0.65rem] p-0;
+  }
+
+  .login-points li {
+    @apply relative pl-6 text-dim;
+  }
+
+  .login-points li::before {
+    content: '';
+    @apply absolute top-[0.55em] left-0 h-2 w-2 rounded-full bg-accent;
+  }
+
+  .login-panel {
+    @apply grid place-items-center px-6 py-[clamp(2rem,5vw,3rem)];
+  }
+
+  .login-card {
+    @apply w-full max-w-[380px] rounded-card border border-line-soft bg-raised px-6 py-7;
+  }
+
+  /* Only shown when the brand half is hidden. */
   .login-lockup-sm {
-    display: block;
+    @apply mb-3 hidden text-[1.05rem];
   }
-}
 
-/* ---- notices ---- */
+  .login-card h1 {
+    @apply mb-1 text-[1.5rem] tracking-[-0.01em];
+  }
 
-.notice {
-  padding: 0.7rem 0.9rem;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--line);
-  margin-bottom: 1rem;
-  font-size: 0.92rem;
-}
+  /* The shared input style is a sunken field for dense forms, where a dozen of
+     them in a grid want to recede. Here there are two, on a card, and the sunken
+     black made the password box read as a hole with no edge. Raised and clearly
+     bordered instead: on the only form in the product's front door, the fields
+     should look like fields. */
+  .login-card input {
+    @apply border-line bg-bg px-[0.7rem] py-[0.6rem];
+  }
 
-/* In a greyscale UI, status is carried by the border and weight, not hue: an
-   error is a full-weight border, a notice is a quieter one. */
-.notice.error {
-  border-color: var(--text);
-  color: var(--text);
-  background: var(--bg-sunken);
-  font-weight: 500;
-}
+  .login-card input:hover {
+    @apply border-accent-dim;
+  }
 
-/* ---- overlay builder ---- */
+  /* The global focus style is a 2px white outline, which is right for a button in
+     a dense panel and harsh on a black field — it read as a browser default. A
+     ring plus a lifted border says the same thing more quietly, and the ring is
+     offset from the border so it reads as focus rather than as a second edge. */
+  .login-card input:focus {
+    @apply border-accent;
+    outline: 2px solid rgb(255 255 255 / 0.25);
+    outline-offset: 1px;
+  }
 
-/*
- * The builder: controls on one side, the overlay on the other.
- *
- * The preview used to be a separate page, so the right-hand column held nothing
- * but the link and a button that navigated away. Now it holds the overlay itself.
- * The frame is sized for a control panel rather than the whole window, because the
- * thing being judged here is "does this setting look right", not "does this fit a
- * 1080p canvas" — the full-screen preview is one link away for that.
- */
-.builder {
-  display: grid;
-  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
-  gap: 1.25rem;
-  align-items: start;
-}
+  .login-card form {
+    @apply mt-5;
+  }
 
-.builder-controls,
-.builder-stage {
-  min-width: 0;
-}
+  .login-card button {
+    @apply mt-1 w-full py-[0.6rem];
+  }
 
-.builder-stage {
-  position: sticky;
-  top: 1rem;
-  padding: 1.1rem 1.15rem;
-  background: var(--bg-raised);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-}
+  /* Not the shared `.faint`: that grey is for captions on pages you have already
+     decided to read. This note carries the one thing a streamer must not
+     misunderstand — that the overlay link is public — so it is set at the
+     readable dim grey, not the faint one. */
+  .login-foot {
+    @apply mt-auto max-w-[46ch] border-t border-line-soft pt-4 text-[0.86rem] text-dim;
+  }
 
-.builder-stage-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 0.75rem;
-}
-
-.builder-stage-head .copy-label {
-  margin: 0;
-}
-
-/* The full-screen preview is a convenience, not the thing being done on this
-   page, so it reads as a link and not as a button competing with the copy. */
-.quiet-link {
-  font-size: 0.82rem;
-  color: var(--text-dim);
-}
-
-.quiet-link:hover {
-  color: var(--text);
-}
-
-/* On a narrow window the frame goes under the controls rather than beside them:
-   side by side, both would be too thin to be worth having. */
-@media (max-width: 900px) {
+  /* ---- the overlay builder ----
+   *
+   * Controls on one side, the overlay on the other. The preview used to be a
+   * separate page, so the right-hand column held nothing but the link and a button
+   * that navigated away. Now it holds the overlay itself. The frame is sized for a
+   * control panel rather than the whole window, because the thing being judged here
+   * is "does this setting look right", not "does this fit a 1080p canvas" — the
+   * full-screen preview is one link away for that. */
   .builder {
-    grid-template-columns: 1fr;
+    @apply grid grid-cols-[minmax(300px,380px)_minmax(0,1fr)] items-start gap-5;
+  }
+
+  .builder-controls,
+  .builder-stage {
+    @apply min-w-0;
   }
 
   .builder-stage {
-    position: static;
-    order: -1;
+    @apply sticky top-4 rounded-card border border-line bg-raised px-[1.15rem] py-[1.1rem];
   }
-}
 
-.field {
-  margin-bottom: 0.9rem;
-}
+  .builder-stage-head {
+    @apply mb-3 flex items-baseline justify-between gap-3;
+  }
 
-.field label {
-  display: block;
-  font-size: 0.85rem;
-  color: var(--text-dim);
-  margin-bottom: 0.3rem;
-}
+  .builder-stage-head .copy-label {
+    @apply m-0;
+  }
 
-.field input[type='range'] {
-  width: 100%;
-  padding: 0;
-  accent-color: var(--accent);
-  background: transparent;
-  border: none;
-}
+  .builder-stage-actions {
+    @apply flex items-center gap-[0.6rem];
+  }
 
-.field input[type='color'] {
-  width: 100%;
-  height: 2.2rem;
-  padding: 0.15rem;
-  cursor: pointer;
-}
+  .builder-stage-actions select {
+    @apply px-[0.4rem] py-[0.25rem] text-[0.8rem];
+  }
 
-.field-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
-}
+  /* The full-screen preview is a convenience, not the thing being done on this
+     page, so it reads as a link and not as a button competing with the copy. */
+  .quiet-link {
+    @apply text-[0.82rem] text-dim;
+  }
 
-.value {
-  float: right;
-  font-family: var(--mono);
-  color: var(--text-faint);
-  font-size: 0.8rem;
-}
+  .quiet-link:hover {
+    @apply text-text;
+  }
 
-/* Small utilities that were inline styles, moved here so the spacing lives in one
-   place and stays consistent across sections. */
-.flush {
-  margin: 0;
-}
+  /* The chat / top-chatters switch: two things you want to look at one at a time,
+     not a dropdown that hides one behind a click. */
+  .seg {
+    @apply inline-flex overflow-hidden rounded-card border border-line;
+  }
 
-.flush-top {
-  margin-top: 0;
-}
+  .seg button {
+    @apply cursor-pointer rounded-none border-0 bg-transparent px-[0.8rem] py-[0.4rem] text-faint;
+  }
 
-.stack-top {
-  margin-top: 1rem;
-}
+  .seg button + button {
+    @apply border-l border-line;
+  }
 
-.tight-caption {
-  margin: 0.4rem 0 0;
-}
+  /* The selected tab is the one filled in the frame, so it has to be the frame's
+     ink on the fill — `--accent-ink`, not white. Both are white here, which made
+     the selected tab invisible against its own background. */
+  .seg button.on {
+    @apply bg-accent font-semibold text-accent-ink;
+  }
 
-/* `flex-start`, not `stretch`: a link that wraps to four lines made a four-line
-   tall Copy button beside it, which looked like the button was the thing being
-   read. The button keeps its own height and sits at the top of the row. */
-.copy-row {
-  display: flex;
-  gap: 0.5rem;
-  align-items: flex-start;
-}
+  .seg button:disabled {
+    @apply cursor-not-allowed opacity-40;
+  }
 
-.empty {
-  text-align: center;
-  padding: 3rem 1rem;
-  color: var(--text-faint);
-}
+  /* ---- the copy field ----
+   *
+   * `CopyField` measures itself, so `overflow: hidden` is what keeps the box from
+   * growing a scrollbar over a link that is one line shorter than the last. */
+  .copy-field {
+    @apply flex min-w-0 flex-col gap-[0.3rem];
+  }
 
-/* The live preview's own stage: the overlay at its real proportions, filling the
-   screen, rather than the scaled-down box beside the builder's controls. A
-   browser source is a fixed rectangle, and the only way to see whether the
-   overlay actually fits it is to show it at that shape and nothing else.
+  /* The name of the overlay, above the link rather than under it. Under, it read as
+     a caption on the URL — which is what it was, and what made every card look like
+     it was made of links. */
+  .copy-label {
+    @apply text-[0.78rem] font-semibold tracking-[0.02em] text-dim uppercase;
+  }
 
-   `min-height` rather than `aspect-ratio`. A 16:9 ratio is the shape of an OBS
-   canvas and is a good default, but as a hard rule it is also a ceiling: a
-   ten-row leaderboard at 28px is ~580px tall, and a stage whose height is
-   derived from its width clips the last row with no scrollbar and no error — a
-   board visibly cut off reads as a broken overlay, not as a frame too short for
-   it. As a floor it keeps that shape for a short overlay and gets out of the way
-   for a tall one, which is what the overlay's own reported height then governs.
-   See LivePreview.tsx. */
-.preview-stage {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  overflow: hidden;
-  background: #000;
-  min-height: 520px;
-  position: relative;
-}
+  /* The link as shown. Not a textarea: the thing on screen is a shortened view of a
+     value, and a textarea invites selecting it and copying something that would not
+     open. `user-select: none` says that plainly — the Copy button beside it is the one
+     way to get the link, and it hands over the whole thing.
 
-/* The iframe fills the stage. Without an explicit size an iframe defaults to
-   300×150, which silently clips whatever the overlay renders — a leaderboard
-   taller than 150px is cut off with no scrollbar and no error, so the preview
-   shows the top two rows of a ten-row board and reads as a broken overlay
-   rather than as a frame that is simply too small to hold it.
+     It wraps rather than scrolls. By the time the origin is off, what is left is
+     short enough that one line is usually right, and when a room's link still carries
+     its styling it is two lines of something rather than five of noise. */
+  .copy-value {
+    @apply min-w-0 flex-1 [overflow-wrap:anywhere] rounded-field border border-line bg-sunken px-[0.6rem] py-[0.55rem] font-mono text-[0.78rem] leading-[1.45] text-dim select-none;
+  }
 
-   `height: 100%` is deliberately NOT here. A 16:9 stage is a floor, not a
-   ceiling: a ten-row leaderboard at 28px is ~580px tall, and a stage whose
-   height is locked to its aspect ratio clips the last row with no scrollbar and
-   no error. The overlay reports its own height over postMessage and the stage
-   takes the larger of the two — see LivePreview.tsx — so the iframe's height is
-   set inline by the component and this rule only supplies the width. */
-.preview-stage iframe {
-  width: 100%;
-  border: 0;
-  display: block;
-}
+  /* `flex-start`, not `stretch`: a link that wraps to four lines made a four-line
+     tall Copy button beside it, which looked like the button was the thing being
+     read. The button keeps its own height and sits at the top of the row. */
+  .copy-row {
+    @apply flex items-start gap-2;
+  }
 
-/* The chat / top-chatters switch: two things you want to look at one at a time,
-   not a dropdown that hides one behind a click. */
-.seg {
-  display: inline-flex;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
+  .copy-row:hover .copy-value {
+    @apply border-line text-dim;
+  }
 
-.seg button {
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--text-faint);
-  padding: 0.4rem 0.8rem;
-  cursor: pointer;
-}
+  /* ---- the preview frames ----
+   *
+   * A fixed rectangle beside the controls, the way a browser source is one. The box
+   * does not change when messages arrive; the overlay grows inside it from the top,
+   * which is what happens on a stream. Beside the controls, a fitting frame was wrong
+   * twice over: a quiet chat reported a 60px height and floated as a small white strip
+   * inside the stage's 520px floor, then swelled as the room warmed up. The box was
+   * reporting its contents instead of standing still while they moved. */
+  .preview-canvas-row {
+    @apply flex justify-center;
+  }
 
-.seg button + button {
-  border-left: 1px solid var(--line);
-}
+  .preview-canvas {
+    @apply relative overflow-hidden rounded-card border border-line;
+    /* A dark field rather than white: an overlay is drawn over video, and light
+       text on white is exactly the combination the colours are chosen against. */
+    background: repeating-conic-gradient(#141414 0% 25%, #0d0d0d 0% 50%) 50% / 18px 18px;
+  }
 
-/* The selected tab is the one filled in the frame, so it has to be the frame's
-   ink on the fill — `--accent-ink`, not white. Both are white here, which made
-   the selected tab invisible against its own background. */
-.seg button.on {
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-weight: 600;
-}
+  .preview-canvas-inner {
+    @apply absolute top-0 left-0 origin-top-left;
+  }
 
-.seg button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
+  /* Transparent, deliberately. The overlay's own `html, body` are transparent — it
+     is drawn over video — but an iframe paints a base background of its own behind
+     a transparent document, and that base is white. Left alone the whole canvas reads
+     as a white rectangle with light text on it, which is precisely the combination
+     the name and text colours are chosen to be legible against. Transparent here
+     lets the field behind it show through, which is the nearest thing to video a
+     dashboard can put there. */
+  .preview-canvas iframe {
+    @apply block h-full w-full border-0 bg-transparent;
+  }
 
-/* ---- toasts ----
-   Fixed to the corner rather than placed in the flow: the message is about an
-   action that has already happened, and it should not push the page around when
-   it appears or leave a gap when it goes. Above the dialog backdrop's layer so a
-   toast raised by a confirmed action is still readable. */
-.toasts {
-  position: fixed;
-  right: 1rem;
-  bottom: 1rem;
-  z-index: 60;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  align-items: flex-end;
-  pointer-events: none;
-}
+  /* The full-screen page's stage: the overlay at its real proportions, filling the
+     screen, rather than the scaled-down box beside the builder's controls.
 
-.toast {
-  pointer-events: auto;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  max-width: min(26rem, calc(100vw - 2rem));
-  padding: 0.6rem 0.6rem 0.6rem 0.9rem;
-  border: 1px solid var(--line);
-  border-left: 2px solid var(--text-dim);
-  border-radius: var(--radius-sm);
-  background: var(--bg-raised);
-  color: var(--text);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 55%);
-  animation: toast-in 160ms ease-out;
-}
+     `min-height` rather than `aspect-ratio`. A 16:9 ratio is the shape of an OBS
+     canvas and is a good default, but as a hard rule it is also a ceiling: a ten-row
+     leaderboard at 28px is ~580px tall, and a stage whose height is derived from its
+     width clips the last row with no scrollbar and no error — a board visibly cut off
+     reads as a broken overlay, not as a frame too short for it. As a floor it keeps
+     that shape for a short overlay and gets out of the way for a tall one, which is
+     what the overlay's own reported height then governs. See LivePreview.tsx. */
+  .preview-stage {
+    /* `bg-sunken`, not `bg-black`: both are #000000, and the palette reset above
+       means `bg-black` does not exist to apply. */
+    @apply relative min-h-[520px] overflow-hidden rounded-card border border-line bg-sunken;
+  }
 
-.toast-close {
-  border: 0;
-  background: transparent;
-  color: var(--text-faint);
-  padding: 0 0.4rem;
-  font-size: 1.1rem;
-  line-height: 1;
-  cursor: pointer;
-}
+  /* The iframe fills the stage. Without an explicit size an iframe defaults to
+     300×150, which silently clips whatever the overlay renders — a leaderboard
+     taller than 150px is cut off with no scrollbar and no error, so the preview
+     shows the top two rows of a ten-row board and reads as a broken overlay rather
+     than as a frame that is simply too small to hold it. */
+  .preview-stage iframe {
+    @apply block w-full border-0;
+  }
 
-.toast-close:hover {
-  color: var(--text);
+  /* ---- toasts ----
+   *
+   * Fixed to the corner rather than placed in the flow: the message is about an
+   * action that has already happened, and it should not push the page around when it
+   * appears or leave a gap when it goes. Above the dialog backdrop's layer so a
+   * toast raised by a confirmed action is still readable. */
+  .toasts {
+    @apply pointer-events-none fixed right-4 bottom-4 z-60 flex flex-col items-end gap-2;
+  }
+
+  .toast {
+    @apply pointer-events-auto flex max-w-[min(26rem,calc(100vw-2rem))] items-center gap-3 rounded-field border border-line border-l-2 border-l-dim bg-raised py-[0.6rem] pr-[0.6rem] pl-[0.9rem] text-text shadow-[0_8px_24px_rgb(0_0_0/0.55)] animate-[toast-in_160ms_ease-out];
+  }
+
+  .toast-close {
+    @apply cursor-pointer border-0 bg-transparent py-0 pr-[0.4rem] pl-0 text-[1.1rem] leading-none text-faint;
+  }
+
+  .toast-close:hover {
+    @apply text-text;
+  }
+
+  /* ---- the confirmation dialog ----
+   *
+   * The panel is drawn by us; the browser still supplies the focus trap, Escape
+   * and the inert background, which is the part worth not writing by hand. */
+  .dialog {
+    @apply max-w-[min(28rem,calc(100vw-2rem))] border-0 bg-transparent p-0 text-text;
+  }
+
+  .dialog::backdrop {
+    background: rgb(0 0 0 / 0.65);
+  }
+
+  .dialog-panel {
+    @apply rounded-card border border-line bg-raised px-[1.25rem] pt-5 pb-4 shadow-[0_16px_48px_rgb(0_0_0/0.6)];
+  }
+
+  .dialog-panel h3 {
+    @apply mb-[0.6rem] text-[1.05rem];
+  }
+
+  .dialog-body {
+    @apply text-[0.92rem] leading-[1.5] text-dim;
+  }
+
+  .dialog-body strong {
+    @apply text-text;
+  }
+
+  .dialog-actions {
+    @apply mt-5 flex justify-end gap-2;
+  }
+
+  /* ---- the stream hub ----
+   *
+   * One card per stream, and the card carries the links.
+   *
+   * This was a single-column list of full-width rows, so five streams were five
+   * nearly identical bands with the links two clicks away. A grid gives each stream
+   * its own box, and the links sit inside it — copying one is the thing the operator
+   * came to do, so it is on the card rather than behind "Style". */
+  .stream-grid {
+    @apply mt-5 grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] items-start gap-4 max-[560px]:grid-cols-1;
+  }
+
+  .stream-card {
+    @apply flex flex-col gap-[0.85rem] rounded-card border border-line bg-raised px-[1.15rem] py-[1.1rem];
+  }
+
+  .stream-head {
+    @apply flex items-start gap-3;
+  }
+
+  .stream-name {
+    @apply flex min-w-0 flex-wrap items-center gap-2 [overflow-wrap:anywhere] text-[1.02rem] tracking-[-0.01em];
+  }
+
+  .stream-label {
+    @apply mt-[0.15rem] mb-0;
+  }
+
+  .stream-links {
+    @apply flex flex-col gap-[0.7rem];
+  }
+
+  /* On a card, the link is the whole point and the label above already names it, so
+     there is no room for a sentence under it. */
+  .stream-links .copy-field .faint {
+    @apply hidden;
+  }
+
+  .stream-actions {
+    @apply mt-auto flex gap-2 border-t border-line-soft pt-[0.35rem];
+  }
+
+  .stream-actions .danger {
+    @apply ml-auto;
+  }
+
+  /* Where the links on this page point. Said once here rather than repeated on
+     every card, because the field scrolls to the end of the URL — which is where
+     the part that differs between links lives, and the origin is not it. */
+  .stream-origin {
+    @apply mt-[0.25rem] mb-0;
+  }
+
+  /* ---- the empty state ----
+   *
+   * Three steps rather than one sentence, because the question a new operator has is
+   * not "is the list empty" — it is "what do I do next, and in what order". */
+  .getting-started {
+    @apply mt-5;
+  }
+
+  .getting-started .steps {
+    /* `list-decimal` is restored explicitly because preflight removes list markers
+       wholesale, and these steps are numbered on purpose — the number is the order
+       they are meant to be done in. */
+    @apply mt-2 mb-0 flex list-decimal flex-col gap-[0.6rem] pl-5 text-dim;
+  }
+
+  .getting-started .steps strong {
+    @apply text-text;
+  }
 }
 
 @keyframes toast-in {
@@ -981,299 +936,53 @@ code,
   }
 }
 
+/* The sidebar collapses to a horizontal bar rather than disappearing: on a narrow
+   screen the navigation still has to be reachable, and a hamburger that hides the
+   only way back is worse than a scroller. */
+@media (max-width: 720px) {
+  .admin {
+    @apply grid-cols-1;
+  }
+
+  .sidebar {
+    @apply static h-auto! border-r-0 border-b border-line;
+  }
+
+  .sidebar nav {
+    @apply flex-row flex-wrap overflow-x-auto;
+  }
+}
+
+@media (max-width: 860px) {
+  .login {
+    @apply grid-cols-1;
+  }
+
+  .login-brand {
+    @apply hidden;
+  }
+
+  .login-lockup-sm {
+    @apply block;
+  }
+}
+
+/* On a narrow window the frame goes under the controls rather than beside them:
+   side by side, both would be too thin to be worth having. */
+@media (max-width: 900px) {
+  .builder {
+    @apply grid-cols-1;
+  }
+
+  .builder-stage {
+    @apply static order-first;
+  }
+}
+
 /* Respect a stated preference for less motion: the toast still appears, it just
    does not slide. */
 @media (prefers-reduced-motion: reduce) {
   .toast {
     animation: none;
   }
-}
-
-/* ---- confirmation dialog ----
-   The panel is drawn by us; the browser still supplies the focus trap, Escape
-   and the inert background, which is the part worth not writing by hand. */
-.dialog {
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: var(--text);
-  max-width: min(28rem, calc(100vw - 2rem));
-}
-
-.dialog::backdrop {
-  background: rgb(0 0 0 / 65%);
-}
-
-.dialog-panel {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--bg-raised);
-  padding: 1.25rem 1.25rem 1rem;
-  box-shadow: 0 16px 48px rgb(0 0 0 / 60%);
-}
-
-.dialog-panel h3 {
-  margin: 0 0 0.6rem;
-  font-size: 1.05rem;
-}
-
-.dialog-body {
-  color: var(--text-dim);
-  font-size: 0.92rem;
-  line-height: 1.5;
-}
-
-.dialog-body strong {
-  color: var(--text);
-}
-
-.dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  margin-top: 1.25rem;
-}
-
-/* The palette has no red on purpose, so the destructive button is not signalled
-   by a hue. It is the solid one — the strongest contrast in the frame — and the
-   label says exactly what it does. Position is the other signal: it sits last,
-   after Cancel. */
-button.danger-solid {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-ink);
-  font-weight: 600;
-}
-
-button.danger-solid:hover:not(:disabled) {
-  background: var(--accent-dim);
-  border-color: var(--accent-dim);
-  color: var(--accent-ink);
-}
-/* ---- the stream hub ------------------------------------------------------
-   One card per stream, and the card carries the links.
-
-   This was a single-column list of full-width rows, so five streams were five
-   nearly identical bands with the links two clicks away. A grid gives each stream
-   its own box, and the links sit inside it — copying one is the thing the operator
-   came to do, so it is on the card rather than behind "Style". */
-
-.stream-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: 1rem;
-  margin-top: 1.25rem;
-  /* Each card is its own height. Stretching them to match the tallest left the
-     shorter ones with a pool of empty space above the buttons, which read as a card
-     that failed to load. */
-  align-items: start;
-}
-
-@media (max-width: 560px) {
-  .stream-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.stream-card {
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
-  padding: 1.1rem 1.15rem;
-  background: var(--bg-raised);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-}
-
-.stream-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-}
-
-.stream-name {
-  margin: 0;
-  font-size: 1.02rem;
-  letter-spacing: -0.01em;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.stream-label {
-  margin: 0.15rem 0 0;
-}
-
-.stream-links {
-  display: flex;
-  flex-direction: column;
-  gap: 0.7rem;
-}
-
-.stream-actions {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: auto;
-  padding-top: 0.35rem;
-  border-top: 1px solid var(--line-soft);
-}
-
-.stream-actions .danger {
-  margin-left: auto;
-}
-
-/* On a card, the link is the whole point and the label above already names it, so
-   there is no room for a sentence under it. */
-.stream-links .copy-field .faint {
-  display: none;
-}
-
-/* ---- the empty state -----------------------------------------------------
-   Three steps rather than one sentence, because the question a new operator has is
-   not "is the list empty" — it is "what do I do next, and in what order". */
-
-.getting-started {
-  margin-top: 1.25rem;
-}
-
-.getting-started .steps {
-  margin: 0.5rem 0 0;
-  padding-left: 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  color: var(--text-dim);
-}
-
-.getting-started .steps strong {
-  color: var(--text);
-}
-
-/* ---- the copy field -----------------------------------------------------
-   `CopyField` measures itself, so `overflow: hidden` is what keeps the box from
-   growing a scrollbar over a link that is one line shorter than the last. */
-
-.copy-field {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-/* The name of the overlay, above the link rather than under it. Under, it read as
-   a caption on the URL — which is what it was, and what made every card look like
-   it was made of links. */
-.copy-label {
-  font-size: 0.78rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-}
-
-/* One line, never wrapped.
-   Wrapping was tried first and it is unreadable: an unstyled room's link is about
-   250 characters of URL-encoded settings, and letting it wrap filled half a card
-   with noise that nobody reads before pasting. The link scrolls sideways instead,
-   which keeps every card the same height and keeps the field honest — what is in
-   the field is what gets copied, elided or not. */
-/*
- * The link as shown. Not a textarea: the thing on screen is a shortened view of a
- * value, and a textarea invites selecting it and copying something that would not
- * open. `user-select: none` says that plainly — the Copy button beside it is the one
- * way to get the link, and it hands over the whole thing.
- *
- * It wraps rather than scrolls. By the time the origin is off, what is left is
- * short enough that one line is usually right, and when a room's link still carries
- * its styling it is two lines of something rather than five of noise.
- */
-.copy-value {
-  flex: 1;
-  min-width: 0;
-  font-family: var(--mono);
-  font-size: 0.78rem;
-  line-height: 1.45;
-  color: var(--text-dim);
-  background: var(--bg-sunken);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 0.55rem 0.6rem;
-  overflow-wrap: anywhere;
-  user-select: none;
-}
-
-.copy-row:hover .copy-value {
-  border-color: var(--line);
-  color: var(--text-dim);
-}
-
-/* Where the links on this page point. Said once here rather than repeated on
-   every card, because the field scrolls to the end of the URL — which is where
-   the part that differs between links lives, and the origin is not it. */
-.stream-origin {
-  margin: 0.25rem 0 0;
-}
-
-/* ---- the preview canvas -------------------------------------------------
-   A fixed rectangle, the way a browser source is one. The box does not change
-   when messages arrive; the overlay grows inside it from the top, which is what
-   happens on a stream. The frame that fits its contents instead — used by the
-   full-screen page, where seeing all of a ten-row board at once is the whole
-   question — is `.preview-stage` above.
-
-   Beside the controls, a fitting frame was wrong twice over: a quiet chat
-   reported a 60px height and floated as a small white strip inside the stage's
-   520px floor, then swelled to three quarters of the panel as the room warmed
-   up, and a leaderboard rebuilt each poll shrank whenever the ranking did. The
-   box was reporting its contents instead of standing still while they moved. */
-
-.preview-canvas-row {
-  display: flex;
-  justify-content: center;
-}
-
-.preview-canvas {
-  position: relative;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  /* A dark field rather than white: an overlay is drawn over video, and light
-     text on white is exactly the combination the colours are chosen against. */
-  background:
-    repeating-conic-gradient(#141414 0% 25%, #0d0d0d 0% 50%) 50% / 18px 18px;
-}
-
-.preview-canvas-inner {
-  position: absolute;
-  top: 0;
-  left: 0;
-  transform-origin: top left;
-}
-
-/* Transparent, deliberately. The overlay's own `html, body` are transparent — it is
-   drawn over video — but an iframe paints a base background of its own behind a
-   transparent document, and that base is white. Left alone the whole canvas reads
-   as a white rectangle with light text on it, which is precisely the combination
-   the name and text colours are chosen to be legible against. Transparent here
-   lets the field behind it show through, which is the nearest thing to video a
-   dashboard can put there. */
-.preview-canvas iframe {
-  width: 100%;
-  height: 100%;
-  border: 0;
-  display: block;
-  background: transparent;
-}
-
-.builder-stage-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-}
-
-.builder-stage-actions select {
-  padding: 0.25rem 0.4rem;
-  font-size: 0.8rem;
 }

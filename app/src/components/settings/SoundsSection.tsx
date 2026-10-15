@@ -21,12 +21,16 @@ interface Props {
  * file or the same choice.
  */
 const EVENTS = [
-  { key: 'giftSoundPath', templateKey: 'giftTemplate', label: 'Gift sound' },
-  { key: 'chatSoundPath', templateKey: 'chatTemplate', label: 'Chat blip' },
-  { key: 'joinSoundPath', templateKey: 'joinTemplate', label: 'Join knock' },
+  { key: 'giftSoundPath', templateKey: 'giftTemplate', volumeKey: 'giftSoundVolume', gapKey: 'giftSoundGapMs', label: 'Gift sound' },
+  { key: 'chatSoundPath', templateKey: 'chatTemplate', volumeKey: 'chatSoundVolume', gapKey: 'chatSoundGapMs', label: 'Chat blip' },
+  { key: 'joinSoundPath', templateKey: 'joinTemplate', volumeKey: 'joinSoundVolume', gapKey: 'joinSoundGapMs', label: 'Join knock' },
+  { key: 'followSoundPath', templateKey: 'followTemplate', volumeKey: 'followSoundVolume', gapKey: 'followSoundGapMs', label: 'Follow sound' },
+  { key: 'shareSoundPath', templateKey: 'shareTemplate', volumeKey: 'shareSoundVolume', gapKey: 'shareSoundGapMs', label: 'Share sound' },
 ] as const satisfies ReadonlyArray<{
-  key: 'giftSoundPath' | 'chatSoundPath' | 'joinSoundPath'
-  templateKey: 'giftTemplate' | 'chatTemplate' | 'joinTemplate'
+  key: 'giftSoundPath' | 'chatSoundPath' | 'joinSoundPath' | 'followSoundPath' | 'shareSoundPath'
+  templateKey: 'giftTemplate' | 'chatTemplate' | 'joinTemplate' | 'followTemplate' | 'shareTemplate'
+  volumeKey: 'giftSoundVolume' | 'chatSoundVolume' | 'joinSoundVolume' | 'followSoundVolume' | 'shareSoundVolume'
+  gapKey: 'giftSoundGapMs' | 'chatSoundGapMs' | 'joinSoundGapMs' | 'followSoundGapMs' | 'shareSoundGapMs'
   label: string
 }>
 
@@ -65,9 +69,9 @@ export function SoundsSection({ settings, set }: Props) {
   // picked before trusting it to fire on a gift. A custom file wins over the
   // template, exactly as it does when a real event fires — a preview that sounded
   // different from the real thing would be worse than no preview.
-  function preview(templateId: string, customPath: string) {
+  function preview(templateId: string, customPath: string, volume: number) {
     previewContextRef.current ??= resolveAudio()
-    void playSound(previewContextRef.current, templateId, customPath)
+    void playSound(previewContextRef.current, templateId, customPath, volume / 100)
   }
 
   async function pickCustom(key: (typeof EVENTS)[number]['key']) {
@@ -108,6 +112,8 @@ export function SoundsSection({ settings, set }: Props) {
       <div className="sound-rows">
         {EVENTS.map((event) => {
           const customPath = settings[event.key]
+          const volume = settings[event.volumeKey]
+          const gapMs = settings[event.gapKey]
           const busy = status.kind === 'busy'
           return (
             // A div, not a label: a label wrapping a select AND the buttons beside
@@ -130,7 +136,7 @@ export function SoundsSection({ settings, set }: Props) {
                 </select>
                 <button
                   className="btn btn-small"
-                  onClick={() => preview(settings[event.templateKey], customPath)}
+                  onClick={() => preview(settings[event.templateKey], customPath, volume)}
                   title="Hear it"
                 >
                   ▶
@@ -152,14 +158,42 @@ export function SoundsSection({ settings, set }: Props) {
               <span className="field-note">
                 {customPath ? basename(customPath) : 'No file — the template is used.'}
               </span>
+              <span className="sound-event-options">
+                <label className="sound-volume-control">
+                  <span className="field-note">Volume</span>
+                  <input
+                    className="slider"
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={volume}
+                    aria-label={`${event.label} volume`}
+                    onChange={(e) => set(event.volumeKey, Number(e.target.value))}
+                  />
+                  <span className="slider-readout">{volume}%</span>
+                </label>
+                <label className="sound-gap-control">
+                  <span className="field-note">Cooldown</span>
+                  <input
+                    className="input"
+                    type="number"
+                    min={100}
+                    max={30000}
+                    step={100}
+                    value={gapMs}
+                    aria-label={`${event.label} cooldown in milliseconds`}
+                    onChange={(e) => set(event.gapKey, Math.min(30000, Math.max(100, Number(e.target.value) || 100)))}
+                  />
+                  <span className="field-note">ms</span>
+                </label>
+              </span>
             </div>
           )
         })}
       </div>
 
-      <span className="field-note">
-        Join sounds play at most every couple of seconds, however many arrive.
-      </span>
+      <span className="field-note">Each event has its own volume and cooldown. Cooldown is in milliseconds.</span>
     </Section>
   )
 }

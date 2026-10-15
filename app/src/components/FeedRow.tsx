@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import { kindLabel } from '../hooks/useFeed'
 import { mentionsMe } from '../lib/mentions'
 import { tiktokProfileUrl } from '../lib/platforms'
@@ -83,6 +83,17 @@ function mentionsSomebody(item: FeedItem, myNames: string[]): boolean {
 function FeedRowImpl({ item, isLast, myNames }: Props) {
   const repeat = item.repeatCount ?? 1
   const mentioned = mentionsSomebody(item, myNames ?? [])
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
+
+  async function copyMessage() {
+    if (item.kind !== 'chat') return
+    try {
+      await navigator.clipboard.writeText(`${item.nickname || 'Viewer'}: ${item.text}`)
+      setCopyState('copied')
+    } catch {
+      setCopyState('failed')
+    }
+  }
 
   return (
     <div className={`row row-${item.kind}${isLast ? ' row-new' : ''}`}>
@@ -124,6 +135,17 @@ function FeedRowImpl({ item, isLast, myNames }: Props) {
             </span>
           )}
           <span className="time">{formatTime(item.timestamp)}</span>
+          {item.kind === 'chat' && (
+            <button
+              className={`copy-message-btn${copyState === 'copied' ? ' is-copied' : ''}`}
+              type="button"
+              title={copyState === 'copied' ? 'Pesan tersalin' : copyState === 'failed' ? 'Pesan gagal disalin' : 'Salin pesan'}
+              aria-label={copyState === 'copied' ? 'Pesan tersalin' : 'Salin pesan'}
+              onClick={() => void copyMessage()}
+            >
+              {copyState === 'copied' ? '✓' : '⧉'}
+            </button>
+          )}
         </div>
 
         {item.kind === 'chat' ? (

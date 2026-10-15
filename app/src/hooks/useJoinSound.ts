@@ -32,9 +32,11 @@ interface Options {
   templateId: string
   /** A user-picked sound file, played instead of the template when set. */
   customPath: string
+  volume: number
+  gapMs: number
 }
 
-export function useJoinSound({ enabled, templateId, customPath }: Options): void {
+export function useJoinSound({ enabled, templateId, customPath, volume, gapMs }: Options): void {
   const { play } = useAudioPlayer()
   // A ref rather than state: read and written inside an event handler, and a
   // state update would be a render for a value nothing renders.
@@ -43,13 +45,13 @@ export function useJoinSound({ enabled, templateId, customPath }: Options): void
   useRoomEvents((event: SidecarEvent) => {
     if (event.type !== 'join') return
     const now = Date.now()
-    if (!shouldPlayJoinSound(enabled, lastPlayedAt.current, now)) return
+    if (!shouldPlayJoinSound(enabled, lastPlayedAt.current, now, gapMs)) return
     lastPlayedAt.current = now
     // Fired and forgotten: the gap above is what keeps two arrivals from
     // overlapping, and awaiting here would let a rejection from a slow decode
     // surface as an unhandled rejection from the feed handler.
-    void play(templateId, customPath)
-  }, [enabled, templateId, customPath])
+    void play(templateId, customPath, volume / 100)
+  }, [enabled, templateId, customPath, volume, gapMs])
 
   // Turned off: forget when the last sound was, so the next one is not measured
   // against a gap that started before the user asked for silence.

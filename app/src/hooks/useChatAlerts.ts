@@ -36,9 +36,11 @@ interface Options {
   templateId: string
   /** A user-picked sound file, played instead of the template when set. */
   customPath: string
+  soundVolume: number
+  soundGapMs: number
 }
 
-export function useChatAlerts({ chatSound, chatTts, voice, templateId, customPath }: Options): void {
+export function useChatAlerts({ chatSound, chatTts, voice, templateId, customPath, soundVolume, soundGapMs }: Options): void {
   const { play } = useAudioPlayer()
   const lastBlipAt = useRef<number | null>(null)
 
@@ -48,14 +50,14 @@ export function useChatAlerts({ chatSound, chatTts, voice, templateId, customPat
 
     if (chatSound) {
       const now = Date.now()
-      if (shouldPlayChatSound(chatSound, lastBlipAt.current, now)) {
+      if (shouldPlayChatSound(chatSound, lastBlipAt.current, now, soundGapMs)) {
         lastBlipAt.current = now
-        void play(templateId, customPath)
+        void play(templateId, customPath, soundVolume / 100)
       }
     }
 
     if (chatTts) say(ttsText(event.text), voice)
-  }, [chatSound, chatTts, voice.pace, voice.language, voice.volume, templateId, customPath])
+  }, [chatSound, chatTts, voice.pace, voice.language, voice.volume, templateId, customPath, soundVolume, soundGapMs])
 
   // Turned off: forget when the last blip was, so turning it back on does not wait
   // out a gap that started while it was off. The voice is shared, so stopping it

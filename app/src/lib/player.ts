@@ -118,9 +118,10 @@ export function playMention(context: AudioContext): void {
 }
 
 /** Plays a whole template through the context. */
-function playTemplate(context: AudioContext, template: SoundTemplate): void {
+function playTemplate(context: AudioContext, template: SoundTemplate, volume: number): void {
+  const level = Math.min(1, Math.max(0, Number.isFinite(volume) ? volume : 1))
   for (const note of template.notes) {
-    playNote(context, note.frequency, note.delayMs / 1000, note.durationMs, template.gain * note.level, template.wave)
+    playNote(context, note.frequency, note.delayMs / 1000, note.durationMs, template.gain * note.level * level, template.wave)
     if (note.octave && note.octaveLevel) {
       // A beat late, like a struck string's harmonic.
       playNote(
@@ -128,7 +129,7 @@ function playTemplate(context: AudioContext, template: SoundTemplate): void {
         note.frequency * 2 ** note.octave,
         note.delayMs / 1000 + 0.02,
         note.durationMs,
-        template.gain * note.level * note.octaveLevel,
+        template.gain * note.level * note.octaveLevel * level,
         template.wave,
       )
     }
@@ -214,6 +215,7 @@ export async function playSound(
   context: AudioContext | null,
   templateId: string,
   customPath: string,
+  volume = 1,
 ): Promise<AudioContext | null> {
   const resolved = context ?? resolveAudio()
   if (!resolved) return null
@@ -224,7 +226,9 @@ export async function playSound(
     if (buffer) {
       const source = resolved.createBufferSource()
       source.buffer = buffer
-      source.connect(resolved.destination)
+      const gain = resolved.createGain()
+      gain.gain.value = Math.min(1, Math.max(0, Number.isFinite(volume) ? volume : 1))
+      source.connect(gain).connect(resolved.destination)
       source.start()
       return resolved
     }
@@ -232,6 +236,6 @@ export async function playSound(
     // to silence: the user asked for a sound, and a built-in one beats none.
   }
 
-  playTemplate(resolved, resolveTemplate(templateId))
+  playTemplate(resolved, resolveTemplate(templateId), volume)
   return resolved
 }

@@ -58,15 +58,31 @@ export interface ViewSettings {
    * information within a minute of being turned on.
    */
   joinSound: boolean
+  /** Play a sound when somebody follows. */
+  followSound: boolean
+  /** Play a sound when somebody shares the stream. */
+  shareSound: boolean
+  giftSoundVolume: number
+  chatSoundVolume: number
+  joinSoundVolume: number
+  followSoundVolume: number
+  shareSoundVolume: number
+  giftSoundGapMs: number
+  chatSoundGapMs: number
+  joinSoundGapMs: number
+  followSoundGapMs: number
+  shareSoundGapMs: number
+  /** Show a popup when somebody sends a gift. */
+  giftPopup: boolean
+  /** Show a popup when somebody follows. */
+  followPopup: boolean
+  /** Show a popup when somebody shares the stream. */
+  sharePopup: boolean
   /** Raise a desktop toast when a gift arrives. */
   giftNotice: boolean
   /** Answer a greeting with a line of its own, so a newcomer is not met with
    *  silence. Off by default: it makes the app talk, which has to be asked for. */
   autoReply: boolean
-  /** Show the session stats panel at the bottom of the window. */
-  showStats: boolean
-  /** Show the in-app log panel at the bottom of the window. */
-  showLog: boolean
   /** Play a short blip when a new chat message arrives. */
   chatSound: boolean
   /** Read new chat messages aloud with the system voice. */
@@ -123,6 +139,10 @@ export interface ViewSettings {
   chatTemplate: string
   /** Which synthesised sound an arrival plays. */
   joinTemplate: string
+  /** Which synthesised sound a follow plays. */
+  followTemplate: string
+  /** Which synthesised sound a share plays. */
+  shareTemplate: string
   /**
    * A sound file the user picked for gifts, played instead of `giftTemplate`.
    *
@@ -140,6 +160,10 @@ export interface ViewSettings {
   chatSoundPath: string
   /** A sound file for arrivals, played instead of `joinTemplate`. */
   joinSoundPath: string
+  /** A sound file for follows, played instead of `followTemplate`. */
+  followSoundPath: string
+  /** A sound file for shares, played instead of `shareTemplate`. */
+  shareSoundPath: string
 }
 
 export const DEFAULT_SETTINGS: ViewSettings = {
@@ -155,10 +179,23 @@ export const DEFAULT_SETTINGS: ViewSettings = {
   alwaysOnTop: false,
   giftSound: true,
   joinSound: false,
+  followSound: true,
+  shareSound: true,
+  giftSoundVolume: 100,
+  chatSoundVolume: 100,
+  joinSoundVolume: 100,
+  followSoundVolume: 100,
+  shareSoundVolume: 100,
+  giftSoundGapMs: 4000,
+  chatSoundGapMs: 500,
+  joinSoundGapMs: 2000,
+  followSoundGapMs: 1500,
+  shareSoundGapMs: 1500,
+  giftPopup: true,
+  followPopup: true,
+  sharePopup: true,
   giftNotice: true,
   autoReply: false,
-  showStats: true,
-  showLog: true,
   chatSound: false,
   chatTts: false,
   giftVoice: false,
@@ -171,9 +208,13 @@ export const DEFAULT_SETTINGS: ViewSettings = {
   giftTemplate: 'chime',
   chatTemplate: 'blip',
   joinTemplate: 'pop',
+  followTemplate: 'chirp',
+  shareTemplate: 'retro',
   giftSoundPath: '',
   chatSoundPath: '',
   joinSoundPath: '',
+  followSoundPath: '',
+  shareSoundPath: '',
 }
 
 const FONT_MIN = 0.75
@@ -213,11 +254,23 @@ function load(): ViewSettings {
       // Clamped rather than checked, because unlike a name this one has no "is
       // this a value we offer" question — it has a range, and the range is all.
       ttsVolume: clampVolume(saved.ttsVolume ?? DEFAULT_SETTINGS.ttsVolume),
+      giftSoundVolume: clamp(saved.giftSoundVolume ?? DEFAULT_SETTINGS.giftSoundVolume, 0, 100),
+      chatSoundVolume: clamp(saved.chatSoundVolume ?? DEFAULT_SETTINGS.chatSoundVolume, 0, 100),
+      joinSoundVolume: clamp(saved.joinSoundVolume ?? DEFAULT_SETTINGS.joinSoundVolume, 0, 100),
+      followSoundVolume: clamp(saved.followSoundVolume ?? DEFAULT_SETTINGS.followSoundVolume, 0, 100),
+      shareSoundVolume: clamp(saved.shareSoundVolume ?? DEFAULT_SETTINGS.shareSoundVolume, 0, 100),
+      giftSoundGapMs: clamp(saved.giftSoundGapMs ?? DEFAULT_SETTINGS.giftSoundGapMs, 100, 30000),
+      chatSoundGapMs: clamp(saved.chatSoundGapMs ?? DEFAULT_SETTINGS.chatSoundGapMs, 100, 30000),
+      joinSoundGapMs: clamp(saved.joinSoundGapMs ?? DEFAULT_SETTINGS.joinSoundGapMs, 100, 30000),
+      followSoundGapMs: clamp(saved.followSoundGapMs ?? DEFAULT_SETTINGS.followSoundGapMs, 100, 30000),
+      shareSoundGapMs: clamp(saved.shareSoundGapMs ?? DEFAULT_SETTINGS.shareSoundGapMs, 100, 30000),
       // A build before the split wrote no per-event path at all, so a missing one
       // falls back to the file that used to serve every event.
       giftSoundPath: saved.giftSoundPath ?? legacy,
       chatSoundPath: saved.chatSoundPath ?? legacy,
       joinSoundPath: saved.joinSoundPath ?? legacy,
+      followSoundPath: saved.followSoundPath ?? '',
+      shareSoundPath: saved.shareSoundPath ?? '',
     }
   } catch {
     return DEFAULT_SETTINGS

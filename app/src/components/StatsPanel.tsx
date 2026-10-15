@@ -1,61 +1,62 @@
-import { useMemo, useState } from 'react'
-import { sparkPath } from '../lib/stats'
+import { useMemo } from 'react'
+import Chart from 'react-apexcharts'
+import type { ApexOptions } from 'apexcharts'
 import { useStats, type StatsRecorder } from '../hooks/useStats'
 import { RollingNumber } from './RollingNumber'
+import { AvatarCircles } from './ui/avatar-circles'
+import { tiktokProfileUrl } from '../lib/platforms'
 
 /**
  * The session readout.
  *
- * Collapsed by default and given the bottom of the window, because the chat is
- * what the app is for. What earns it a place here is that it survives the feed's
- * cap: the feed drops its oldest rows, these numbers do not, so a stream that has
- * been running for two hours can still be read at a glance.
+ * Rendered as a full page selected from the Dock. The stats survive the feed's
+ * cap: the feed drops its oldest rows, so a long session can still be read here.
  */
 
 interface Props {
   stats: StatsRecorder
 }
 
-const SPARK_WIDTH = 240
-const SPARK_HEIGHT = 34
-
 export function StatsPanel({ stats }: Props) {
-  const [open, setOpen] = useState(false)
   const snapshot = useStats(stats)
 
   const live = snapshot.viewers > 0 || snapshot.totalMessages > 0
+  const chatterAvatars = snapshot.topChatters
+    .map((chatter) => ({
+      imageUrl: chatter.avatar,
+      profileUrl: tiktokProfileUrl(chatter.id),
+      label: chatter.nickname,
+    }))
+    .filter((chatter) => chatter.imageUrl && chatter.profileUrl)
+  const visibleAvatars = chatterAvatars.slice(0, 5)
 
   return (
-    <div className={`stats-panel${open ? ' stats-open' : ''}`}>
+    <div className="stats-panel">
       <div className="stats-bar">
-        <button className="stats-toggle" onClick={() => setOpen((value) => !value)}>
-          <span className={`log-caret${open ? ' log-caret-open' : ''}`}>▸</span>
-          Stats
-        </button>
-
-        {/* Read even while collapsed: the whole point of a collapsed panel is that
-            the number is visible without opening it. */}
         <span className="stats-glance" title="Watching now">
           <RollingNumber value={snapshot.viewers} />
         </span>
         <span className="stats-glance" title="Chat messages per minute">
           {snapshot.messagesPerMinute.toLocaleString()}/min
         </span>
+        {visibleAvatars.length > 0 && (
+          <AvatarCircles
+            avatarUrls={visibleAvatars}
+            numPeople={Math.max(0, snapshot.topChatters.length - visibleAvatars.length)}
+          />
+        )}
         {snapshot.diamonds > 0 && (
           <span className="stats-glance stats-diamonds" title="Diamonds sent this session">
             {snapshot.diamonds.toLocaleString()} ◆
           </span>
         )}
 
-        {open && (
-          <button className="btn btn-small stats-reset" onClick={() => stats.reset()}>
-            Reset
-          </button>
-        )}
+        <button className="btn btn-small stats-reset" onClick={() => stats.reset()}>
+          Reset
+        </button>
       </div>
 
-      {open && (
-        <div className="stats-body">
+      <div className="stats-body">
           {!live ? (
             <p className="stats-empty">Nothing yet. Connect to a room and the numbers fill in.</p>
           ) : (
@@ -116,8 +117,7 @@ export function StatsPanel({ stats }: Props) {
               </div>
             </>
           )}
-        </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -150,36 +150,102 @@ function Tile({
  * the sampling rather than describe the room.
  */
 function Spark({ now, peak, values }: { now: number; peak: number; values: number[] }) {
-  const path = useMemo(() => sparkPath(values, SPARK_WIDTH, SPARK_HEIGHT), [values])
+  const series = useMemo(() => [{ name: 'Viewers', data: values }], [values])
+  const categories = useMemo(() => {
+    const step = Math.max(1, Math.ceil((values.length - 1) / 5))
+    return values.map((_, index) => {
+      if (index === values.length - 1) return 'Now'
+      if (index % step !== 0) return ''
+      const secondsAgo = (values.length - 1 - index) * 5
+      return secondsAgo >= 60 ? `-${Math.round(secondsAgo / 60)}m` : `-${secondsAgo}s`
+    })
+  }, [values])
+  const options = useMemo<ApexOptions>(() => ({
+    chart: {
+      type: 'line',
+      height: 230,
+      background: 'transparent',
+      sparkline: { enabled: false },
+      toolbar: {
+        show: true,
+        tools: {
+          download: false,
+          selection: false,
+          zoom: false,
+          zoomin: false,
+          zoomout: false,
+          pan: false,
+          reset: false,
+        },
+      },
+      zoom: { enabled: false },
+      parentHeightOffset: 0,
+      foreColor: '#626b75',
+      animations: {
+        enabled: true,
+        easing: 'easeinout',
+        speed: 450,
+        animateGradually: { enabled: false },
+        dynamicAnimation: { enabled: true, speed: 350 },
+      },
+    },
+    theme: { mode: 'light' },
+    colors: ['#111111'],
+    dataLabels: { enabled: false },
+    stroke: { curve: 'straight', width: 3, lineCap: 'round', colors: ['#111111'] },
+    grid: {
+      borderColor: '#e4e8ed',
+      strokeDashArray: 0,
+      padding: { left: 8, right: 12, top: 0, bottom: 0 },
+    },
+    xaxis: {
+      categories,
+      tickAmount: 5,
+      labels: {
+        show: true,
+        rotate: 0,
+        hideOverlappingLabels: true,
+        style: { colors: '#626b75', fontSize: '10px' },
+      },
+      axisBorder: { show: false },
+      axisTicks: { show: false },
+      tooltip: { enabled: false },
+    },
+    yaxis: {
+      min: 0,
+      max: Math.max(peak, 1) * 1.15,
+      tickAmount: 3,
+      labels: {
+        formatter: (value) => Math.round(value).toLocaleString(),
+        style: { colors: '#626b75', fontSize: '10px' },
+      },
+    },
+    // A fresh session starts with a single real sample. Keep its point visible
+    // until the next sample gives ApexCharts two points to connect as a line.
+    markers: { size: 0, hover: { size: 4, sizeOffset: 2 }, strokeWidth: 2 },
+    tooltip: {
+      theme: 'light',
+      x: { show: false },
+      y: { formatter: (value) => `${value.toLocaleString()} viewers` },
+      marker: { show: true },
+    },
+    noData: { text: 'Waiting for viewer data' },
+  }), [categories, peak, values])
 
   return (
     <div className="spark">
       <div className="spark-head">
-        <span className="spark-name">Viewers</span>
-        <span className="spark-now">{now.toLocaleString()}</span>
+        <div>
+          <span className="spark-name">Audience trend</span>
+          <span className="spark-subtitle">Live viewers over this session</span>
+        </div>
+        <div className="spark-current">
+          <span className="spark-live-dot" />
+          <span className="spark-now">{now.toLocaleString()}</span>
+          <span className="spark-current-label">viewers</span>
+        </div>
       </div>
-      {values.length > 1 ? (
-        <svg
-          className="spark-svg"
-          viewBox={`0 0 ${SPARK_WIDTH} ${SPARK_HEIGHT}`}
-          preserveAspectRatio="none"
-          role="img"
-          aria-label={`Viewers, now ${now.toLocaleString()}, peak ${peak.toLocaleString()}`}
-        >
-          <defs>
-            <linearGradient id="spark-viewers" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.35" />
-              <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
-            </linearGradient>
-          </defs>
-          <path d={path.area} fill="url(#spark-viewers)" />
-          <path d={path.line} fill="none" stroke="var(--accent)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-        </svg>
-      ) : (
-        // One sample is a line with no direction to it; drawing a flat edge
-        // across the box would imply a trend that was never measured.
-        <div className="spark-empty">collecting…</div>
-      )}
+      <Chart options={options} series={series} type="line" height={230} />
     </div>
   )
 }

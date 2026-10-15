@@ -18,6 +18,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError, isAuthFailure } from '../lib/client'
+import { useOrigin } from '../lib/browser'
 import type { Room } from '../lib/types'
 import CopyField from '../components/CopyField'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -116,6 +117,9 @@ export default function Streams() {
   const [pendingDelete, setPendingDelete] = useState<Room | null>(null)
   const [loaded, setLoaded] = useState(false)
   const toast = useToast()
+  // Read after mount rather than during render: a `typeof window` branch in the
+  // markup is a hydration mismatch, and this is one of the three places it was.
+  const origin = useOrigin()
 
   const load = useCallback(async () => {
     try {
@@ -193,11 +197,16 @@ export default function Streams() {
       // The label is applied afterwards rather than sent with the connect, so a
       // label typed for one stream does not end up naming the next one when the
       // backend reuses an existing room instead of making a new one.
-      const room = await api.connectHandle(handle)
+      //
+      // Compared against nothing, because the connect answer carries no name to
+      // compare it with. It used to compare against `room.name`, which was
+      // `undefined` on an answer that has no `name` — so the comparison was always
+      // true and the write always happened anyway.
+      const connected = await api.connectHandle(handle)
       const wanted = label.trim()
-      if (wanted && wanted !== room.name) {
+      if (wanted) {
         try {
-          await api.updateRoom(room.id, { name: wanted })
+          await api.updateRoom(connected.room_id, { name: wanted })
         } catch {
           // The stream is connected either way; a label that would not save is
           // not a reason to tell the operator the connect failed.
@@ -207,9 +216,15 @@ export default function Streams() {
       setLabel('')
       setError('')
       toast(`Connected to @${handle}.`)
-      // A room that was just created is not in the list yet, so this cannot wait
-      // for the next poll to show the streamer's own room.
-      setRooms((current) => (current.some((r) => r.id === room.id) ? current : [room, ...current]))
+      // Re-read rather than pushing the connect answer in.
+      //
+      // It used to splice the answer straight onto the list so a room created
+      // one second earlier did not wait for the next poll. But that answer is not
+      // a room: it carries room_id and a status, not id and config, and
+      // splicing it produced an entry whose id was undefined - which React
+      // reports as a list child with no key, long after anyone was looking for
+      // it. One read costs the same round trip the splice was avoiding.
+      void load()
     } catch (cause) {
       setError(
         cause instanceof ApiError && isAuthFailure(cause.status)
@@ -265,7 +280,7 @@ export default function Streams() {
               them, so the field scrolls to the end of the URL where the part that
               differs actually is. Saying where they point once is cheaper than
               repeating it on every card. */}
-          <p className="faint mono stream-origin">{typeof window !== 'undefined' ? window.location.origin : ''}</p>
+          <p className="faint mono stream-origin">{origin}</p>
         </div>
         <div className="actions">
           <button onClick={() => void load()} disabled={busy}>

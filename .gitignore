@@ -45,6 +45,14 @@ streamtools
 # exception has to name the one path that is meant to be tracked, and it carries
 # no credential — the vhost only says who to ask, never what the password is.
 !deploy/nginx/sites-available/streamtools
+
+# The dashboard's own password hash, for a checkout running it locally. The same
+# reasoning as the hash above, and the same breadth: `web/.data/htpasswd` is where
+# a local `STREAMKIT_HTPASSWD` points, and `htpasswd` is left as a bare filename
+# so a copy at the repo root cannot be committed either.
+.data/
+htpasswd
+
 .hermes/
 
 # TypeScript incremental build cache — rewritten by every web build, so it is

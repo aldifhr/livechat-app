@@ -17,9 +17,9 @@ import { useEffect, useRef, useState } from 'react'
 const ROLL_MS = 320
 
 /** One digit: a 0–9 strip translated to show `value`. */
-function Digit({ value }: { value: number }) {
+function Digit({ value, changed }: { value: number; changed: boolean }) {
   return (
-    <span className="roll-digit" aria-hidden="true">
+    <span className={`roll-digit${changed ? ' roll-digit-changed' : ''}`} aria-hidden="true">
       {/* The strip. Ten rows tall; translated up by `value` rows to bring the
           wanted digit into the window. `will-change` keeps it on the GPU. */}
       <span className="roll-strip" style={{ transform: `translateY(-${value}em)` }}>
@@ -46,13 +46,24 @@ export function RollingNumber({ value }: { value: number }) {
   const shown = useRef(String(value))
   const [digits, setDigits] = useState<number[]>(() => String(value).split('').map(Number))
   const [commas, setCommas] = useState<boolean[]>(() => groupMap(String(value)))
+  const [changedDigits, setChangedDigits] = useState<boolean[]>([])
 
   useEffect(() => {
     const next = String(value)
     if (next === shown.current) return
+    const previous = shown.current
+    const nextDigits = next.split('')
+    const previousDigits = previous.split('')
+    setChangedDigits(nextDigits.map((digit, index) => {
+      const fromRight = nextDigits.length - 1 - index
+      return previousDigits[previousDigits.length - 1 - fromRight] !== digit
+    }))
     shown.current = next
-    setDigits(next.split('').map(Number))
+    setDigits(nextDigits.map(Number))
     setCommas(groupMap(next))
+
+    const timer = setTimeout(() => setChangedDigits([]), ROLL_MS)
+    return () => clearTimeout(timer)
   }, [value])
 
   return (
@@ -65,7 +76,7 @@ export function RollingNumber({ value }: { value: number }) {
         // number grows — otherwise 9 → 10 would remount every digit and roll them
         // all instead of just the new one.
         <span className="roll-slot" key={digits.length - i} style={{ transitionDuration: `${ROLL_MS}ms` }}>
-          <Digit value={d} />
+          <Digit value={d} changed={changedDigits[i] ?? false} />
           {commas[i] && <span className="roll-comma">,</span>}
         </span>
       ))}

@@ -49,6 +49,16 @@ function isOpen(pathname: string): boolean {
     // The landing page is public: it is what tells a visitor this is a product
     // and gives them the link to sign in.
     pathname === '/' ||
+    // The overlay pages. Open because they ARE open — the login page says so in
+    // as many words, and OBS cannot type a password, so a gate on them would only
+    // mean a link that works for nobody.
+    //
+    // In production nginx never gets this far: it serves these from disk, and the
+    // two requests have never met. This is here so that `next dev` answers them
+    // the same way the server does, rather than redirecting a browser source to a
+    // login form — which is what happened, and looked exactly like the overlays
+    // being broken.
+    pathname.startsWith('/overlay/') ||
     // Next's own static assets, which carry no data.
     pathname.startsWith('/_next/') ||
     pathname === '/favicon.ico'
