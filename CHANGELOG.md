@@ -204,6 +204,94 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
     itu tidak pernah ada, jadi urutan startup itu tidak pernah berarti apa-apa.
 
 ### Fixed
+- **Streamer yang tidak live dikenali sebagai "tidak ada yang bisa dibaca", bukan
+  kegagalan jaringan.** `UserOfflineError` tidak dikenali di loop retry, jadi
+  streamer offline diperlakukan seperti blip jaringan: **10 percobaan, ~2 menit
+  backoff** (2s, 4s, 8s … 30s) untuk sesuatu yang sudah pasti sejak detik pertama,
+  dengan app menampilkan "Connecting" sepanjang itu — lalu **menyerah permanen**,
+  sehingga stream yang datang kemudian tidak pernah diambil.
+  - **`_is_offline_error()`** mengenali `UserOfflineError`/`UserNotFoundError`
+    lewat class (fallback ke pesan untuk error terbungkus). Offline → **nol retry**,
+    langsung masuk `_wait_for_live()` (poll 120 menit) — mesin yang sudah ada untuk
+    "live yang berakhir", kini dipakai untuk kedua kasus.
+  - **Flag `_offline_waiting`** membuat pesannya jujur: *"is not live — waiting"*,
+    bukan *"is no longer live"*. Streamer yang belum mulai tidak "berakhir".
+  - **Flag `waiting` di wire**, diteruskan Rust → app. Sebelumnya menunggu 2 jam
+    tampil sebagai `connecting`, yang berarti tombol "Connecting…" **disabled** —
+    tidak ada cara membatalkan. Sekarang tombolnya **Stop yang bisa ditekan**.
+  - **`liveEnded` + `waiting` sekaligus** saat live berakhir lalu ditunggu. Ditemukan
+    saat audit produksi: dua room (`@kaizeechiato`, `@rikimaru_u`) sedang poll —
+    log bilang *"watching for it, up to 120 minutes"* — tapi endpoint mengirim
+    `liveEnded` **tanpa** `waiting`, jadi UI menawarkan Connect untuk room yang
+    source-nya masih jalan. `status_payload()` sekarang mengecek `_awaiting_live`
+    di cabang live-end, dan app mengecek `waiting` **sebelum** `liveEnded`.
+  - **Tes:** 52 assertion di `test_reconnect_budget.py` (offline tidak membakar
+    budget, kembali sendiri saat streamer live, status jujur + bisa dibatalkan,
+    live-end yang ditunggu tetap bisa dibatalkan, hanya offline yang dibaca begitu)
+    + 8 assertion UI. Diverifikasi dengan menyuntikkan perilaku lama: 12 assertion
+    gagal, menunjukkan persis bug lamanya (10 attempts, "Gave up connecting").
+
+- **Status basi pada klien yang sudah terhubung.** `source.stop()` adalah teardown
+  dan tidak mengirim frame, jadi tiga jalur yang sengaja menghentikan source
+  meninggalkan setiap klien dengan status terakhirnya. Paling berdampak untuk
+  overlay OBS, yang attach sekali di awal stream dan tidak pernah bertanya lagi:
+  diberi tahu "Connected to @someone" lalu tidak ada apa-apa lagi, ia terus
+  mengatakannya di atas stream yang sudah berakhir.
+  - `/api/disconnect`, ganti username room, dan hapus room kini **broadcast status
+    disconnected** setelah stop. Dikirim **setelah** teardown supaya frame tidak
+    mendahului dan menggambarkan koneksi yang masih hidup; pada ganti username
+    dikirim setelah counter dibuang, supaya frame tidak menghidupkan kembali total
+    streamer lama.
+  - Tidak broadcast kalau tidak ada source untuk dihentikan — tidak ada yang
+    berubah, dan klien yang attach nanti sudah diberi tahu "Offline".
+  - **Tes baru `test_disconnect_status.py`** (14 assertion), satu per jalur, plus
+    "tidak ada frame saat tidak ada yang berubah".
+
+- **Urutan pesan awal WebSocket bisa tertukar.** `hub.connect()` langsung
+  menjalankan writer task, sementara config dan snapshot status dikirim langsung ke
+  socket. Event yang di-broadcast di sela itu masuk antrean, diambil writer, dan
+  sampai ke klien **sebelum** config yang seharusnya menatanya — overlay yang
+  attach ke room ber-style muncul dengan default dan bertahan di sana.
+  - Pendaftaran tetap di `connect()`, drain dimulai di **`prime()`** yang dipanggil
+    setelah frame pembuka terkirim. Event di sela tetap diantre, tidak hilang.
+
+- **Grafik statistik berhenti disampel saat pindah halaman.** Timer sampel tinggal
+  di `useStats`, yang di-mount panel — jadi pindah ke Home dan kembali
+  menghentikan sampler selama halaman itu tidak terbuka, dan grafiknya kembali
+  dengan lubang di menit yang hilang. Sumbu-x-nya indeks sampel, jadi lubangnya
+  bahkan tidak terbaca sebagai lubang: garisnya cuma lanjut, mengklaim datar di
+  rentang yang tidak pernah diukur. Timer kini dimiliki recorder
+  (`startSampling`/`stopSampling`) dan dijalankan `useChat`, yang hidup sepanjang
+  sesi.
+
+- **Panel Stats menyembunyikan data yang sudah masuk.** Kondisinya hanya
+  memeriksa viewers atau pesan, jadi sesi yang menerima gift, follow, dan share
+  tapi belum ada yang bicara tetap menampilkan "Nothing yet" — panel menyangkal
+  event yang sudah ia catat. Sekarang semua yang dihitung ikut menentukan.
+
+- **`count` pada share hilang di batas Rust.** Backend mengirim `meta["count"]`
+  (jumlah orang yang bergabung lewat share), mapper Rust tidak meneruskannya. Kini
+  diteruskan, dan baris feed menampilkan `· N joined` saat lebih dari satu.
+
+- **Antrean popup tidak dibatasi.** Satu popup tampil 5 detik, jadi burst — gift
+  train, tepatnya — datang lebih cepat daripada kemampuan menampilkannya. Tanpa
+  batas antreannya tumbuh tanpa henti, dan backlog-nya bukan cuma telat tapi
+  **basi**: toast tentang gift dua menit lalu, di atas stream yang sudah lewat.
+  Dibatasi 12 (sedikit di atas satu menit); yang terbaru menang.
+
+- **Jendela collapse dihitung dari pesan pertama.** Saat baris digabung,
+  timestamp-nya tidak diperbarui, jadi jendelanya diukur dari *awal* rentetan:
+  penonton yang mengulang pesan sama tiap 2 detik bergabung selama 2,5 detik lalu
+  berhenti, meski setiap pesan masih di dalam jendela pesan sebelumnya. Timestamp
+  kini maju ke kemunculan terbaru — barisnya tetap mempertahankan key, hanya waktu
+  yang diwakilinya yang bergerak.
+
+- **Tes flaky `test:ui` diperbaiki.** Menunggu debounce 250ms tanpa `act()` di
+  tes digit `RollingNumber`, sehingga React belum tentu flush sebelum snapshot
+  "sebelum" diambil — kadang terbaca 1 strip, bukan 4, dan perbandingan digitnya
+  gagal karena alasan yang tidak ada hubungannya dengan digit. Dibungkus `act()`
+  plus satu `flush()`. Diverifikasi 6× berturut-turut hijau.
+
 - **Status koneksi pulih setelah frontend di-reload saat development.** `tauri:dev`
   memuat ulang webview setiap kali kode berubah. Reload itu membuang seluruh
   state frontend, sementara proses Rust **tetap membaca stream** — dan itu memang
