@@ -40,17 +40,19 @@ export function EventPopup({ enabled }: Props) {
     if (!next) return
     setEventQueue(remaining)
     setActiveEvent(next)
-    void confettiRef.current?.fire({
-      particleCount: 90,
-      spread: 72,
-      startVelocity: 36,
-      colors: next.type === 'gift'
-        ? ['#d4af37', '#f2d675', '#fff1b8', '#b88920']
-        : next.type === 'follow'
-          ? ['#f472b6', '#fbcfe8', '#ffffff', '#d4af37']
-          : ['#38bdf8', '#bae6fd', '#ffffff', '#d4af37'],
-      origin: { x: 0.5, y: 0.5 },
-    })
+    if (typeof globalThis.addEventListener === 'function') {
+      void confettiRef.current?.fire({
+        particleCount: 90,
+        spread: 72,
+        startVelocity: 36,
+        colors: next.type === 'gift'
+          ? ['#d4af37', '#f2d675', '#fff1b8', '#b88920']
+          : next.type === 'follow'
+            ? ['#f472b6', '#fbcfe8', '#ffffff', '#d4af37']
+            : ['#38bdf8', '#bae6fd', '#ffffff', '#d4af37'],
+        origin: { x: 0.5, y: 0.5 },
+      })
+    }
   }, [activeEvent, eventQueue])
 
   useEffect(() => {
@@ -111,6 +113,7 @@ export function EventPopup({ enabled }: Props) {
                       animation="fadeIn"
                       by="word"
                       duration={0.28}
+                      startOnView={false}
                     >
                       {title}
                     </TextAnimate>

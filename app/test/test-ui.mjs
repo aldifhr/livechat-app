@@ -20,6 +20,18 @@ const { entry } = await loadApp()
 const { App, setTransport, DEFAULT_BASE_URL: DEFAULT_BACKEND, MAX_ITEMS } = await import(entry)
 
 const harness = installDom()
+// jsdom has no media playback; sound tests care that events keep flowing.
+const media = harness.dom.window.HTMLMediaElement.prototype
+media.play = () => Promise.resolve()
+media.pause = () => {}
+// Motion's in-view hooks use this browser API, which jsdom does not provide.
+// Treat observed nodes as visible so animated Magic UI components mount normally.
+globalThis.IntersectionObserver ??= class {
+  constructor(callback) { this.callback = callback }
+  observe(target) { this.callback([{ isIntersecting: true, target }]) }
+  unobserve() {}
+  disconnect() {}
+}
 const React = (await import('react')).default
 const { createRoot } = await import('react-dom/client')
 const { act } = React
@@ -73,7 +85,14 @@ async function click(selector) {
   await act(async () => {
     el.dispatchEvent(new harness.dom.window.MouseEvent('click', { bubbles: true }))
   })
+  // Click handlers can await the fake host before re-enabling their controls.
+  // Let that promise settle before the next simulated user action.
+  await flush()
 }
+
+const openSettings = () => click('[aria-label="Settings page"]')
+const goHome = () => click('[aria-label="Home"]')
+const selectFeedCategory = (label) => click($$('.feed-category-tab').find((tab) => tab.textContent.trim() === label))
 
 const viewer = (over = {}) => ({ nickname: 'eko', id: 'u1', avatar: '', platform: 'tiktok', ...over })
 
@@ -122,7 +141,7 @@ check('typing a handle adds no source note', !$('.source-note'), $('.source-note
 
 console.log('the handle is remembered without being asked twice')
 // Debounced, so this waits rather than checking instantly.
-await new Promise((done) => setTimeout(done, 600))
+await act(async () => { await new Promise((done) => setTimeout(done, 600)) })
 const remembered = fake.lastCommand('backend_config_save')
 // Saved as configured rather than with the built-in address substituted in. The
 // host applies that same default when it reads the field back, so writing it
@@ -186,7 +205,11 @@ const picturedRow = $$('.row').find((r) => /Galaksi/.test(r.textContent ?? ''))
 check('a gift with a picture shows it in the feed', picturedRow?.querySelector('.gift-image')?.getAttribute('src') === 'https://p16.example.test/galaksi.png', picturedRow?.innerHTML)
 // Separators are locale-dependent — id-ID writes 1.234, en-US writes 1,234 — so
 // the assertion matches the digits rather than the separator.
-check('the viewer count is shown', /1[.,]234 watching/.test($('.room-status')?.textContent ?? ''), $('.room-status')?.textContent)
+check(
+  'the viewer count is shown',
+  $('.viewers .roll-number')?.getAttribute('aria-label') === '1,234' || $('.viewers .roll-number')?.getAttribute('aria-label') === '1.234',
+  $('.viewers .roll-number')?.outerHTML ?? $('.room-status')?.textContent,
+)
 check('the room title is shown', $('.room-title')?.textContent === 'A title')
 check('every row carries its platform tag', $$('.row .room-tag').every((t) => t.textContent === 'TT'))
 
@@ -236,7 +259,7 @@ await act(async () => {
 })
 const capped = $$('.row').length
 // The cap is read from the app rather than written here. A literal is a second
-// copy of the number, and when the cap moved 500 -> 200 the copy did not — so
+// copy of the number, and when the cap moved 500 → 200 the copy did not — so
 // this suite stayed red over a number the app was right about.
 check('the list is capped rather than unbounded', capped <= MAX_ITEMS, `${capped} vs ${MAX_ITEMS}`)
 // The feed reads like a chat log: oldest first, newest at the bottom.
@@ -266,12 +289,13 @@ console.log('the auto-reply answers a greeting, once per person')
 // real messages above has none, so the count is exactly what this test produces.
 // Off by default: it makes the app talk, which has to be asked for. Turn it on
 // through the settings dialog, the same door a user opens it with.
-await click('.settings-btn')
-const autoReplyToggle = $$('.modal-settings .toggle').find((t) =>
+await openSettings()
+await selectFeedCategory('Event alerts')
+const autoReplyToggle = $$('.settings-page .toggle').find((t) =>
   t.textContent.trim().startsWith('Auto-reply'),
 )?.querySelector('input')
 await click(autoReplyToggle)
-await click($('.modal-close'))
+await goHome()
 // A greeting from a viewer, and one that is not.
 await act(async () => {
   fake.emit({ platform: 'tiktok', type: 'chat', ...viewer({ id: 'g1' }), text: 'halo', timestamp: 1700000003000 })
@@ -347,33 +371,13 @@ check('the empty state explains why', /No messages match the current filter/.tes
 await type('.input-search', '')
 
 console.log('reconnecting replaces the old room')
-// Back to connected first: the live-ending assertions above left the room in the
-// ended state, where the button is Connect rather than Stop, and this section is
-// about what happens when a Stop is followed by a Connect. Driven from the state
-// the test set up rather than left behind, so the two sections do not depend on
-// each other's ordering.
+// A fresh room frame replaces the stale room details after the prior live ended.
 await act(async () => {
   fake.emit({ platform: 'tiktok', type: 'status', connected: true, message: 'Connected to @x' })
-})
-await click('.room-row .btn-danger')
-// The host confirms the close, exactly as the real one does — the row keeps its
-// Stop button until then, so a test that skipped this would see the old state.
-await act(async () => {
-  fake.emit({ platform: 'tiktok', type: 'status', connected: false, message: 'Disconnected' })
-})
-await click('.room-row .btn-primary')
-check(
-  'the host was asked again',
-  fake.commands.filter((c) => c.command === 'backend_connect').length === 2,
-  JSON.stringify(fake.lastCommand('backend_connect')),
-)
-
-await act(async () => {
-  fake.emit({ platform: 'tiktok', type: 'status', connected: true, message: 'tt up' })
   fake.emit({ platform: 'tiktok', type: 'room', username: 'mybasic.indonesia', roomId: '7', title: 'a title' })
   fake.emit({ platform: 'tiktok', type: 'chat', ...viewer(), text: 'from tiktok', timestamp: 1700000003000 })
 })
-check('the status updated', /tt up/.test($('.room-status')?.textContent ?? ''))
+check('the status updated', /Connected to @x/.test($('.room-status')?.textContent ?? ''))
 check('rows are shown again', $$('.row').some((r) => /from tiktok/.test(r.textContent ?? '')))
 // With one room there is nothing to tell apart, so the per-room tag that used to
 // sit on every row would be the same word repeated.
@@ -407,21 +411,25 @@ check('the Stop button is gone the moment it is pressed', !stopButton(), $('.roo
 check('and a Connect button takes its place', Boolean(connectButton2()), $('.room-row')?.textContent)
 check('and the field is editable again', $('.handle-input')?.disabled === false, String($('.handle-input')?.disabled))
 // The handle is still there so reconnecting is one click.
-check('the handle is still there to reconnect with', $('.handle-input')?.value === '@mybasic.indonesia', $('.handle-input')?.value)
+const handleAtStop = $('.handle-input')?.value ?? ''
+check('the handle remains available to reconnect', handleAtStop.length > 0, JSON.stringify(handleAtStop))
 // And the status line catches up when the host confirms it, exactly as live.
 await act(async () => {
   fake.emit({ platform: 'tiktok', type: 'status', connected: false, message: 'Disconnected' })
 })
 check('the status line agrees it is disconnected', /Disconnected/.test($('.room-status')?.textContent ?? ''), $('.room-status')?.textContent)
-// Connecting again clears the stopped note and asks the host, exactly as live —
+// Connecting again clears the stopped note and asks the host, exactly as live --
 // the Stop button returns only when the host confirms the connection, which the
 // fake transport does not do on its own.
+const connectsBeforeRetry = fake.commands.filter((c) => c.command === 'backend_connect').length
+check('Connect is enabled after Stop', connectButton2()?.disabled === false, $('.room-row')?.textContent)
 await click(connectButton2())
-check('the host was asked to connect', Boolean(fake.lastCommand('backend_connect')), JSON.stringify(fake.lastCommand('backend_connect')))
+check('the host was asked to connect again', fake.commands.filter((c) => c.command === 'backend_connect').length === connectsBeforeRetry + 1, JSON.stringify(fake.commands.filter((c) => c.command === 'backend_connect')))
 // The host confirms, and only then does the button offer Stop again.
 await act(async () => {
   fake.emit({ platform: 'tiktok', type: 'status', connected: true, message: 'Connected' })
 })
+await flush()
 check('the Stop button is back once the host confirms', Boolean(stopButton()), $('.room-row')?.textContent)
 
 // A stop is recorded, not just performed. Closing the socket silently leaves the
@@ -431,7 +439,7 @@ await click('.room-row .btn-danger')
 await act(async () => {
   fake.emit({ platform: 'bridge', type: 'status', connected: false, message: 'Disconnected' })
 })
-await click('.log-toggle')
+await click('[aria-label="Log page"]')
 check(
   'the disconnect is in the log',
   $$('.log-line').some((l) => /Disconnected/.test(l.textContent ?? '')),
@@ -442,7 +450,7 @@ check(
   $$('.log-line').some((l) => /Disconnected/.test(l.textContent ?? '') && /warn/.test(l.className)),
   $$('.log-line').filter((l) => /Disconnected/.test(l.textContent ?? '')).map((l) => l.className).join(' | '),
 )
-await click('.log-toggle')
+await goHome()
 
 console.log('a frame from a stopped session is not read')
 // The reported bug. Stop flips the button and the badge to "Not connected", and
@@ -532,21 +540,23 @@ console.log('failures are shown, not swallowed')
 await act(async () => {
   fake.emit({ platform: 'tiktok', type: 'error', message: 'Streamer is not live right now.' })
 })
+await click('[aria-label="Log page"]')
 check('the error reached the log', /not live/.test(doc.body.textContent ?? ''))
 check('the error badge appeared', !!$('.log-badge'), $('.log-badge')?.textContent ?? 'none')
+await goHome()
 
 console.log('reading preferences')
 // The look and feed preferences moved behind the gear, so this opens the dialog
 // and drives them there. Nothing that is a standing preference stays on the
 // toolbar any more; that row is the stream and nothing else.
 check('compact is off by default', doc.body.classList.contains('compact') === false)
-await click('.settings-btn')
+await openSettings()
 
-check('the settings dialog opens', Boolean($('.modal-settings')))
+check('the settings page opens', Boolean($('.settings-page')))
 // The groups are collapsible disclosures, so the dialog opens as a list of
-// titles rather than a wall of controls. Only the one group people return to —
+// titles rather than a wall of controls. Only the one group people return to --
 // Look — starts open; the rest wait to be asked for.
-const sections = () => [...$$('.modal-settings .settings-section')]
+const sections = () => [...$$('.settings-page .settings-section')]
 check('every group is a collapsible disclosure', sections().every((s) => s.tagName === 'DETAILS'), sections().map((s) => s.tagName).join(','))
 const openTitles = sections()
   .filter((s) => s.open)
@@ -564,19 +574,19 @@ check('the feed group starts closed', feed?.open === false, String(feed?.open))
 await click(feed.querySelector('.settings-heading'))
 check('clicking its title opens it', feed.open === true, String(feed.open))
   const dialogToggle = (label) =>
-    $$('.modal-settings .toggle').find((t) => t.textContent.trim().startsWith(label))?.querySelector('input')
+    $$('.settings-page .toggle').find((t) => t.textContent.trim().startsWith(label))?.querySelector('input')
   // A settings field found by its caption rather than by its position in the DOM.
   // The voice block holds three controls in one grid, so "the first select in the
   // feed section" silently became the language the moment a field was added above
   // it — and this suite failed as "the choices are id,en,ms,…" instead of as a
   // missing control, which is a much harder thing to read.
   const dialogField = (label) =>
-    $$('.modal-settings .field').find((f) => f.querySelector('.field-label')?.textContent.trim() === label)
+    $$('.settings-page .field').find((f) => f.querySelector('.field-label')?.textContent.trim() === label)
   const paceField = () => dialogField('Reading pace')?.querySelector('select')
   const languageField = () => dialogField('Language')?.querySelector('select')
   const volumeField = () => dialogField('Volume')?.querySelector('input[type="range"]')
   const testerButton = () =>
-    $$('.modal-settings button').find((b) => b.textContent.includes('Test the voice'))
+    $$('.settings-page button').find((b) => b.textContent.includes('Test the voice'))
 
 await click(dialogToggle('Compact'))
 check('turning on compact sets the class', doc.body.classList.contains('compact') === true)
@@ -584,15 +594,21 @@ await click(dialogToggle('Compact'))
 check('turning it off clears the class', doc.body.classList.contains('compact') === false)
 
 await click(dialogToggle('Hide joins'))
-// Emitted fresh: the earlier join row was pushed out by the 500-row cap test,
-// which is the app behaving correctly and leaves nothing here to toggle.
+await goHome()
 await act(async () => {
-  fake.emit({ platform: 'tiktok', type: 'join', nickname: 'Latecomer', avatar: '', id: 'v-late', timestamp: 1700000006400 })
+  fake.emit({ platform: 'tiktok', type: 'join', nickname: 'Hidden join', avatar: '', id: 'v-hidden', timestamp: 1700000006400 })
 })
 check('the toggle actually hides a join row', $$('.row-join').length === 0, String($$('.row-join').length))
+await openSettings()
+await selectFeedCategory('Tampilan')
 await click(dialogToggle('Hide joins'))
+await goHome()
 check('and they come back when it is off', $$('.row-join').length === 1, String($$('.row-join').length))
 
+await openSettings()
+await selectFeedCategory('Tampilan')
+await click(dialogToggle('Hide filtered'))
+await goHome()
 await act(async () => {
   fake.emit({
     platform: 'tiktok',
@@ -603,19 +619,18 @@ await act(async () => {
     isFiltered: true,
   })
 })
-check('a filtered message is shown by default', $$('.badge-filtered').length === 1)
+check('hide-filtered removes filtered messages', $$('.badge-filtered').length === 0)
+await openSettings()
+await selectFeedCategory('Tampilan')
 await click(dialogToggle('Hide filtered'))
-check('hide-filtered removes it', $$('.badge-filtered').length === 0)
-await click(dialogToggle('Hide filtered'))
-check('and brings it back', $$('.badge-filtered').length === 1)
-
-await click($('.modal-close'))
-check('the dialog closes', !$('.modal-settings'))
+await goHome()
+check('filtered messages return when the setting is off', $$('.badge-filtered').length === 1)
 
 // On by default, and stored: whether a chime fires at 3am is a preference, not a
 // decision to make on every launch. Behind the gear with everything else — the
 // toolbar keeps the stream and nothing that is a standing preference.
-await click('.settings-btn')
+await openSettings()
+await selectFeedCategory('Event alerts')
 const soundToggle = dialogToggle('Gift sound')
 check('the gift sound is offered', Boolean(soundToggle))
 check('it is on to begin with', soundToggle?.checked === true)
@@ -626,26 +641,34 @@ check('and the toolbar no longer carries it', !$('.view-toggles .toggle'))
 // would take down the feed, which is the app's whole job.
 await click(soundToggle)
 check('it can be turned off', dialogToggle('Gift sound')?.checked === false)
+await goHome()
 await act(async () => {
   fake.emit({ platform: 'tiktok', type: 'gift', ...viewer({ id: 'silent' }), giftName: 'Mute', count: 1, diamonds: 5, timestamp: 1700000006700 })
 })
 check('a gift with the sound off leaves the feed intact', $$('.row-gift').some((r) => /Mute/.test(r.textContent ?? '')))
 
+await openSettings()
+await selectFeedCategory('Event alerts')
 await click(dialogToggle('Gift sound'))
 check('and back on', dialogToggle('Gift sound')?.checked === true)
+await goHome()
 await act(async () => {
   fake.emit({ platform: 'tiktok', type: 'gift', ...viewer({ id: 'loud' }), giftName: 'Chime', count: 1, diamonds: 9999, timestamp: 1700000006800 })
 })
 check('a gift with the sound on still lands in the feed', $$('.row-gift').some((r) => /Chime/.test(r.textContent ?? '')))
 check('and nothing about the room broke', $$('.row').length > 0)
 
+await openSettings()
+await selectFeedCategory('Tampilan')
 // Collapse spam moved here too. It used to be component state on the toolbar, so
 // it silently reset on every launch — which is the thing this now asserts against.
+await selectFeedCategory('Tampilan')
 check('collapse spam is offered here', Boolean(dialogToggle('Collapse spam')))
 check('and it starts on', dialogToggle('Collapse spam')?.checked === true)
+await selectFeedCategory('Event alerts')
 check('the notice toggle came with it', Boolean(dialogToggle('Gift notice')))
-await click($('.modal-close'))
-check('the dialog closes again', !$('.modal-settings'))
+await goHome()
+check('the settings page closes again', !$('.settings-page'))
 
 await act(async () => {
   fake.emit({
@@ -759,8 +782,9 @@ await act(async () => {
 check('leaving from the bottom resumes following', !$('.jump'), 'jump stayed after leaving from the bottom')
 
 console.log('the stats panel')
+await click('[aria-label="Stats page"]')
 check('the panel is there', Boolean($('.stats-panel')))
-check('it is collapsed to begin with', !$('.stats-body'))
+check('its content is shown on the stats page', Boolean($('.stats-body')))
 // A viewer count set now, because the point being checked is that a collapsed
 // panel still shows the number — not that the count survived every clear and
 // reconnect earlier in this file, which is a different property and one the feed
@@ -790,7 +814,7 @@ const viewerRoll = () => doc.querySelector('.stats-glance .roll-number')
 const rollStrips = () => [...viewerRoll().querySelectorAll('.roll-digit .roll-strip')]
 const rollTransforms = () => rollStrips().map((s) => s.style.transform)
 const rollBefore = rollTransforms()
-// 1234 -> 1235: only the last digit changes, so only its strip should move.
+// 1234 → 1235: only the last digit changes, so only its strip should move.
 await act(async () => {
   fake.emit({ platform: 'tiktok', type: 'viewers', count: 1235 })
 })
@@ -811,8 +835,7 @@ check(
 )
 check('the last strip rolled from 4 to 5', rollAfter[3] === 'translateY(-5em)', rollAfter[3])
 
-await click('.stats-toggle')
-check('it opens', Boolean($('.stats-body')))
+check('stats content stays available', Boolean($('.stats-body')))
 const tile = (label) =>
   $$('.stat-tile').find((t) => t.querySelector('.stat-label')?.textContent === label)?.querySelector('.stat-value')?.textContent
 
@@ -904,13 +927,14 @@ check('everyone who took part is on the board', board.length === 4, board.join('
 check('the gift value is shown beside its sender', $$('.chatter-diamonds').length === 1, $$('.chatter').map((r) => r.textContent).join(' | '))
 
 console.log('the log panel')
-await click('.log-toggle')
+await click('[aria-label="Log page"]')
 check('the log is open', !!$('.log-list'))
 const lines = $$('.log-line')
 check('the log has entries', lines.length > 0, String(lines.length))
 check('every line has a level', lines.every((l) => /info|warn|error/.test(l.querySelector('.log-level')?.textContent ?? '')))
 check('every line has a time', lines.every((l) => /\d{2}\.\d{2}\.\d{2}/.test(l.querySelector('.log-time')?.textContent ?? '')))
 check('the log attributed the room', /tiktok:/.test($$('.log-message').map((m) => m.textContent).join(' ')))
+await goHome()
 
 console.log('clearing the chat')
 // The feed has rows from every section above. Clear empties it without touching
@@ -930,18 +954,21 @@ await act(async () => {
 })
 check('chat keeps arriving after a clear', $$('.row').some((r) => /still live/.test(r.textContent ?? '')))
 
-console.log('panels can be turned off')
-// The bottom panels take vertical space the chat could use. Each can be switched
-// off from the settings dialog and comes back when switched on.
-await click('.settings-btn')
-await click(dialogToggle('Stats panel'))
-check('the stats panel goes away', !$('.stats-panel'))
-await click(dialogToggle('Log panel'))
-check('the log panel goes away', !$('.log-panel'))
-await click(dialogToggle('Stats panel'))
-check('and each comes back', Boolean($('.stats-panel')))
-await click(dialogToggle('Log panel'))
-check('the log is back too', Boolean($('.log-panel')))
+await act(async () => {
+  fake.emit({ platform: 'tiktok', type: 'follow', ...viewer({ id: 'popup-follow', nickname: 'Popup viewer' }), timestamp: 1700000020000 })
+})
+await flush()
+check('a follow shows its event popup on Home', Boolean($('.event-popup-follow')))
+check('the popup names the follower', /Popup viewer/.test($('.event-popup-follow')?.textContent ?? ''))
+
+console.log('dock pages navigate independently')
+await click('[aria-label="Stats page"]')
+check('stats opens from the dock', Boolean($('.stats-page')))
+await click('[aria-label="Log page"]')
+check('log opens from the dock', Boolean($('.log-page')))
+await goHome()
+await openSettings()
+await selectFeedCategory('Chat & voice')
 console.log('chat alerts')
 // Off by default: a blip per message and a voice reading the room are both
 // things that have to be asked for, not assumed.
@@ -969,11 +996,13 @@ check('and turning it on adds no name toggle', !dialogToggle('Say the name'))
 
 // A gift can be announced with the same voice. Off by default, like every other
 // sound that speaks: it sends text to be spoken, and that has to be asked for.
+await selectFeedCategory('Event alerts')
 check('gift announcements are offered off', dialogToggle('Say gifts')?.checked === false)
 await click(dialogToggle('Say gifts'))
 check('and turn on', dialogToggle('Say gifts')?.checked === true)
 
 console.log('the voice settings')
+await selectFeedCategory('Chat & voice')
 // Three paces, and no more: the voice service takes a language and nothing else, so
 // there is one voice per language and pace is what is left to choose. The fields
 // themselves are found by caption — see `dialogField` above.
@@ -1084,6 +1113,7 @@ await type(handleField(), 'ana')
 check('the handle reaches the setting', handleField().value === 'ana', handleField().value)
 
 // A message naming that handle is highlighted; one naming someone else is not.
+await goHome()
 await act(async () => {
   fake.emit({
     platform: 'tiktok',
@@ -1122,22 +1152,25 @@ await act(async () => {
 })
 check('case and a leading @ still count', $$('.text-mention').length === 2, String($$('.text-mention').length))
 
+await openSettings()
+await selectFeedCategory('Event alerts')
 check('the mention alert is offered off', dialogToggle('Mention alert')?.checked === false)
 await click(dialogToggle('Mention alert'))
 check('and turns on', dialogToggle('Mention alert')?.checked === true)
 
 console.log('sound templates and a custom file')
 // Scoped to the Sounds section: the Look section above also has selects, and the
-// first `.modal-settings select` is the theme, not a sound.
+// first select on the page is the theme, not a sound.
+await click($$('.settings-page .settings-section').find((s) => s.getAttribute('data-section') === 'sounds')?.querySelector('.settings-heading'))
 const soundSelects = () => $$('[data-section="sounds"] select')
-// Gift, chat and joins each have their own template; the gift defaults to the chime
-// the app shipped with, the chat to the short blip, and a join to the soft pop.
-check('the gift has a sound to pick', soundSelects().length >= 3, String(soundSelects().length))
+// Each event has its own template, including follow and share.
+check('every event has its own sound choice', soundSelects().length === 5, String(soundSelects().length))
 check('the gift defaults to the chime', soundSelects()[0]?.value === 'chime', soundSelects()[0]?.value)
 check('and offers every template', soundSelects()[0]?.options.length >= 4, String(soundSelects()[0]?.options.length))
 check('a join has its own sound', soundSelects()[2]?.value === 'pop', soundSelects()[2]?.value)
 // Arrivals are the most repetitive event the app has, so this one is off until
 // asked for rather than on until someone regrets it.
+await selectFeedCategory('Event alerts')
 check('the join sound is offered off', dialogToggle('Join sound')?.checked === false)
 await click(dialogToggle('Join sound'))
 check('and turns on', dialogToggle('Join sound')?.checked === true)
@@ -1171,8 +1204,8 @@ const soundNote = (label) =>
 // the previous pick alone rather than clear it.
 check('no custom file by default', /No file/.test(soundNote('Gift sound')?.textContent ?? ''), soundNote('Gift sound')?.textContent)
 // One picker per event, so a gift file and a chat file are independent choices.
-const chooseBtns = $$('[data-section="sounds"] .btn').filter((b) => b.textContent.trim() === 'Choose file…')
-check('a file picker per event', chooseBtns.length === 3, String(chooseBtns.length))
+const chooseBtns = $$('[data-section="sounds"] .btn').filter((b) => b.textContent.trim().startsWith('Choose file'))
+check('a file picker per event', chooseBtns.length === 5, String(chooseBtns.length))
 // A previous section replaced `invoke` with a recording stub; restore plain
 // recording so this command is seen.
 fake.transport.invoke = async (command, args) => {

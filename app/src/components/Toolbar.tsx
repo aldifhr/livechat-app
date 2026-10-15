@@ -18,6 +18,7 @@ interface Props {
   health: Health
   settings: UseSettingsResult
   backend: BackendConfig
+  onBackendChange: (backend: BackendConfig) => void
   /** The current feed rows, so Clear can say when there is nothing to clear. */
   items: number
   onFiltersChange: (filters: Partial<FeedFilters>) => void
@@ -49,6 +50,7 @@ export function Toolbar({
   health,
   settings,
   backend,
+  onBackendChange,
   items,
   onFiltersChange,
   onClearChat,
@@ -113,10 +115,13 @@ export function Toolbar({
       // this one" — a different address would look like a change they made. The host
       // applies the same default when it reads the field back, so an empty value
       // connects identically and stays honest about where it came from.
-      host.backendConfigSave({ baseUrl: backend.baseUrl, username: wanted }).catch(() => {})
+      const nextBackend = { ...backend, username: wanted }
+      host.backendConfigSave({ baseUrl: backend.baseUrl, username: wanted })
+        .then(() => onBackendChange(nextBackend))
+        .catch(() => {})
     }, 400)
     return () => clearTimeout(timer)
-  }, [wanted, backend])
+  }, [wanted, backend, onBackendChange])
 
   async function connect() {
     setBusy(true)

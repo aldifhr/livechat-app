@@ -213,6 +213,7 @@ export default function App() {
         health={health}
         settings={settings}
         backend={backend}
+        onBackendChange={setBackend}
         items={items.length}
         onFiltersChange={onFiltersChange}
         onClearChat={clear}
