@@ -825,7 +825,14 @@
    * The panel is drawn by us; the browser still supplies the focus trap, Escape
    * and the inert background, which is the part worth not writing by hand. */
   .dialog {
-    @apply max-w-[min(28rem,calc(100vw-2rem))] border-0 bg-transparent p-0 text-text;
+    /* Centred explicitly, because preflight takes it away. A modal `<dialog>`
+     * is centred by the browser's own `margin: auto` — and preflight sets
+     * `margin: 0` on every element, so the UA rule loses and the panel pins to
+     * the top-left corner. `inset-0` plus `m-auto` is what puts it back: the
+     * inset gives it a containing block to centre within, the auto margin does
+     * the centring, and `h-fit` stops it stretching to the full height of that
+     * block. */
+    @apply fixed inset-0 m-auto h-fit max-w-[min(28rem,calc(100vw-2rem))] border-0 bg-transparent p-0 text-text;
   }
 
   .dialog::backdrop {

@@ -190,13 +190,25 @@ export default function Dashboard() {
                   <td>
                     {row.stale ? (
                       <span className="faint">unreachable</span>
-                    ) : row.status?.liveEnded ? (
-                      /* Three states, not two. The backend distinguishes them and
+                    ) : row.status?.liveEnded && !row.status?.waiting ? (
+                      /* Four states, not two. The backend distinguishes them and
                          the distinction is the whole message: a room whose live
                          ended needs a fresh Connect, and a badge reading "offline"
                          sends the reader looking for a connection problem that is
                          not there. */
                       <span className="badge off">Live ended</span>
+                    ) : row.status?.waiting ? (
+                      /* `waiting` before `connecting`, and it matters: the backend
+                         sets both while it polls for a streamer who is not live —
+                         one so an older client still waits, one so a client that
+                         knows about it can say what is actually happening. Reading
+                         `connecting` first showed "Connecting" for a streamer who
+                         is simply offline, which is the one thing this row must
+                         not say: nothing is connecting, and nothing will until
+                         they go live. `liveEnded` is folded in here for the same
+                         reason — a live that ended and is being polled for is a
+                         wait, not a dead end. */
+                      <span className="badge off">Offline — waiting</span>
                     ) : row.status?.connecting ? (
                       <span className="badge off">Connecting</span>
                     ) : row.status?.connected ? (

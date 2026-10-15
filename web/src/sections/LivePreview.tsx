@@ -18,7 +18,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '@/lib/client'
 import { useViewportHeight, useViewportWidth } from '@/lib/browser'
-import type { Room } from '@/lib/types'
+import type { Room, RoomStatus } from '@/lib/types'
+import { labelOf, orderForPicker, pickDefaultRoom } from '@/lib/roomLive'
 import OverlayStage from '@/components/OverlayStage'
 
 /**
@@ -35,6 +36,7 @@ const CANVASES = [
 
 export default function LivePreview() {
   const [rooms, setRooms] = useState<Room[]>([])
+  const [statuses, setStatuses] = useState<Record<string, RoomStatus | undefined>>({})
   const [roomId, setRoomId] = useState('')
   const [which, setWhich] = useState<'chat' | 'board'>('chat')
   const [chatDesign, setChatDesign] = useState<'original' | 'studio'>('original')
@@ -57,24 +59,28 @@ export default function LivePreview() {
       .rooms()
       .then(async ({ rooms: found }) => {
         setRooms(found)
-        const requested = new URLSearchParams(window.location.search).get('room')
-        if (requested) {
-          setRoomId(requested)
-          return
-        }
-
-        // A direct visit should preview the stream that can actually produce
-        // chat, rather than an older offline room that happens to sort first.
-        const statuses = await Promise.all(
+        // Every room's state, so the picker can order by it and say which is which.
+        // Unreadable is left undefined and reads as offline — the honest answer for
+        // a room nothing can be said about.
+        const read: Record<string, RoomStatus | undefined> = {}
+        await Promise.all(
           found.map(async (room) => {
             try {
-              return { id: room.id, connected: (await api.status(room.id)).connected }
+              read[room.id] = await api.status(room.id)
             } catch {
-              return { id: room.id, connected: false }
+              read[room.id] = undefined
             }
           }),
         )
-        setRoomId(statuses.find((status) => status.connected)?.id ?? found[0]?.id ?? '')
+        setStatuses(read)
+
+        // A room named by the query string still wins, so a link from the builder
+        // opens what it names. Otherwise the first *live* room rather than the
+        // first one that happens to sort first — this page used to open on an
+        // offline room and sit there producing nothing while a live one was
+        // further down the list.
+        const requested = new URLSearchParams(window.location.search).get('room')
+        setRoomId(pickDefaultRoom(orderForPicker(found, read), requested))
       })
       .catch(() => {
         // The room list may be empty before a token is set; an empty picker and an
@@ -82,11 +88,16 @@ export default function LivePreview() {
       })
   }, [])
 
+  // Ordered for the picker — live first, then waiting, then offline. Sorted here
+  // rather than in the render so the list does not reshuffle on every poll beyond
+  // what a state change justifies.
+  const choices = useMemo(() => orderForPicker(rooms, statuses), [rooms, statuses])
+
   // A room named by the query string only counts once it has been confirmed to
   // exist, so a stale id shows a real overlay rather than a frame that loads
-  // nothing.
+  // nothing. Falls back to the first live room, which is the one worth watching.
   const known = rooms.some((room) => room.id === roomId)
-  const selected = known ? roomId : (rooms[0]?.id ?? '')
+  const selected = pickDefaultRoom(choices, known ? roomId : null)
 
   // The overlay is pointed at by room alone. Its styling comes from the room's
   // saved config, delivered over the socket the overlay opens on load — so this
@@ -129,9 +140,9 @@ export default function LivePreview() {
               onChange={(event) => setRoomId(event.target.value)}
               aria-label="Room"
             >
-              {rooms.map((room) => (
+              {choices.map(({ room, live }) => (
                 <option key={room.id} value={room.id}>
-                  {room.name}
+                  {room.name} — {labelOf(live)}
                 </option>
               ))}
             </select>

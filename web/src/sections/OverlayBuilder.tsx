@@ -37,32 +37,43 @@ import {
   type OverlayPosition,
 } from '@shared/overlay'
 import { api } from '../lib/client'
-import type { Room } from '../lib/types'
+import type { Room, RoomStatus } from '../lib/types'
+import { labelOf, orderForPicker, pickDefaultRoom, type RoomChoice } from '../lib/roomLive'
 import CopyField from '../components/CopyField'
 import OverlayStage from '../components/OverlayStage'
 import { usePersistedStyle, type SaveState } from './usePersistedStyle'
 
 /** The room picker both customizers share — the room is what an overlay points at. */
 function RoomPicker({
-  rooms,
+  choices,
   selected,
   onChange,
 }: {
-  rooms: Room[]
+  choices: RoomChoice[]
   selected: string
   onChange: (id: string) => void
 }) {
+  // Live first, then waiting, then offline — see `orderForPicker`. Each entry says
+  // which it is, because a name alone gave no way to tell a room that can produce
+  // chat from one that cannot, and the picker defaulted to whichever happened to
+  // be created first.
+  const liveCount = choices.filter((choice) => choice.live === 'live').length
   return (
     <div className="field">
       <label htmlFor="room">Room</label>
       <select id="room" value={selected} onChange={(event) => onChange(event.target.value)}>
         <option value="">Choose a room…</option>
-        {rooms.map((room) => (
+        {choices.map(({ room, live }) => (
           <option key={room.id} value={room.id}>
-            {room.name}
+            {room.name} — {labelOf(live)}
           </option>
         ))}
       </select>
+      <p className="hint">
+        {liveCount === 0
+          ? 'No room is live right now. An offline room still has styling to edit — the overlay appears when the stream starts.'
+          : `${liveCount} room${liveCount === 1 ? '' : 's'} live now, listed first.`}
+      </p>
     </div>
   )
 }
@@ -311,6 +322,7 @@ const CANVASES = [
 
 export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }) {
   const [rooms, setRooms] = useState<Room[]>([])
+  const [statuses, setStatuses] = useState<Record<string, RoomStatus | undefined>>({})
   const [roomId, setRoomId] = useState(initialRoom ?? '')
   const [which, setWhich] = useState<Which>('chat')
   const [chatDesign, setChatDesign] = useState<'original' | 'studio'>('original')
@@ -330,18 +342,46 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
   }, [initialRoom])
 
   useEffect(() => {
+    let cancelled = false
     api
       .rooms()
-      .then(({ rooms: found }) => {
+      .then(async ({ rooms: found }) => {
         setRooms(found)
-        setRoomId((current) => current || (found[0]?.id ?? ''))
+        // Read every room's state so the picker can order by it and say which is
+        // which. A status that cannot be read is left undefined and reads as
+        // offline, which is the honest answer for a room nothing can be said
+        // about — the alternative is a badge that guesses.
+        const read: Record<string, RoomStatus | undefined> = {}
+        await Promise.all(
+          found.map(async (room) => {
+            try {
+              read[room.id] = await api.status(room.id)
+            } catch {
+              read[room.id] = undefined
+            }
+          }),
+        )
+        if (cancelled) return
+        setStatuses(read)
+        // Live first, and the default is the first live room rather than whichever
+        // was created first — the bug this exists for: every visit opened on an
+        // offline room while a live one sat further down the list.
+        const choices = orderForPicker(found, read)
+        setRoomId((current) => current || pickDefaultRoom(choices))
       })
       .catch(() => {
         // The builder is reachable before a token is set and the room list may
         // still be empty at that point; an empty select is a fair answer here and
         // the rest of the section stays usable.
       })
+    return () => {
+      cancelled = true
+    }
   }, [])
+
+  // Ordered once here rather than in the render: the picker reads this, and a
+  // fresh sort per render would reshuffle it as statuses poll.
+  const choices = useMemo(() => orderForPicker(rooms, statuses), [rooms, statuses])
 
   // A room named by the query string only counts once it has been confirmed to
   // exist, so a stale id produces a fallback rather than a link pointing at a
@@ -407,7 +447,7 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
       </div>
 
       <div className="panel">
-        <RoomPicker rooms={rooms} selected={selected} onChange={setRoomId} />
+        <RoomPicker choices={choices} selected={selected} onChange={setRoomId} />
         <div className="seg stack-top">
           <button className={which === 'chat' ? 'on' : ''} onClick={() => setWhich('chat')}>
             Chat overlay
