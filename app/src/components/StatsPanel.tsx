@@ -226,7 +226,7 @@ function Spark({ now, peak, values }: { now: number; peak: number; values: numbe
     tooltip: {
       theme: 'light',
       x: { show: false },
-      y: { formatter: (value) => `${value.toLocaleString()} viewers` },
+      y: { formatter: (value) => `${(value ?? 0).toLocaleString()} viewers` },
       marker: { show: true },
     },
     noData: { text: 'Waiting for viewer data' },
