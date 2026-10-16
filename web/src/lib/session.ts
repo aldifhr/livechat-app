@@ -33,12 +33,10 @@ export const COOKIE_NAME = 'streamkit_session'
  *  console for a week. A deployment that wants the older behaviour — and it is a
  *  defensible one for a single operator who signs in from one machine — sets
  *  STREAMKIT_SESSION_DAYS rather than editing this. */
-export const SESSION_TTL_MS = sessionTtlMs()
-
 /** Reads the configured lifetime, falling back to a week. Anything unreadable or
  *  nonsensical — zero, negative, NaN, `forever` — is a week, because an
  *  unparseable value must not become an unlimited session. */
-function sessionTtlMs(): number {
+export function sessionTtlMs(): number {
   const raw = process.env.STREAMKIT_SESSION_DAYS?.trim()
   if (!raw) return 7 * 24 * 60 * 60 * 1000
   const days = Number(raw)
@@ -75,7 +73,7 @@ export function signSession(
   key: Buffer,
   user: string,
   now = Date.now(),
-  ttlMs = SESSION_TTL_MS,
+  ttlMs = sessionTtlMs(),
 ): string {
   const body = b64(JSON.stringify({ user, exp: now + ttlMs }))
   const mac = b64(createHmac('sha256', key).update(`${VERSION}.${body}`).digest())
@@ -125,7 +123,7 @@ export function verifySession(key: Buffer, token: string, now = Date.now()): Ses
  */
 export function sessionCookie(
   token: string,
-  maxAgeSec = Math.floor(SESSION_TTL_MS / 1000),
+  maxAgeSec = Math.floor(sessionTtlMs() / 1000),
 ): string {
   return [
     `${COOKIE_NAME}=${token}`,
