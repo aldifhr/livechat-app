@@ -30,7 +30,9 @@
   --color-line: var(--line);
   --color-line-soft: var(--line-soft);
   --color-text: var(--text);
+  --color-fg: var(--text);
   --color-dim: var(--text-dim);
+  --color-muted: var(--text-dim);
   --color-faint: var(--text-faint);
   --color-accent: var(--accent);
   --color-accent-dim: var(--accent-dim);
