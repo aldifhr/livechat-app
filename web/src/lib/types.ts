@@ -55,3 +55,36 @@ export interface LogPage {
   /** How many the backend keeps in total, so the page can say what it is not showing. */
   capacity: number
 }
+
+/** A chatter or gifter in a room's session leaderboard. */
+export interface SessionPerson {
+  id: string
+  nickname: string
+  messages?: number
+  diamonds?: number
+}
+
+/**
+ * What a room's current session has accumulated.
+ *
+ * In memory only: the backend accumulates as events arrive and forgets on
+ * restart, so this describes the session running now. `live_seconds` survives a
+ * disconnect, because a stream that just ended still has a length worth reading.
+ */
+export interface RoomSession {
+  connected: boolean
+  /** Per-kind event totals, e.g. `{ comment: 244, gift: 4 }`. */
+  totals: Record<string, number>
+  /** How many of each kind were the same person arriving twice. */
+  repeats: Record<string, number>
+  viewers: number | null
+  /** Seconds since the last headcount, or null if none has arrived. */
+  viewers_age: number | null
+  peak_viewers: number
+  peak_viewers_age: number | null
+  /** How long the session has run, or null if it never connected. */
+  live_seconds: number | null
+  total_diamonds: number
+  topChatters: SessionPerson[]
+  topGifters: SessionPerson[]
+}

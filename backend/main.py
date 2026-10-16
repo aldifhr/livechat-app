@@ -19,6 +19,7 @@ from fastapi import APIRouter, FastAPI, HTTPException, Request, WebSocket, WebSo
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+import alerts
 import eventlog
 import events
 import logbuffer
@@ -70,9 +71,13 @@ liveness = LivenessWatchdog()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Before anything else that can log, so the ring catches the boot sequence —
-    # which is where a misconfiguration says so, and the one part of the log a
+    # which is where a misconfiguration says so, and the one part of log a
     # restarted process cannot otherwise be asked about.
     logbuffer.install()
+
+    # Says whether alerts are on, without printing the URL. A deploy that meant to
+    # configure one and did not is otherwise indistinguishable from a quiet week.
+    logger.info("alerts: %s", alerts.describe_json())
 
     # Re-aim every room that was pointed at a room when the process last went
     # down.

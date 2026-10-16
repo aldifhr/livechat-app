@@ -71,6 +71,11 @@ class RoomLog:
     peak_viewers: int = 0
     peak_viewers_at: float = 0.0
 
+    #: When this session started, so the panel can say how long it has been live.
+    #: Set on connect and cleared on reset — a duration is a property of the
+    #: session, and the session is what `reset` begins.
+    connected_at: float = 0.0
+
     #: Total diamonds (gift value) accumulated this session.
     total_diamonds: int = 0
 
@@ -96,6 +101,7 @@ class RoomLog:
         # Session stats — reset on reconnect for accurate per-session tracking
         self.peak_viewers = 0
         self.peak_viewers_at = 0.0
+        self.connected_at = 0.0
         self.total_diamonds = 0
         self.gifters.clear()
         self.gifter_names.clear()
@@ -135,6 +141,8 @@ def set_connected(room_id: str, connected: bool, detail: str = "") -> None:
     room.connected = connected
     if connected:
         room.reset()
+        # After the reset, which clears it — the session begins now.
+        room.connected_at = time.time()
         log.info("[%s] connected %s", room_id, detail or "")
     else:
         summary = ", ".join(f"{k}={v}" for k, v in sorted(room.totals.items())) or "no events"
@@ -262,7 +270,17 @@ def top_gifters(room_id: str, limit: int = TOP_N) -> list[dict[str, Any]]:
 
 
 def snapshot(room_id: str) -> dict[str, Any]:
-    """One room's counters, for a status endpoint or a test."""
+    """One room's counters, for the dashboard's session panel.
+
+    Everything here is accumulated as events arrive and lives only in memory, so
+    it describes the session that is running now and is gone when the process
+    restarts. That is the honest scope: there is no history to read back, and a
+    panel that implied one would be inventing numbers.
+
+    Ages are sent rather than absolute timestamps, so the page can say "12s ago"
+    without knowing the server's clock — and so a client whose clock is wrong does
+    not render a duration that never happened.
+    """
     room = _rooms.get(room_id)
     if room is None:
         return {
@@ -271,7 +289,12 @@ def snapshot(room_id: str) -> dict[str, Any]:
             "repeats": {},
             "viewers": None,
             "viewers_age": None,
+            "peak_viewers": 0,
+            "peak_viewers_age": None,
+            "live_seconds": None,
+            "total_diamonds": 0,
             "topChatters": [],
+            "topGifters": [],
         }
     return {
         "connected": room.connected,
@@ -280,7 +303,10 @@ def snapshot(room_id: str) -> dict[str, Any]:
         "viewers": room.viewers,
         "viewers_age": round(time.time() - room.viewers_at, 1) if room.viewers_at else None,
         "peak_viewers": room.peak_viewers,
-        "peak_viewers_at": round(time.time() - room.peak_viewers_at, 1) if room.peak_viewers_at else None,
+        "peak_viewers_age": round(time.time() - room.peak_viewers_at, 1) if room.peak_viewers_at else None,
+        # How long the session has run. Kept on a disconnect, like the totals, so a
+        # room that just dropped still reports the length of the stream it had.
+        "live_seconds": round(time.time() - room.connected_at, 1) if room.connected_at else None,
         "total_diamonds": room.total_diamonds,
         "topChatters": top_chatters(room_id),
         "topGifters": top_gifters(room_id),

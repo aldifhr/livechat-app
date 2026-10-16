@@ -24,10 +24,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError, isAuthFailure } from '@/lib/client'
 import { useOrigin } from '@/lib/browser'
 import { profilePath, streamLinks, LINK_LABELS } from '@/lib/streamLinks'
-import type { Room, RoomStatus } from '@/lib/types'
+import type { Room, RoomSession, RoomStatus } from '@/lib/types'
 import LinkLine from '@/components/LinkLine'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import RoomStateBadge from '@/components/RoomStateBadge'
+import SessionPanel from '@/components/SessionPanel'
 import { useToast } from '@/components/Toast'
 
 /** How often to re-read this stream's live state. The same beat the list uses, so
@@ -50,6 +51,7 @@ export default function StreamProfile({ handle }: { handle: string }) {
   const wanted = decodeURIComponent(handle).trim().replace(/^@/, '')
   const [room, setRoom] = useState<Room | null>(null)
   const [status, setStatus] = useState<RoomStatus | undefined>()
+  const [session, setSession] = useState<RoomSession | undefined>()
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -68,13 +70,19 @@ export default function StreamProfile({ handle }: { handle: string }) {
       setName(found?.name ?? '')
       setError('')
       if (found) {
-        try {
-          setStatus(await api.status(found.id))
-        } catch {
-          // A status that cannot be read is not evidence the room is down. The
-          // badge keeps what it last showed rather than being handed a reading
-          // this page never took.
-        }
+        // Read together rather than one after the other. The badge says whether
+        // this stream is live and the panel says what it has done, and a page
+        // where the two can describe different moments is a number that is wrong
+        // with nothing on screen to say so.
+        const [read, counted] = await Promise.all([
+          api.status(found.id).catch(() => undefined),
+          api.session(found.id).catch(() => undefined),
+        ])
+        // A status that cannot be read is not evidence the room is down. The
+        // badge keeps what it last showed rather than being handed a reading this
+        // page never took.
+        if (read) setStatus(read)
+        if (counted) setSession(counted)
       }
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'This stream could not be loaded')
@@ -208,6 +216,15 @@ export default function StreamProfile({ handle }: { handle: string }) {
       </div>
 
       {error && <div className="notice error">{error}</div>}
+
+      {/* The session counters sit above the links, not below them. What this stream
+          has done is the first thing anybody opening its page wants, and the links
+          are the same on every stream and change never. */}
+      {session && (
+        <div className="panel">
+          <SessionPanel session={session} />
+        </div>
+      )}
 
       <div className="panel">
         <h3>OBS browser source links</h3>
