@@ -1099,44 +1099,96 @@
     @apply mt-6 mb-3 text-[0.78rem] font-semibold tracking-[0.08em] text-dim uppercase;
   }
 
-  .analytics-grid {
-    @apply grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-3 max-[560px]:grid-cols-1;
-  }
-
-  .analytics-card {
-    @apply flex flex-col rounded-card border border-line bg-raised px-[1rem] py-[0.9rem];
-  }
-
-  .analytics-card-head {
+  /* ---- the per-stream bars ----
+   *
+   * A ranked list with a bar in the middle column, drawn as elements rather than
+   * SVG. The overview's viewer trend is SVG because it is a time series with two
+   * crossing lines and a real axis; this is a list of named categories with one
+   * number each, which is a table with a bar in it. As elements it is fluid with
+   * nothing to measure, the text never distorts as the window changes, and a long
+   * handle is one column width away from fitting.
+   *
+   * Horizontal because the categories are TikTok handles — long strings that do
+   * not rotate, sit or truncate well down the side of a vertical bar.
+   */
+  .chart-controls {
     @apply mb-3;
   }
 
-  /* The handle is the card's title, and the badge sits beside it the way it does
-     everywhere else. A separate line from the figures rather than beside them, so
-     the numbers get the full width of the card. */
-  .analytics-card-name {
-    @apply flex min-w-0 flex-wrap items-center gap-2 text-[0.95rem] font-semibold tracking-[-0.01em] [overflow-wrap:anywhere];
+  .bar-chart {
+    @apply m-0 flex list-none flex-col gap-[0.4rem] p-0;
   }
 
-  /* Label left, value right, but within the card rather than within the page —
-     which is the whole difference from `.session-grid` here. Two columns, because
-     five figures stacked is a card twice as tall as it needs to be. */
-  .analytics-figures {
-    @apply m-0 grid grid-cols-2 gap-x-4 gap-y-[0.3rem];
+  /* Fixed name and value columns so every bar starts on the same pixel and every
+     number ends on the same one. A bar chart whose baseline moves is two pictures
+     rather than one, and a value that shifts sideways as digits change is read as
+     a change in the number. */
+  .bar-row {
+    @apply grid min-w-0 items-center gap-3;
+    grid-template-columns: minmax(0, 9rem) 1fr minmax(0, 4.5rem);
   }
 
-  .analytics-figures > div {
-    @apply flex items-baseline justify-between gap-2;
+  .bar-name {
+    @apply min-w-0 truncate text-[0.85rem] text-dim;
   }
 
-  .analytics-figures dt {
-    @apply text-[0.72rem] font-medium text-faint;
+  /* The track is what makes a short bar read as short. Without it a bar is a
+     shape floating on the page, and five of them look like five unrelated lengths
+     rather than five answers to the same question. */
+  .bar-track {
+    @apply h-[0.55rem] min-w-0 overflow-hidden rounded-full bg-sunken;
   }
 
-  /* Tabular so a number that ticks every fifteen seconds does not make the card
-     breathe — the same reason the overview's tiles use it. */
-  .analytics-figures dd {
-    @apply m-0 text-[0.8rem] font-semibold tabular-nums;
+  .bar-fill {
+    @apply block h-full rounded-full bg-accent;
+    /* A zero-width bar is an empty track, which is exactly what zero is. No floor
+       and no minimum: a sliver under every row would make a stream with one viewer
+       look like one with several. */
+    transition: width 400ms ease;
+  }
+
+  .bar-value {
+    @apply truncate text-right text-[0.85rem] font-semibold tabular-nums;
+  }
+
+  /* ---- the leaderboards ---- */
+  .leaderboards {
+    @apply grid grid-cols-2 gap-4 max-[760px]:grid-cols-1;
+  }
+
+  .leaderboard-title {
+    @apply m-0 mb-2 text-[0.78rem] font-semibold tracking-[0.08em] text-dim uppercase;
+  }
+
+  .leaderboard-list {
+    @apply m-0 flex list-none flex-col gap-1 p-0;
+  }
+
+  .leaderboard-row {
+    @apply grid min-w-0 items-baseline gap-2;
+    grid-template-columns: 1.25rem minmax(0, 1fr) auto;
+  }
+
+  /* The rank is real information — it is a ranking — but it is not the subject,
+     which is the name, so it is the one column that does not grow. */
+  .leaderboard-rank {
+    @apply text-right text-[0.75rem] text-faint tabular-nums;
+  }
+
+  .leaderboard-name {
+    @apply min-w-0 truncate text-[0.88rem];
+  }
+
+  .leaderboard-value {
+    @apply text-[0.8rem] text-dim tabular-nums;
+  }
+
+  .leaderboard-empty {
+    @apply m-0 text-[0.82rem];
+  }
+
+  .leaderboard-note {
+    @apply mt-3;
   }
 
   /* Uptime and fan-out depth, on one quiet line under the chart. Not a tile: the
@@ -1144,12 +1196,6 @@
      and a tile would read as a fourth fact about a stream. */
   .backend-strip {
     @apply mt-4 mb-0 text-[0.78rem];
-  }
-
-  /* The account panel carries its own heading, so the form's fields do not start
-     flush against it. */
-  .account-panel .field:first-of-type {
-    @apply mt-3;
   }
 
   /* Where the links on this page point. Said once here rather than repeated on

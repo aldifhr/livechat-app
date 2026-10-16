@@ -79,6 +79,17 @@ export interface AnalyticsSummary {
     events: number
     live_seconds: number | null
   }>
+  /**
+   * Chatters summed across every room, on the stable user id — so one person who
+   * appeared on two streams is one row.
+   *
+   * These are the top twenty of each room added together, because that is what
+   * `eventlog` keeps. A chatter ranked twenty-first everywhere does not appear
+   * here, and that is a ceiling on the data rather than a smoothing of it.
+   */
+  topChatters: SessionPerson[]
+  /** The same, by diamond value. */
+  topGifters: SessionPerson[]
 }
 
 export interface LogPage {

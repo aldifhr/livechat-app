@@ -22,7 +22,6 @@ import { api } from '@/lib/client'
 import type { BackendHealth, Room, RoomStatus } from '@/lib/types'
 import NumberTicker from '@/components/magicui/NumberTicker'
 import RoomStateBadge from '@/components/RoomStateBadge'
-import PasswordPanel from '@/components/PasswordPanel'
 
 /** How often the numbers are re-read. The same beat the streams page uses, so
  *  two pages side by side are not showing different moments. */
@@ -261,24 +260,6 @@ export default function Dashboard() {
           </table>
         </div>
       )}
-
-      {/* The account, at the bottom of the console's front page.
-          *
-          * Changing the dashboard password is the one thing an operator has to be
-          * able to do, and it used to live on the About page. When About came out
-          * of the navigation, this form went with it — `PasswordPanel` has no other
-          * caller, so the ability itself became reachable only by typing a URL. A
-          * console you cannot change the key to is the one problem you cannot fix
-          * from inside it.
-          *
-          * Here rather than as a fifth navigation item: it is a once-a-year action
-          * and not a place an operator works, and a nav entry that opens a password
-          * field is an invitation. A dedicated /admin/account is the other answer,
-          * and the better one if account settings ever grow past this. */}
-      <div className="panel account-panel">
-        <h3>Account</h3>
-        <PasswordPanel />
-      </div>
     </>
   )
 }
