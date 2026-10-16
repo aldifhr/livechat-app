@@ -12,8 +12,27 @@ from typing import Any
 
 from fastapi import WebSocket
 
+#: The kinds of client that attach to a room's event stream.
+#:
+#: `overlay` is the one that has count, and it is named here because the list of
+#: known types was once just the other two — so a handler validating against them
+#: refused every OBS browser source and every inline dashboard preview with 1008,
+#: and the suite stayed green because all of it connected as `room`.
 ROOM = "room"
 CUSTOMIZER = "customizer"
+#: The overlay pages. `static/overlay.html` and `static/topchatter.html` open this,
+#: and so does the dashboard's own preview iframe, which embeds one of those pages.
+OVERLAY = "overlay"
+
+#: Every accepted `client_type`. Checked in one place, so adding a kind is this line
+#: and not a hunt for the tuple literal that used to sit in the `if`.
+CLIENT_TYPES = frozenset({ROOM, CUSTOMIZER, OVERLAY})
+
+#: Clients that are a viewer of the room rather than somebody editing it. A
+#: customizer is the operator's own surface, and counting it against the viewer's
+#: cap would lock the operator out of styling a room that already has overlays on
+#: it — which is the normal state of a stream that is set up and running.
+VIEWER_TYPES = frozenset({ROOM, OVERLAY})
 
 # Re-exported for routes that validate client_type before calling hub.connect().
 # The route in main.py needs these without instantiating the hub.
@@ -27,6 +46,32 @@ CUSTOMIZER = "customizer"
 #: typically one OBS overlay, one dashboard preview, maybe a phone — and still
 #: bounded.
 MAX_CLIENTS_PER_ROOM = 5
+
+#: Maximum concurrent sockets on the whole hub, across every room.
+#:
+#: The per-room cap alone does not bound anything, and the reason is the room id:
+#: it is a free-form path segment with no validation, so a caller reaching the cap
+#: for one room simply asks for the next one. `ws/room/a`, `ws/room/b`, `ws/room/c`
+#: — five sockets each, indefinitely, and the total is what the process actually
+#: pays for. This is the cap that bounds the total; the per-room one is about being
+#: a good citizen of a room rather than about survival.
+#:
+#: Sized for a small deployment with room to spare. Every socket here is a real
+#: stream somebody is watching, so a ceiling far above this would not protect
+#: anything — it would only decide how many file descriptors are gone before the
+#: ceiling is reached.
+#:
+#: The room id itself is not validated, and adding that was considered and left out.
+#: The overlay pages recognise a room id by shape — 8-4-4-4-12 hex, because the
+#: backend mints `uuid.uuid4()` and a handle can never match — and reusing that
+#: regex here would have been the tidier defence. It is not, because the id is a
+#: free-form segment in every other caller too: the test suite opens `/ws/room/
+#: test-room` and `/ws/room/alpha-board`, and a room id is not required to be a uuid
+#: anywhere it is minted. Enforcing the shape would have meant changing the contract
+#: to close a hole this ceiling already closes — a caller using a fresh made-up id
+#: per socket is bounded by the total now, which is the thing that was actually
+#: unbounded. If the id is ever tightened, tighten it at the store, not here.
+MAX_CLIENTS_TOTAL = 200
 
 #: Messages buffered for one client before it is judged not to be keeping up.
 #:
@@ -108,18 +153,38 @@ class Hub:
         because `room_clients` is what `broadcast` routes on, and a room's first
         event must find this client already in the map — queued behind the config
         it is waiting for, not lost.
+
+        Returns an empty string when a cap is reached, having closed the socket
+        first. A refusal nobody asked for is not an error, and it used to be one:
+        this raised, nothing caught it, and uvicorn logged an ERROR traceback for
+        every socket over the cap. Those went to the root logger, which is where
+        `logbuffer` keeps the ring the dashboard's Logs page reads — so a caller
+        walking into the ceiling evicted the real errors that page exists to show,
+        repeatably, without a credential, using any made-up room id.
         """
-        await websocket.accept()
-        # Reject before allocating anything. The cap is per-room, not global:
-        # a customizer watching a different room is a different audience. A
-        # customizer does not count against the room's viewer cap — it is the
-        # operator's own editing surface, and blocking it because too many
-        # overlays are attached would lock the operator out of styling.
-        if room_id and client_type == ROOM:
+        # Checked before `accept`, so a client that is going to be refused never
+        # costs a queue, a task, or an entry in five dictionaries. The path is
+        # unauthenticated — OBS cannot carry a credential — so this ceiling is the
+        # only thing between an open port and a process that runs out of file
+        # descriptors.
+        if len(self.active) >= MAX_CLIENTS_TOTAL:
+            await websocket.close(code=1013, reason="server at capacity")
+            return ""
+        # Per room, and only for viewers. This one used to be `client_type == ROOM`,
+        # which meant it never applied to the clients that actually have count: the
+        # overlay pages connect as `overlay`, so an OBS source and a dashboard
+        # preview were both uncapped and the ceiling sat there doing nothing. A
+        # customizer is still exempt — it is the operator's own surface, and
+        # blocking it because a room already has overlays on it would lock them out
+        # of styling a stream that is set up and running, which is the normal state
+        # of the thing they are trying to do.
+        if room_id and client_type in VIEWER_TYPES:
             current = sum(1 for rid in self.room_clients.values() if rid == room_id)
             if current >= MAX_CLIENTS_PER_ROOM:
                 await websocket.close(code=1013, reason="room is full")
-                raise RuntimeError(f"room {room_id} has reached its client limit")
+                return ""
+
+        await websocket.accept()
         client_id = str(uuid.uuid4())
         self.active[client_id] = websocket
         self._queues[client_id] = asyncio.Queue(maxsize=CLIENT_QUEUE_LIMIT)

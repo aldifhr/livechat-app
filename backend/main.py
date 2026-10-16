@@ -24,7 +24,7 @@ import events
 import logbuffer
 import store
 from watchdog import LivenessWatchdog
-from hub import hub, ROOM as HUB_ROOM, CUSTOMIZER as HUB_CUSTOMIZER
+from hub import hub, CLIENT_TYPES as HUB_CLIENT_TYPES
 from sources import TikTokAdapter
 
 #: Module-level logger. Bootstrapped in `logging_setup`: one place, one handler,
@@ -366,10 +366,22 @@ async def websocket_endpoint(websocket: WebSocket, client_type: str, room_id: st
     # against the known types. A typo or a malicious value silently created
     # a client that broadcasts could not route to. Reject unknown types
     # before accepting the socket.
-    if client_type not in (HUB_ROOM, HUB_CUSTOMIZER):
+    #
+    # Checked against `hub.CLIENT_TYPES`, which is all three of them. The list
+    # used to name only `room` and `customizer`, and `overlay` — the type every
+    # OBS browser source and every inline dashboard preview connects as, since the
+    # pages hardcode `/ws/overlay/` — was not in it. So this check refused every
+    # real overlay in the product while the suite stayed green: not one test
+    # connected as anything but `room`.
+    if client_type not in HUB_CLIENT_TYPES:
         await websocket.close(code=1008, reason="unknown client type")
         return
     client_id = await hub.connect(websocket, client_type, room_id)
+    # A cap was reached. `hub.connect` has already closed the socket, and returns an
+    # empty id rather than raising, precisely so that walking into a limit is not an
+    # error worth a traceback.
+    if not client_id:
+        return
     try:
         record = await store.get_room_async(room_id)
         config = record.get("config", DEFAULT_ROOM_CONFIG) if record else DEFAULT_ROOM_CONFIG
