@@ -97,7 +97,10 @@ async function proxy(request: NextRequest): Promise<Response> {
     if (cause instanceof BackendError) {
       return Response.json({ detail: cause.message }, { status: cause.status })
     }
-    return Response.json({ detail: 'The backend could not be reached' }, { status: 502 })
+    // A fetch that threw rather than answered: no response at all, so the backend
+    // is unreachable rather than refusing. Same sentence as the 502 an intermediary
+    // produces for the same situation, because it is the same situation.
+    return Response.json({ detail: 'The backend could not be reached.' }, { status: 502 })
   }
 }
 
