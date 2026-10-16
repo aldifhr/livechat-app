@@ -16,27 +16,32 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError, isAuthFailure } from '../lib/client'
 import { useOrigin } from '../lib/browser'
-import type { Room } from '../lib/types'
+import type { Room, RoomStatus } from '../lib/types'
 import CopyField from '../components/CopyField'
 import ConfirmDialog from '../components/ConfirmDialog'
+import RoomStateBadge from '../components/RoomStateBadge'
 import { useToast } from '../components/Toast'
 
 /** How often to ask about a room's live state. Long enough to be quiet, short
  *  enough that going offline is noticed while somebody is watching. */
 const POLL_MS = 15_000
 
+/** The beat and the window used right after a Connect. See `watchRoom`. */
+const WATCH_MS = 1000
+const WATCH_WINDOW_MS = 20_000
+
 /** What one stream looks like on the card. */
 function StreamCard({
   room,
-  live,
+  status,
   busy,
   onDelete,
 }: {
   room: Room
-  live: boolean | undefined
+  status: RoomStatus | undefined
   busy: boolean
   onDelete: (room: Room) => void
 }) {
@@ -57,9 +62,7 @@ function StreamCard({
               the label sits under it, rather than the same text twice in two fonts. */}
           <h3 className="stream-name">
             @{room.username || 'no handle'}
-            {live === undefined ? null : (
-              <span className={live ? 'badge live' : 'badge off'}>{live ? 'live' : 'offline'}</span>
-            )}
+            <RoomStateBadge status={status} />
           </h3>
           {room.name && room.name !== room.username && <p className="faint stream-label">{room.name}</p>}
         </div>
@@ -112,7 +115,11 @@ export default function Streams() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [newHandle, setNewHandle] = useState('')
-  const [live, setLive] = useState<Record<string, boolean>>({})
+  // The whole status, not `connected`. The backend distinguishes connecting,
+  // waiting and live-ended from offline, and a card that kept only the boolean
+  // rendered all four as "offline" — including the seconds straight after a
+  // Connect that had worked, which is the moment the badge is being watched.
+  const [statuses, setStatuses] = useState<Record<string, RoomStatus>>({})
   // The room waiting to be deleted, rather than a boolean: the dialog names the
   // room, and naming it from the room that raised it is the one way the name on
   // screen cannot drift from the room that gets deleted.
@@ -149,6 +156,16 @@ export default function Streams() {
   // poll, so depending on it tore this effect down and rebuilt it on every tick.
   const roomIds = rooms.map((room) => room.id).join(',')
 
+  // Whether the page is still mounted, so a watch loop started by a Connect cannot
+  // write into a state setter belonging to a page that has gone.
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+
   useEffect(() => {
     if (!roomIds) return
     let cancelled = false
@@ -158,7 +175,7 @@ export default function Streams() {
         roomIds.split(',').map(async (id) => {
           try {
             const status = await api.status(id)
-            return [id, status.connected] as const
+            return [id, status] as const
           } catch {
             // A status that cannot be read is not evidence the room is down, so
             // the room keeps whatever it last showed. Reporting it as offline
@@ -168,7 +185,7 @@ export default function Streams() {
         }),
       )
       if (cancelled) return
-      setLive((current) => {
+      setStatuses((current) => {
         const next = { ...current }
         for (const entry of results) if (entry) next[entry[0]] = entry[1]
         return next
@@ -184,6 +201,51 @@ export default function Streams() {
   }, [roomIds])
 
   /**
+   * Watch one room at a fast beat until its status settles.
+   *
+   * Connecting is asynchronous on the backend: `_connect_room` installs the
+   * adapter, starts its connect loop in the background and returns immediately, so
+   * the answer to a Connect says `connecting` and the room does not become live
+   * until a handshake lands some time later. The page's own poll beats every
+   * fifteen seconds, so a card could sit on a reading taken while the adapter was
+   * still dialling — long enough that the only way to see the truth was to reload.
+   *
+   * Only `connecting` is worth waiting through; `waiting` and everything else is
+   * the answer. Bounded regardless, because the state being waited on is one the
+   * backend may hold for a long time on its own, and the ordinary poll takes over
+   * the moment this gives up.
+   */
+  const watchRoom = useCallback(
+    async (roomId: string, handle: string) => {
+      const giveUpAt = Date.now() + WATCH_WINDOW_MS
+      while (mounted.current && Date.now() < giveUpAt) {
+        try {
+          const status = await api.status(roomId)
+          if (!mounted.current) return
+          setStatuses((current) => ({ ...current, [roomId]: status }))
+          if (!status.connecting || status.waiting) {
+            // The handshake either landed or never will, and the operator is owed
+            // the answer rather than a badge they have to go and read.
+            toast(
+              status.connected
+                ? `@${handle} is live.`
+                : status.liveEnded
+                  ? `@${handle} is not live right now.`
+                  : `@${handle} is not live — StreamKit is waiting for it.`,
+            )
+            return
+          }
+        } catch {
+          // Not evidence about the room. The page's own poll is still running and
+          // will say something when it can.
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, WATCH_MS))
+      }
+    },
+    [toast],
+  )
+
+  /**
    * Connect a handle, which creates its room if needed.
    *
    * Connecting rather than creating is the whole point: a room nothing is
@@ -196,10 +258,18 @@ export default function Streams() {
     if (handle === '') return
     setBusy(true)
     try {
-      await api.connectHandle(handle)
+      const answer = await api.connectHandle(handle)
       setNewHandle('')
       setError('')
-      toast(`Connected to @${handle}.`)
+      // What the request actually said. `connecting` is the normal answer for a
+      // handle that is going to work — the adapter connects after this returns —
+      // so announcing "Connected" here was claiming something the response had
+      // not said yet, and the card contradicting it a moment later.
+      toast(
+        answer.status === 'already-connected'
+          ? `@${handle} was already connected.`
+          : `Connecting to @${handle}…`,
+      )
       // Re-read rather than pushing the connect answer in.
       //
       // It used to splice the answer straight onto the list so a room created
@@ -209,6 +279,9 @@ export default function Streams() {
       // reports as a list child with no key, long after anyone was looking for
       // it. One read costs the same round trip the splice was avoiding.
       void load()
+      // The answer names the room, so the card that just appeared can be watched
+      // at a beat worth watching rather than at the page's fifteen seconds.
+      void watchRoom(answer.room_id, handle)
     } catch (cause) {
       setError(
         cause instanceof ApiError && isAuthFailure(cause.status)
@@ -307,7 +380,7 @@ export default function Streams() {
             <StreamCard
               key={room.id}
               room={room}
-              live={live[room.id]}
+              status={statuses[room.id]}
               busy={busy}
               onDelete={setPendingDelete}
             />
