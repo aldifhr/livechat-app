@@ -206,4 +206,28 @@ export const api = {
    */
   testAlert: () =>
     request<{ configured: boolean; sent: boolean; detail?: string }>('POST', '/alerts/test'),
+
+  /**
+   * How the backend itself is doing.
+   *
+   * Two calls rather than one because the backend serves them separately and they
+   * answer different questions: `health` is uptime and what is connected, `metrics`
+   * is what the fan-out is carrying. `health` hands a caller holding the write token
+   * a per-room map naming every streamer, and withholds it from everyone else — the
+   * proxy attaches no credential here, so the page gets the counts and nothing else.
+   */
+  health: () =>
+    request<{
+      status: string
+      uptimeSeconds: number
+      activeRooms: number
+      totalConnections: number
+    }>('GET', '/health'),
+  metrics: () =>
+    request<{
+      sources_active: number
+      websocket_connections: number
+      queued_messages_total: number
+      clients_disconnected_total: number
+    }>('GET', '/metrics'),
 }

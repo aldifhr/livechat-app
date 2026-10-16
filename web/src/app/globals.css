@@ -1081,6 +1081,19 @@
     @apply mb-0 min-w-0 flex-1;
   }
 
+  /* Uptime and fan-out depth, on one quiet line under the chart. Not a tile: the
+     tiles above are about the streams and this is about the process reading them,
+     and a tile would read as a fourth fact about a stream. */
+  .backend-strip {
+    @apply mt-4 mb-0 text-[0.78rem];
+  }
+
+  /* The account panel carries its own heading, so the form's fields do not start
+     flush against it. */
+  .account-panel .field:first-of-type {
+    @apply mt-3;
+  }
+
   /* Where the links on this page point. Said once here rather than repeated on
      every card, because the field scrolls to the end of the URL — which is where
      the part that differs between links lives, and the origin is not it. */
