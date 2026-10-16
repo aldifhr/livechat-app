@@ -137,7 +137,9 @@ def describe(room_id: str) -> str:
     totals = snap.get("totals") or {}
     parts: list[str] = []
     live = snap.get("live_seconds")
-    if live:
+    # `live_seconds` is None when the session never connected, but 0.0 means it
+    # just started — `if live:` would hide a brand-new stream's duration.
+    if live is not None:
         minutes = int(live // 60)
         parts.append(f"{minutes // 60}h{minutes % 60:02d}m" if minutes >= 60 else f"{minutes}m")
     peak = snap.get("peak_viewers") or 0

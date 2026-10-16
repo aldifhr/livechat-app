@@ -39,16 +39,26 @@ def read() -> str:
 
     The file takes precedence: it is what a dashboard save wrote, and a variable
     set afterwards would otherwise silently keep pointing alerts at the old place.
+
+    The file is `KEY=VALUE`, not a bare URL, so it is parsed rather than returned
+    whole — a secret next to its own name is still a secret, but the value is the
+    part that has to be a URL.
     """
+    stored = ""
     try:
-        stored = CONFIG_PATH.read_text(encoding="utf-8").strip()
+        raw = CONFIG_PATH.read_text(encoding="utf-8")
     except FileNotFoundError:
-        stored = ""
+        pass
     except OSError as exc:
         # Unreadable is not a reason to fail a boot — but it does mean alerts are
         # going nowhere, which is worth a warning rather than silence.
         logger.warning("alert config could not be read (%s); alerts are off", exc)
         return ""
+    else:
+        for line in raw.splitlines():
+            if line.startswith(f"{_ENV}="):
+                stored = line.split("=", 1)[1].strip()
+                break
     return stored or os.environ.get(_ENV, "").strip()
 
 
@@ -124,12 +134,13 @@ def set(url: str) -> str | None:
         return problem
     try:
         CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        # Preserve the existing file's mode before replacing it, because
+        # `replace()` takes the temp file's mode, not the target's. A secret that
+        # was 0600 must not become 0644 on a rewrite.
+        mode = CONFIG_PATH.stat().st_mode & 0o777 if CONFIG_PATH.exists() else 0o600
         temporary = CONFIG_PATH.with_suffix(".tmp")
         temporary.write_text(f"{_ENV}={url}\n", encoding="utf-8")
-        if CONFIG_PATH.exists():
-            temporary.chmod(CONFIG_PATH.stat().st_mode)
-        else:
-            temporary.chmod(0o600)
+        temporary.chmod(mode)
         temporary.replace(CONFIG_PATH)
     except OSError as exc:
         return f"the webhook could not be saved ({exc})"
