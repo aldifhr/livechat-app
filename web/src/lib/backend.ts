@@ -68,10 +68,62 @@ export async function backendFetch<T>(
   })
 
   if (!response.ok) {
-    throw new BackendError(response.status, await response.text().catch(() => ''))
+    throw new BackendError(response.status, await describe_failure(response))
   }
   if (response.status === 204) return undefined as T
   return (await response.json()) as T
+}
+
+/** Statuses an intermediary produces when it could not reach the backend, rather
+ *  than anything the backend decided. */
+const UNREACHABLE: Record<number, string> = {
+  502: 'The backend could not be reached.',
+  503: 'The backend is not accepting requests.',
+  504: 'The backend did not answer in time.',
+}
+
+/**
+ * What to say about a call that did not succeed.
+ *
+ * The body is not the message. It used to be — `response.text()` went straight
+ * into the error — and that put two different things in front of the operator:
+ *
+ *   - **The backend's own errors, as raw JSON.** FastAPI answers a 404 with
+ *     `{"detail":"Room not found"}`, so the page rendered
+ *     `{"detail":"Room not found"}` with the braces and the quotes. Every
+ *     refusal in the console was a line of JSON.
+ *
+ *   - **An intermediary's error page, verbatim.** The backend sits behind its own
+ *     nginx, so a restart or an early close comes back as a 502 carrying a page
+ *     of HTML — and six lines of `<center><h1>502 Bad Gateway</h1></center>` were
+ *     the error message on the page. Whoever saw it was told what nginx said
+ *     rather than what was wrong, which is the one thing the sentence was for.
+ *
+ * So the body is read for the one field the backend actually uses to explain
+ * itself, and anything else is a sentence about the status. An intermediary's
+ * 502 means the backend is unreachable, which is what the `catch` below already
+ * says when the request never got an answer at all — so the two now agree
+ * instead of one being a sentence and the other a web page.
+ *
+ * A `detail` that is not a string — FastAPI's 422 answers with a list of objects —
+ * is deliberately not rendered. A validation report is for whoever wrote the
+ * request, and the one reading this is an operator told a button did nothing.
+ */
+async function describe_failure(response: Response): Promise<string> {
+  const body = await response.text().catch(() => '')
+  if (body) {
+    try {
+      const parsed: unknown = JSON.parse(body)
+      if (parsed && typeof parsed === 'object' && 'detail' in parsed) {
+        const detail = (parsed as { detail: unknown }).detail
+        if (typeof detail === 'string' && detail) return detail
+      }
+    } catch {
+      // Not JSON, so not the backend's own vocabulary. Whatever it is, it is not
+      // a sentence to show somebody.
+    }
+  }
+  return UNREACHABLE[response.status] ?? `The backend answered ${response.status}.`
 }
 
 /** A backend call that failed, carrying the status so a caller can tell a refused
