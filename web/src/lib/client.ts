@@ -14,7 +14,7 @@
 
 'use client'
 
-import type { AnalyticsSummary, LogPage, Room, RoomSession, RoomStatus } from './types'
+import type { AnalyticsSummary, HealthData, LogPage, MetricsData, Room, RoomSession, RoomStatus } from './types'
 
 export class ApiError extends Error {
   constructor(
@@ -199,6 +199,10 @@ export const api = {
       q: opts.q,
     }),
   analytics: () => request<AnalyticsSummary>('GET', '/analytics'),
+  /** The backend's liveness and per-room status. */
+  health: () => request<HealthData>('GET', '/health'),
+  /** The backend's counters: active sources, sockets, queued messages, disconnects. */
+  metrics: () => request<MetricsData>('GET', '/metrics'),
 
   /** What this room's current session has accumulated — peaks, diamonds, leaders. */
   session: (id: string) => request<RoomSession>('GET', `/rooms/${id}/session`),
@@ -222,18 +226,4 @@ export const api = {
    * a per-room map naming every streamer, and withholds it from everyone else — the
    * proxy attaches no credential here, so the page gets the counts and nothing else.
    */
-  health: () =>
-    request<{
-      status: string
-      uptimeSeconds: number
-      activeRooms: number
-      totalConnections: number
-    }>('GET', '/health'),
-  metrics: () =>
-    request<{
-      sources_active: number
-      websocket_connections: number
-      queued_messages_total: number
-      clients_disconnected_total: number
-    }>('GET', '/metrics'),
 }

@@ -25,6 +25,7 @@ const ITEMS = [
   { href: '/admin/overlay', label: 'Overlay builder', icon: '✦', hint: 'Restyle one stream in detail' },
   { href: '/admin/logs', label: 'Logs', icon: '≡', hint: 'What the backend has been saying' },
   { href: '/admin/analytics', label: 'Analytics', icon: '▥', hint: 'Session totals across every stream' },
+  { href: '/admin/status', label: 'Status', icon: '⊛', hint: 'Uptime, connections, and per-room state' },
 ]
 
 export default function Sidebar() {

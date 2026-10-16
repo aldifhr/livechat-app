@@ -42,8 +42,10 @@ const ALLOWED = [
   // reads and the token rides on neither. `/health` withholds its per-room map from
   // a caller without the token, which is exactly what happens here, so what reaches
   // the page is the aggregate count and nothing that names a streamer.
-  /^\/health$/,
-  /^\/metrics$/,
+  // The client calls these through /api/backend/*, so the proxy matches the
+  // full path rather than the bare backend route.
+  /^\/api\/backend\/health$/,
+  /^\/api\/backend\/metrics$/,
   // The backend's own log records. A read, and the backend gates it on the token
   // rather than on the method — so it is in `SENSITIVE_READ` below too, or the
   // proxy would forward it with no credential and the page would always be empty.
