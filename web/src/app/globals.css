@@ -592,8 +592,62 @@
     @apply text-[0.8rem] text-faint;
   }
 
-  .sidebar .signout {
-    @apply mt-auto;
+  /* ---- the account menu ----
+   *
+   * A gear at the bottom of the column, opening a panel that floats over the page.
+   *
+   * `details` rather than a button and a piece of state, so the menu opens, its
+   * links navigate and its sign-out submits with JavaScript off — which is the
+   * point, because the sign-out inside it is a real form POST to a route that
+   * answers with a redirect, and a fetch would not follow it with the new cookie.
+   *
+   * Absolutely positioned, and this is the load-bearing part: the sidebar is
+   * `overflow-y-auto` and `h-screen`, so a panel in normal flow would either open
+   * downwards off the bottom of the column or push the note above it. Floated, it
+   * opens upwards over the content and the column does not move when it does.
+   */
+  .account-menu {
+    @apply relative mt-auto;
+  }
+
+  /* The marker is the browser's own disclosure triangle, which would sit beside
+     the gear and make a two-icon row out of a one-icon row. */
+  .account-menu > summary {
+    @apply list-none cursor-pointer;
+  }
+
+  .account-menu > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .account-menu[open] > summary {
+    @apply bg-raised text-text;
+  }
+
+  .account-menu-panel {
+    @apply absolute right-0 bottom-[calc(100%+0.4rem)] left-0 z-20 flex flex-col gap-0.5 rounded-card border border-line bg-raised p-1.5;
+    /* A shadow rather than a border to separate it, because the border is already
+       there and a second one on a panel over content reads as a double edge. */
+    box-shadow: 0 18px 40px rgb(0 0 0 / 34%);
+  }
+
+  /* A menu row, not a navigation item: no left rule, because the rule in the
+     sidebar column means "you are here" and nothing in a menu is somewhere else.
+     The padding is nudged so the text lines up with the gear's. */
+  .account-menu-item {
+    @apply flex w-full min-w-0 items-center gap-2.5 rounded-field border-0 bg-transparent px-2 py-1.5 text-left text-[0.88rem] text-dim no-underline;
+  }
+
+  .account-menu-item:hover {
+    @apply bg-bg text-text no-underline;
+  }
+
+  .account-menu-item.danger:hover {
+    @apply text-bad;
+  }
+
+  .account-menu-item .nav-icon {
+    @apply h-5 w-5 text-[12px];
   }
 
   /* The narrow layout turns the sidebar into a bar at the top of the page, where
@@ -1769,7 +1823,7 @@
     @apply mt-5 border-t border-line-soft px-3 pt-4 text-[11px] leading-relaxed text-faint;
   }
 
-  .sidebar .signout {
+  .sidebar .account-menu {
     @apply mt-auto rounded-xl border border-line-soft text-dim;
     background: rgb(255 255 255 / 2.5%);
   }
