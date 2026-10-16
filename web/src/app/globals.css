@@ -1081,6 +1081,64 @@
     @apply mb-0 min-w-0 flex-1;
   }
 
+  /* ---- analytics ----
+   *
+   * One stream's session is a `session-grid` inside a panel, and the figures sit at
+   * opposite edges of that panel. The same markup across a whole page is a table
+   * with no columns, so this page has its own two: the tiles for the headline
+   * numbers, and cards for the per-stream detail.
+   */
+  .analytics-totals {
+    /* Five across once there is room for them. The base `.stat-row` is three,
+       which is right for the overview's three figures and leaves this page's
+       second row holding two numbers and a gap. */
+    @apply lg:grid-cols-5;
+  }
+
+  .section-heading {
+    @apply mt-6 mb-3 text-[0.78rem] font-semibold tracking-[0.08em] text-dim uppercase;
+  }
+
+  .analytics-grid {
+    @apply grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-3 max-[560px]:grid-cols-1;
+  }
+
+  .analytics-card {
+    @apply flex flex-col rounded-card border border-line bg-raised px-[1rem] py-[0.9rem];
+  }
+
+  .analytics-card-head {
+    @apply mb-3;
+  }
+
+  /* The handle is the card's title, and the badge sits beside it the way it does
+     everywhere else. A separate line from the figures rather than beside them, so
+     the numbers get the full width of the card. */
+  .analytics-card-name {
+    @apply flex min-w-0 flex-wrap items-center gap-2 text-[0.95rem] font-semibold tracking-[-0.01em] [overflow-wrap:anywhere];
+  }
+
+  /* Label left, value right, but within the card rather than within the page —
+     which is the whole difference from `.session-grid` here. Two columns, because
+     five figures stacked is a card twice as tall as it needs to be. */
+  .analytics-figures {
+    @apply m-0 grid grid-cols-2 gap-x-4 gap-y-[0.3rem];
+  }
+
+  .analytics-figures > div {
+    @apply flex items-baseline justify-between gap-2;
+  }
+
+  .analytics-figures dt {
+    @apply text-[0.72rem] font-medium text-faint;
+  }
+
+  /* Tabular so a number that ticks every fifteen seconds does not make the card
+     breathe — the same reason the overview's tiles use it. */
+  .analytics-figures dd {
+    @apply m-0 text-[0.8rem] font-semibold tabular-nums;
+  }
+
   /* Uptime and fan-out depth, on one quiet line under the chart. Not a tile: the
      tiles above are about the streams and this is about the process reading them,
      and a tile would read as a fourth fact about a stream. */
