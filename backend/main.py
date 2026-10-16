@@ -153,14 +153,8 @@ app = FastAPI(title="StreamKit", lifespan=lifespan)
 # authorisation
 #
 # Auth helpers live in `routes/auth` so main.py keeps its surface area as
-# routing only. They are re-exported here so existing references
-# (`main.token_is_valid`, etc.) keep working for tests that import `main`.
+# routing only.
 from routes.auth import (
-    AUTH_DISABLED_ENV,
-    EXEMPT_WRITE_PATHS,
-    SENSITIVE_READ_PREFIX,
-    api_token,
-    auth_is_disabled,
     is_exempt_write_path,
     is_sensitive_read_path,
     token_is_valid,
@@ -252,10 +246,7 @@ app.include_router(rooms_router)
 # `routes/live`. State is bound from this module so the handler layer reaches
 # the real source map and hub without importing `main`.
 from routes.live import (  # noqa: E402
-    AUTO_ROOM_LIMIT,
-    USERNAME_RE,
     bind_state as bind_live_state,
-    normalise_username,
 )
 from routes.live import router as live_router  # noqa: E402
 

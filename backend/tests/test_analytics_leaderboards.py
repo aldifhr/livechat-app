@@ -28,7 +28,6 @@ os.environ["STREAMKIT_TOKEN"] = TOKEN
 AUTH = {"x-streamkit-token": TOKEN}
 
 import eventlog  # noqa: E402
-import store  # noqa: E402
 from routes.ops import _rank  # noqa: E402
 
 PASSED = 0

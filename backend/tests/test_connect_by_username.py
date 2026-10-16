@@ -174,12 +174,12 @@ def main_run():
     # it creates on the next statement — so the filler rooms it built were not the
     # shape the cap counts, and the test passed against a cap that was never
     # actually enforcing anything.
-    reserved = {"bittersweetbynajla", "someone_else", "raced"}
     main.sources.clear()
+    from routes.live import AUTO_ROOM_LIMIT
 
-    for i in range(main.AUTO_ROOM_LIMIT + 2):
+    for i in range(AUTO_ROOM_LIMIT + 2):
         store.find_or_create_room_for_username(f"filler{i}")
-    check("the store is past the ceiling", store.count_auto_rooms() > main.AUTO_ROOM_LIMIT,
+    check("the store is past the ceiling", store.count_auto_rooms() > AUTO_ROOM_LIMIT,
           str(store.count_auto_rooms()))
 
     rooms_before = len(store.all_rooms())

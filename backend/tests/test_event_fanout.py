@@ -22,11 +22,9 @@ import asyncio
 import os
 import sys
 import time
-from typing import Any
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import events  # noqa: E402
 import hub as hub_module  # noqa: E402
 
 CHECKS = 0

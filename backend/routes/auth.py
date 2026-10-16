@@ -9,7 +9,6 @@ import os
 import secrets
 
 from fastapi import Request
-from fastapi.responses import JSONResponse
 
 from logging_setup import logger
 

@@ -17,7 +17,6 @@ Run with the backend's interpreter:
 """
 
 import logging
-import os
 import sys
 from pathlib import Path
 

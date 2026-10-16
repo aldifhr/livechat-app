@@ -14,7 +14,6 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-import eventlog
 import events
 import store
 from logging_setup import logger
