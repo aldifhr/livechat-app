@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 
 import alerts
+import eventlog
 import events
 import logbuffer
 import store
@@ -148,6 +149,50 @@ async def webhook(room_id: str, req: HookRequest):
         ),
     )
     return {"status": "ok"}
+
+
+@router.get("/api/analytics")
+async def analytics(request: Request) -> dict[str, Any]:
+    """Aggregated session stats across all rooms.
+
+    Answers the questions the dashboard cannot: which stream had the most
+    viewers, who gifted the most across all sessions, which chatter was most
+    active. Every number comes from `eventlog` — the same counters the session
+    endpoint reads per room — so there is no second definition of anything.
+    """
+    if not _state["token_is_valid"](request):
+        raise HTTPException(status_code=401, detail="Invalid or missing STREAMKIT_TOKEN")
+    rooms = await store.all_rooms_async()
+    out: dict[str, Any] = {
+        "total_rooms": len(rooms),
+        "total_viewers": 0,
+        "total_peak_viewers": 0,
+        "total_diamonds": 0,
+        "total_events": 0,
+        "rooms": [],
+    }
+    for room_id, record in rooms.items():
+        snap = eventlog.snapshot(room_id)
+        viewers = snap.get("viewers") or 0
+        peak = snap.get("peak_viewers") or 0
+        diamonds = snap.get("total_diamonds") or 0
+        events = sum(snap.get("totals", {}).values())
+        out["total_viewers"] += viewers
+        out["total_peak_viewers"] += peak
+        out["total_diamonds"] += diamonds
+        out["total_events"] += events
+        out["rooms"].append({
+            "id": room_id,
+            "username": record.get("username", ""),
+            "connected": snap.get("connected", False),
+            "viewers": viewers,
+            "peak_viewers": peak,
+            "total_diamonds": diamonds,
+            "events": events,
+            "live_seconds": snap.get("live_seconds"),
+        })
+    out["rooms"].sort(key=lambda r: r["viewers"], reverse=True)
+    return out
 
 
 @router.get("/api/logs")

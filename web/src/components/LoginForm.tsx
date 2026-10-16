@@ -34,6 +34,9 @@ export default function LoginForm({ next }: { next: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
         cache: 'no-store',
+        // 15s: user is actively waiting on a form, so a generous bound — but a
+        // wedged backend must not leave the button spinning indefinitely.
+        signal: AbortSignal.timeout(15_000),
       })
       const payload = (await response.json().catch(() => ({}))) as { detail?: string }
 

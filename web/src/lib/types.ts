@@ -47,6 +47,25 @@ export interface LogEntry {
   traceback?: string
 }
 
+/** Aggregated session stats across all rooms, from `/api/analytics`. */
+export interface AnalyticsSummary {
+  total_rooms: number
+  total_viewers: number
+  total_peak_viewers: number
+  total_diamonds: number
+  total_events: number
+  rooms: Array<{
+    id: string
+    username: string
+    connected: boolean
+    viewers: number
+    peak_viewers: number
+    total_diamonds: number
+    events: number
+    live_seconds: number | null
+  }>
+}
+
 export interface LogPage {
   /** Newest first, which is how a log is read. */
   entries: LogEntry[]

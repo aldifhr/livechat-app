@@ -36,6 +36,7 @@ const ALLOWED = [
   /^\/api\/room-connect\/[0-9a-f-]{36}$/,
   /^\/api\/disconnect$/,
   /^\/api\/alerts\/test$/,
+  /^\/api\/analytics$/,
   // The backend's own log records. A read, and the backend gates it on the token
   // rather than on the method — so it is in `SENSITIVE_READ` below too, or the
   // proxy would forward it with no credential and the page would always be empty.
@@ -59,7 +60,7 @@ const MUTATING = new Set(['POST', 'PATCH', 'DELETE'])
  * open a WebSocket and POST the exempt connect route — so this proxy is the only
  * reader that has to attach the credential.
  */
-const SENSITIVE_READ = /^\/api\/(rooms(\/|$)|logs$)/
+const SENSITIVE_READ = /^\/api\/(rooms(\/|$)|logs$|analytics$)/
 
 function allowed(path: string): boolean {
   return ALLOWED.some((pattern) => pattern.test(path))

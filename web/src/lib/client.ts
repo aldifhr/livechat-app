@@ -14,7 +14,7 @@
 
 'use client'
 
-import type { LogPage, Room, RoomSession, RoomStatus } from './types'
+import type { AnalyticsSummary, LogPage, Room, RoomSession, RoomStatus } from './types'
 
 export class ApiError extends Error {
   constructor(
@@ -49,6 +49,11 @@ async function request<T>(method: string, path: string, body?: unknown, query?: 
       headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
       cache: 'no-store',
+      // A hung backend must not leave the page spinning forever. Ten seconds is
+      // well above any normal API call on this dashboard, and the catch below
+      // turns the AbortError into the same "could not be sent" the network
+      // failure path already produces.
+      signal: AbortSignal.timeout(10_000),
     })
   } catch (error) {
     throw new ApiError(0, error instanceof Error ? error.message : 'The request could not be sent')
@@ -193,6 +198,7 @@ export const api = {
       level: opts.level,
       q: opts.q,
     }),
+  analytics: () => request<AnalyticsSummary>('GET', '/analytics'),
 
   /** What this room's current session has accumulated — peaks, diamonds, leaders. */
   session: (id: string) => request<RoomSession>('GET', `/rooms/${id}/session`),

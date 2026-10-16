@@ -65,6 +65,11 @@ export async function backendFetch<T>(
     // The backend is the source of truth for whether a room is connected, so a
     // page must never be answered from a cache that was filled a minute ago.
     cache: 'no-store',
+    // A backend that stops answering — wedged, not down; it still accepts the
+    // connection — used to leave this request open until the browser's own
+    // timeout, holding the caller's state in its "loading" branch. Ten seconds
+    // is several times the slowest legitimate call on this dashboard.
+    signal: AbortSignal.timeout(10_000),
   })
 
   if (!response.ok) {
