@@ -38,14 +38,12 @@ const ALLOWED = [
   /^\/api\/alerts\/test$/,
   /^\/api\/analytics$/,
   // The backend's own liveness and counters. Open by design on the backend side —
-  // an orchestrator probes them with no credential — so they are proxied as plain
-  // reads and the token rides on neither. `/health` withholds its per-room map from
-  // a caller without the token, which is exactly what happens here, so what reaches
-  // the page is the aggregate count and nothing that names a streamer.
-  // The client calls these through /api/backend/*, so the proxy matches the
-  // full path rather than the bare backend route.
-  /^\/api\/backend\/health$/,
-  /^\/api\/backend\/metrics$/,
+  // an orchestrator probes them with no credential — but the proxy forwards them
+  // through /api/backend/*, so the pattern matches the rebuilt /api/health, not
+  // the full path the browser sent. The backend gates both on the token, so
+  // they are in SENSITIVE_READ below.
+  /^\/api\/health$/,
+  /^\/api\/metrics$/,
   // The backend's own log records. A read, and the backend gates it on the token
   // rather than on the method — so it is in `SENSITIVE_READ` below too, or the
   // proxy would forward it with no credential and the page would always be empty.
@@ -69,7 +67,7 @@ const MUTATING = new Set(['POST', 'PATCH', 'DELETE'])
  * open a WebSocket and POST the exempt connect route — so this proxy is the only
  * reader that has to attach the credential.
  */
-const SENSITIVE_READ = /^\/api\/(rooms(\/|$)|logs$|analytics$)/
+const SENSITIVE_READ = /^\/api\/(rooms(\/|$)|logs$|analytics$|health$|metrics$)/
 
 function allowed(path: string): boolean {
   return ALLOWED.some((pattern) => pattern.test(path))
