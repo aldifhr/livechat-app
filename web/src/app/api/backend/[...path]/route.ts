@@ -68,8 +68,19 @@ const MUTATING = new Set(['POST', 'PATCH', 'DELETE'])
  * backend refuses it without the token. The overlay pages never read it — they
  * open a WebSocket and POST the exempt connect route — so this proxy is the only
  * reader that has to attach the credential.
+ *
+ * `/api/health` is here for a different reason and answers a different question.
+ * The backend serves it to anyone — an orchestrator probes it with no credential
+ * and must keep being able to — but it withholds the per-room map unless the
+ * caller holds the write token, because each entry names a streamer. Without this
+ * the proxy forwarded the read with nothing attached, the map never arrived, and
+ * the status page reported "no rooms have connected yet" for a backend with five
+ * of them running: a section that could only ever show one thing, showing the
+ * wrong one. The counts are not gated and nothing about that changes; only the map
+ * is, and this dashboard is behind the session and already reads every handle
+ * from `/api/rooms`, so it is not reaching anything new.
  */
-const SENSITIVE_READ = /^\/api\/(rooms(\/|$)|logs$|analytics$)/
+const SENSITIVE_READ = /^\/api\/(rooms(\/|$)|logs$|analytics$|health$)/
 
 function allowed(path: string): boolean {
   return ALLOWED.some((pattern) => pattern.test(path))
