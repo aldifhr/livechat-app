@@ -174,6 +174,13 @@ async def analytics(request: Request) -> dict[str, Any]:
     viewers, who gifted the most across all sessions, which chatter was most
     active. Every number comes from `eventlog` — the same counters the session
     endpoint reads per room — so there is no second definition of anything.
+
+    The leaderboards are summed across rooms on the stable user id, so one person
+    who showed up on two streams is one row rather than two. **They are the top
+    twenty of each room, added up** — `eventlog` prunes its per-viewer maps to
+    that, and so a chatter ranked twenty-first everywhere is invisible here. That
+    is a ceiling on what can be reported, not an approximation added for
+    convenience, and the page says so where it draws them.
     """
     if not _state["token_is_valid"](request):
         raise HTTPException(status_code=401, detail="Invalid or missing STREAMKIT_TOKEN")
@@ -185,7 +192,15 @@ async def analytics(request: Request) -> dict[str, Any]:
         "total_diamonds": 0,
         "total_events": 0,
         "rooms": [],
+        "topChatters": [],
+        "topGifters": [],
     }
+    # room id -> (name, total) for both leaderboards. Keyed on the user id, which
+    # is the only thing that means the same person in two rooms; a nickname does
+    # not, and a display name can change mid-session.
+    chatter_totals: dict[str, tuple[str, int]] = {}
+    gifter_totals: dict[str, tuple[str, int]] = {}
+
     for room_id, record in rooms.items():
         snap = eventlog.snapshot(room_id)
         viewers = snap.get("viewers") or 0
@@ -196,6 +211,17 @@ async def analytics(request: Request) -> dict[str, Any]:
         out["total_peak_viewers"] += peak
         out["total_diamonds"] += diamonds
         out["total_events"] += events
+
+        for person in snap.get("topChatters") or []:
+            key = str(person.get("id") or person.get("nickname") or "")
+            name, running = chatter_totals.get(key, (str(person.get("nickname") or key), 0))
+            chatter_totals[key] = (name, running + int(person.get("messages") or 0))
+
+        for person in snap.get("topGifters") or []:
+            key = str(person.get("id") or person.get("nickname") or "")
+            name, running = gifter_totals.get(key, (str(person.get("nickname") or key), 0))
+            gifter_totals[key] = (name, running + int(person.get("diamonds") or 0))
+
         out["rooms"].append({
             "id": room_id,
             "username": record.get("username", ""),
@@ -206,8 +232,34 @@ async def analytics(request: Request) -> dict[str, Any]:
             "events": events,
             "live_seconds": snap.get("live_seconds"),
         })
+
     out["rooms"].sort(key=lambda r: r["viewers"], reverse=True)
+    out["topChatters"] = _rank(chatter_totals, "messages", eventlog.TOP_N)
+    out["topGifters"] = _rank(gifter_totals, "diamonds", eventlog.TOP_N)
     return out
+
+
+def _rank(totals: dict[str, tuple[str, int]], field: str, limit: int) -> list[dict[str, Any]]:
+    """A summed cross-room tally, most first, ties broken by name.
+
+    Ties broken by name rather than by insertion order, for the reason the
+    per-room leaderboards are: a ranking that reshuffles between two reads of the
+    same numbers is not read as a ranking.
+
+    A person with no id and no nickname is dropped here rather than where the
+    leaderboards are built. The filter belongs on the function that produces the
+    list, so that it holds for every caller instead of depending on each one
+    remembering — which is how a row with a blank name and a real score ends up on
+    a leaderboard.
+    """
+    ordered = sorted(
+        ((key, value) for key, value in totals.items() if key),
+        key=lambda kv: (-kv[1][1], kv[1][0]),
+    )
+    return [
+        {"id": key, "nickname": name, field: value}
+        for key, (name, value) in ordered[:limit]
+    ]
 
 
 @router.get("/api/logs")
