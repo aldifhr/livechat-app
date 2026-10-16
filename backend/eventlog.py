@@ -39,10 +39,41 @@ arrives in the URL, so an entry created on read would be one an anonymous caller
 could allocate by guessing.
 """
 
+import json
 import logging
+import os
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
+
+#: Where the session history lives. Next to rooms.json so a deploy that moves
+#: the config dir moves this too. Bounded by prune_session_history().
+SESSIONS_FILE = Path(os.environ.get("STREAMKIT_CONFIG_DIR") or (Path(__file__).parent / "config")) / "sessions.json"
+
+#: How many finished sessions to keep. Seven days at a few sessions a day is
+#: well under this; it exists so a long-running install does not grow the file
+#: without bound.
+SESSIONS_KEEP = 200
+
+
+def _append_session(record: dict[str, Any]) -> None:
+    """Append one finished session to the history, pruning the oldest.
+
+    Best-effort: a failure to persist must not take down the disconnect that
+    produced the record. The session's own counters are already in memory for
+    the current run; this is the copy that survives a restart.
+    """
+    try:
+        history: list[dict[str, Any]] = []
+        if SESSIONS_FILE.exists():
+            history = json.loads(SESSIONS_FILE.read_text(encoding="utf-8"))
+        history.append(record)
+        if len(history) > SESSIONS_KEEP:
+            history = history[-SESSIONS_KEEP:]
+        SESSIONS_FILE.write_text(json.dumps(history, ensure_ascii=False), encoding="utf-8")
+    except (OSError, ValueError) as exc:
+        log.debug("could not persist session history (%s)", exc)
 
 log = logging.getLogger("streamkit.events")
 
@@ -147,6 +178,19 @@ def set_connected(room_id: str, connected: bool, detail: str = "") -> None:
     else:
         summary = ", ".join(f"{k}={v}" for k, v in sorted(room.totals.items())) or "no events"
         log.info("[%s] disconnected %s (%s)", room_id, detail or "", summary)
+        # Persist the finished session so its numbers survive a restart. Only on a
+        # real disconnect: a reconnect resets the counters in memory and would
+        # append a duplicate with stale numbers.
+        if room.connected_at and not room.connected:
+            _append_session({
+                "room_id": room_id,
+                "started_at": room.connected_at,
+                "ended_at": time.time(),
+                "duration_s": round(time.time() - room.connected_at, 1),
+                "peak_viewers": room.peak_viewers,
+                "total_diamonds": room.total_diamonds,
+                "events": dict(room.totals),
+            })
 
 
 def _prune_leaders(counts: dict, names: dict, cap: int) -> None:
@@ -231,7 +275,7 @@ def record(
         key = user_id or user
         room.chatter_counts[key] = room.chatter_counts.get(key, 0) + 1
         room.chatter_names[key] = user
-        _prune_leaders(room.chatter_counts, room.chatter_names, TOP_N * 2)
+        _prune_leaders(room.chatter_counts, room.chatter_names, TOP_N * 10)
 
     # Track gift diamonds and top gifters
     _diamond_value = (meta or {}).get("value", 0)
@@ -240,7 +284,7 @@ def record(
         key = user_id or user
         room.gifters[key] = room.gifters.get(key, 0) + _diamond_value
         room.gifter_names[key] = user
-        _prune_leaders(room.gifters, room.gifter_names, TOP_N * 2)
+        _prune_leaders(room.gifters, room.gifter_names, TOP_N * 10)
 
     # A greeting that is long enough to be a sentence and short enough to stay
     # on one line. Comment text is capped by the widget at 44 characters anyway,

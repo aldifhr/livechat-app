@@ -27,7 +27,7 @@ from typing import Any
 #: How many records are kept. A busy backend produces a few thousand lines a day,
 #: so this is the last few hours — long enough to cover "something went wrong a
 #: while ago" and short enough to stay a few hundred kilobytes.
-CAPACITY = 500
+CAPACITY = 1000
 
 #: The levels worth keeping out of the ring, when asked. `debug` is excluded by
 #: default because a run at DEBUG would fill the ring with library chatter and push

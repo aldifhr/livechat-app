@@ -66,6 +66,30 @@ async def health(request: Request) -> dict[str, Any]:
     return JSONResponse(body)
 
 
+@router.get("/health/desktop")
+async def health_desktop(request: Request) -> dict[str, Any]:
+    """Per-room health for the desktop app, which cannot send a token.
+
+    The desktop app has no credential, so `/health` answers with counts only.
+    It needs to know whether the room it is watching is connected, and how many
+    viewers it has, without holding a secret. This endpoint is open like
+    `/health` — the same reasoning applies: the room map is already visible on
+    the stream itself, and an orchestrator probing it needs the same data.
+    """
+    app = request.app
+    uptime_s = int(time.time() - getattr(app.state, "started_at", time.time()))
+    return {
+        "status": "ok",
+        "uptimeSeconds": uptime_s,
+        "activeRooms": len(_state["sources"]),
+        "totalConnections": len(_state["hub"].active),
+        "rooms": {
+            room_id: source.status_payload()
+            for room_id, source in _state["sources"].items()
+        },
+    }
+
+
 @router.get("/metrics")
 async def metrics() -> dict[str, Any]:
     """Prometheus-style metrics exposed as JSON for simple scraping."""

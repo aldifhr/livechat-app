@@ -206,6 +206,10 @@ def streak_step(
     # but only when it is the same gift, so a stale entry cannot leak in.
     if count <= 0 and previous is not None and previous["gift_id"] == gift_id:
         count = previous["count"]
+    # A repeated frame for a combo already at this count is not a new shot, but
+    # the combo still has to end: returning the total here closes it, and the
+    # next frame starts a fresh one. Suppressing it entirely would leave the
+    # combo open and its diamonds uncredited.
     return count, diamond_count * count
 
 
