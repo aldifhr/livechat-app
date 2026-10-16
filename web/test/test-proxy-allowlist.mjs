@@ -77,28 +77,31 @@ check(
   `got ${BASE[1]}`,
 )
 
-const calls = [...clientSource.matchAll(/request<[^>]*>\(\s*'(\w+)'\s*,\s*'([^']+)'/g)]
-check('the client calls were found', calls.length >= 10, `got ${calls.length}`)
+// Every call site, whichever quoting it uses. Most of the paths in this file are
+// template literals — `/rooms/${id}/session` — so matching only the single-quoted
+// ones would have checked the three least interesting calls and skipped every
+// room-scoped path, which is where the missing `/trigger` was hiding.
+//
+// The generic is matched loosely rather than as `<[^>]*>`: the call sites are
+// written as `request<{ rooms: Room[] }>` and `request<{ status: string }>`, whose
+// shapes close at a `>` a naive pattern cannot see.
+const calls = [
+  ...clientSource.matchAll(/request<[\s\S]*?>\(\s*'(\w+)'\s*,\s*(?:'([^']+)'|`([^`]+)`)/g),
+].map((m) => ({ method: m[1], path: m[2] ?? m[3] ?? '' }))
+check('the client calls were found', calls.length >= 12, `got ${calls.length}`)
 
-// Template-literal paths carry a room id in them, so they are matched with a
-// stand-in that has the shape the patterns expect rather than being skipped. A
-// skipped path is exactly how `/rooms/{id}/trigger` went missing.
+// A representative room id, substituted for every `${...}` in a template path. The
+// patterns are written against `[0-9a-f-]{36}` because that is what `store` mints,
+// so a real id has to match or the pattern is wrong.
 const UUID = '61ea70c9-6d36-4a6a-bf94-b648532447bb'
+const fullPath = (path) => `/api${path.replace(/\$\{[^}]*\}/g, UUID)}`
 
-const missing = []
-for (const [, method, path] of calls) {
-  if (path.includes('${')) {
-    missing.push({ method, path, note: 'template path not checked' })
-    continue
-  }
-  const full = `/api${path}`
-  if (!patterns.some((p) => p.test(full))) missing.push({ method, path, full })
-}
+const missing = calls.filter(({ path }) => !patterns.some((p) => p.test(fullPath(path))))
 
 check(
   `every one of the ${calls.length} client paths is forwarded`,
   missing.length === 0,
-  missing.map((m) => `${m.method} ${m.path} (${m.full ?? 'template'}) ${m.note ?? ''}`).join('; '),
+  missing.map((m) => `${m.method} ${m.path} -> ${fullPath(m.path)}`).join('; '),
 )
 
 // The two paths this suite exists for, named explicitly so a regression says which
