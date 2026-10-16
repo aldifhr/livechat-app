@@ -74,38 +74,54 @@ export default function Analytics() {
         </div>
       ) : (
         <>
-          <dl className="session-grid analytics-summary">
-            <div>
-              <dt>Streams</dt>
-              <dd>{data.total_rooms}</dd>
+          {/* Five headline numbers, in the same tiles the overview uses.
+              It was a `session-grid` before, which is a two-column list with each
+              value pushed to the far edge of its half — right for a panel holding
+              one stream's session, and wrong across a whole page, where it read as
+              a table whose columns had drifted apart. Five items in two columns
+              also left the last row holding one, so the numbers did not line up. */}
+          <div className="stat-row analytics-totals">
+            <div className="stat">
+              <span className="stat-label">Streams</span>
+              <span className="stat-value">{data.total_rooms}</span>
+              <span className="stat-note">configured</span>
             </div>
-            <div>
-              <dt>Viewers now</dt>
-              <dd>{data.total_viewers.toLocaleString()}</dd>
+            <div className="stat">
+              <span className="stat-label">Viewers now</span>
+              <span className="stat-value">{data.total_viewers.toLocaleString()}</span>
+              <span className="stat-note">across every live stream</span>
             </div>
-            <div>
-              <dt>Peak viewers</dt>
-              <dd>{data.total_peak_viewers.toLocaleString()}</dd>
+            <div className="stat">
+              <span className="stat-label">Peak viewers</span>
+              <span className="stat-value">{data.total_peak_viewers.toLocaleString()}</span>
+              <span className="stat-note">each stream's own high-water mark</span>
             </div>
-            <div>
-              <dt>Diamonds</dt>
-              <dd>{data.total_diamonds.toLocaleString()}</dd>
+            <div className="stat">
+              <span className="stat-label">Diamonds</span>
+              <span className="stat-value">{data.total_diamonds.toLocaleString()}</span>
+              <span className="stat-note">gifted this session</span>
             </div>
-            <div>
-              <dt>Events</dt>
-              <dd>{data.total_events.toLocaleString()}</dd>
+            <div className="stat">
+              <span className="stat-label">Events</span>
+              <span className="stat-value">{data.total_events.toLocaleString()}</span>
+              <span className="stat-note">comments, gifts, joins</span>
             </div>
-          </dl>
+          </div>
 
-          <div className="panel">
-            <h3>Per stream</h3>
+          <h3 className="section-heading">Per stream</h3>
+          {/* A grid of cards, not one full-width row each. Five streams at a page
+              wide meant each card was a name and a handful of figures with two
+              thirds of the screen empty beside it. */}
+          <div className="analytics-grid">
             {data.rooms.map((room) => (
-              <article key={room.id} className="stream-row">
-                <header>
-                  <strong>@{room.username || 'unknown'}</strong>
-                  {room.connected && <span className="badge live">live</span>}
+              <article key={room.id} className="analytics-card">
+                <header className="analytics-card-head">
+                  <span className="analytics-card-name">
+                    @{room.username || 'unknown'}
+                    {room.connected && <span className="badge live">live</span>}
+                  </span>
                 </header>
-                <dl className="session-grid">
+                <dl className="analytics-figures">
                   <div>
                     <dt>Viewers</dt>
                     <dd>{room.viewers.toLocaleString()}</dd>
