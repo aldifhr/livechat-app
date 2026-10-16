@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import time
 from typing import Any
 
 from logging_setup import logger
@@ -33,6 +34,16 @@ WEBHOOK_ENV = "STREAMKIT_ALERT_WEBHOOK"
 #: How long one delivery may take. Short, because nothing waits on it and a
 #: webhook that has not answered in five seconds is not going to.
 TIMEOUT_S = 5.0
+
+#: Minimum seconds between alerts of the same kind per room.
+#:
+#: Each transition (GAVE_UP, LIVE_ENDED, STREAM_BACK) fires once, so a stable
+#: stream does not flood. But a flapping stream — connect, drop, connect, drop
+#: — can cycle through these in seconds, and each cycle sends a webhook.
+#: Cooldown is per (kind, room_id); a different room or a different kind still
+#: goes through immediately.
+ALERT_COOLDOWN_S = 60.0
+_last_alert: dict[tuple[str, str], float] = {}
 
 #: Alert kinds that are worth sending. Named rather than free text so a caller
 #: cannot invent a kind the receiver has no rule for, and so the set is greppable.
@@ -115,11 +126,17 @@ def notify_soon(kind: str, room_id: str, username: str, message: str) -> None:
     """
     if not enabled():
         return
+    key = (kind, room_id)
+    now = time.monotonic()
+    if now - _last_alert.get(key, 0) < ALERT_COOLDOWN_S:
+        logger.debug("alert cooled down (%s %s)", kind, room_id)
+        return
+    _last_alert[key] = now
     try:
         asyncio.get_running_loop().create_task(notify(kind, room_id, username, message))
     except RuntimeError:
         # No loop. Nothing to schedule on, and the alert is not worth blocking for.
-        logger.debug("alert dropped (no running loop): %s %s", kind, room_id)
+        logger.debug("alert dropped (no running loop): %s", kind, room_id)
 
 
 def describe(room_id: str) -> str:

@@ -289,6 +289,10 @@ class Hub:
             # Rooms with no id, kept apart from any stray client that never
             # named a room.
             return set(self.room_clients.keys())
+        # Fallback when no room_id is given: broadcast to every connected client.
+        # Currently unreachable (events.emit always passes room_id), but a future
+        # caller that omits it would silently fan out to all rooms — a footgun
+        # worth naming rather than a silent default.
         return set(self.active.keys())
 
     async def broadcast(

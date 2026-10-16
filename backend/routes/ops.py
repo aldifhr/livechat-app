@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 
@@ -16,7 +16,6 @@ import alerts
 import events
 import logbuffer
 import store
-from fastapi import HTTPException
 from models import HookRequest, TriggerRequest
 
 router = APIRouter()
