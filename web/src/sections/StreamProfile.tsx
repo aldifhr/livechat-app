@@ -23,6 +23,7 @@ import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError, isAuthFailure } from '@/lib/client'
 import { useOrigin } from '@/lib/browser'
+import { useConnectionWatch } from '@/lib/useConnectionWatch'
 import { profilePath, streamLinks, LINK_LABELS } from '@/lib/streamLinks'
 import type { Room, RoomSession, RoomStatus } from '@/lib/types'
 import LinkLine from '@/components/LinkLine'
@@ -60,6 +61,11 @@ export default function StreamProfile({ handle }: { handle: string }) {
   const [newHandle, setNewHandle] = useState('')
   const origin = useOrigin()
   const router = useRouter()
+  // The same fast beat the list uses, for the seconds after a Connect. The poll
+  // below is right for noticing a stream that quietly stopped and far too slow for
+  // the moment somebody pressed the button. This page only ever watches its own
+  // room, so the reading replaces the single status it holds.
+  const watchConnection = useConnectionWatch((_id, reading) => setStatus(reading))
   const toast = useToast()
 
   const load = useCallback(async () => {
@@ -98,6 +104,64 @@ export default function StreamProfile({ handle }: { handle: string }) {
   }, [load])
 
   const links = room ? streamLinks(room.id) : null
+
+  /**
+   * Whether the backend is doing anything for this room.
+   *
+   * `waiting` counts, and that is the backend's own requirement rather than a
+   * nicety: it sets `connecting` alongside `waiting` while it polls for a streamer
+   * with no live, and a wait can run two hours. Reading `connecting` alone would
+   * leave a room in that state with no button that does anything — a state the user
+   * cannot leave is not a state, it is a trap.
+   */
+  const running = Boolean(status?.connected || status?.connecting || status?.waiting)
+
+  /**
+   * Start watching, or stop.
+   *
+   * One button for both because the state it acts on is the state the badge above
+   * already shows; a separate "Connect" and "Disconnect" would be two buttons for
+   * one question, and both would have to be disabled in states the other covers.
+   */
+  const toggleConnection = async () => {
+    if (!room) return
+    setBusy(true)
+    const starting = !running
+    try {
+      if (starting) {
+        const answer = await api.connectRoom(room.id)
+        // `connecting` is the normal answer for a handle that is going to work, so
+        // announcing "Connected" would claim something the response has not said.
+        toast(
+          answer.status === 'already-connected'
+            ? `@${room.username} was already connected.`
+            : `Connecting to @${room.username}…`,
+        )
+      } else {
+        await api.disconnect(room.id)
+        // The room and its handle are untouched by a stop, so the only thing that
+        // changed is that nothing is watching it — which is what this says, and
+        // does not promise it will stay that way across a restart.
+        toast(`Stopped watching @${room.username}. Its overlay links still work.`)
+      }
+      setError('')
+      await load()
+      // Started after the re-read, not before it. Both write the same status, and
+      // running them the other way round lets the re-read land second and replace a
+      // fresher reading from the watch with a slightly staler one.
+      if (starting) void watchConnection(room.id, room.username)
+    } catch (cause) {
+      setError(
+        cause instanceof ApiError && isAuthFailure(cause.status)
+          ? 'Your login was refused. Reload the page and sign in again.'
+          : cause instanceof ApiError
+            ? cause.message
+            : 'The connection could not be changed',
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
 
   /**
    * Save the name, the handle, or both.
@@ -206,6 +270,18 @@ export default function StreamProfile({ handle }: { handle: string }) {
           <p className="faint mono stream-origin">{origin}</p>
         </div>
         <div className="actions">
+          {/* Only offered when it would do something. A room with no handle has
+              nothing to connect to, and one that is already running has nothing to
+              connect — the button turns into the way out. */}
+          {Boolean(room.username) && (
+            <button
+              className={running ? undefined : 'primary'}
+              onClick={() => void toggleConnection()}
+              disabled={busy || (!running && !room.username)}
+            >
+              {running ? 'Stop' : 'Connect'}
+            </button>
+          )}
           <Link className="btn" href={`/admin/overlay?room=${encodeURIComponent(room.id)}`}>
             Style overlay
           </Link>

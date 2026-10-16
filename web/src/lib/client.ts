@@ -112,12 +112,44 @@ export interface ConnectResult {
   message?: string
   liveEnded?: boolean
 }
+
+/**
+ * What a stop answers with.
+ *
+ * `{ status: "disconnected" }` and nothing else — no room, no status snapshot. The
+ * consequence for a caller is that it cannot learn anything from the reply: whether
+ * the stop did anything is not in it, so a page re-reads the room's own status
+ * rather than reading a field that says "ok" either way.
+ */
+export interface DisconnectResult {
+  status: string
+}
+
 export const api = {
   rooms: () => request<{ rooms: Room[] }>('GET', '/rooms'),
   status: (id: string) => request<RoomStatus>('GET', `/rooms/${id}/status`),
   connectHandle: (username: string) =>
     request<ConnectResult>('POST', '/room-connect-by-username', { username }),
-  connectRoom: (id: string) => request<Room>('POST', `/room-connect/${id}`),
+  /**
+   * Point a room at the handle its own config already names.
+   *
+   * Typed as the connect envelope it actually is, not as a `Room`. It was typed as
+   * one for as long as the method sat uncalled, and that was the whole of the bug
+   * `ConnectResult` exists to document: the answer carries `room_id` and a status,
+   * never `id`, `name` or `config`, so a caller trusting the type reads
+   * `undefined` off a field that is not there. Both connect routes answer the same
+   * shape, so both are typed the same way.
+   */
+  connectRoom: (id: string) => request<ConnectResult>('POST', `/room-connect/${id}`),
+  /**
+   * Stop watching a room, without deleting it or forgetting its handle.
+   *
+   * What it does *not* do is worth knowing before the button exists: the room's
+   * stored username is untouched, so a backend restart re-aims it at that handle
+   * again through `restore_sources`. A stop is a pause until the next boot, not a
+   * decision the store keeps.
+   */
+  disconnect: (id: string) => request<DisconnectResult>('POST', '/disconnect', { room_id: id }),
   updateRoom: (id: string, change: { name?: string; username?: string }) =>
     request<Room>('PATCH', `/rooms/${id}`, change),
   deleteRoom: (id: string) => request<null>('DELETE', `/rooms/${id}`),

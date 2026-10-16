@@ -19,9 +19,10 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError, isAuthFailure } from '../lib/client'
 import { useOrigin } from '../lib/browser'
+import { useConnectionWatch } from '../lib/useConnectionWatch'
 import { profilePath } from '../lib/streamLinks'
 import type { Room, RoomStatus } from '../lib/types'
 import RoomStateBadge from '../components/RoomStateBadge'
@@ -30,10 +31,6 @@ import { useToast } from '../components/Toast'
 /** How often to ask about a room's live state. Long enough to be quiet, short
  *  enough that going offline is noticed while somebody is watching. */
 const POLL_MS = 15_000
-
-/** The beat and the window used right after a Connect. See `watchRoom`. */
-const WATCH_MS = 1000
-const WATCH_WINDOW_MS = 20_000
 
 /** One line per stream: who it is, and whether it is running. */
 function StreamRow({ room, status }: { room: Room; status: RoomStatus | undefined }) {
@@ -94,6 +91,11 @@ export default function Streams() {
   // Connect that had worked, which is the moment the badge is being watched.
   const [statuses, setStatuses] = useState<Record<string, RoomStatus>>({})
   const [loaded, setLoaded] = useState(false)
+  // At a fast beat, for the seconds after a Connect. See the hook for why the
+  // fifteen-second poll below is not the thing to watch that with.
+  const watchConnection = useConnectionWatch((id, status) =>
+    setStatuses((current) => ({ ...current, [id]: status })),
+  )
   const toast = useToast()
   // Read after mount rather than during render: a `typeof window` branch in the
   // markup is a hydration mismatch, and this is one of the three places it was.
@@ -124,16 +126,6 @@ export default function Streams() {
   // Keyed on the room ids rather than on `rooms`. That object is a fresh array every
   // poll, so depending on it tore this effect down and rebuilt it on every tick.
   const roomIds = rooms.map((room) => room.id).join(',')
-
-  // Whether the page is still mounted, so a watch loop started by a Connect cannot
-  // write into a state setter belonging to a page that has gone.
-  const mounted = useRef(true)
-  useEffect(() => {
-    mounted.current = true
-    return () => {
-      mounted.current = false
-    }
-  }, [])
 
   useEffect(() => {
     if (!roomIds) return
@@ -170,51 +162,6 @@ export default function Streams() {
   }, [roomIds])
 
   /**
-   * Watch one stream at a fast beat until its status settles.
-   *
-   * Connecting is asynchronous on the backend: `_connect_room` installs the
-   * adapter, starts its connect loop in the background and returns immediately, so
-   * the answer to a Connect says `connecting` and the stream does not become live
-   * until a handshake lands some time later. This page's own poll beats every
-   * fifteen seconds, so a row could sit on a reading taken while the adapter was
-   * still dialling — long enough that the only way to see the truth was to reload.
-   *
-   * Only `connecting` is worth waiting through; `waiting` and everything else is
-   * the answer. Bounded regardless, because the state being waited on is one the
-   * backend may hold for a long time on its own, and the ordinary poll takes over
-   * the moment this gives up.
-   */
-  const watchRoom = useCallback(
-    async (roomId: string, handle: string) => {
-      const giveUpAt = Date.now() + WATCH_WINDOW_MS
-      while (mounted.current && Date.now() < giveUpAt) {
-        try {
-          const status = await api.status(roomId)
-          if (!mounted.current) return
-          setStatuses((current) => ({ ...current, [roomId]: status }))
-          if (!status.connecting || status.waiting) {
-            // The handshake either landed or never will, and the operator is owed
-            // the answer rather than a badge they have to go and read.
-            toast(
-              status.connected
-                ? `@${handle} is live.`
-                : status.liveEnded
-                  ? `@${handle} is not live right now.`
-                  : `@${handle} is not live — StreamKit is waiting for it.`,
-            )
-            return
-          }
-        } catch {
-          // Not evidence about the room. This page's own poll is still running and
-          // will say something when it can.
-        }
-        await new Promise((resolve) => window.setTimeout(resolve, WATCH_MS))
-      }
-    },
-    [toast],
-  )
-
-  /**
    * Connect a handle, which creates its room if needed.
    *
    * Connecting rather than creating is the whole point: a room nothing is
@@ -248,9 +195,9 @@ export default function Streams() {
       // reports as a list child with no key, long after anyone was looking for
       // it. One read costs the same round trip the splice was avoiding.
       void load()
-      // The answer names the room, so the row that just appeared can be watched
-      // at a beat worth watching rather than at this page's fifteen seconds.
-      void watchRoom(answer.room_id, handle)
+  // The answer names the room, so the row that just appeared can be watched at a
+  // beat worth watching rather than at this page's fifteen seconds.
+  void watchConnection(answer.room_id, handle)
     } catch (cause) {
       setError(
         cause instanceof ApiError && isAuthFailure(cause.status)

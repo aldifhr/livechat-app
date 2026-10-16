@@ -27,6 +27,11 @@ const ALLOWED = [
   /^\/api\/rooms\/[0-9a-f-]{36}\/status$/,
   /^\/api\/rooms\/[0-9a-f-]{36}\/config$/,
   /^\/api\/rooms\/[0-9a-f-]{36}\/session$/,
+  // The manual trigger, for testing an overlay's styling without waiting for a real
+  // gift on a real stream. A write, so the token rides on it via `MUTATING`; it was
+  // missing from this list entirely, which made the one route that could prove the
+  // styling worked unreachable from the dashboard.
+  /^\/api\/rooms\/[0-9a-f-]{36}\/trigger$/,
   /^\/api\/room-connect-by-username$/,
   /^\/api\/room-connect\/[0-9a-f-]{36}$/,
   /^\/api\/disconnect$/,
