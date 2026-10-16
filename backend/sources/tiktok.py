@@ -448,6 +448,15 @@ class TikTokAdapter(EventAdapter):
         """
         return self._running
 
+    def is_connected(self) -> bool:
+        """Whether a live stream is being read right now.
+
+        Public for the same reason as `is_running`: callers that need the
+        connection state must go through the accessor, not read `_connected`
+        directly.
+        """
+        return self._connected
+
     def start_background(self) -> None:
         """Spawn the connect loop as a task owned by this source.
 

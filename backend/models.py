@@ -45,8 +45,11 @@ class ConnectByUsernameRequest(BaseModel):
     # body is read and parsed in full before the handle regex rejects it, so the
     # only limit on what an unauthenticated caller sends is the server's.
     username: str = Field(default="", max_length=64)
-    # Overlay styling to store on the room. Bounded in depth and key count by the
-    # extractor below; a stray blob is ignored rather than stored.
+    # Overlay styling to store on the room. The whitelist in clean_overlay
+    # below is the only defence: it discards any key outside the known eight,
+    # so an unauthenticated caller cannot smuggle arbitrary config in. Pydantic
+    # still parses the full dict first (there is no depth/size limit on a
+    # plain dict[str, Any]), but the parse result is thrown away.
     overlay: dict[str, Any] | None = None
 
 

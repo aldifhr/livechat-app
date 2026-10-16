@@ -211,7 +211,12 @@ def record(
 
     if user and room.last_user.get(kind) == user:
         room.repeats[kind] = room.repeats.get(kind, 0) + 1
-    room.last_user[kind] = user or room.last_user.get(kind, "")
+    # Only update last_user when this event actually carried a user. The old
+    # `user or room.last_user.get(kind, "")` inherited the previous user's
+    # identity on events with no user, so a burst of anonymous joins was
+    # counted as a repeat of whoever spoke last.
+    if user:
+        room.last_user[kind] = user
 
     # Count this message against the chatter, keyed on the stable handle so one
     # person is one row however their display name is spelled. Only comments count

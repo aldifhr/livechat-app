@@ -72,8 +72,32 @@ def _flush() -> None:
     # a checkout and only rescues the deploy that set the variable.
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     tmp = ROOMS_FILE.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-    os.replace(tmp, ROOMS_FILE)
+    try:
+        tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, ROOMS_FILE)
+    except OSError as exc:
+        # A disk full or a read-only mount must not take down the route that
+        # tried to save. The data is still in memory and the API keeps serving;
+        # the caller gets a 503 so it knows the write did not land, rather than
+        # a 500 that looks like a bug in the handler.
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        logger.error("could not persist rooms (%s); keeping data in memory only", exc)
+        raise
+
+
+def invalidate_cache() -> None:
+    """Drop the in-memory cache so the next read comes from disk.
+
+    Called after an external change to rooms.json — a manual edit, a restore
+    from backup, or a migration. Without this the process keeps serving the
+    stale copy until it restarts, and there is no warning that the file on
+    disk and the data in memory have diverged.
+    """
+    global _cache
+    _cache = None
 
 
 def _record(room_id: str) -> dict[str, Any] | None:

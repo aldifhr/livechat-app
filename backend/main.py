@@ -9,13 +9,12 @@ does not mean editing the file that owns routing.
 import asyncio
 import json
 import os
-import re
 from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Any
 
 import uvicorn
-from fastapi import APIRouter, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -25,21 +24,19 @@ import events
 import logbuffer
 import store
 from watchdog import LivenessWatchdog
-from events import ALERT
 from hub import hub, ROOM as HUB_ROOM, CUSTOMIZER as HUB_CUSTOMIZER
 from sources import TikTokAdapter
-from protocols import registry
 
 #: Module-level logger. Bootstrapped in `logging_setup`: one place, one handler,
 #: one level. Every route module gets the same logger through it rather than
 #: re-importing main and risking a setup-order cycle.
 from logging_setup import logger
 
-# silently overrode the frontend defaults with stale values. Nothing is left for
-# this backend to default: a record's config is whatever the editor wrote, and an
-# room nobody has edited yet has no config at all. An empty dict is therefore
-# the correct default, and it is stated rather than inlined so the three places
-# that need one cannot drift into disagreeing about what "no config" is.
+#: What a room's styling defaults to when nobody has set any.
+#:
+#: An empty dict is the correct default, and it is stated here rather than
+#: inlined so the three places that need one cannot drift into disagreeing
+#: about what "no config" is.
 #
 # It used to hold a theme id. The theme is gone from the frontend, so the key was
 # dead weight that every record carried and every summary repeated.
