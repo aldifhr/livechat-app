@@ -37,6 +37,13 @@ const ALLOWED = [
   /^\/api\/disconnect$/,
   /^\/api\/alerts\/test$/,
   /^\/api\/analytics$/,
+  // The backend's own liveness and counters. Open by design on the backend side —
+  // an orchestrator probes them with no credential — so they are proxied as plain
+  // reads and the token rides on neither. `/health` withholds its per-room map from
+  // a caller without the token, which is exactly what happens here, so what reaches
+  // the page is the aggregate count and nothing that names a streamer.
+  /^\/health$/,
+  /^\/metrics$/,
   // The backend's own log records. A read, and the backend gates it on the token
   // rather than on the method — so it is in `SENSITIVE_READ` below too, or the
   // proxy would forward it with no credential and the page would always be empty.

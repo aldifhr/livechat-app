@@ -127,16 +127,31 @@ async def webhook(room_id: str, req: HookRequest):
     # _gift (events.py) reads meta.get("value", 0) for diamond count, and
     # eventlog.record also computes from value. Without it, hook gifts are
     # always 0 diamonds and never enter total_diamonds or top_gifters.
+    #
+    # The name is `req.text` and not the derived `value` above, because `value`
+    # falls back to the amount when no text was posted — so a gift hook with no
+    # text was naming a 9999-diamond gift "9999" where the trigger route names the
+    # same gift "Gift". `value` is the alert's text, which is a different field
+    # doing a different job; reusing it here is how the two routes drifted.
     meta: dict[str, Any] = {
         "title": req.title,
         "icon": req.icon,
         "count": 1,
-        "giftName": value or "Gift",
+        "giftName": req.text or "Gift",
     }
     if req.amount is not None:
         meta["amount"] = req.amount
-        meta["diamonds"] = req.amount
-        meta["value"] = req.amount
+        # Whole, because a diamond count is. `HookRequest.amount` is a float so a
+        # donation of 12.50 can be announced as one, and `amount` above keeps that
+        # exactly as posted — but the gift accounting is a count, and
+        # `RoomLog.total_diamonds` is declared `int`. Carrying the float into it
+        # made a session that had seen one hook gift report `9999.0` and render a
+        # leaderboard of fractional diamonds. `trigger` is integral already, being
+        # `diamonds * count` over two ints, so this is the only route that had to
+        # be rounded — and the two now agree on the wire as well as in the totals.
+        whole = int(req.amount)
+        meta["diamonds"] = whole
+        meta["value"] = whole
 
     await events.emit(
         room_id,

@@ -19,9 +19,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '@/lib/client'
-import type { Room, RoomStatus } from '@/lib/types'
+import type { BackendHealth, Room, RoomStatus } from '@/lib/types'
 import NumberTicker from '@/components/magicui/NumberTicker'
 import RoomStateBadge from '@/components/RoomStateBadge'
+import PasswordPanel from '@/components/PasswordPanel'
 
 /** How often the numbers are re-read. The same beat the streams page uses, so
  *  two pages side by side are not showing different moments. */
@@ -103,6 +104,46 @@ export default function Dashboard() {
     return () => window.clearInterval(timer)
   }, [poll])
 
+  // The backend's own condition, read separately from the rooms.
+  //
+  // Everything else on this page is the dashboard's view of the backend, and a
+  // dashboard can be perfectly healthy while the backend is not answering at all —
+  // every read above would then fail together and the page would look like a quiet
+  // evening. Two things it cannot show, and this strip can: how long the process
+  // has been up, and whether the fan-out is keeping up. `queued_messages_total`
+  // climbing is the early warning for the hub dropping a client that stopped
+  // reading, and the watchdog writes a CRITICAL stack dump when the event loop
+  // stops yielding — neither of which is legible from a row of stream badges.
+  //
+  // A failure here says nothing about the rooms, so it is shown as a note rather
+  // than as an error banner: a backend that is down is already visible everywhere
+  // else on the page, and an alert styled as a failure would just be noise.
+  const [health, setHealth] = useState<BackendHealth | null>(null)
+  const [queueDepth, setQueueDepth] = useState<number | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    const read = async () => {
+      try {
+        const [beat, counters] = await Promise.all([api.health(), api.metrics()])
+        if (cancelled) return
+        setHealth(beat)
+        setQueueDepth(counters.queued_messages_total)
+      } catch {
+        if (!cancelled) setHealth(null)
+      }
+    }
+    void read()
+    // Slower than the room poll on purpose. This is a health signal, not a live
+    // one, and a probe that runs as often as the numbers it reports is a probe
+    // that causes the thing it measures.
+    const timer = window.setInterval(() => void read(), POLL_MS * 3)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [])
+
   const totals = useMemo(() => {
     const live = rows.filter((row) => row.status?.connected)
     const countsComplete = live.every((row) => typeof row.status?.viewers === 'number')
@@ -165,6 +206,20 @@ export default function Dashboard() {
         <ViewerChart points={history} />
       </div>
 
+      {/* Uptime and fan-out, in one quiet line. A strip rather than another set of
+          tiles: the numbers above are about the streams, and these are about the
+          process reading them, and mixing them would suggest the backend's uptime
+          is a fact about a stream. */}
+      <p className="faint mono backend-strip">
+        {health
+          ? `backend up ${formatUptime(health.uptimeSeconds)} · ${health.totalConnections} socket${
+              health.totalConnections === 1 ? '' : 's'
+            } attached · ${health.activeRooms} source${health.activeRooms === 1 ? '' : 's'} running${
+              queueDepth ? ` · ${queueDepth} queued` : ''
+            }`
+          : 'backend not answering'}
+      </p>
+
       {loaded && rows.length === 0 && !error && (
         <div className="empty">
           No streams configured yet. Add one from <a href="/admin/streams">Streams</a>.
@@ -206,8 +261,43 @@ export default function Dashboard() {
           </table>
         </div>
       )}
+
+      {/* The account, at the bottom of the console's front page.
+          *
+          * Changing the dashboard password is the one thing an operator has to be
+          * able to do, and it used to live on the About page. When About came out
+          * of the navigation, this form went with it — `PasswordPanel` has no other
+          * caller, so the ability itself became reachable only by typing a URL. A
+          * console you cannot change the key to is the one problem you cannot fix
+          * from inside it.
+          *
+          * Here rather than as a fifth navigation item: it is a once-a-year action
+          * and not a place an operator works, and a nav entry that opens a password
+          * field is an invitation. A dedicated /admin/account is the other answer,
+          * and the better one if account settings ever grow past this. */}
+      <div className="panel account-panel">
+        <h3>Account</h3>
+        <PasswordPanel />
+      </div>
     </>
   )
+}
+
+/**
+ * Seconds as something a person can read at a glance.
+ *
+ * Two units and then days, because the interesting range is "since a deploy" and
+ * that crosses from minutes to hours within a stream. A machine-precision number
+ * here would be the only place on the page that cannot be read without doing
+ * arithmetic in your head.
+ */
+function formatUptime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '—'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 48) return `${hours}h ${String(minutes % 60).padStart(2, '0')}m`
+  return `${Math.floor(hours / 24)}d ${hours % 24}h`
 }
 
 /**

@@ -142,6 +142,16 @@ def emotes_in(event: Any) -> list[dict[str, str]]:
     return out
 
 
+#: How many gift combos may be in progress at once before the smallest is dropped.
+#:
+#: A combo occupies one entry from its first frame until the frame that ends it, and
+#: nothing else removes it. Realistically a handful are running at any moment, so
+#: this is far above the truth and exists only so that viewers who walk away
+#: mid-combo — a disconnect, a reload, the stream ending — cannot leave an entry
+#: behind for the life of the source.
+MAX_OPEN_STREAKS = 2000
+
+
 def streak_step(
     streaks: dict[str, dict[str, int]],
     user_id: str,
@@ -167,6 +177,21 @@ def streak_step(
     a nested handler is a poor place for a rule that is easy to get wrong.
     """
     if repeat_end == 0:
+        if user_id not in streaks and len(streaks) >= MAX_OPEN_STREAKS:
+            # The smallest running combo goes. Every entry here is a combo that
+            # started and has not ended, and nothing removes one but its own final
+            # frame — so a viewer whose combo is cut off by a disconnect, or a
+            # reload, or the stream ending, leaves an entry behind for the life of
+            # the source. Over a long stream that is one dict entry per person who
+            # ever sent a gift and walked away mid-combo.
+            #
+            # Safe to drop, because `repeat_count` is cumulative: the next frame for
+            # that viewer recreates the entry with the right total on its own. The
+            # only thing lost is the fallback for a final frame that arrives with a
+            # count of zero, and that is the narrow case the branch below already
+            # guards for a viewer who was never here at all.
+            weakest = min(streaks, key=lambda existing: streaks[existing]["count"])
+            streaks.pop(weakest, None)
         streaks[user_id] = {
             "gift_id": gift_id,
             "count": repeat_count,
