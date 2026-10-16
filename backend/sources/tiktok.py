@@ -1008,6 +1008,14 @@ class TikTokAdapter(EventAdapter):
         # stream could never be revived without a restart. `disconnect()` clears
         # it too, for the cancellation path that never reaches this line.
         self._running = False
+        # Every natural exit has to release the observer. `_running = False` does
+        # not: the consumer is parked in `queue.get()`, which only `_STOP` wakes.
+        # Without this, every room that ended on its own — the live ended, retries
+        # ran out, the circuit breaker tripped — left a task alive holding the
+        # adapter and its queue for the life of the process. `disconnect()`
+        # releases too, so a room that was stopped properly does not get a second
+        # sentinel, which is harmless: the queue drains it and the loop is gone.
+        self._release_observer()
         # The loop has ended. A live-end already reported itself from the handler;
         # anything else is the source giving up (retries exhausted, circuit
         # breaker, or a client that could not be rebuilt), and the app would
