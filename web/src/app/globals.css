@@ -897,7 +897,7 @@
      width clips the last row with no scrollbar and no error — a board visibly cut off
      reads as a broken overlay, not as a frame too short for it. As a floor it keeps
      that shape for a short overlay and gets out of the way for a tall one, which is
-     what the overlay's own reported height then governs. See LivePreview.tsx. */
+     what the overlay's own reported height then governs. See OverlayStage.tsx. */
   .preview-stage {
     /* `bg-sunken`, not `bg-black`: both are #000000, and the palette reset above
        means `bg-black` does not exist to apply. */

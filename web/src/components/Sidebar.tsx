@@ -22,9 +22,7 @@ const ITEMS = [
   { href: '/admin/dashboard', label: 'Overview', icon: '◫', hint: 'Live status and viewers across streams', exact: false },
   { href: '/admin/streams', label: 'Streams', icon: '◉', hint: 'Links and styling for each stream', exact: true },
   { href: '/admin/overlay', label: 'Overlay builder', icon: '✦', hint: 'Restyle one stream in detail', exact: false },
-  { href: '/admin/live-preview', label: 'Live preview', icon: '▣', hint: 'Watch it at OBS size', exact: false },
   { href: '/admin/logs', label: 'Logs', icon: '≡', hint: 'What the backend has been saying', exact: false },
-  { href: '/admin/about', label: 'About', icon: '⚙', hint: 'Addresses and account', exact: false },
 ]
 
 export default function Sidebar() {

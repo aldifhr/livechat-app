@@ -193,7 +193,6 @@ cd web && npm test   # 3 suites: htpasswd, session, style-store
 | `/login` | Sign in |
 | `/admin` | **Streams** — one card per stream, each with both overlay links and Copy buttons |
 | `/admin/overlay` | Overlay builder, with a live inline preview beside the controls. `?room=` |
-| `/admin/live-preview` | Full-screen preview for a second monitor. `?room=` + `?which=chat\|board` |
 | `/admin/about` | Service addresses + password change |
 
 The dashboard has its own gate (`src/proxy.ts`) mirroring the nginx one, so a

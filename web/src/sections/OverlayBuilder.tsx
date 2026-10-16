@@ -15,7 +15,6 @@
 
 'use client'
 
-import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   chatStyleFromQuery,
@@ -419,8 +418,6 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
     [],
   )
 
-  const previewHref = `/admin/live-preview?room=${encodeURIComponent(selected)}&which=${which}&design=${chatDesign}`
-
   const chat = usePersistedStyle({
     room,
     fallback: OVERLAY_DEFAULT_STYLE,
@@ -517,9 +514,6 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
                       </option>
                     ))}
                   </select>
-                  <Link className="quiet-link" href={previewHref}>
-                    Open full screen
-                  </Link>
                 </div>
               </div>
               {/* A fixed canvas, not a frame that fits its contents. The overlay
