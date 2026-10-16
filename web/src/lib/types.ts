@@ -35,21 +35,6 @@ export interface RoomStatus {
   liveEnded?: boolean
 }
 
-/**
- * The backend's own condition, from `GET /health`.
- *
- * No `rooms` field, and that is deliberate rather than forgotten: the backend sends
- * a per-room map to a caller holding the write token and withholds it from everyone
- * else, and the dashboard's proxy attaches no credential to this read. So the map
- * is never on the wire to this page, and there is nothing to type here.
- */
-export interface BackendHealth {
-  status: string
-  uptimeSeconds: number
-  activeRooms: number
-  totalConnections: number
-}
-
 /** One line from the backend's log. */
 export interface LogEntry {
   /** ISO timestamp, UTC. */
@@ -105,6 +90,17 @@ export interface AnalyticsSummary {
     events: number
     live_seconds: number | null
   }>
+  /**
+   * Chatters summed across every room, on the stable user id — so one person who
+   * appeared on two streams is one row.
+   *
+   * These are the top twenty of each room added together, because that is what
+   * `eventlog` keeps. A chatter ranked twenty-first everywhere does not appear
+   * here, and that is a ceiling on the data rather than a smoothing of it.
+   */
+  topChatters: SessionPerson[]
+  /** The same, by diamond value. */
+  topGifters: SessionPerson[]
 }
 
 export interface LogPage {

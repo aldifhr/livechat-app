@@ -17,7 +17,7 @@ import { useState } from 'react'
 
 type Outcome = { kind: 'ok' | 'error'; text: string }
 
-export default function PasswordPanel() {
+export default function PasswordPanel({ onDone }: { onDone?: () => void } = {}) {
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -55,6 +55,12 @@ export default function PasswordPanel() {
         kind: 'ok',
         text: 'Password changed. Every device signed in with the old password is now signed out — including this one, on its next page.',
       })
+      // The session this page is being read on is already dead — the cookie it was
+      // signed with no longer verifies — so the next navigation lands on the login
+      // page. Saying so is better than leaving a form that looks like it could be
+      // used again. Only a page that has somewhere to go takes the hint; the panel
+      // also lives inside other pages, and a redirect is not its to decide.
+      onDone?.()
     } catch {
       setOutcome({ kind: 'error', text: 'The request could not be sent.' })
     } finally {

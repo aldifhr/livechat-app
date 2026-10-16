@@ -37,11 +37,19 @@ const ALLOWED = [
   /^\/api\/disconnect$/,
   /^\/api\/alerts\/test$/,
   /^\/api\/analytics$/,
-  // The backend's own liveness and counters. Open by design on the backend side —
-  // an orchestrator probes them with no credential — but the proxy forwards them
-  // through /api/backend/*, so the pattern matches the rebuilt /api/health, not
-  // the full path the browser sent. The backend gates both on the token, so
-  // they are in SENSITIVE_READ below.
+  // The backend's own liveness and counters.
+  //
+  // Matched as `/api/health`, which is the path `path` holds and not the address
+  // the browser used: the catch-all strips `/api/backend` off the front and puts
+  // `/api` back on. Both of the spellings that were here first were wrong in a
+  // different direction and neither matched anything — one wrote the bare backend
+  // route with no prefix, the other wrote this proxy's own URL — so the page
+  // answered 404 "Not proxied" for two of the three numbers it exists to show, and
+  // the failure read as a backend that would not answer.
+  //
+  // The counts are not gated on the backend, so an orchestrator probing it directly
+  // is unaffected. The per-room map is, and `SENSITIVE_READ` below is what puts
+  // the token on this call.
   /^\/api\/health$/,
   /^\/api\/metrics$/,
   // The backend's own log records. A read, and the backend gates it on the token
@@ -66,8 +74,19 @@ const MUTATING = new Set(['POST', 'PATCH', 'DELETE'])
  * backend refuses it without the token. The overlay pages never read it — they
  * open a WebSocket and POST the exempt connect route — so this proxy is the only
  * reader that has to attach the credential.
+ *
+ * `/api/health` is here for a different reason and answers a different question.
+ * The backend serves it to anyone — an orchestrator probes it with no credential
+ * and must keep being able to — but it withholds the per-room map unless the
+ * caller holds the write token, because each entry names a streamer. Without this
+ * the proxy forwarded the read with nothing attached, the map never arrived, and
+ * the status page reported "no rooms have connected yet" for a backend with five
+ * of them running: a section that could only ever show one thing, showing the
+ * wrong one. The counts are not gated and nothing about that changes; only the map
+ * is, and this dashboard is behind the session and already reads every handle
+ * from `/api/rooms`, so it is not reaching anything new.
  */
-const SENSITIVE_READ = /^\/api\/(rooms(\/|$)|logs$|analytics$|health$|metrics$)/
+const SENSITIVE_READ = /^\/api\/(rooms(\/|$)|logs$|analytics$|health$)/
 
 function allowed(path: string): boolean {
   return ALLOWED.some((pattern) => pattern.test(path))

@@ -592,8 +592,62 @@
     @apply text-[0.8rem] text-faint;
   }
 
-  .sidebar .signout {
-    @apply mt-auto;
+  /* ---- the account menu ----
+   *
+   * A gear at the bottom of the column, opening a panel that floats over the page.
+   *
+   * `details` rather than a button and a piece of state, so the menu opens, its
+   * links navigate and its sign-out submits with JavaScript off — which is the
+   * point, because the sign-out inside it is a real form POST to a route that
+   * answers with a redirect, and a fetch would not follow it with the new cookie.
+   *
+   * Absolutely positioned, and this is the load-bearing part: the sidebar is
+   * `overflow-y-auto` and `h-screen`, so a panel in normal flow would either open
+   * downwards off the bottom of the column or push the note above it. Floated, it
+   * opens upwards over the content and the column does not move when it does.
+   */
+  .account-menu {
+    @apply relative mt-auto;
+  }
+
+  /* The marker is the browser's own disclosure triangle, which would sit beside
+     the gear and make a two-icon row out of a one-icon row. */
+  .account-menu > summary {
+    @apply list-none cursor-pointer;
+  }
+
+  .account-menu > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .account-menu[open] > summary {
+    @apply bg-raised text-text;
+  }
+
+  .account-menu-panel {
+    @apply absolute right-0 bottom-[calc(100%+0.4rem)] left-0 z-20 flex flex-col gap-0.5 rounded-card border border-line bg-raised p-1.5;
+    /* A shadow rather than a border to separate it, because the border is already
+       there and a second one on a panel over content reads as a double edge. */
+    box-shadow: 0 18px 40px rgb(0 0 0 / 34%);
+  }
+
+  /* A menu row, not a navigation item: no left rule, because the rule in the
+     sidebar column means "you are here" and nothing in a menu is somewhere else.
+     The padding is nudged so the text lines up with the gear's. */
+  .account-menu-item {
+    @apply flex w-full min-w-0 items-center gap-2.5 rounded-field border-0 bg-transparent px-2 py-1.5 text-left text-[0.88rem] text-dim no-underline;
+  }
+
+  .account-menu-item:hover {
+    @apply bg-bg text-text no-underline;
+  }
+
+  .account-menu-item.danger:hover {
+    @apply text-bad;
+  }
+
+  .account-menu-item .nav-icon {
+    @apply h-5 w-5 text-[12px];
   }
 
   /* The narrow layout turns the sidebar into a bar at the top of the page, where
@@ -1099,56 +1153,95 @@
     @apply mt-6 mb-3 text-[0.78rem] font-semibold tracking-[0.08em] text-dim uppercase;
   }
 
-  .analytics-grid {
-    @apply grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-3 max-[560px]:grid-cols-1;
-  }
-
-  .analytics-card {
-    @apply flex flex-col rounded-card border border-line bg-raised px-[1rem] py-[0.9rem];
-  }
-
-  .analytics-card-head {
+  /* ---- the per-stream bars ----
+   *
+   * A ranked list with a bar in the middle column, drawn as elements rather than
+   * SVG. The overview's viewer trend is SVG because it is a time series with two
+   * crossing lines and a real axis; this is a list of named categories with one
+   * number each, which is a table with a bar in it. As elements it is fluid with
+   * nothing to measure, the text never distorts as the window changes, and a long
+   * handle is one column width away from fitting.
+   *
+   * Horizontal because the categories are TikTok handles — long strings that do
+   * not rotate, sit or truncate well down the side of a vertical bar.
+   */
+  .chart-controls {
     @apply mb-3;
   }
 
-  /* The handle is the card's title, and the badge sits beside it the way it does
-     everywhere else. A separate line from the figures rather than beside them, so
-     the numbers get the full width of the card. */
-  .analytics-card-name {
-    @apply flex min-w-0 flex-wrap items-center gap-2 text-[0.95rem] font-semibold tracking-[-0.01em] [overflow-wrap:anywhere];
+  .bar-chart {
+    @apply m-0 flex list-none flex-col gap-[0.4rem] p-0;
   }
 
-  /* Label left, value right, but within the card rather than within the page —
-     which is the whole difference from `.session-grid` here. Two columns, because
-     five figures stacked is a card twice as tall as it needs to be. */
-  .analytics-figures {
-    @apply m-0 grid grid-cols-2 gap-x-4 gap-y-[0.3rem];
+  /* Fixed name and value columns so every bar starts on the same pixel and every
+     number ends on the same one. A bar chart whose baseline moves is two pictures
+     rather than one, and a value that shifts sideways as digits change is read as
+     a change in the number. */
+  .bar-row {
+    @apply grid min-w-0 items-center gap-3;
+    grid-template-columns: minmax(0, 9rem) 1fr minmax(0, 4.5rem);
   }
 
-  .analytics-figures > div {
-    @apply flex items-baseline justify-between gap-2;
+  .bar-name {
+    @apply min-w-0 truncate text-[0.85rem] text-dim;
   }
 
-  .analytics-figures dt {
-    @apply text-[0.72rem] font-medium text-faint;
+  /* The track is what makes a short bar read as short. Without it a bar is a
+     shape floating on the page, and five of them look like five unrelated lengths
+     rather than five answers to the same question. */
+  .bar-track {
+    @apply h-[0.55rem] min-w-0 overflow-hidden rounded-full bg-sunken;
   }
 
-  /* Tabular so a number that ticks every fifteen seconds does not make the card
-     breathe — the same reason the overview's tiles use it. */
-  .analytics-figures dd {
-    @apply m-0 text-[0.8rem] font-semibold tabular-nums;
+  .bar-fill {
+    @apply block h-full rounded-full bg-accent;
+    /* A zero-width bar is an empty track, which is exactly what zero is. No floor
+       and no minimum: a sliver under every row would make a stream with one viewer
+       look like one with several. */
+    transition: width 400ms ease;
   }
 
-  /* Uptime and fan-out depth, on one quiet line under the chart. Not a tile: the
-     tiles above are about the streams and this is about the process reading them,
-     and a tile would read as a fourth fact about a stream. */
-  .backend-strip {
-    @apply mt-4 mb-0 text-[0.78rem];
+  .bar-value {
+    @apply truncate text-right text-[0.85rem] font-semibold tabular-nums;
   }
 
-  /* The account panel carries its own heading, so the form's fields do not start
-     flush against it. */
-  .account-panel .field:first-of-type {
+  /* ---- the leaderboards ---- */
+  .leaderboards {
+    @apply grid grid-cols-2 gap-4 max-[760px]:grid-cols-1;
+  }
+
+  .leaderboard-title {
+    @apply m-0 mb-2 text-[0.78rem] font-semibold tracking-[0.08em] text-dim uppercase;
+  }
+
+  .leaderboard-list {
+    @apply m-0 flex list-none flex-col gap-1 p-0;
+  }
+
+  .leaderboard-row {
+    @apply grid min-w-0 items-baseline gap-2;
+    grid-template-columns: 1.25rem minmax(0, 1fr) auto;
+  }
+
+  /* The rank is real information — it is a ranking — but it is not the subject,
+     which is the name, so it is the one column that does not grow. */
+  .leaderboard-rank {
+    @apply text-right text-[0.75rem] text-faint tabular-nums;
+  }
+
+  .leaderboard-name {
+    @apply min-w-0 truncate text-[0.88rem];
+  }
+
+  .leaderboard-value {
+    @apply text-[0.8rem] text-dim tabular-nums;
+  }
+
+  .leaderboard-empty {
+    @apply m-0 text-[0.82rem];
+  }
+
+  .leaderboard-note {
     @apply mt-3;
   }
 
@@ -1723,7 +1816,7 @@
     @apply mt-5 border-t border-line-soft px-3 pt-4 text-[11px] leading-relaxed text-faint;
   }
 
-  .sidebar .signout {
+  .sidebar .account-menu {
     @apply mt-auto rounded-xl border border-line-soft text-dim;
     background: rgb(255 255 255 / 2.5%);
   }

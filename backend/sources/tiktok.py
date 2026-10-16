@@ -804,6 +804,25 @@ class TikTokAdapter(EventAdapter):
                 await self._task
             except asyncio.CancelledError:
                 pass
+            except Exception as exc:  # noqa: BLE001 — a teardown must not inherit this
+                # The connect loop ended by raising rather than by being cancelled.
+                # Only `CancelledError` was caught here, so a loop that died on an
+                # exception re-raised it straight through `stop()` — and `stop()` is
+                # what the delete, disconnect and replace paths all await, after the
+                # thing they were asked to do has already happened. The room was off
+                # disk and the source out of the map either way, so the operator was
+                # told their delete had failed, the dashboard showed it refused, and
+                # the room was gone on the next refresh.
+                #
+                # Logged rather than swallowed: a connect loop that ends on an
+                # exception is worth knowing about, and the loop logs its own
+                # failure too, so this is the second mention rather than the only one.
+                logger.warning(
+                    "connect loop for @%s ended with %s: %s",
+                    self.username,
+                    type(exc).__name__,
+                    exc,
+                )
             self._task = None
 
         if self._client is not None:

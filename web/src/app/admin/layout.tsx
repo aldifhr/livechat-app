@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { tokenConfigured, productName, splitWordmark } from '@/lib/config'
 import Sidebar from '@/components/Sidebar'
-import SignOutButton from '@/components/SignOutButton'
+import AccountMenu from '@/components/AccountMenu'
 import { ToastProvider } from '@/components/Toast'
 import BlurFade from '@/components/magicui/BlurFade'
 
@@ -41,7 +41,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           </div>
         </div>
         <Sidebar />
-        <SignOutButton />
+        <AccountMenu />
       </aside>
       <main className="content">
         {!tokenConfigured && (
