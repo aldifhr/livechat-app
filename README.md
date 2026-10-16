@@ -8,7 +8,7 @@ manifest** — `npm install` at the root does nothing, and that is deliberate.
 | Part | What it is | Stack |
 |---|---|---|
 | `backend/` | Live chat API + serves the overlay pages | FastAPI + TikTokLive |
-| `web/` | Dashboard: stream list, overlay builder, preview | Next.js 16 + React 19 |
+| `web/` | Dashboard: stream list, per-stream pages, overlay builder | Next.js 16 + React 19 |
 | `app/` | Desktop viewer for the operator | Tauri + React |
 
 > **No TikTok process on the user's PC.** The desktop app reads the backend in
@@ -182,7 +182,7 @@ npm run build && npm start
 ### Testing
 
 ```bash
-cd web && npm test   # 3 suites: htpasswd, session, style-store
+cd web && npm test   # 4 suites: htpasswd, session, style-store, room-live
 ```
 
 ### Pages
@@ -191,9 +191,18 @@ cd web && npm test   # 3 suites: htpasswd, session, style-store
 |---|---|
 | `/` | Landing page, public |
 | `/login` | Sign in |
-| `/admin` | **Streams** — one card per stream, each with both overlay links and Copy buttons |
+| `/admin` | Redirects to `/admin/dashboard` |
+| `/admin/dashboard` | Overview — viewers, state and a live chart across every stream |
+| `/admin/streams` | Every stream as one row: handle, state, viewer count |
+| `/admin/streams/@handle` | One stream — its OBS links, its name and handle, styling entry point |
 | `/admin/overlay` | Overlay builder, with a live inline preview beside the controls. `?room=` |
+| `/admin/logs` | Backend log ring, filterable, with Pause |
 | `/admin/about` | Service addresses + password change |
+
+A stream's page is addressed by its handle rather than its room id, because that is
+the part a person says out loud — and it is re-addressed by a redirect when the
+handle is changed from that page. The room id is accepted too, so a link built
+before a stream had a handle does not dead-end.
 
 The dashboard has its own gate (`src/proxy.ts`) mirroring the nginx one, so a
 lost session gets a login page instead of a console whose API calls all 401.

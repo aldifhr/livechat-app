@@ -26,7 +26,7 @@
  * not open. There is exactly one way to copy one, and it copies the real one.
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useCopy } from '@/lib/useCopy'
 
 interface Props {
   /** What this link is, named for anyone reading the page rather than the screen. */
@@ -55,31 +55,7 @@ function display(url: string): string {
 }
 
 export default function CopyField({ label, url, hint, copyLabel = 'Copy' }: Props) {
-  const [copied, setCopied] = useState(false)
-  const resetTimer = useRef<number | null>(null)
-
-  useEffect(
-    () => () => {
-      if (resetTimer.current !== null) window.clearTimeout(resetTimer.current)
-    },
-    [],
-  )
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(url)
-      setCopied(true)
-      if (resetTimer.current !== null) window.clearTimeout(resetTimer.current)
-      resetTimer.current = window.setTimeout(() => {
-        resetTimer.current = null
-        setCopied(false)
-      }, 1500)
-    } catch {
-      // Clipboard access is refused in some contexts and there is no honest way to
-      // paste on the operator's behalf, so say so rather than pretending it worked.
-      setCopied(false)
-    }
-  }
+  const { copied, copy } = useCopy()
 
   return (
     <div className="copy-field">
@@ -88,7 +64,7 @@ export default function CopyField({ label, url, hint, copyLabel = 'Copy' }: Prop
         <code className="copy-value" title={url}>
           {display(url)}
         </code>
-        <button onClick={() => void copy()} disabled={!url} aria-label={`Copy the ${label} link`}>
+        <button onClick={() => void copy(url)} disabled={!url} aria-label={`Copy the ${label} link`}>
           {copied ? 'Copied' : copyLabel}
         </button>
       </div>

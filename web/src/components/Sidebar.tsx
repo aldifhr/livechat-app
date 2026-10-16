@@ -16,13 +16,14 @@ import { usePathname } from 'next/navigation'
  * there is no second copy of "where am I" to fall out of sync.
  *
  * Streams has its own address, separate from the overview and the legacy /admin
- * entry point, so the selected section is clear in the URL.
+ * entry point, so the selected section is clear in the URL. A stream's own page
+ * sits under it, and matching is on path segments so that page counts as Streams.
  */
 const ITEMS = [
-  { href: '/admin/dashboard', label: 'Overview', icon: '◫', hint: 'Live status and viewers across streams', exact: false },
-  { href: '/admin/streams', label: 'Streams', icon: '◉', hint: 'Links and styling for each stream', exact: true },
-  { href: '/admin/overlay', label: 'Overlay builder', icon: '✦', hint: 'Restyle one stream in detail', exact: false },
-  { href: '/admin/logs', label: 'Logs', icon: '≡', hint: 'What the backend has been saying', exact: false },
+  { href: '/admin/dashboard', label: 'Overview', icon: '◫', hint: 'Live status and viewers across streams' },
+  { href: '/admin/streams', label: 'Streams', icon: '◉', hint: 'Links and styling for each stream' },
+  { href: '/admin/overlay', label: 'Overlay builder', icon: '✦', hint: 'Restyle one stream in detail' },
+  { href: '/admin/logs', label: 'Logs', icon: '≡', hint: 'What the backend has been saying' },
 ]
 
 export default function Sidebar() {
@@ -33,9 +34,11 @@ export default function Sidebar() {
       <nav>
         <p className="side-caption">Workspace</p>
         {ITEMS.map((item) => {
-          // Exact matching for the Streams page prevents /admin from lighting it
-          // up while sitting on Overview or another section.
-          const active = item.exact ? pathname === item.href : pathname.startsWith(item.href)
+          // Prefix matching, so a stream's own page at /admin/streams/@handle still
+          // lights Streams up. `/admin` does not match it — the section is longer
+          // than the entry point that redirects into it — so the legacy address
+          // cannot light this up while another section is on screen.
+          const active = pathname === item.href || pathname.startsWith(`${item.href}/`)
           return (
             <Link
               key={item.href}
@@ -50,9 +53,8 @@ export default function Sidebar() {
         })}
       </nav>
       <p className="side-note">
-        {ITEMS.find((item) =>
-          item.exact ? pathname === item.href : pathname.startsWith(item.href),
-        )?.hint}
+        {ITEMS.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))
+          ?.hint}
       </p>
     </>
   )
