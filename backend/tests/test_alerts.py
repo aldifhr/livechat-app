@@ -11,14 +11,14 @@ Run with: .venv/bin/python tests/test_alerts.py
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import alerts  # noqa: E402
-import alert_config  # noqa: E402
 
 FAILS: list[str] = []
 COUNT = 0
@@ -34,10 +34,11 @@ def check(name: str, ok: bool, extra: object = "") -> bool:
 
 
 def set_webhook(url: str) -> None:
-    """Point the webhook somewhere this test controls."""
-    # The config module caches nothing, so writing through its own setter keeps the
-    # real file untouched and gives this test a URL it can inspect.
-    alert_config.set(url)
+    """Point the webhook at a URL this test controls.
+
+    Set as an environment variable because that is how the backend reads it.
+    """
+    os.environ[alerts.WEBHOOK_ENV] = url
 
 
 async def run(coro):
@@ -45,7 +46,7 @@ async def run(coro):
 
 
 print("\nno webhook means nothing is sent, and nothing raises")
-set_webhook("")
+os.environ.pop(alerts.WEBHOOK_ENV, None)
 result = asyncio.run(run(alerts.notify("test", "room", "user", "message")))
 check("notify returns False", result is False)
 check("and alerts report disabled", not alerts.enabled())
@@ -173,7 +174,7 @@ check("it mentions diamonds", "50" in summary, summary)
 check("it mentions the session", "0m" in summary or "1m" in summary, summary)
 eventlog.forget("test-room")
 
-set_webhook("")
+os.environ.pop(alerts.WEBHOOK_ENV, None)
 
 print()
 if FAILS:

@@ -26,10 +26,8 @@ import os
 from typing import Any
 
 from logging_setup import logger
-import alert_config
 
-#: Where alerts are posted. Empty means alerts are off. Kept for the boot log and
-#: for callers that only want to know whether alerts are on.
+#: Where alerts are posted. Empty means alerts are off.
 WEBHOOK_ENV = "STREAMKIT_ALERT_WEBHOOK"
 
 #: How long one delivery may take. Short, because nothing waits on it and a
@@ -45,11 +43,11 @@ LIVE_ENDED = "live_ended"
 
 
 def webhook_url() -> str:
-    return alert_config.read()
+    return os.environ.get(WEBHOOK_ENV, "").strip()
 
 
 def enabled() -> bool:
-    return alert_config.enabled()
+    return webhook_url() != ""
 
 
 def _body(kind: str, room_id: str, username: str, message: str) -> dict[str, Any]:
