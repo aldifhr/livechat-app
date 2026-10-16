@@ -15,6 +15,19 @@ from fastapi import WebSocket
 ROOM = "room"
 CUSTOMIZER = "customizer"
 
+# Re-exported for routes that validate client_type before calling hub.connect().
+# The route in main.py needs these without instantiating the hub.
+
+#: Maximum concurrent sockets per room.
+#:
+#: Each socket costs one asyncio.Queue (4096 slots), one writer task, and
+#: several dict entries. A room with no cap is a remote FD-exhaustion attack:
+#: anyone who discovers the host can open sockets until the process runs out
+#: of file descriptors or memory. Five is generous for a human operator —
+#: typically one OBS overlay, one dashboard preview, maybe a phone — and still
+#: bounded.
+MAX_CLIENTS_PER_ROOM = 5
+
 #: Messages buffered for one client before it is judged not to be keeping up.
 #:
 #: Sized for a burst, not a steady rate: two thousand events dispatched in 58ms
@@ -97,6 +110,16 @@ class Hub:
         it is waiting for, not lost.
         """
         await websocket.accept()
+        # Reject before allocating anything. The cap is per-room, not global:
+        # a customizer watching a different room is a different audience. A
+        # customizer does not count against the room's viewer cap — it is the
+        # operator's own editing surface, and blocking it because too many
+        # overlays are attached would lock the operator out of styling.
+        if room_id and client_type == ROOM:
+            current = sum(1 for rid in self.room_clients.values() if rid == room_id)
+            if current >= MAX_CLIENTS_PER_ROOM:
+                await websocket.close(code=1013, reason="room is full")
+                raise RuntimeError(f"room {room_id} has reached its client limit")
         client_id = str(uuid.uuid4())
         self.active[client_id] = websocket
         self._queues[client_id] = asyncio.Queue(maxsize=CLIENT_QUEUE_LIMIT)

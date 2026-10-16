@@ -149,6 +149,23 @@ def set_connected(room_id: str, connected: bool, detail: str = "") -> None:
         log.info("[%s] disconnected %s (%s)", room_id, detail or "", summary)
 
 
+def _prune_leaders(counts: dict, names: dict, cap: int) -> None:
+    """Keep only the top `cap` entries by count, dropping the rest.
+
+    Called after every insert. A busy session produces thousands of unique
+    user_ids; without pruning the dicts grow unbounded for the life of the
+    session. TOP_N limits what is *returned*, not what is *stored*.
+    """
+    if len(counts) <= cap:
+        return
+    # Sort by count descending, keep top cap, drop the rest.
+    kept = set(sorted(counts, key=lambda k: counts[k], reverse=True)[:cap])
+    for key in list(counts.keys()):
+        if key not in kept:
+            counts.pop(key, None)
+            names.pop(key, None)
+
+
 def forget(room_id: str) -> None:
     """Drop a room's counters entirely.
 
@@ -199,10 +216,17 @@ def record(
     # Count this message against the chatter, keyed on the stable handle so one
     # person is one row however their display name is spelled. Only comments count
     # toward the leaderboard — a gift or a join is not someone talking.
+    #
+    # Bounded: a busy two-hour session can see tens of thousands of unique
+    # user_ids. Without a cap these dicts grow for the life of the session,
+    # holding every nickname and count ever seen. TOP_N limits what is
+    # returned, not what is stored. Keep only the top TOP_N * 2 — enough
+    # headroom that a new leader displaces an old one without churning.
     if kind == "comment" and user:
         key = user_id or user
         room.chatter_counts[key] = room.chatter_counts.get(key, 0) + 1
         room.chatter_names[key] = user
+        _prune_leaders(room.chatter_counts, room.chatter_names, TOP_N * 2)
 
     # Track gift diamonds and top gifters
     _diamond_value = (meta or {}).get("value", 0)
@@ -211,6 +235,7 @@ def record(
         key = user_id or user
         room.gifters[key] = room.gifters.get(key, 0) + _diamond_value
         room.gifter_names[key] = user
+        _prune_leaders(room.gifters, room.gifter_names, TOP_N * 2)
 
     # A greeting that is long enough to be a sentence and short enough to stay
     # on one line. Comment text is capped by the widget at 44 characters anyway,

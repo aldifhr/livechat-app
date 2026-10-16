@@ -26,7 +26,7 @@ import logbuffer
 import store
 from watchdog import LivenessWatchdog
 from events import ALERT
-from hub import hub
+from hub import hub, ROOM as HUB_ROOM, CUSTOMIZER as HUB_CUSTOMIZER
 from sources import TikTokAdapter
 from protocols import registry
 
@@ -264,6 +264,8 @@ from routes.live import router as live_router  # noqa: E402
 
 bind_live_state(sources, _sources_lock, hub)
 app.include_router(live_router)
+
+
 async def _connect_room(room_id: str, username: str) -> dict:
     """Point the one global room at `username`, replacing any previous source.
 
@@ -306,9 +308,9 @@ async def _connect_room(room_id: str, username: str) -> dict:
 async def _observe_source(room_id: str, source: TikTokAdapter) -> None:
     """Consume events from adapter and broadcast to WebSocket clients."""
     # Wait for connection before starting observer
-    while source._running and not source._connected:
+    while source.is_running() and not source.is_connected():
         await asyncio.sleep(0.1)
-        if not source._running:
+        if not source.is_running():
             return
 
     try:
@@ -363,6 +365,13 @@ app.include_router(overlay_router)
 
 @app.websocket("/ws/{client_type}/{room_id}")
 async def websocket_endpoint(websocket: WebSocket, client_type: str, room_id: str):
+    # client_type is a path param with no validation — it was never checked
+    # against the known types. A typo or a malicious value silently created
+    # a client that broadcasts could not route to. Reject unknown types
+    # before accepting the socket.
+    if client_type not in (HUB_ROOM, HUB_CUSTOMIZER):
+        await websocket.close(code=1008, reason="unknown client type")
+        return
     client_id = await hub.connect(websocket, client_type, room_id)
     try:
         record = await store.get_room_async(room_id)
@@ -380,6 +389,10 @@ async def websocket_endpoint(websocket: WebSocket, client_type: str, room_id: st
         # finished would otherwise sit on "connecting" forever.
         source = sources.get(room_id)
         payload = source.status_payload() if source else {"type": "status", "connected": False, "message": "Offline"}
+        # Read through the adapter's own accessors, not its private flags. The
+        # class forbids reaching past itself for exactly this: a caller that
+        # reads _running directly can desynchronise the task it does not know
+        # about. is_running() and is_connected() are the public surface.
         await websocket.send_text(json.dumps(payload, ensure_ascii=False))
 
         # Only now start draining this client's queue. Both frames above are the

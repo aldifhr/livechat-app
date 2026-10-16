@@ -123,9 +123,20 @@ async def webhook(room_id: str, req: HookRequest):
     if req.amount is not None and not value:
         value = f"{req.amount:g}"
 
-    meta: dict[str, Any] = {"title": req.title, "icon": req.icon, "count": 1}
+    # Gift meta must match what trigger() sets, so the two routes agree.
+    # _gift (events.py) reads meta.get("value", 0) for diamond count, and
+    # eventlog.record also computes from value. Without it, hook gifts are
+    # always 0 diamonds and never enter total_diamonds or top_gifters.
+    meta: dict[str, Any] = {
+        "title": req.title,
+        "icon": req.icon,
+        "count": 1,
+        "giftName": value or "Gift",
+    }
     if req.amount is not None:
         meta["amount"] = req.amount
+        meta["diamonds"] = req.amount
+        meta["value"] = req.amount
 
     await events.emit(
         room_id,
