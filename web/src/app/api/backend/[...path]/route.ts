@@ -26,9 +26,11 @@ const ALLOWED = [
   /^\/api\/rooms\/[0-9a-f-]{36}$/,
   /^\/api\/rooms\/[0-9a-f-]{36}\/status$/,
   /^\/api\/rooms\/[0-9a-f-]{36}\/config$/,
+  /^\/api\/rooms\/[0-9a-f-]{36}\/session$/,
   /^\/api\/room-connect-by-username$/,
   /^\/api\/room-connect\/[0-9a-f-]{36}$/,
   /^\/api\/disconnect$/,
+  /^\/api\/alerts\/test$/,
   // The backend's own log records. A read, and the backend gates it on the token
   // rather than on the method — so it is in `SENSITIVE_READ` below too, or the
   // proxy would forward it with no credential and the page would always be empty.

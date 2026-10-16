@@ -19,7 +19,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError, isAuthFailure } from '../lib/client'
 import { useOrigin } from '../lib/browser'
-import type { Room } from '../lib/types'
+import type { Room, RoomSession } from '../lib/types'
 import CopyField from '../components/CopyField'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { useToast } from '../components/Toast'
@@ -32,11 +32,13 @@ const POLL_MS = 15_000
 function StreamCard({
   room,
   live,
+  session,
   busy,
   onDelete,
 }: {
   room: Room
   live: boolean | undefined
+  session: RoomSession | undefined
   busy: boolean
   onDelete: (room: Room) => void
 }) {
@@ -71,6 +73,8 @@ function StreamCard({
         <CopyField label="Chat overlay · Studio" url={studioChatUrl} />
         <CopyField label="Top chatters" url={boardUrl} />
       </div>
+
+      {session && <SessionPanel session={session} />}
 
       <footer className="stream-actions">
         <Link className="btn" href={`/admin/overlay?room=${encodeURIComponent(room.id)}`}>
@@ -113,6 +117,10 @@ export default function Streams() {
   const [busy, setBusy] = useState(false)
   const [newHandle, setNewHandle] = useState('')
   const [live, setLive] = useState<Record<string, boolean>>({})
+  // Each room's session counters, from `eventlog` via the session endpoint. The
+  // backend already tracked peaks, diamonds and the leaderboards; this is the first
+  // place any of it is shown.
+  const [sessions, setSessions] = useState<Record<string, RoomSession>>({})
   // The room waiting to be deleted, rather than a boolean: the dialog names the
   // room, and naming it from the room that raised it is the one way the name on
   // screen cannot drift from the room that gets deleted.
@@ -157,8 +165,12 @@ export default function Streams() {
       const results = await Promise.all(
         roomIds.split(',').map(async (id) => {
           try {
-            const status = await api.status(id)
-            return [id, status.connected] as const
+            // Status and session together, in one pass. They are two reads of the
+            // same room and the card shows them side by side, so fetching them
+            // separately would let the badge and the numbers describe two
+            // different moments.
+            const [status, session] = await Promise.all([api.status(id), api.session(id)])
+            return [id, status.connected, session] as const
           } catch {
             // A status that cannot be read is not evidence the room is down, so
             // the room keeps whatever it last showed. Reporting it as offline
@@ -171,6 +183,11 @@ export default function Streams() {
       setLive((current) => {
         const next = { ...current }
         for (const entry of results) if (entry) next[entry[0]] = entry[1]
+        return next
+      })
+      setSessions((current) => {
+        const next = { ...current }
+        for (const entry of results) if (entry) next[entry[0]] = entry[2]
         return next
       })
     }
@@ -308,6 +325,7 @@ export default function Streams() {
               key={room.id}
               room={room}
               live={live[room.id]}
+              session={sessions[room.id]}
               busy={busy}
               onDelete={setPendingDelete}
             />
@@ -343,4 +361,76 @@ export default function Streams() {
       />
     </>
   )
+}
+
+/**
+ * What this session has produced, on the stream's own card.
+ *
+ * Every number here was already tracked by the backend and reachable from
+ * nowhere: the card showed a live/offline badge and nothing else, while `eventlog`
+ * accumulated peaks, diamonds and two leaderboards behind an endpoint with no
+ * caller. This is that data with a door on it.
+ *
+ * Hidden entirely when nothing has happened. A card for a room that has never
+ * connected would otherwise carry a grid of zeroes, which reads as a broken
+ * stream rather than an idle one.
+ */
+function SessionPanel({ session }: { session: RoomSession }) {
+  const events = Object.values(session.totals).reduce((sum, n) => sum + n, 0)
+  const idle = !session.connected && events === 0 && session.total_diamonds === 0
+  if (idle) return null
+
+  return (
+    <div className="session">
+      <p className="copy-label">This session</p>
+      <dl className="session-grid">
+        <Stat label="Live for" value={duration(session.live_seconds)} />
+        <Stat label="Peak viewers" value={session.peak_viewers ? session.peak_viewers.toLocaleString() : '—'} />
+        <Stat label="Diamonds" value={session.total_diamonds ? session.total_diamonds.toLocaleString() : '—'} />
+        <Stat label="Events" value={events ? events.toLocaleString() : '—'} />
+      </dl>
+      {/* Only the leaders that exist. An empty list renders nothing rather than a
+          heading over a gap. */}
+      <Leaders label="Top chatters" people={session.topChatters} unit="messages" />
+      <Leaders label="Top gifters" people={session.topGifters} unit="diamonds" />
+    </div>
+  )
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  )
+}
+
+function Leaders({ label, people, unit }: { label: string; people: RoomSession['topChatters']; unit: string }) {
+  const top = people.slice(0, 3)
+  if (top.length === 0) return null
+  return (
+    <p className="session-leaders">
+      <span className="faint">{label}:</span>{' '}
+      {top.map((person, index) => (
+        <span key={person.id}>
+          {index > 0 && ', '}
+          <strong>{person.nickname}</strong>{' '}
+          <span className="faint">
+            {(person[unit === 'messages' ? 'messages' : 'diamonds'] ?? 0).toLocaleString()} {unit}
+          </span>
+        </span>
+      ))}
+    </p>
+  )
+}
+
+/** Seconds as something readable, or an em dash when there is no session. */
+function duration(seconds: number | null): string {
+  if (!seconds) return '—'
+  const whole = Math.floor(seconds)
+  if (whole < 60) return `${whole}s`
+  const minutes = Math.floor(whole / 60)
+  if (minutes < 60) return `${minutes}m`
+  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`
 }

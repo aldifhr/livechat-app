@@ -1809,3 +1809,36 @@
     @apply items-start gap-4;
   }
 }
+
+  /* What the session produced. A two-by-two grid: it reads at a glance, and a
+     single column of numbers would stretch the card taller than the links above
+     it for no information gained. */
+  .session {
+    @apply mt-[0.85rem] flex flex-col gap-[0.4rem] border-t border-line-soft pt-[0.6rem];
+  }
+
+  .session-grid {
+    @apply grid grid-cols-2 gap-x-3 gap-y-[0.35rem];
+  }
+
+  .session-grid > div {
+    @apply flex items-baseline justify-between gap-2;
+  }
+
+  .session-grid dt {
+    @apply text-[0.72rem] font-medium text-muted;
+  }
+
+  .session-grid dd {
+    @apply text-[0.78rem] font-semibold tabular-nums;
+  }
+
+  /* One line each, wrapped. Three names with their counts would be a sentence
+     this card cannot carry, and the point of it is the ranking, which survives. */
+  .session-leaders {
+    @apply text-[0.72rem] leading-relaxed text-muted;
+  }
+
+  .session-leaders strong {
+    @apply font-semibold text-fg;
+  }

@@ -12,6 +12,7 @@ from fastapi import APIRouter, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 
+import alerts
 import events
 import logbuffer
 import store
@@ -158,6 +159,31 @@ async def logs(request: Request, limit: int = 200, level: str = "info", q: str =
     # `limit` is clamped inside `read` rather than rejected, so a page asking for
     # more than exists gets what there is instead of an error.
     return logbuffer.read(limit=limit, min_level=level, search=q)
+
+
+@router.post("/api/alerts/test")
+async def alerts_test(request: Request) -> dict[str, Any]:
+    """Send one alert now, so a webhook can be checked without waiting for a stream.
+
+    A webhook that was never tested is a webhook nobody knows is broken. The
+    alternative — waiting for the first real failure to find out — is the worst
+    possible time to discover it.
+
+    Token-gated like every other write. Answers with `configured: false` rather
+    than an error when no webhook is set: "alerts are off" is a fact about the
+    deployment, not a failure of the request.
+    """
+    if not _state["token_is_valid"](request):
+        raise HTTPException(status_code=401, detail="Invalid or missing STREAMKIT_TOKEN")
+    if not alerts.enabled():
+        return {"configured": False, "sent": False, "detail": f"{alerts.WEBHOOK_ENV} is not set"}
+    sent = await alerts.notify(
+        "test",
+        "00000000-0000-0000-0000-000000000000",
+        "test",
+        "This is a test alert from the dashboard. Nothing is wrong.",
+    )
+    return {"configured": True, "sent": sent}
 
 
 async def _require_room(room_id: str) -> None:

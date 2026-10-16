@@ -118,6 +118,25 @@ async def get_room(room_id: str):
     return record
 
 
+@router.get("/api/rooms/{room_id}/session")
+async def room_session(room_id: str):
+    """What this room's current session has accumulated.
+
+    Everything `eventlog` counts — peak viewers, diamonds, the leaderboards — was
+    already tracked and reachable from nowhere: the dashboard showed the live
+    viewer count and nothing else, and `eventlog.snapshot` had no caller in
+    production at all. This is the door to it.
+
+    Reads the counters rather than the room record, so it answers for a room whose
+    source is gone: a stream that just ended still has a session worth reading.
+
+    Returns the empty shape for a room that has never connected rather than a 404.
+    "Nothing has happened here" is an answer; the caller asking about a room it
+    already listed should not have to treat it as an error.
+    """
+    return eventlog.snapshot(room_id)
+
+
 @router.delete("/api/rooms/{room_id}")
 async def delete_room(room_id: str):
     if not await store.delete_room_async(room_id):
