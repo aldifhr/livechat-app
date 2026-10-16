@@ -1,0 +1,51 @@
+/**
+ * Where one stream's pages are.
+ *
+ * Both the list and the profile build the same three links, and the profile's own
+ * address is needed by both — the list links to it, and the builder links back to
+ * it. Three places spelling out `/admin/streams/…` is three places to change when
+ * the shape of that address changes.
+ */
+
+import { api } from './client'
+
+/**
+ * The address of a stream's profile.
+ *
+ * The handle and not the room id: this is an address somebody types, bookmarks and
+ * pastes to a colleague, and `61ea70c9-6d36-4a6a-bf94-b648532447bb` is not that.
+ *
+ * The `@` is left unencoded on purpose — `encodeURIComponent('@')` is `%40`, and
+ * browsers leave that on screen. A handle is `[A-Za-z0-9._]` as the backend
+ * validates it, so the encode around it is a guard rather than a transformation.
+ *
+ * A room with no handle yet falls back to its id, which is ugly but reachable: the
+ * profile resolves either, so a link built before the handle was set does not
+ * dead-end.
+ */
+export function profilePath(username: string, id: string): string {
+  return username ? `/admin/streams/@${encodeURIComponent(username)}` : `/admin/streams/${id}`
+}
+
+/**
+ * The three overlay links for one stream, in full.
+ *
+ * Named rather than inlined because a link pasted into OBS is the product's
+ * terminal action, and every page that offers one has to offer the same three. The
+ * studio variant is the same page with a different parameter, which is why it looks
+ * like a sibling here and is a separate link to whoever copies it.
+ */
+export function streamLinks(roomId: string) {
+  return {
+    original: api.chatOverlay(roomId),
+    studio: api.chatOverlay(roomId, 'studio'),
+    board: api.topChatterOverlay(roomId),
+  }
+}
+
+/** The label each of those three is offered under, in the order they are offered. */
+export const LINK_LABELS = {
+  original: 'Chat overlay · Original',
+  studio: 'Chat overlay · Studio',
+  board: 'Top chatters',
+} as const

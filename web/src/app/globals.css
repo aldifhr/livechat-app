@@ -976,50 +976,109 @@
     @apply mt-5 flex justify-end gap-2;
   }
 
-  /* ---- the stream hub ----
+  /* ---- the stream list ----
    *
-   * One card per stream, and the card carries the links.
+   * One row per stream, and the row is a link.
    *
-   * This was a single-column list of full-width rows, so five streams were five
-   * nearly identical bands with the links two clicks away. A grid gives each stream
-   * its own box, and the links sit inside it — copying one is the thing the operator
-   * came to do, so it is on the card rather than behind "Style". */
-  .stream-grid {
-    @apply mt-5 grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] items-start gap-4 max-[560px]:grid-cols-1;
+   * This was a grid of cards, each carrying all three OBS links in full. It answered
+   * "which link goes on this scene" without opening anything, and it cost a screen of
+   * monospace: a grid wide enough for three cards cannot hold a link on one line, so
+   * every card was three paragraphs of URL ending in the same room id, and the number
+   * of streams you could see at once went down as the number of streams went up.
+   *
+   * So the links moved to each stream's own address and this page became what it is
+   * actually for: which of my streams is running. Three facts, one line each. */
+  .stream-list {
+    @apply mt-5 flex list-none flex-col gap-2 p-0;
   }
 
-  .stream-card {
-    @apply flex flex-col gap-[0.85rem] rounded-card border border-line bg-raised px-[1.15rem] py-[1.1rem];
+  .stream-row {
+    @apply flex min-w-0 items-center gap-3 rounded-card border border-line bg-raised px-[1.15rem] py-[0.85rem] no-underline transition-[border-color,background] duration-120;
   }
 
-  .stream-head {
-    @apply flex items-start gap-3;
+  .stream-row:hover {
+    @apply border-accent-dim bg-bg;
   }
 
+  .stream-row-name {
+    @apply flex min-w-0 flex-wrap items-center gap-2 text-[1.02rem] font-semibold tracking-[-0.01em] [overflow-wrap:anywhere];
+  }
+
+  /* The operator's own name for the stream, if they gave it one. It sits between
+     the handle and the count because that is the reading order of the row: who it
+     is, what it is called, how many are watching. */
+  .stream-row-label {
+    @apply min-w-0 flex-1 truncate text-[0.88rem];
+  }
+
+  /* Fixed width rather than content width, so the numbers line up down the page and
+     a row does not change width when a stream goes live. */
+  .stream-row-viewers {
+    @apply ml-auto text-[0.85rem] text-dim tabular-nums;
+  }
+
+  .stream-row-go {
+    @apply shrink-0 text-dim;
+  }
+
+  .stream-row:hover .stream-row-go {
+    @apply text-accent;
+  }
+
+  /* The heading on a stream's own page, which is the handle plus its badge. */
   .stream-name {
     @apply flex min-w-0 flex-wrap items-center gap-2 [overflow-wrap:anywhere] text-[1.02rem] tracking-[-0.01em];
   }
 
-  .stream-label {
-    @apply mt-[0.15rem] mb-0;
-  }
-
+  /* The three links on a stream's own page: one line each, the name on the left
+     and the button that copies it on the right. The URL is not shown — it is a room
+     id, identical on all three, and nobody reads it before pasting. */
   .stream-links {
-    @apply flex flex-col gap-[0.7rem];
+    @apply mt-3 flex flex-col gap-[0.3rem];
   }
 
-  /* On a card, the link is the whole point and the label above already names it, so
-     there is no room for a sentence under it. */
-  .stream-links .copy-field .faint {
-    @apply hidden;
+  /* The label wraps rather than truncating — a row narrow enough to clip "Chat
+     overlay · Studio" is a row that has stopped naming what it copies. */
+  .link-line {
+    @apply flex min-w-0 items-center gap-3 rounded-field px-[0.15rem] py-[0.1rem];
   }
 
-  .stream-actions {
-    @apply mt-auto flex gap-2 border-t border-line-soft pt-[0.35rem];
+  .link-line-label {
+    @apply min-w-0 flex-1 [overflow-wrap:anywhere] text-[0.92rem];
   }
 
-  .stream-actions .danger {
-    @apply ml-auto;
+  /* The URLs, for the times they are genuinely read. Quiet when closed, because
+     every answer in it is already named above. */
+  .stream-links-more summary {
+    @apply mt-[0.25rem] cursor-pointer text-[0.78rem] text-dim select-none;
+  }
+
+  .stream-links-more summary:hover {
+    @apply text-text;
+  }
+
+  .stream-links-more dl {
+    @apply mt-[0.4rem] flex flex-col gap-[0.45rem];
+  }
+
+  .stream-links-more dt {
+    @apply text-[0.7rem] tracking-[0.06em] text-dim uppercase;
+  }
+
+  .stream-links-more dd {
+    @apply m-0;
+  }
+
+  /* `select-none` for the same reason as `.copy-value`: dragging across this and
+     pressing Ctrl+C should not hand anybody something that would not open. The Copy
+     button above it is the way to get one of these. */
+  .stream-links-more code {
+    @apply block rounded-field border border-line bg-sunken px-[0.55rem] py-[0.45rem] font-mono text-[0.72rem] leading-[1.5] text-dim [overflow-wrap:anywhere] select-none;
+  }
+
+  /* Fields inside a row are laid out by the row, not stacked under themselves. */
+  .row .field {
+    @apply mb-0 min-w-0 flex-1;
   }
 
   /* Where the links on this page point. Said once here rather than repeated on
@@ -1625,7 +1684,7 @@
 
   .panel,
   .stat,
-  .stream-card,
+  .stream-row,
   .builder-stage {
     @apply rounded-2xl border border-line bg-raised/90;
     box-shadow: 0 12px 36px rgb(0 0 0 / 12%);
@@ -1699,26 +1758,17 @@
     box-shadow: 0 5px 18px rgb(67 203 167 / 18%);
   }
 
-  .stream-grid {
-    @apply gap-4;
-  }
-
-  .stream-card {
+  .stream-row {
     @apply p-4;
-    transition: transform 170ms ease, border-color 170ms ease, box-shadow 170ms ease;
+    transition: border-color 170ms ease, background 170ms ease;
   }
 
-  .stream-card:hover {
-    @apply -translate-y-0.5 border-line;
-    box-shadow: 0 18px 38px rgb(0 0 0 / 22%);
+  .stream-row:hover {
+    @apply border-accent-dim bg-bg;
   }
 
   .stream-name {
     @apply text-[16px] font-semibold tracking-tight;
-  }
-
-  .stream-actions {
-    @apply mt-4 border-t border-line-soft pt-3;
   }
 
   .field label,
@@ -1828,7 +1878,7 @@
   }
 
   .session-grid dt {
-    @apply text-[0.72rem] font-medium text-muted;
+    @apply text-[0.72rem] font-medium text-dim;
   }
 
   .session-grid dd {
@@ -1838,9 +1888,16 @@
   /* One line each, wrapped. Three names with their counts would be a sentence
      this card cannot carry, and the point of it is the ranking, which survives. */
   .session-leaders {
-    @apply text-[0.72rem] leading-relaxed text-muted;
+    @apply text-[0.72rem] leading-relaxed text-dim;
   }
 
   .session-leaders strong {
-    @apply font-semibold text-fg;
+    @apply font-semibold text-text;
+  }
+
+  /* A session panel carries its own rule above itself, because it used to sit part
+     way down a stream card. At the top of a panel of its own that rule is a divider
+     drawn across nothing, so it goes. */
+  .panel > .session:first-child {
+    @apply mt-0 border-t-0 pt-0;
   }
