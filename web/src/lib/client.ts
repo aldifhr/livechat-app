@@ -14,7 +14,7 @@
 
 'use client'
 
-import type { AnalyticsSummary, HealthData, LogPage, MetricsData, Room, RoomSession, RoomStatus } from './types'
+import type { AnalyticsSummary, LogPage, Room, RoomSession, RoomStatus } from './types'
 
 export class ApiError extends Error {
   constructor(
@@ -199,10 +199,6 @@ export const api = {
       q: opts.q,
     }),
   analytics: () => request<AnalyticsSummary>('GET', '/analytics'),
-  /** The backend's liveness and per-room status. */
-  health: () => request<HealthData>('GET', '/health'),
-  /** The backend's counters: active sources, sockets, queued messages, disconnects. */
-  metrics: () => request<MetricsData>('GET', '/metrics'),
 
   /** What this room's current session has accumulated — peaks, diamonds, leaders. */
   session: (id: string) => request<RoomSession>('GET', `/rooms/${id}/session`),

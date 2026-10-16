@@ -47,32 +47,6 @@ export interface LogEntry {
   traceback?: string
 }
 
-/** The backend's liveness, from `/health`. */
-export interface HealthData {
-  status: string
-  uptimeSeconds: number
-  activeRooms: number
-  totalConnections: number
-  /** Per-room status map. Present when the caller sends a token; withheld
-   *  from an unauthenticated request. */
-  rooms?: Record<string, {
-    type: string
-    connected: boolean
-    message: string
-    viewers?: number
-    connecting?: boolean
-    waiting?: boolean
-  }>
-}
-
-/** The backend's counters, from `/metrics`. */
-export interface MetricsData {
-  sources_active: number
-  websocket_connections: number
-  queued_messages_total: number
-  clients_disconnected_total: number
-}
-
 /** Aggregated session stats across all rooms, from `/api/analytics`. */
 export interface AnalyticsSummary {
   total_rooms: number

@@ -37,21 +37,7 @@ const ALLOWED = [
   /^\/api\/disconnect$/,
   /^\/api\/alerts\/test$/,
   /^\/api\/analytics$/,
-  // The backend's own liveness and counters.
-  //
-  // Matched as `/api/health`, which is the path `path` holds and not the address
-  // the browser used: the catch-all strips `/api/backend` off the front and puts
-  // `/api` back on. Both of the spellings that were here first were wrong in a
-  // different direction and neither matched anything — one wrote the bare backend
-  // route with no prefix, the other wrote this proxy's own URL — so the page
-  // answered 404 "Not proxied" for two of the three numbers it exists to show, and
-  // the failure read as a backend that would not answer.
-  //
-  // The counts are not gated on the backend, so an orchestrator probing it directly
-  // is unaffected. The per-room map is, and `SENSITIVE_READ` below is what puts
-  // the token on this call.
-  /^\/api\/health$/,
-  /^\/api\/metrics$/,
+
   // The backend's own log records. A read, and the backend gates it on the token
   // rather than on the method — so it is in `SENSITIVE_READ` below too, or the
   // proxy would forward it with no credential and the page would always be empty.
@@ -86,7 +72,7 @@ const MUTATING = new Set(['POST', 'PATCH', 'DELETE'])
  * is, and this dashboard is behind the session and already reads every handle
  * from `/api/rooms`, so it is not reaching anything new.
  */
-const SENSITIVE_READ = /^\/api\/(rooms(\/|$)|logs$|analytics$|health$)/
+const SENSITIVE_READ = /^\/api\/(rooms(\/|$)|logs$|analytics$)/
 
 function allowed(path: string): boolean {
   return ALLOWED.some((pattern) => pattern.test(path))
