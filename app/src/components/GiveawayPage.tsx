@@ -234,7 +234,7 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
   }, [status, endsAt, entryKeyword, closeGiveaway])
   useRoomEvents(onRoomEvent, [onRoomEvent])
 
-  function startGiveaway() {
+  async function startGiveaway() {
     if (!entryKeyword) return
     const now = Date.now()
     setIsTestRun(testMode)
@@ -543,9 +543,9 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
           )}
           <div className="flex flex-wrap gap-2">
             {status === 'idle' || status === 'closed' ? (
-              <button className="btn btn-primary rounded-lg bg-app-accent px-4 py-2 font-semibold text-app-bg disabled:opacity-50" type="button" onClick={startGiveaway} disabled={(!connected && !testMode) || !entryKeyword || spinning}>{status === 'closed' ? 'Start new giveaway' : testMode ? 'Run test draw' : 'Start countdown'}</button>
+              <button className="btn btn-primary rounded-lg bg-app-accent px-4 py-2 font-semibold text-app-bg disabled:opacity-50" type="button" onClick={() => void startGiveaway()} disabled={(!connected && !testMode) || !entryKeyword || spinning}>{status === 'closed' ? 'Start new giveaway' : testMode ? 'Run test draw' : 'Start countdown'}</button>
             ) : status === 'open' ? (
-              <button className="btn rounded-lg border border-app-line px-4 py-2 text-sm" type="button" onClick={closeGiveaway}>Close entries now</button>
+              <button className="btn rounded-lg border border-app-line px-4 py-2 text-sm" type="button" onClick={() => void closeGiveaway()}>Close entries now</button>
             ) : (
               <button className="btn rounded-lg border border-app-line px-4 py-2 text-sm" type="button" onClick={lockEntries}>Lock entries now</button>
             )}
