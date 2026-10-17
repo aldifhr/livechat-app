@@ -345,5 +345,5 @@ function LiveTimer({ startedAt }: { startedAt: number }) {
   const seconds = elapsedSeconds % 60
   const time = [hours, minutes, seconds].map((part) => String(part).padStart(2, '0')).join(':')
 
-  return <span className="live-timer [padding:3px_8px] [border:1px_solid_color-mix(in_srgb,_var(--green)_34%,_transparent)] [border-radius:999px] [background:color-mix(in_srgb,_var(--green)_9%,_transparent)] [color:var(--green)] [font-size:10px] [font-variant-numeric:tabular-nums] [font-weight:700] [letter-spacing:0.04em]" title="Time connected to the live stream">LIVE {time}</span>
+  return <span className="live-timer [padding:3px_8px] [border:1px_solid_color-mix(in_srgb,_var(--green)_34%,_transparent)] [border-radius:999px] [background:color-mix(in_srgb,_var(--green)_9%,_transparent)] [color:var(--green)] [font-size:10px] [font-variant-numeric:tabular-nums] [font-weight:700] [letter-spacing:0.04em] [white-space:nowrap]" title="Time connected to the live stream">LIVE {time}</span>
 }
