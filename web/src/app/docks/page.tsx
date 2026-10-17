@@ -122,10 +122,49 @@ export default function DocksPage() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chat])
 
-  if (!roomId) {
+  // No room in URL: auto-select the first room if there's exactly one,
+  // otherwise show the room list so the user can pick.
+  if (!roomId && rooms.length === 1) {
+    const only = rooms[0]
+    if (only) {
+      setRoomId(only.id)
+      const url = new URL(window.location.href)
+      url.searchParams.set('room', only.id)
+      window.history.replaceState({}, '', url.toString())
+    }
+  }
+
+  // No room selected and multiple (or zero) rooms: show a picker so the
+  // operator can choose one without editing the URL.
+  if (!roomId && rooms.length !== 1) {
     return (
-      <div className="flex h-full items-center justify-center bg-zinc-900 p-4 text-zinc-400">
-        <p className="text-center text-sm">Add <code className="text-zinc-300">?room=&lt;room_id&gt;</code> to the URL</p>
+      <div className="flex h-full flex-col items-center justify-center gap-3 bg-zinc-900 p-4 text-zinc-400">
+        {rooms.length === 0 ? (
+          <p className="text-center text-sm">No streams yet — add one in the dashboard.</p>
+        ) : (
+          <>
+            <p className="text-center text-sm">Select a stream</p>
+            <select
+              aria-label="Select room"
+              onChange={(e) => {
+                const next = e.target.value
+                if (!next) return
+                setRoomId(next)
+                const url = new URL(window.location.href)
+                url.searchParams.set('room', next)
+                window.history.replaceState({}, '', url.toString())
+              }}
+              className="max-w-64 rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-200 outline-none focus:border-zinc-500"
+            >
+              <option value="">Choose…</option>
+              {rooms.map((room) => (
+                <option key={room.id} value={room.id}>
+                  {room.username ? `@${room.username}` : room.name || room.id.slice(0, 8)}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
       </div>
     )
   }
