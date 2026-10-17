@@ -69,7 +69,9 @@ export function useConnectionWatch(publish: (roomId: string, status: RoomStatus)
                 ? `@${handle} is live.`
                 : status.liveEnded
                   ? `@${handle} is not live right now.`
-                  : `@${handle} is not live — StreamKit is waiting for it.`,
+                  : status.connecting
+                    ? `@${handle} is not live — StreamKit is waiting for it.`
+                    : `@${handle} is not live — StreamKit stopped trying.`,
             )
             return
           }

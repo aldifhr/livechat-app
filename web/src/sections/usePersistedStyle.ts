@@ -146,7 +146,10 @@ export function usePersistedStyle<S extends object>({
           .saveStyle(roomId, before, fields)
           .then(() => {
             if (disposed.current) return
-            if (base.current === before) base.current = { ...before, ...fields }
+            // Always advance base to what we just wrote. A concurrent save
+            // from the other customizer may have already moved base.current
+            // past `before` — overwriting it here would lose that save.
+            base.current = { ...before, ...fields }
             setState('saved')
           })
           .catch(() => {

@@ -35,15 +35,14 @@ export function profilePath(username: string, id: string): string {
  * studio variant is the same page with a different parameter, which is why it looks
  * like a sibling here and is a separate link to whoever copies it.
  *
- * The cat and the ghost are two more visual options alongside the chat overlays, for when
- * the streamer wants something other than the standard chat cards.
+ * The cat is another visual option alongside the chat overlays, for when the streamer
+ * wants something other than the standard chat cards.
  */
 export function streamLinks(roomId: string) {
   return {
     original: api.chatOverlay(roomId),
     studio: api.chatOverlay(roomId, 'studio'),
     cat: api.catOverlay(roomId),
-    ghost: api.ghostOverlay(roomId),
   }
 }
 
@@ -52,5 +51,4 @@ export const LINK_LABELS = {
   original: 'Chat overlay · Original',
   studio: 'Chat overlay · Studio',
   cat: 'Kucing Pixel Stream',
-  ghost: 'Hantu Pixel Stream',
 } as const
