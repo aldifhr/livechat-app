@@ -9,6 +9,7 @@ const OVERLAYS: Record<string, string> = {
   'chat-overlay': 'chat-overlay.html',
   'top-chatter': 'top-chatter.html',
   'cat-overlay': 'cat-overlay.html',
+  'ghost-overlay': 'ghost-overlay.html',
 }
 
 /** Serve the overlay from this web host while pointing its live socket at the backend. */

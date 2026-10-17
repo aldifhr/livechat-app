@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hantu Pixel Stream</title>
+<style>
+:root{--bg:#f4efe9;--panel:#fffaf3;--ink:#2b1f2d;--line:#d9cbbb;--acc:#f08a3c;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1d1a24;--panel:#2a2633;--ink:#f3ece4;--line:#443d52}}
+:root[data-theme="dark"]{--bg:#1d1a24;--panel:#2a2633;--ink:#f3ece4;--line:#443d52}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:700 13px/1.3 "Courier New",monospace;overflow:hidden}
+canvas{position:fixed;left:0;top:0;display:block;image-rendering:pixelated;touch-action:manipulation}
+#ui{position:fixed;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));background:var(--panel);border:3px solid var(--ink);border-radius:0;padding:8px;display:flex;flex-wrap:wrap;gap:6px;justify-content:center;align-items:center;box-shadow:4px 4px 0 var(--ink)}
+button,select{font:inherit;color:var(--ink);background:var(--bg);border:3px solid var(--ink);border-radius:0;padding:5px 8px;cursor:pointer}
+button:hover,button.on{background:var(--acc);color:#2b1f2d}
+.clean #ui,.hide #ui,.clean #tip{display:none}
+#tip{width:100%;text-align:center;opacity:.7;font-weight:600;font-size:12px}
+
+
+</style></head><body>
+<canvas id="c"></canvas><div id="bub"></div><div id="ui"></div>
+<script id="overlay-config" type="application/json">__OVERLAY_CONFIG__</script>
+<script>
+// ---- config from URL ----
+const q=new URLSearchParams(location.search)
+const clean=q.has('clean')
+const root=document.documentElement
+root.classList.add('clean')
+// The page and its socket are served by different hosts in production: nginx serves
+// the page from the dashboard host, and the websocket lives on the backend. Reading the
+// socket origin off `location.origin` therefore dialled a host with no `/ws/` on it and
+// the overlay sat there silently reconnecting to itself. The host bakes the real one in
+// here, `?base=` still overrides it, and this page's own origin is the fallback for
+// when the page is opened straight off the backend.
+// The placeholder is left literal when the backend has no stored config for the room,
+// hence the try/catch rather than a direct parse.
+const baked=(()=>{try{return JSON.parse(document.getElementById('overlay-config').textContent)||{}}catch(e){return{}}})()
+const BASE=(q.get('base')||baked.baseUrl||location.origin).replace(/\/+$/,'')
+// One knob for every timer in the file, applied to `dt` so it is visual time and not
+// just a faster loop. An overlay can sit on a canvas for six hours; someone who finds
+// the cat restless needs to be able to turn it down without editing the file.
+// Written with Math rather than the `cl` helper below, which is not initialised yet.
+const REDUCED=matchMedia('(prefers-reduced-motion: reduce)').matches
+const rateFromUrl=parseFloat(q.get('speed'))
+let rate=q.has('speed')&&rateFromUrl>0?Math.min(2,Math.max(.25,rateFromUrl)):(REDUCED?.6:1)
+
+// ---- chat overlay (WebSocket) ----
+const roomId=q.get('room')||''
+let chatSocket=null
+let lastEvent=Date.now()
+const IDLE_SLEEP_MS=180000 // 3 minutes without events → cat gets sleepy
+
+/** Wake the cat if sleeping, then react. */
+function wake(){
+  if(C.mode==='sleep')setMode('walk')
+  lastEvent=Date.now()
+}
+
+/** Where the ghost's middle is, for spawning particles off its sheet. */
+function backY(){return GY-(m_height(C.mode))}
+
+/** Height of the sheet, so particle spawn points follow the pose instead of guessing one
+ *  number that is only right while it is hanging at full size. */
+function m_height(m){return m==='sleep'?26:m==='curl'||m==='peek'?30:40}
+
+/** React to a gift / like / follow: a scare and a burst of wisps. */
+function react(frame){
+  wake()
+  const kind=frame.type
+  boop()
+  C.boop=1.2
+  for(let i=0;i<6;i++)em('heart',C.x+rnd(-12,12),backY()+rnd(-6,6),rnd(-10,10),rnd(-36,-20),1.4)
+  if(kind==='gift'){setMode('boo')}
+  else if(kind==='like'){setMode('jump')}
+  else{setMode('wail')}
+}
+
+function connectChat(){
+  if(!roomId)return
+  const base=BASE.replace(/^http/,'ws')
+  const url=base+'/ws/overlay/'+encodeURIComponent(roomId)
+  chatSocket=new WebSocket(url)
+  chatSocket.onopen=()=>console.log('[ghost] chat connected')
+  chatSocket.onmessage=(event)=>{
+    try{
+      const frame=JSON.parse(event.data)
+      if(frame.type==='comment'&&frame.text){
+        // Comments do not show a bubble — they make the sheet flinch: a short shiver and
+        // a puff of wisps off the hem. The cat answered a comment with hearts, which was
+        // its whole vocabulary; a sheet has nothing to give away, so it startles instead.
+        wake()
+        C.shiver=1
+        for(let i=0;i<6;i++)em('mote',C.x+rnd(-11,11),GY-rnd(1,7),rnd(-7,7),rnd(-16,-6),rnd(.7,1.2),1)
+      } else if(frame.type==='gift'||frame.type==='like'||frame.type==='follow'){
+        react(frame)
+      }
+    }catch(e){}
+  }
+  chatSocket.onclose=()=>{setTimeout(connectChat,3000)}
+  chatSocket.onerror=()=>{try{chatSocket.close()}catch(e){}}
+}
+if(roomId)connectChat()
+
+// ---- hantu pixel (dari file asli) ----
+const cv=document.getElementById('c'),g=cv.getContext('2d'),ui=document.getElementById('ui'),bub=document.getElementById('bub')
+const bc=document.createElement('canvas');bc.width=96;bc.height=96;const b=bc.getContext('2d',{willReadFrequently:true})
+const sc=document.createElement('canvas');sc.width=96;sc.height=96;const sx=sc.getContext('2d')
+let X=b,W,H,w,h,PS,GY,mx=-1e4,my=0,TT=0,pal='putih',auto=true,bgm=q.get('bg')==='hijau'?'hijau':'kotak'
+const OL='#2b1f2d',lerp=(a,b,t)=>a+(b-a)*t,rnd=(a,b)=>a+Math.random()*(b-a),pick=a=>a[Math.random()*a.length|0],cl=(v,a,b)=>Math.max(a,Math.min(b,v))
+// Each palette is a ramp, dark to light: `s` stripe, `lo` shadow, `d` far-side mid,
+// `b` body, `hi` highlight, then the two light materials.
+//
+// Measured off the reference: cream body, near-black ink, and — the detail the canvas
+// ghost was missing entirely — **pink cheeks with two dots on each**. The cheeks are what
+// make it read as a friendly cartoon ghost rather than a Halloween sheet, and no amount
+// of dome-and-hem tuning was going to get there.
+//
+//   body   #F0EFDA   the cream the reference is painted
+//   ink    #272B24   eyes, mouth, the notches between lobes
+//   cheek  #FFAA9E   <- not in the pixel-art reference at all
+//   dot    #DC8E83   the two dots sitting on each cheek
+//
+// The four palettes keep one structure and differ only in hue, so the drawing code never
+// changes with the palette. `hijau`, `ungu` and `biru` carry their colour on the cheeks,
+// which is the only place a ghost of this shape is allowed to be a colour at all.
+const PAL={
+  putih:{s:'#c9c7ac',lo:'#dad8c2',d:'#e6e4d2',b:'#f0efda',hi:'#fffef2',belly:'#f7f6e8',paw:'#e6e4d2',ear:'#ffaa9e',cheek:'#ffaa9e',dot:'#dc8e83',hole:'#272b24',line:'#272b24'},
+  hijau:{s:'#2e4a33',lo:'#5b8a63',d:'#8bb892',b:'#d8ecd4',hi:'#f2fff0',belly:'#e6f5e2',paw:'#8bb892',ear:'#8bb892',cheek:'#f0a48e',dot:'#d4785f',hole:'#141f16',line:'#141f16'},
+  ungu :{s:'#37284f',lo:'#61508a',d:'#8d7cb0',b:'#d6cbea',hi:'#f7f2ff',belly:'#e6ddf4',paw:'#8d7cb0',ear:'#a894cc',cheek:'#f0a0c0',dot:'#d4789e',hole:'#181028',line:'#181028'},
+  biru :{s:'#284056',lo:'#507790',d:'#81a2ba',b:'#d4e4ef',hi:'#f4fbff',belly:'#e4eff7',paw:'#81a2ba',ear:'#81a2ba',cheek:'#f0a8b4',dot:'#d4788a',hole:'#0e1a24',line:'#0e1a24'},
+}
+// 4x4 ordered dither, indexed y*4+x. Not the pattern that matters — where it is applied,
+// and how narrowly, that does.
+//
+// The first version dithered the whole of every band, because the threshold was added
+// to the lighting value as a perturbation and the threshold spans the same 0..1 the
+// lighting value does. It was not a perturbation at all: it dominated the input, gave
+// 6% highlight / 19% mid / 76% shadow, and on a 30x24 head turned each boundary into
+// about four rows of checkerboard straight across the eyes.
+//
+// Quantising instead of perturbing fixes the balance. But quantising to thirds and
+// scattering the whole band still dithers the entire band, which on a shape this small
+// is noise rather than texture. So the dither is a narrow window at each boundary and
+// the rest of each band is solid. `DITHER` is that window as a fraction of a band:
+// 1 is the old behaviour, 0.3 leaves a one-to-two pixel transition on the head and keeps
+// the body reading as three flat tones, which is where the retro look actually comes
+// from — the ramp and the hue shift, not the checkerboard.
+const BAYER=[0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5]
+const DITHER=.3
+const R=(x,y,a,c2,col)=>{if(a<=0||c2<=0)return;X.fillStyle=col;X.fillRect(Math.round(x),Math.round(y),Math.round(a),Math.round(c2))}
+// `sh` is a palette: with one, the ellipse is lit and quantised into that palette's
+// highlight / body / shadow. Without one it stays a flat fill, which is what the small
+// shapes — muzzle, cheek, bubble — still want.
+//
+// `rim` shapes the lit share of the whole ellipse, because a third is right for a body and
+// wrong for a head. Each ellipse lights itself, so at `rim` of 1 a 30x24 head is a third
+// highlight — mostly lit, and a black cat with a mostly-lit head is a bright blue blob.
+// Below 1 the curve compresses the dark end and the highlight collapses to a rim along the
+// upper-left edge, which is how fur catches light. The body passes nothing and keeps the
+// even thirds.
+function E(cx,cy,rx,ry,col,o,sh,rim){
+  cx=Math.round(cx);cy=Math.round(cy)
+  if(o)E(cx,cy,rx+1,ry+1,OL)
+  for(let y=-ry;y<=ry;y++){
+    const t=y/Math.max(ry,.5),hw=Math.round(rx*Math.sqrt(Math.max(0,1-t*t)))
+    if(!sh){R(cx-hw,cy+y,hw*2+1,1,col);continue}
+    for(let x=-hw;x<=hw;x++){
+      // 0 at the lit upper-left edge, 1 at the shaded lower-right one.
+      let d=cl((x/Math.max(rx,.5)+y/Math.max(ry,.5))*.5+.5,0,1)
+      if(rim)d=Math.pow(d,rim)
+      // Thirds, shifted so the dither window sits on the boundary and the solid part of
+      // each band dominates. The +DITHER/2 is the bias that window would otherwise add.
+      const q=d*3-.5+DITHER/2,i=Math.floor(q),f=q-i
+      const z=(f-(1-DITHER))/DITHER
+      const up=(BAYER[(((cy+y)&3)<<2)|((cx+x)&3)]+.5)/16<z?1:0
+      R(cx+x,cy+y,1,1,[sh.hi,sh.b,sh.lo][cl(i+up,0,2)])
+    }
+  }
+}
+function L(x1,y1,x2,y2,t,col,o){const n=Math.max(Math.abs(x2-x1),Math.abs(y2-y1),1);for(let i=0;i<=n;i++){const x=x1+(x2-x1)*i/n,y=y1+(y2-y1)*i/n;R(x-t/2-o,y-t/2-o,t+2*o,t+2*o,col)}}
+function tri(cx,by,hh,ww,sl,col,o){for(let i=-o;i<=hh+o;i++){const a=Math.max(0,Math.round(ww*(1-i/(hh+1))))+2*o;R(cx+sl*i/hh-a/2,by-i,a,1,col)}}
+function spr(a,x,y,col){X=g;a.forEach((r,j)=>{for(let i=0;i<r.length;i++)if(r[i]==='1')R(x+i,y+j,1,1,col)})}
+const SP={heart:[['.11.11.','1111111','1111111','.11111.','..111..','...1...'],'#ff4d6d'],z:[['1111','..1.','.1..','1111'],'#8fb8ff'],note:[['..111','..1.1','..1..','.11..','111..'],'#7b6cff'],star:[['..1..','..1..','11111','.111.','11.11'],'#ffd84a']}
+function rs(){W=innerWidth;H=innerHeight;const off=clean||root.classList.contains('hide')?30:(W<600?190:120);PS=cl(Math.round(Math.min(W/190,(H-off)/80)),3,10);w=Math.ceil(W/PS);h=Math.ceil(H/PS);cv.width=w;cv.height=h;cv.style.width=w*PS+'px';cv.style.height=h*PS+'px';g.imageSmoothingEnabled=false;GY=h-Math.ceil(off/PS)-2;bub.style.fontSize=Math.max(14,Math.round(PS*3.2))+'px'}
+function setBg(){const s=document.body.style;if(clean&&bgm!=='hijau'){s.background='transparent';return}
+s.background={kotak:'conic-gradient(#0000 25%,#88822 0 50%,#0000 0 75%,#88822 0) 0 0/28px 28px,var(--bg)',hijau:'#00b140',gelap:'#15121b',terang:'#fff'}[bgm]}
+const M={
+idle:{d:[1,2],T:{}},
+// `drift` replaces `walk`. A ghost has nothing to walk with, so the stride is gone and
+// `bob` carries it: the whole sheet rises and falls while it crosses. The horizontal speed
+// is deliberately lower than the cat's — a sheet does not march.
+drift:{d:[3,6],T:{bob:.7},v:13,say:['hmm...','melayangGg','hantu senja','passing through']},
+zoom:{d:[1.6,2.4],T:{bob:1.3},v:74,say:['WOOOOSH','BOOOOO','JANGAN LARI','HANTU MELLANTAI']},
+float:{d:[3,5],T:{calm:1},say:['...','hmm','kenapaDilihat','sengajaNongol']},
+sleep:{d:[5,8],T:{dorm:1},say:['zzz...','limau方的','mimpi lenyap','hantu jugaCapek']},
+wail:{d:[4,6],T:{calm:1,mouth:1},say:['wuuuuuu','dukun Lack','angel cry',' PELUK']},
+spook:{d:[3,4],T:{calm:1,wide:1},say:['BOO.','liatApaKau','kamuYangMana','...ok.']},
+// `spin` is `roll` renamed, and it is the one place the existing pixel rotation earns its
+// keep: the sheet resamples around its own centre, and a spinning ghost reads instantly in
+// a way a tumbling cat never did.
+spin:{d:[2,3],T:{curl:1},v:38,say:['putaran...','wheee','mengputar','LIAR PUSAT']},
+// `fade` is `flop`: it sinks and thins out instead of lying down.
+fade:{d:[3.5,4.5],T:{bob:.5,fade:1},say:['hilang...','menyatu','sudahBerakhirlah','ya aku pergi']},
+// `once` modes keep running with auto off, so a button press still shows the animation.
+// A jump is crouch + launch + flight + settle: the crouch alone is CRUNCH_T, and the
+// flight is 2*JUMP_V/GRAV. At 1.2s the old duration cut the flight in half, so the cat
+// landed and then stood in a jump pose for the rest of the mode.
+jump:{d:[1.7,1.7],T:{},v:20,once:1,say:['hup!','NYAWIT!','ampun bang']},
+dizzy:{d:[2.2,2.2],T:{calm:1},once:1,say:['pusing...','dunia muter','mual dikit']},
+yawn:{d:[1.8,1.8],T:{calm:1},once:1,say:['hoaaam']},
+// `boo` replaces `wash` and `peek` replaces `knead`, because a cat licking itself and a cat
+// kneading dough are the two poses here that a sheet simply does not have. `boo` swells and
+// drops; `peek` rises out of the floor and sinks back, which is the closest a ghost gets
+// to the cat's kneading in spirit — a small idle fidget nothing else covers.
+boo:{d:[3,4],T:{calm:1,boo:1},say:['BOO!','munculDulu','diaTuh','hahasya']},
+peek:{d:[3,5],T:{peek:1},say:['nongong dikit','cumaSeparuh','santai','hampirNampak']}}
+const WT=[['drift',5],['float',2],['sleep',1.5],['spin',2],['zoom',1.5],['fade',1.5],['wail',1.5],['spook',1.5],['jump',1.5],['yawn',1],['boo',1.5],['peek',1.2],['idle',1]]
+// A jump apex of JUMP_V²/(2*GRAV) ≈ 44px, against a ~40px sheet: high enough to read as a
+// hop, low enough to stay inside the frame at PS=10.
+const GRAV=320,JUMP_V=168,CRUNCH_T=.3,APEX=JUMP_V*JUMP_V/(2*GRAV)
+// Every pose channel, and the rate each one blends at.
+//
+// The names were the cat's and are now the sheet's, because `amp`/`loaf`/`ball`/`knead`
+// describe things a ghost does not have and every reader has to look them up. The blend
+// rates are unchanged: they were tuned against how fast a weight has to move to read as a
+// pose rather than a slide, and that is a property of the animation, not the animal.
+const CH={bob:7,calm:7,dorm:7,curl:7,gather:16,wisp:4,fade:7,boo:9,peek:7,reach:18,drag:14,mouth:9,wide:7,hem:7}
+const C={x:100,dir:1,mode:'idle',t:0,tm:2,vx:0,roll:0,jy:0,jv:0,ph:0,stridePx:8,boop:0,shiver:0,land:0,land0:0,landT:0,crunch:0,jph:0,turn:0,wall:1,lean:0,ef:0,earT:2,es:1,blink:3,bt:0,pt:0,P:{bob:0,calm:0,dorm:0,curl:0,gather:0,wisp:0,fade:0,boo:0,peek:0,reach:0,drag:0,mouth:0,wide:0,hem:0}},B={t:0},pts=[]
+function say(t){/* speech bubble removed */}
+function setMode(n){const m=M[n];C.mode=n;C.t=0;C.tm=(!auto&&!m.once)?1e9:rnd(m.d[0],m.d[1])
+if(m.v)C.dir=C.x<w*.2?1:C.x>w*.8?-1:(Math.random()<.5?1:-1)
+C.crunch=0
+if(m.say&&Math.random()<.9)say(pick(m.say))}
+function nextMode(){const m=C.mode;if(m==='spin')return setMode('dizzy');if(m==='zoom')return setMode('float');if(!auto)return setMode('idle')
+let r=Math.random()*WT.reduce((a,b)=>a+b[1],0);for(const[k,v]of WT){r-=v;if(r<=0&&k!==m)return setMode(k)}setMode('drift')}
+// Per-particle physics, so a mote decelerates and drifts instead of leaving in a straight
+// line at its launch speed. `mote` replaces the cat's dust: a ghost trails wisps, so the
+// particle is what it leaves behind rather than what it kicked up.
+const PG={heart:-9,note:-6,star:-3,z:-4,mote:-2},PD={heart:1.9,note:1.5,star:1.2,z:1.2,mote:1.1},PF={heart:8,note:6,star:4,z:2,mote:3}
+function em(t,x,y,vx,vy,l,sz){pts.push({t,x,y,vx,vy,l,L:l,sz,g:PG[t]||0,dr:PD[t]||0,fl:PF[t]||0,ph:rnd(0,6.28)})}
+function boop(){C.boop=1.2;for(let i=0;i<6;i++)em('heart',C.x+rnd(-10,10),backY()-4,rnd(-8,8),rnd(-30,-18),1.2);say(pick(['boo!','whoosh','hantu!','>o<','jangan lihat']));if(C.mode==='sleep')setMode('float');if(C.jy<=0&&C.mode!=='spin'){C.jv=115;C.crunch=Math.max(C.crunch,.45)}}
+function upd(dt){const c=C,m=M[c.mode],P=c.P;c.t+=dt;TT+=dt
+// Idle → dormant: after IDLE_SLEEP_MS with no events it settles.
+if(auto&&c.mode!=='sleep'&&Date.now()-lastEvent>IDLE_SLEEP_MS){setMode('sleep')}
+const T=Object.assign({bob:0,calm:0,dorm:0,curl:0,gather:0,wisp:0,fade:0,boo:0,peek:0,reach:0,drag:0,mouth:0,wide:0,hem:1},m.T)
+const jumping=c.mode==='jump'
+if(jumping){
+  // A jump is still a jump for a sheet that cannot walk: load, launch, rise, set up. The
+  // channel names changed (`gather`/`reach`/`drag`) but the timeline did not — the four
+  // beats were tuned against a parabola and still are.
+  if(c.jph===0){
+    c.crunch=Math.min(1,c.t/CRUNCH_T)
+    if(c.t>=CRUNCH_T){c.jph=1;c.jv=JUMP_V}
+    T.gather=c.crunch;T.reach=c.crunch*.25
+  }else{
+    c.crunch=Math.max(0,c.crunch-dt*5)
+    const up=cl(c.jv/JUMP_V,-1,1)
+    T.drag=cl(up*.85,0,1);T.reach=cl(.55-up*.7,-.2,1);T.gather=cl(up*.45+.1,0,1)
+    if(c.jph===1&&c.jv<=0)c.jph=2
+  }
+}
+// `boo` swells and drops rather than holding, and `peek` rises out of the floor. Both are
+// timelines, not poses, so they are authored here where the duration lives.
+if(c.mode==='boo')T.boo=Math.sin(cl(c.t/c.tm,0,1)*Math.PI)**1.5
+if(c.mode==='peek')T.peek=Math.sin(cl(c.t/c.tm,0,1)*Math.PI)**.7
+for(const k in T){const w=P[k],t=T[k];if(w!==t)P[k]=w+(t-w)*Math.min(1,dt*(CH[k]||7))}
+const v=jumping&&c.jph===0?0:(m.v||0)
+// A wall is a pivot, not a stop: it used to clamp x and zero vx on the frame of contact,
+// so at zoom speed the sheet teleported to a dead halt and reversed.
+const turning=c.turn>0
+c.vx+=(v*c.dir-c.vx)*Math.min(1,dt*(turning?2.2:6))
+if(turning){c.turn-=dt;if(Math.random()<dt*45)em('mote',c.x+rnd(-6,6),GY-rnd(2,8),rnd(-14,14),rnd(-20,-6),rnd(.4,.7),1)}
+c.x+=c.vx*dt
+const lim=w-30
+if(c.x<30||c.x>lim){
+  const side=c.x<30?1:-1
+  c.x=cl(c.x,30,lim)
+  if(c.dir!==side&&c.turn<=0){c.turn=.26;c.wall=side;for(let i=0;i<5;i++)em('mote',c.x+rnd(-8,8),GY-rnd(1,6),-side*rnd(8,28),rnd(-22,-6),rnd(.5,.9),1)}
+  c.dir=side
+}
+c.lean+=(cl(c.vx/90,-1,1)*.42-c.lean)*Math.min(1,dt*7)
+// The foot phase is gone. It existed to keep four legs from sliding against the ground,
+// which is a problem a floating sheet does not have — the stride lock, the amplitude and
+// the lift curve all went with `foot()`. `ph` is now the hem's wave phase instead: it is
+// what makes the lobes undulate, and it runs on a clock because there is no ground to
+// match it against. Faster while moving, so a drifting ghost is not a stiff one.
+const spd=Math.abs(c.vx)
+c.ph+=dt*(1.9+spd*.035)
+// Spin is `roll` renamed and is the reason the pixel rotation earns its keep. Quantised to
+// eighth-turns, because nearest-neighbour resampling of a 96px sheet at an in-between angle
+// is a mess of half-pixels, and a stepped tumble is the pixel idiom.
+if(c.mode==='spin')c.roll+=Math.abs(c.vx)/9*dt
+else{const tg=c.mode==='fade'?Math.PI:2*Math.PI*Math.round(c.roll/(2*Math.PI));c.roll+=(tg-c.roll)*Math.min(1,dt*6)}
+if(c.jy>0||c.jv>0){c.jv-=GRAV*dt;c.jy+=c.jv*dt;if(c.jy<=0){
+  // Falling speed sets the absorb, so a flinch-hop does not flatten the sheet.
+  const hard=cl(-c.jv/150,0,1)
+  c.jy=0;c.jv=0;c.jph=2
+  c.land0=.42*hard+.05;c.landT=.42
+  for(let i=0;i<2+hard*5|0;i++)em('mote',C.x+rnd(-12,12),GY-rnd(1,6),rnd(-14,14)*(1+hard),rnd(-10,-3),rnd(.3,.6),1)
+}}
+// Ease-out, not linear: squash that decays at a constant rate reads as a mechanism
+// resetting rather than a body springing back.
+c.land=c.landT>0?c.land0*Math.pow(c.landT/.42,2):0
+if(c.landT>0)c.landT=Math.max(0,c.landT-dt)
+c.crunch=Math.max(0,c.crunch-dt*2.2)
+c.boop=Math.max(0,c.boop-dt);c.shiver=Math.max(0,c.shiver-dt*2.6);B.t-=dt
+c.earT-=dt;if(c.earT<0){c.ef=.25;c.es=Math.random()<.5?-1:1;c.earT=rnd(1.5,4)}c.ef=Math.max(0,c.ef-dt)
+c.blink-=dt;if(c.blink<0){c.bt=.15;c.blink=rnd(2,5)}c.bt=Math.max(0,c.bt-dt)
+c.pt-=dt;if(c.pt<=0){const hx=c.x,hy=backY(),n=c.mode
+// A sheet only ever trails. Every emitter is `mote` off the hem or the trailing edge;
+// the cat's dust-under-the-paws and hearts-from-a-paw have no equivalent here.
+if(n==='sleep'){em('z',hx+9,hy,3,-9,2);c.pt=1}
+else if(n==='wail'){em('note',hx+rnd(-6,6),hy-4,rnd(-8,8),-12,1.4);c.pt=.45}
+else if(n==='zoom'||n==='spin'||n==='drift'){em('mote',hx-c.dir*rnd(6,14),GY-rnd(2,8),-c.dir*rnd(6,16),rnd(-18,-6),rnd(.35,.6),1);c.pt=n==='zoom'?.08:.24}
+else if(n==='dizzy'){em('star',hx+rnd(-8,8),hy-6,rnd(-6,6),-5,1);c.pt=.25}
+else if(n==='boo'||n==='peek'){em('mote',hx+rnd(-9,9),GY-rnd(1,6),rnd(-9,9),rnd(-20,-7),rnd(.5,.9),1);c.pt=.18}
+else c.pt=.2}
+for(let i=pts.length-1;i>=0;i--){const p=pts[i]
+  p.vy+=p.g*dt
+  if(p.dr){p.vx-=p.vx*p.dr*dt;p.vy-=p.vy*p.dr*dt}
+  p.x+=(p.vx+Math.sin(TT*p.fl+p.ph)*p.fl*.55)*dt
+  p.y+=p.vy*dt
+  p.l-=dt
+  if(p.l<=0||p.y>GY+6)pts.splice(i,1)}
+if(c.t>=c.tm)nextMode()}
+// The sheet, drawn a column at a time rather than a row at a time.
+//
+// Row-stacking is what the cat used and it does not work here: a ghost's bottom edge is
+// four scalloped lobes hanging off a flat line, so the width at a given row is not a
+// function of that row alone — the lobes each reach a different depth. Stacking rows gave
+// a 72x19 pancake with the hem merged into one solid bar, because the lobes overlapped.
+// Going down a column instead, each column owns its own top (the dome) and its own bottom
+// (its lobe), and the silhouette falls out of that for free.
+// Three lobes, not four. The reference has three tails across its bottom with a dark
+// ellipse cut into each of the two gaps, and that notch is painted *over* the lobes rather
+// than shaped into them — which is why the reference's hem has clean, wide notches instead
+// of the four shallow ones this produced before.
+const NLOBE=3
+// Dome profile: a half-ellipse across the whole width, so the tangent at the outer edge
+// is vertical — which is what the reference has, a dome sitting on straight flanks. The
+// reference sheet is about 11 squares wide by 20 tall including the hem, a ratio of 0.55;
+// the first draft came out at 1.65 and read as a pancake.
+function domeTop(x,hw,hh,top){return top+hh-Math.round(hh*Math.sqrt(Math.max(0,1-(x/hw)**2)))}
+// Hem profile: the lobe's own half-ellipse, dropped by the travelling wave. The wave is
+// offset per lobe, which is what makes a ripple cross the underside instead of the whole
+// hem pulsing together.
+//
+// The lobe bottoms out at 22% of the depth rather than at zero. Letting it reach zero
+// leaves a one-pixel gap between lobes — the hem came out ragged, with the sheet visibly
+// torn along the bottom. At 35% the notches were so shallow the hem read as one rounded
+// bottom; the reference's four lobes are distinct.
+function hemBot(x,hw,mid,depth,ph,amp){
+  const u=((x+hw)/(2*hw))*NLOBE
+  const li=Math.floor(u),lf=u-li
+  const wave=Math.round(Math.sin(ph-(li-.5)*.9)*depth*amp)
+  const lobe=Math.round(depth*(.22+.78*Math.sqrt(Math.max(0,1-(2*lf-1)**2))))
+  return mid+wave+lobe
+}
+// The face. Two hollow eyes and a mouth, and the two are different colours in the
+// reference: the eyes are pure black while the mouth is the slate the outline is drawn in.
+// Both measured, so both are used as measured — the earlier draft painted both black and
+// the mouth came out as a black slot rather than a mouth.
+//
+// The eye is a proper circle, not a rounded rectangle. A rectangle with clipped corners
+// reads as a cut-out box, which on a white sheet is a box and not a socket.
+// The face, transcribed from the reference: two round eyes at 40% of the height, a mouth
+// at 50% that is square on top and fully rounded underneath, and the cheeks — pink ellipses
+// at 56%, each carrying two dots. The cheeks are the single detail that makes this a
+// friendly ghost instead of a spooky sheet, and the canvas ghost had none of them.
+//
+// Positions come off the reference's percentages rather than off taste: eyes at 20% and
+// 60% of the width, cheeks at 17% and 60%, mouth centred and 20% of the width wide.
+function face(cx,cy,p,st,blink,mouth){
+  const H=p.hole,M=p.line
+  const wide=st==='wide'||st==='boo'
+  const ex=Math.round(cy*0+6),ey=cy-Math.round(p.mouth*0+3)
+  const ew=wide?6:5,eh=wide?8:7
+  for(const s of[-1,1]){
+    const x=cx+s*ex
+    if(blink||st==='sleep'){R(x-3,ey+3,6,2,H);continue}
+    for(let j=0;j<eh;j++){
+      const t=(j+0.5)/eh*2-1
+      const ww=Math.round((ew/2)*Math.sqrt(Math.max(0,1-t*t)))
+      R(x-ww,ey+j,ww*2+1,1,H)
+    }
+  }
+  // Mouth: square shoulders, rounded chin. Closed is three pixels, open is a wail.
+  const open=mouth>.05?Math.round(mouth*5):0
+  if(st==='sleep')R(cx-1,cy+5,3,1,M)
+  else if(open){R(cx-4,cy+4,9,1,M);R(cx-3,cy+5,7,1,M);R(cx-2,cy+6,5,open,M)}
+  else{R(cx-1,cy+5,3,1,M)}
+  // Cheeks: pink, with two dots each, and they ride under the eyes rather than beside
+  // them — the reference has them at 56% against eyes at 40%, which is what stops the
+  // face reading as two dots and a line.
+  const chY=cy+4,cx0=cx-6,cx1=cx+3
+  E(cx0,chY,2,1,p.cheek);E(cx1,chY,2,1,p.cheek)
+  R(cx0-1,chY,1,1,p.dot);R(cx0+1,chY-1,1,1,p.dot)
+  R(cx1-1,chY,1,1,p.dot);R(cx1+1,chY-1,1,1,p.dot)
+}
+function sprite(){const c=C,P=c.P,p=PAL[pal],m=c.mode;X=b;b.setTransform(1,0,0,1,0,0);b.clearRect(0,0,96,96);b.setTransform(1,0,0,1,0,24)
+// Hover. Two frequencies so the bob never settles into a visible loop: the slow one is
+// the float, the fast one is the shudder of a sheet not quite holding its shape.
+const am=Math.min(P.bob,1.4)
+const bob=Math.sin(c.ph*1.6)*2.4*am+Math.sin(c.ph*3.3)*.9*am+c.shiver*2.2
+let sq=Math.sin(TT*2.2)*.05+c.land*1.6-c.crunch*.5
+if(c.jy>0)sq-=cl(c.jv/130,-.6,.6)*.4
+if(P.boo>0)sq-=P.boo*.35
+sq=cl(sq,-.5,.6)
+const cx=48
+// `curl` compacts it for the spin, `dorm` flattens it asleep, `boo` swells it.
+//
+// Proportions from the reference sheet, not guessed: it measures about 14 cells wide by
+// 21 tall including the hem, a ratio of 0.67. Three drafts came out at 1.65, 1.19 and 0.84
+// — the last was close enough to look right and still read squat, because 0.67 of a
+// 34-pixel sheet is 23 pixels wide, not 27.
+let hw=Math.round(12*(1+.13*sq)+P.boo*3-P.dorm*1)
+let hh=Math.round(17*(1-.16*sq)-P.dorm*4)
+hw=Math.round(lerp(hw,13,P.curl));hh=Math.round(lerp(hh,17,P.curl))
+const depth=Math.round(lerp(7,5,P.dorm))
+const top=Math.round(52-hh+bob),mid=top+hh
+const waveAmp=.6+P.bob*.7+P.boo*.4+P.peek*.8
+// Body, column by column: outline first, body inset by one, then the lit edge, then the
+// shadow edge.
+//
+// The shading band is narrow on purpose. The reference's entire shading vocabulary is one
+// cool grey step sitting on the outer edge of the dark side and inside the hem scallops.
+// The first draft ran it across the outer third with a dithered boundary, and on a white
+// sheet that produced a vertical checkerboard stripe straight down the middle — which
+// reads as a printed stripe, not as form.
+for(let x=-hw;x<=hw;x++){
+  const ty=domeTop(x,hw,hh,top)
+  // At the outermost column the dome reaches the flank bottom and the hem has returned to
+  // the body line, so the raw difference is zero or negative and the corner came out empty.
+  // Two rows minimum fills it and keeps the sides straight.
+  const by=Math.max(hemBot(x,hw,mid,depth,c.ph,waveAmp),ty+2)
+  const hgt=by-ty
+  if(hgt<=0)continue
+  R(cx+x,ty,1,hgt,p.line)
+  const ih=hgt-2
+  if(ih<=0)continue
+  const y0=ty+1
+  R(cx+x,y0,1,ih,p.b)
+  const s=x/hw
+  // Lit edge: two columns down the left, the reference's highlight.
+  if(s<-.86)R(cx+x,y0,1,ih,p.hi)
+  // Shadow edge: the outer three columns on the right, dithered inward.
+  const e=(s-.62)/.38
+  if(e>0){
+    const n=(BAYER[((y0&3)<<2)|((cx+x)&3)]+.5)/16
+    const step=cl(e*.75+n*.5,0,.999)
+if(step>.66)R(cx+x,y0,1,ih,p.lo)
+    if(step>.33)R(cx+x,y0,1,ih,p.d)
+  }
+}
+// The two notches between the lobes. Dark, drawn after the body, sitting over the hem —
+// the reference's own trick (`z-index: 2` over the tails).
+//
+// They are much smaller than the first attempt: at a quarter of the half-width and 60% of
+// the hem depth they were 8px across on a 7px hem, so the two of them ate the whole
+// underside and the ghost ended in a black skirt. The reference's spacers are 38px on a
+// 150px body — a quarter of the width, sitting 19px below the body's edge, which on a
+// 28px-wide sheet is a 7px cut into a 7px hem.
+for(let i=0;i<NLOBE-1;i++){
+  const nx=cx-hw+Math.round((2*hw)*(i+1)/NLOBE)
+  E(nx,mid+Math.round(depth*.62),Math.max(1,Math.round(hw*.13)),Math.max(1,Math.round(depth*.30)),p.hole,0)
+}
+// Arms: ellipses thrown out and up, not bumps. The reference reaches 35px past the body
+// edge on a 150px body — 23% of its width on each side — with the arm box itself 40% of
+// the body width. The first draft reached 85% of a half-width and came out 75px across on a
+// 29px body; the arm is now 40% of the body and reaches 46% of the half-width, which is
+// the reference's own ratio and puts the whole silhouette at about 41 pixels.
+const armY=Math.round(lerp(top+hh*.52,top+hh*.60,P.dorm))
+for(const s of[-1,1]){
+  const reach=Math.round(hw*.46+Math.sin(c.ph*1.6-s*.9)*.9*am)
+  const arx=Math.round(hw*.40),ary=Math.max(1,Math.round(hw*.24))
+  const ax=cx+s*(hw+reach-arx),ay=armY-Math.round(reach*.42)
+  E(ax,ay,arx+1,ary+1,p.line,0)
+  E(ax,ay,arx,ary,p.b,0)
+  if(ary>2)E(ax,ay-1,arx-1,ary-2,p.hi,0)
+}
+face(cx,Math.round(lerp(top+hh*.40,top+hh*.46,P.dorm)),p,c.boop>0?'boo':P.dorm>.5?'sleep':P.wide>.4?'wide':'open',c.bt>0,P.mouth+(m==='yawn'?Math.sin(Math.PI*c.t/c.tm):0))
+// ONE rotation, applied here, to the sprite pixels. It used to also run as a
+// g.rotate(-qa) in the render transform, and two rotations of the same angle compose
+// to twice the angle: every authored eighth-turn (22.5°) went out at 45°, which both
+// doubled the tumble rate and made each quantisation step a 45° snap with nothing in
+// between. The lean rides on top unsnapped, because it is small and continuous.
+const qa=Math.round(c.roll/(Math.PI/8))*(Math.PI/8)+c.lean*.16
+if(Math.abs(Math.sin(qa/2))>.01){const id=b.getImageData(0,0,96,96),o=sx.createImageData(96,96),A_=new Uint32Array(id.data.buffer),D=new Uint32Array(o.data.buffer),co=Math.cos(qa),si=Math.sin(qa)
+for(let y=0;y<96;y++)for(let x=0;x<96;x++){const dx=x-48,dy=y-(top+hh)-24,u=Math.round(48+dx*co+dy*si),v=Math.round((top+hh)+24-dx*si+dy*co);if(u>=0&&u<96&&v>=0&&v<96)D[y*96+x]=A_[v*96+u]}
+sx.putImageData(o,0,0);return sc}return bc}
+function render(){g.clearRect(0,0,w,h);X=g;const c=C,cx=Math.round(c.x),jy=Math.round(c.jy)
+// A floating thing has a wider, softer, fainter shadow than one standing on the ground,
+// and the cat's tight dark ellipse read as a puddle under something with weight.
+//
+// The reference pulses it: `scaleX` runs 1.5 down to 1 and back over the same 5 seconds as
+// the bob, so the shadow narrows as the ghost rises. That coupling is the whole trick — an
+// independently animated shadow reads as two unrelated things, while a shadow that narrows
+// exactly as its owner lifts reads as a shadow.
+const air=cl(jy/APEX,0,1)
+const pulse=1.25+Math.sin(TT*1.26)*.25
+for(let i=0;i<4;i++){
+  const k=i/3
+  const sw=Math.round((34+i*15)*pulse*(1+k*air*.35))
+  const sa=.03*(1-k*.6)*(1-air*.4)
+  g.fillStyle='rgba(0,0,0,'+sa.toFixed(3)+')'
+  g.fillRect(cx-(sw/2|0),GY+i,sw,1)
+}
+const src=sprite()
+g.save();g.translate(cx,GY-jy);g.scale(c.dir,1)
+g.drawImage(src,-48,-87);g.restore()
+// Symmetric trail: the old version subtracted 14 more when facing right, so the lines
+// sat 14px closer to the cat in one direction than the other.
+if(c.mode==='zoom'&&Math.abs(c.vx)>40)for(let i=0;i<4;i++)R(cx-c.dir*(30+i*5),GY-8-i*8,14,1,'rgba(120,110,130,.6)')
+X=g
+// The particle fade uses a step per particle rather than one shared 20Hz clock: at 20Hz
+// the last quarter of every heart's life blinked in and out together, and a dozen
+// simultaneous hearts blinked as one object.
+for(const p of pts){const a=p.l/p.L
+// A wisp is a single pixel that fades by going transparent. The cat's dust grew to 1.4x
+// its spawn size, which turned a 4px puff into a 60px slab of flat tan at PS=10; a wisp
+// does the opposite and gets fainter, which is what reads as vapour rather than debris.
+if(p.t==='mote'){
+  const al=cl(a,0,1)
+  if(al>.06)R(p.x,p.y,1,1,'rgba(190,205,220,'+(al*.8).toFixed(3)+')')
+}
+else{if(a<.25&&Math.floor(a*20)%2)continue
+const s=SP[p.t];spr(s[0],Math.round(p.x),Math.round(p.y),s[1])}}
+// speech bubble removed — no B.t display logic
+}
+// `rate` scales dt rather than skipping frames, so physics stays correct at any speed.
+let last=performance.now();function loop(n){const dt=Math.min(.05,(n-last)/1000)*rate;last=n;upd(dt);render();requestAnimationFrame(loop)}
+cv.addEventListener('pointermove',e=>{mx=e.clientX;my=e.clientY})
+cv.addEventListener('pointerdown',e=>{mx=e.clientX;my=e.clientY;if(Math.hypot(e.clientX/PS-C.x,e.clientY/PS-(GY-24))<30)boop()})
+const BT=[['drift','👻 Melayang'],['zoom','💨 Kirasan'],['spin','🌀 Putaran'],['fade','🫥 Hilang'],['jump','⬆️ Naik'],['float','🕯️ Diam'],['sleep','😴 Tidur'],['wail','😱 Jerit'],['spook','👀 Intip'],['yawn','🥱 Menguap'],['boo','💀 Menakut'],['peek','🫣 Nongol']]
+BT.forEach(([k,t])=>{const e=document.createElement('button');e.textContent=t;e.onclick=()=>setMode(k);ui.appendChild(e)})
+function mkSel(o,cb){const s=document.createElement('select');o.forEach(([v,t])=>{const e=document.createElement('option');e.value=v;e.textContent=t;s.appendChild(e)});s.onchange=()=>cb(s.value);ui.appendChild(s)}
+mkSel([['putih','⚪ Putih'],['hijau','🟢 Tosat'],['ungu','🟣 Ungu'],['biru','🔵 Biru']],v=>pal=v)
+mkSel([['kotak','Latar: kotak2'],['hijau','Latar: hijau'],['gelap','Latar: gelap'],['terang','Latar: terang']],v=>{bgm=v;setBg()})
+function mkBtn(t,cb,on){const e=document.createElement('button');e.textContent=t;if(on)e.className='on';e.onclick=()=>cb(e);ui.appendChild(e)}
+// Cycle, not a slider: OBS is a browser source with no room for a drag handle, and the
+// value has to survive a reload — see the ?speed= read at the top.
+mkBtn('🐢 Kecepatan',e=>{const steps=[.5,.75,1,1.5,2];rate=steps[(steps.indexOf(rate)+1)%steps.length];e.textContent='🐢 Kecepatan '+rate+'×'})
+mkBtn('🤖 Auto',e=>{auto=!auto;e.classList.toggle('on',auto);if(auto)nextMode()},1)
+mkBtn('🙈 Sembunyi',()=>{root.classList.add('hide');rs()})
+addEventListener('keydown',e=>{if(e.key==='h'||e.key==='H'){root.classList.toggle('hide');rs()}})
+const tip=document.createElement('div');tip.id='tip';tip.textContent='Klik hantunya! Untuk OBS: tambahkan ?clean=1 di akhir link (latar transparan). Tombol H = sembunyi/tampil panel.';ui.appendChild(tip)
+addEventListener('resize',rs);rs();setBg();C.x=w/2;setMode('float');say('halo chat 👋');requestAnimationFrame(loop);
+</script></body></html>
