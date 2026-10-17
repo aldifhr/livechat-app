@@ -62,6 +62,24 @@ function processChatQueue(){
   setTimeout(()=>{chatShowing=false;processChatQueue()},500)
 }
 
+/** Show a reaction bubble (gift / like / follow) and make the cat react. */
+function react(frame){
+  const user=frame.user||'someone'
+  const kind=frame.type
+  const label=kind==='gift'?(frame.giftName||'gift'):kind==='like'?'liked':'followed'
+  // Bubble text — same channel as chat, so the bubble style stays consistent.
+  const text=(kind==='gift'&&frame.giftName)?`${user} sent ${frame.giftName}`:`${user} ${label}`
+  showChatMessage('',text)
+  // Excited reaction: jump + hearts + happy face.
+  boop()
+  C.boop=1.2
+  for(let i=0;i<8;i++)em('heart',C.x+rnd(-12,12),GY-50+rnd(-6,6),rnd(-10,10),rnd(-36,-20),1.4)
+  // Zoomies for gifts, jump for likes/follows.
+  if(kind==='gift'){setMode('zoom');say(pick(['WADUH!!','GASKEUN','HADIAH NYA APA','MAKASIH BANG']))}
+  else if(kind==='like'){setMode('jump');say(pick(['wkwk','suka ya?','thanks!','>w<']))}
+  else{setMode('vibe');say(pick([' follower baru!','gas keun','makasih!']))}
+}
+
 function connectChat(){
   if(!roomId)return
   const base=location.origin.replace(/^http/,'ws')
@@ -75,6 +93,8 @@ function connectChat(){
         chatQueue.push({user:frame.user||'',text:frame.text})
         if(chatQueue.length>20)chatQueue.splice(0,chatQueue.length-20)
         processChatQueue()
+      } else if(frame.type==='gift'||frame.type==='like'||frame.type==='follow'){
+        react(frame)
       }
     }catch(e){}
   }

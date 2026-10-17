@@ -28,7 +28,7 @@ button:hover,button.on{background:var(--acc);color:#2b1f2d}
 const q=new URLSearchParams(location.search)
 const clean=q.has('clean')
 const root=document.documentElement
-if(clean)root.classList.add('clean')
+root.classList.add('clean')
 
 // ---- chat overlay (WebSocket) ----
 const chatDiv=document.getElementById('chat')
@@ -62,6 +62,24 @@ function processChatQueue(){
   setTimeout(()=>{chatShowing=false;processChatQueue()},500)
 }
 
+/** Show a reaction bubble (gift / like / follow) and make the cat react. */
+function react(frame){
+  const user=frame.user||'someone'
+  const kind=frame.type
+  const label=kind==='gift'?(frame.giftName||'gift'):kind==='like'?'liked':'followed'
+  // Bubble text — same channel as chat, so the bubble style stays consistent.
+  const text=(kind==='gift'&&frame.giftName)?`${user} sent ${frame.giftName}`:`${user} ${label}`
+  showChatMessage('',text)
+  // Excited reaction: jump + hearts + happy face.
+  boop()
+  C.boop=1.2
+  for(let i=0;i<8;i++)em('heart',C.x+rnd(-12,12),GY-50+rnd(-6,6),rnd(-10,10),rnd(-36,-20),1.4)
+  // Zoomies for gifts, jump for likes/follows.
+  if(kind==='gift'){setMode('zoom');say(pick(['WADUH!!','GASKEUN','HADIAH NYA APA','MAKASIH BANG']))}
+  else if(kind==='like'){setMode('jump');say(pick(['wkwk','suka ya?','thanks!','>w<']))}
+  else{setMode('vibe');say(pick([' follower baru!','gas keun','makasih!']))}
+}
+
 function connectChat(){
   if(!roomId)return
   const base=location.origin.replace(/^http/,'ws')
@@ -75,6 +93,8 @@ function connectChat(){
         chatQueue.push({user:frame.user||'',text:frame.text})
         if(chatQueue.length>20)chatQueue.splice(0,chatQueue.length-20)
         processChatQueue()
+      } else if(frame.type==='gift'||frame.type==='like'||frame.type==='follow'){
+        react(frame)
       }
     }catch(e){}
   }
@@ -87,7 +107,7 @@ if(roomId)connectChat()
 const cv=document.getElementById('c'),g=cv.getContext('2d'),ui=document.getElementById('ui'),bub=document.getElementById('bub')
 const bc=document.createElement('canvas');bc.width=96;bc.height=96;const b=bc.getContext('2d',{willReadFrequently:true})
 const sc=document.createElement('canvas');sc.width=96;sc.height=96;const sx=sc.getContext('2d')
-let X=b,W,H,w,h,PS,GY,mx=-1e4,my=0,TT=0,pal='oren',chonk=false,auto=true,bgm=q.get('bg')==='hijau'?'hijau':'kotak'
+let X=b,W,H,w,h,PS,GY,mx=-1e4,my=0,TT=0,pal='hitam',chonk=false,auto=true,bgm=q.get('bg')==='hijau'?'hijau':'kotak'
 const OL='#2b1f2d',lerp=(a,b,t)=>a+(b-a)*t,rnd=(a,b)=>a+Math.random()*(b-a),pick=a=>a[Math.random()*a.length|0],cl=(v,a,b)=>Math.max(a,Math.min(b,v))
 const PAL={oren:{b:'#f5a14f',d:'#d97f35',s:'#b9591f',belly:'#fff0d4',ear:'#ff9eb0'},abu:{b:'#a9b3c2',d:'#8590a2',s:'#5f6a7e',belly:'#eef1f7',ear:'#ffb3c1'},hitam:{b:'#524c63',d:'#3b3649',s:'#2a2638',belly:'#8680a0',ear:'#e0849c'},putih:{b:'#fcf7f0',d:'#e3d8c9',s:'#eebd8a',belly:'#ffffff',ear:'#ffb8c6'}}
 const mixc=c=>{const n=parseInt(c.slice(1),16);return'#'+[16,8,0].map(v=>Math.round(lerp((n>>v)&255,255,.4)).toString(16).padStart(2,'0')).join('')}
