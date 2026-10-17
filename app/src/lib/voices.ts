@@ -44,17 +44,6 @@ export const TTS_PACES: readonly TtsPace[] = [
   },
 ] as const
 
-/**
- * Whether a stored value is still one this build offers.
- *
- * A settings file outlives the build that wrote it, so a pace that has since been
- * removed comes back from `localStorage` and would leave the dialog showing nothing
- * selected. It falls back to the default rather than showing a blank.
- */
-export function knownPace(value: string): boolean {
-  return TTS_PACES.some((pace) => pace.value === value)
-}
-
 /** The language asked for when nothing has chosen one: the chat's own. */
 export const DEFAULT_LANGUAGE = 'id'
 
@@ -91,13 +80,6 @@ export const TTS_LANGUAGES: readonly TtsLanguage[] = [
   { value: 'ja', label: 'Japanese', sample: 'こんにちは、ライブへようこそ。' },
   { value: 'es', label: 'Spanish', sample: 'Hola, y bienvenido a la transmisión.' },
 ] as const
-
-/** The language used when a saved one is no longer offered. */
-export function resolveLanguage(value: string | undefined | null): string {
-  return TTS_LANGUAGES.some((language) => language.value === value)
-    ? (value as string)
-    : DEFAULT_LANGUAGE
-}
 
 /** The sample text for a language code, falling back to the default's. */
 export function languageSample(value: string): string {

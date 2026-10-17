@@ -219,19 +219,12 @@ export const CHAT_TTS_GAP_MS = 1800
 /**
  * The sentence a gift is announced with.
  *
- * Reads as an announcement, not as a chat line: the name comes first, then what
- * was sent, then the value when there is one. The value is spoken as diamonds
- * rather than as a bare number, because "500" on its own does not say what was
- * counted — and a gift's worth is the reason it is being announced at all.
- *
- * The count agrees with the word. One diamond is the smallest thing anybody sends
- * and it is announced constantly, so "1 diamonds" is not a rare slip: it is the
- * most common sentence this module produces, and the one most likely to be heard.
+ * Announces the sender, quantity and gift name. Diamond value is deliberately
+ * omitted so the spoken message matches the gift popup.
  */
-export function giftAnnouncement(nickname: string, giftName: string, count: number, diamonds: number): string {
+export function giftAnnouncement(nickname: string, giftName: string, count: number): string {
   const who = nickname.trim() || 'Someone'
-  const what = count > 1 ? `${giftName} kali ${count}` : giftName || 'a gift'
-  if (diamonds <= 0) return `${who} mengirim ${what}`
-  const worth = diamonds === 1 ? '1 diamond' : `${diamonds} diamonds`
-  return `${who} mengirim ${what}, ${worth}`
+  const quantity = Number.isFinite(count) ? Math.max(1, Math.floor(count)) : 1
+  const what = giftName ? `${quantity} ${giftName}` : quantity === 1 ? 'a gift' : `${quantity} gifts`
+  return `${who} mengirim ${what}`
 }

@@ -45,17 +45,17 @@ export function SettingsDialog({ open, settings, onClose }: Props) {
   // tests find a field by what comes first in the document.
 
   return (
-    <div className="modal-scrim" onClick={onClose} role="presentation">
+    <div className="modal-scrim [position:fixed] [inset:0] [z-index:10] [display:grid] [place-items:center] [padding:20px] [background:rgba(0,_0,_0,_0.6)]" onClick={onClose} role="presentation">
       <div
-        className="modal modal-settings"
+        className="modal modal-settings [width:min(440px,_100%)] [max-height:90vh] [overflow-y:auto] [scrollbar-width:thin] [display:flex] [flex-direction:column] [gap:12px] [padding:18px_20px] [background:var(--panel)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [box-shadow:0_12px_40px_rgba(0,_0,_0,_0.5)] [width:min(520px,_100%)]"
         role="dialog"
         aria-modal="true"
         aria-label="Settings"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="modal-head">
-          <h2 className="modal-title">Settings</h2>
-          <button className="modal-close" onClick={onClose} aria-label="Close">
+        <div className="modal-head [display:flex] [align-items:center] [gap:10px]">
+          <h2 className="modal-title [margin:0] [font-size:16px] [font-weight:600]">Settings</h2>
+          <button className="modal-close [margin-left:auto] [padding:2px_8px] [background:none] [border:0] [color:var(--muted)] [font:inherit] [font-size:13px] [cursor:pointer] [&:hover]:[color:var(--text)]" onClick={onClose} aria-label="Close">
             ✕
           </button>
         </div>

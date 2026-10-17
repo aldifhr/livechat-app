@@ -51,6 +51,8 @@ const EVENT_TOGGLES: { key: keyof ViewSettings; label: string; hint: string }[] 
   { key: 'shareSound', label: 'Share sound', hint: 'Play a short sound when somebody shares' },
   { key: 'giftNotice', label: 'Gift notice', hint: 'Raise a desktop toast when a gift arrives' },
   { key: 'giftVoice', label: 'Say gifts', hint: 'Announce each gift with the neural voice' },
+  { key: 'followVoice', label: 'Say follows', hint: 'Announce each new follower with the neural voice' },
+  { key: 'shareVoice', label: 'Say shares', hint: 'Announce each stream share with the neural voice' },
   { key: 'autoReply', label: 'Auto-reply', hint: 'Automatically reply when someone greets the chat' },
 ]
 
@@ -86,9 +88,9 @@ const ALERT_TOGGLES: {
  */
 function ToggleGroup({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="toggle-group">
-      <span className="toggle-group-label">{label}</span>
-      <div className="settings-toggles">{children}</div>
+    <div className="toggle-group [display:flex] [flex-direction:column] [gap:6px]">
+      <span className="toggle-group-label [color:var(--muted)] [font-size:10px] [font-weight:600] [text-transform:uppercase] [letter-spacing:0.06em]">{label}</span>
+      <div className="settings-toggles [&_.toggle]:[min-width:0] [&_.toggle_span]:[min-width:0] [&_.toggle_span]:[overflow-wrap:anywhere] [display:grid] [grid-template-columns:repeat(auto-fit,_minmax(140px,_1fr))] [gap:8px_12px]">{children}</div>
     </div>
   )
 }
@@ -143,10 +145,10 @@ function VoiceSettings({ settings, set }: Props) {
   return (
     <>
       <div className="grid grid-cols-2 gap-3 mt-2">
-        <label className="field">
-          <span className="field-label">Language</span>
+        <label className="field [display:flex] [flex-direction:column] [gap:5px]">
+          <span className="field-label [color:var(--muted)] [font-size:11px] [text-transform:uppercase] [letter-spacing:0.06em]">Language</span>
           <select
-            className="input"
+            className="input [flex:1] [min-width:0] [padding:9px_12px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [outline:none] [&:focus]:[border-color:var(--accent)] [&::placeholder]:[color:var(--muted)] appearance-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 [&_option]:bg-app-panel-2 [&_option]:text-app-text"
             value={settings.ttsLanguage}
             onChange={(e) => set('ttsLanguage', e.target.value)}
           >
@@ -158,9 +160,9 @@ function VoiceSettings({ settings, set }: Props) {
           </select>
         </label>
 
-        <label className="field">
-          <span className="field-label">Reading pace</span>
-          <select className="input" value={settings.ttsPace} onChange={(e) => set('ttsPace', e.target.value)}>
+        <label className="field [display:flex] [flex-direction:column] [gap:5px]">
+          <span className="field-label [color:var(--muted)] [font-size:11px] [text-transform:uppercase] [letter-spacing:0.06em]">Reading pace</span>
+          <select className="input [flex:1] [min-width:0] [padding:9px_12px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [outline:none] [&:focus]:[border-color:var(--accent)] [&::placeholder]:[color:var(--muted)] appearance-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 [&_option]:bg-app-panel-2 [&_option]:text-app-text" value={settings.ttsPace} onChange={(e) => set('ttsPace', e.target.value)}>
             {TTS_PACES.map((p) => (
               <option key={p.value} value={p.value} title={p.note}>
                 {p.label}
@@ -169,11 +171,11 @@ function VoiceSettings({ settings, set }: Props) {
           </select>
         </label>
 
-        <label className="field col-span-2">
-          <span className="field-label">Volume</span>
-          <span className="field-row min-h-9">
+        <label className="field col-span-2 [display:flex] [flex-direction:column] [gap:5px]">
+          <span className="field-label [color:var(--muted)] [font-size:11px] [text-transform:uppercase] [letter-spacing:0.06em]">Volume</span>
+          <span className="field-row min-h-9 [display:flex] [align-items:center] [gap:8px] [&_.input]:[min-width:0] [&_.btn]:[flex:0_0_auto]">
             <input
-              className="slider"
+              className="slider [flex:1] [min-width:0] [height:4px] [margin:0] [appearance:none] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:999px] [outline:none] [cursor:pointer] [&::-webkit-slider-thumb]:[appearance:none] [&::-webkit-slider-thumb]:[width:14px] [&::-webkit-slider-thumb]:[height:14px] [&::-webkit-slider-thumb]:[background:var(--accent)] [&::-webkit-slider-thumb]:[border:none] [&::-webkit-slider-thumb]:[border-radius:50%] [&::-moz-range-thumb]:[width:14px] [&::-moz-range-thumb]:[height:14px] [&::-moz-range-thumb]:[background:var(--accent)] [&::-moz-range-thumb]:[border:none] [&::-moz-range-thumb]:[border-radius:50%] [&::-moz-range-progress]:[height:4px] [&::-moz-range-progress]:[background:var(--accent)]"
               type="range"
               min={0}
               max={100}
@@ -181,21 +183,21 @@ function VoiceSettings({ settings, set }: Props) {
               value={percent}
               onChange={(e) => set('ttsVolume', Number(e.target.value) / 100)}
             />
-            <span className="slider-readout">{percent}%</span>
+            <span className="slider-readout [flex:0_0_auto] [min-width:34px] [color:var(--muted)] [font-size:11px] [font-variant-numeric:tabular-nums] [text-align:right]">{percent}%</span>
           </span>
         </label>
       </div>
 
-      <span className="field-row voice-tester">
-        <button className="btn btn-small" onClick={test} disabled={status.kind === 'busy'}>
+      <span className="field-row voice-tester [display:flex] [align-items:center] [gap:8px] [&_.input]:[min-width:0] [&_.btn]:[flex:0_0_auto] [flex-wrap:wrap]">
+        <button className="btn btn-small [padding:9px_14px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [cursor:pointer] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)] [&:disabled]:[opacity:0.45] [&:disabled]:[cursor:not-allowed] [padding:4px_10px] [font-size:12px]" onClick={test} disabled={status.kind === 'busy'}>
           {status.kind === 'busy' ? 'Speaking…' : '▶ Test the voice'}
         </button>
         {status.text !== '' && (
-          <span className={`modal-status modal-status-${status.kind}`}>{status.text}</span>
+          <span className={`modal-status [margin:0] [font-size:12px] [overflow-wrap:anywhere] modal-status-${status.kind} ${status.kind === 'error' ? 'text-app-accent' : status.kind === 'ok' ? 'text-app-green' : status.kind === 'busy' ? 'text-app-gold' : ''}`}>{status.text}</span>
         )}
       </span>
 
-      <p className="field-note m-0 w-full leading-relaxed mt-2">
+      <p className="field-note m-0 w-full leading-relaxed mt-2 [color:var(--muted)] [font-size:11px]">
         Reads chat and gifts. {chosen?.note ?? TTS_PACES[1].note} The sample text is sent to the voice
         service.
       </p>
@@ -222,7 +224,7 @@ export function FeedSection({ settings, set }: Props) {
 
   function toggles(options: ToggleOption[]) {
     return options.map((option) => (
-      <label key={option.key} className="toggle" title={option.hint}>
+      <label key={option.key} className="toggle [display:inline-flex] [align-items:center] [gap:6px] [color:var(--muted)] [font-size:13px] [cursor:pointer] [user-select:none]" title={option.hint}>
         <input
           type="checkbox"
           checked={Boolean(settings[option.key])}
@@ -235,11 +237,11 @@ export function FeedSection({ settings, set }: Props) {
 
   return (
     <Section title="Feed" section="feed">
-      <div className="feed-category-tabs" role="tablist" aria-label="Feed setting categories">
+      <div className="feed-category-tabs [display:flex] [gap:6px] [padding:4px] [border:1px_solid_var(--line)] [border-radius:10px] [background:var(--panel-2)] [overflow-x:auto]" role="tablist" aria-label="Feed setting categories">
         {categories.map((item) => (
           <button
             key={item.id}
-            className={`feed-category-tab${category === item.id ? ' is-active' : ''}`}
+            className={`feed-category-tab [flex:1_0_auto] [border:0] [border-radius:7px] [padding:7px_11px] [color:var(--muted)] [background:transparent] [font:inherit] [font-size:11px] [cursor:pointer] [transition:color_140ms_ease,_background_140ms_ease] [&:hover]:[color:var(--text)] [&.is-active]:[color:var(--text)] [&.is-active]:[background:var(--panel)] [&.is-active]:[box-shadow:inset_0_0_0_1px_var(--line)]${category === item.id ? ' is-active' : ''}`}
             type="button"
             role="tab"
             aria-selected={category === item.id}
@@ -250,9 +252,67 @@ export function FeedSection({ settings, set }: Props) {
         ))}
       </div>
 
-      <div className="feed-category-panel" role="tabpanel">
-        {category === 'display' && <ToggleGroup label="Feed appearance and visibility">{toggles(FEED_TOGGLES)}</ToggleGroup>}
-        {category === 'popups' && <ToggleGroup label="Choose which events show a popup">{toggles(POPUP_TOGGLES)}</ToggleGroup>}
+      <div className="feed-category-panel [min-height:92px]" role="tabpanel">
+        {category === 'display' && <>
+          <ToggleGroup label="Feed appearance and visibility">{toggles(FEED_TOGGLES)}</ToggleGroup>
+          <label className="field mt-3 [display:flex] [flex-direction:column] [gap:5px]">
+            <span className="field-label [color:var(--muted)] [font-size:11px] [text-transform:uppercase] [letter-spacing:0.06em]">Auto-scroll</span>
+            <select
+              className="input [flex:1] [min-width:0] [padding:9px_12px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [outline:none] [&:focus]:[border-color:var(--accent)] [&::placeholder]:[color:var(--muted)] appearance-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 [&_option]:bg-app-panel-2 [&_option]:text-app-text"
+              value={settings.autoScrollMode}
+              onChange={(e) => set('autoScrollMode', e.target.value as ViewSettings['autoScrollMode'])}
+            >
+              <option value="smart">Pause when I scroll up</option>
+              <option value="always">Always follow latest</option>
+            </select>
+            <span className="field-note [color:var(--muted)] [font-size:11px]">Choose whether new messages should pull the feed to the bottom.</span>
+          </label>
+        </>}
+        {category === 'popups' && <>
+          <ToggleGroup label="Choose which events show a popup">{toggles(POPUP_TOGGLES)}</ToggleGroup>
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            <label className="field [display:flex] [flex-direction:column] [gap:5px]">
+              <span className="field-label [color:var(--muted)] [font-size:11px] [text-transform:uppercase] [letter-spacing:0.06em]">Gift popup duration</span>
+              <span className="field-row min-h-9 [display:flex] [align-items:center] [gap:8px] [&_.input]:[min-width:0] [&_.btn]:[flex:0_0_auto]">
+                <input
+                  className="slider [flex:1] [min-width:0] [height:4px] [margin:0] [appearance:none] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:999px] [outline:none] [cursor:pointer] [&::-webkit-slider-thumb]:[appearance:none] [&::-webkit-slider-thumb]:[width:14px] [&::-webkit-slider-thumb]:[height:14px] [&::-webkit-slider-thumb]:[background:var(--accent)] [&::-webkit-slider-thumb]:[border:none] [&::-webkit-slider-thumb]:[border-radius:50%] [&::-moz-range-thumb]:[width:14px] [&::-moz-range-thumb]:[height:14px] [&::-moz-range-thumb]:[background:var(--accent)] [&::-moz-range-thumb]:[border:none] [&::-moz-range-thumb]:[border-radius:50%] [&::-moz-range-progress]:[height:4px] [&::-moz-range-progress]:[background:var(--accent)]"
+                  type="range"
+                  min={1}
+                  max={10}
+                  step={1}
+                  value={settings.giftPopupDurationSeconds}
+                  onChange={(e) => set('giftPopupDurationSeconds', Number(e.target.value))}
+                />
+                <span className="slider-readout [flex:0_0_auto] [min-width:34px] [color:var(--muted)] [font-size:11px] [font-variant-numeric:tabular-nums] [text-align:right]">{settings.giftPopupDurationSeconds}s</span>
+              </span>
+              <span className="field-note [color:var(--muted)] [font-size:11px]">How long a gift popup stays on screen.</span>
+            </label>
+            <label className="field [display:flex] [flex-direction:column] [gap:5px]">
+              <span className="field-label [color:var(--muted)] [font-size:11px] [text-transform:uppercase] [letter-spacing:0.06em]">Gift popup size</span>
+              <select
+                className="input [flex:1] [min-width:0] [padding:9px_12px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [outline:none] [&:focus]:[border-color:var(--accent)] [&::placeholder]:[color:var(--muted)] appearance-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 [&_option]:bg-app-panel-2 [&_option]:text-app-text"
+                value={settings.giftPopupSize}
+                onChange={(e) => set('giftPopupSize', e.target.value as ViewSettings['giftPopupSize'])}
+              >
+                <option value="small">Small</option>
+                <option value="medium">Medium</option>
+                <option value="large">Large</option>
+              </select>
+            </label>
+            <label className="field col-span-2 [display:flex] [flex-direction:column] [gap:5px]">
+              <span className="field-label [color:var(--muted)] [font-size:11px] [text-transform:uppercase] [letter-spacing:0.06em]">Gift popup position</span>
+              <select
+                className="input [flex:1] [min-width:0] [padding:9px_12px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [outline:none] [&:focus]:[border-color:var(--accent)] [&::placeholder]:[color:var(--muted)] appearance-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 [&_option]:bg-app-panel-2 [&_option]:text-app-text"
+                value={settings.giftPopupPosition}
+                onChange={(e) => set('giftPopupPosition', e.target.value as ViewSettings['giftPopupPosition'])}
+              >
+                <option value="center">Center</option>
+                <option value="top">Top</option>
+                <option value="bottom">Bottom, above navigation</option>
+              </select>
+            </label>
+          </div>
+        </>}
         {category === 'events' && <ToggleGroup label="Sounds and alerts for live events">{toggles(EVENT_TOGGLES)}</ToggleGroup>}
         {category === 'chat' && <>
           <ToggleGroup label="Chat alerts">

@@ -831,9 +831,7 @@ await act(async () => {
 })
 check('scrolling to the bottom by hand clears it too', !$('.jump'))
 
-console.log('pointing at the feed pauses it')
-// Hovering to read a message must not be undone by the next one arriving — the
-// same freeze scrolling up triggers, for a reader who never touches the wheel.
+console.log('hovering without scrolling keeps following')
 await act(async () => {
   node.dispatchEvent(new harness.dom.window.MouseEvent('mouseover', { bubbles: true }))
 })
@@ -842,24 +840,7 @@ await act(async () => {
     fake.emit({ platform: 'tiktok', type: 'chat', ...viewer({ id: `h${n}` }), text: `while hovering ${n}`, timestamp: 1700000007000 + n })
   }
 })
-check('hovering freezes the feed and raises the pill', Boolean($('.jump')), 'no .jump while hovering')
-// Leaving resumes following only from the bottom; a feed left scrolled up stays put.
-// Scrolled up first so "still scrolled up" is the actual state, not inherited.
-await act(async () => {
-  node.scrollTop = 0
-  node.dispatchEvent(new harness.dom.window.Event('scroll', { bubbles: false }))
-  node.dispatchEvent(new harness.dom.window.MouseEvent('mouseout', { bubbles: true }))
-})
-check('leaving a feed still scrolled up keeps it paused', Boolean($('.jump')), 'jump cleared on leave while scrolled up')
-// Scrolled to the bottom first, then leaving resumes following.
-await act(async () => {
-  node.scrollTop = 600
-  node.dispatchEvent(new harness.dom.window.Event('scroll', { bubbles: false }))
-})
-await act(async () => {
-  node.dispatchEvent(new harness.dom.window.MouseEvent('mouseout', { bubbles: true }))
-})
-check('leaving from the bottom resumes following', !$('.jump'), 'jump stayed after leaving from the bottom')
+check('hover alone does not pause the feed', !$('.jump'), 'hovering raised the new messages pill')
 
 console.log('the stats panel')
 await click('[aria-label="Stats page"]')

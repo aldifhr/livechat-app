@@ -137,7 +137,7 @@ const DockIcon = ({
       ].filter(Boolean).join(" ")}
       {...props}
     >
-      <div className="dock-icon-content">{children}</div>
+      <div className="dock-icon-content [display:grid] [width:72px] [height:48px] [place-items:center]">{children}</div>
     </motion.div>
   )
 }

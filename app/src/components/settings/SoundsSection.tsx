@@ -104,11 +104,11 @@ export function SoundsSection({ settings, set }: Props) {
 
   return (
     <Section title="Sounds" section="sounds">
-      <p className="modal-hint">
+      <p className="modal-hint [margin:-4px_0_0] [color:var(--muted)] [font-size:12px] [line-height:1.5]">
         Choose a template or custom file for each event. A custom file takes priority.
       </p>
 
-      <div className="sound-rows">
+      <div className="sound-rows [display:flex] [flex-direction:column] [gap:8px] [&_.field-row_.input]:[flex:0_1_180px] [&_.field-row]:[flex-wrap:wrap]">
         {EVENTS.map((event) => {
           const customPath = settings[event.key]
           const volume = settings[event.volumeKey]
@@ -118,11 +118,11 @@ export function SoundsSection({ settings, set }: Props) {
             // A div, not a label: a label wrapping a select AND the buttons beside
             // it forwards a click anywhere inside to the select, so reaching for
             // "Choose file…" would drop the template list open at the same time.
-            <div className="field" key={event.key}>
-              <span className="field-label">{event.label}</span>
-              <span className="field-row">
+            <div className="field [display:flex] [flex-direction:column] [gap:5px]" key={event.key}>
+              <span className="field-label [color:var(--muted)] [font-size:11px] [text-transform:uppercase] [letter-spacing:0.06em]">{event.label}</span>
+              <span className="field-row [display:flex] [align-items:center] [gap:8px] [&_.input]:[min-width:0] [&_.btn]:[flex:0_0_auto]">
                 <select
-                  className="input"
+                  className="input [flex:1] [min-width:0] [padding:9px_12px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [outline:none] [&:focus]:[border-color:var(--accent)] [&::placeholder]:[color:var(--muted)] appearance-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 [&_option]:bg-app-panel-2 [&_option]:text-app-text"
                   aria-label={`${event.label} template`}
                   value={settings[event.templateKey]}
                   onChange={(e) => set(event.templateKey, e.target.value)}
@@ -134,14 +134,14 @@ export function SoundsSection({ settings, set }: Props) {
                   ))}
                 </select>
                 <button
-                  className="btn btn-small"
+                  className="btn btn-small [padding:9px_14px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [cursor:pointer] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)] [&:disabled]:[opacity:0.45] [&:disabled]:[cursor:not-allowed] [padding:4px_10px] [font-size:12px]"
                   onClick={() => preview(settings[event.templateKey], customPath, volume)}
                   title="Hear it"
                 >
                   ▶
                 </button>
                 <button
-                  className="btn btn-small"
+                  className="btn btn-small [padding:9px_14px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [cursor:pointer] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)] [&:disabled]:[opacity:0.45] [&:disabled]:[cursor:not-allowed] [padding:4px_10px] [font-size:12px]"
                   onClick={() => pickCustom(event.key)}
                   disabled={busy}
                   title={customPath ? 'Change the file this event plays' : 'Choose a file for this event'}
@@ -149,17 +149,17 @@ export function SoundsSection({ settings, set }: Props) {
                   {customPath ? 'Change file…' : 'Choose file…'}
                 </button>
                 {customPath && (
-                  <button className="btn btn-small" onClick={() => clearCustom(event.key)} disabled={busy}>
+                  <button className="btn btn-small [padding:9px_14px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [cursor:pointer] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)] [&:disabled]:[opacity:0.45] [&:disabled]:[cursor:not-allowed] [padding:4px_10px] [font-size:12px]" onClick={() => clearCustom(event.key)} disabled={busy}>
                     Use template
                   </button>
                 )}
               </span>
-              {customPath && <span className="field-note sound-file-note">{basename(customPath)}</span>}
-              <span className="sound-event-options">
-                <label className="sound-volume-control">
-                  <span className="field-note">Volume</span>
+              {customPath && <span className="field-note sound-file-note [color:var(--muted)] [font-size:11px] [overflow:hidden] [text-overflow:ellipsis] [white-space:nowrap]">{basename(customPath)}</span>}
+              <span className="sound-event-options [display:grid] [grid-template-columns:minmax(150px,_1fr)_minmax(120px,_180px)] [align-items:center] [gap:8px] [padding:0_2px] max-[480px]:grid-cols-1 max-[480px]:gap-2">
+                <label className="sound-volume-control [display:flex] [align-items:center] [gap:8px] [&_.slider]:[min-width:48px] [&_.slider]:[flex:1]">
+                  <span className="field-note [color:var(--muted)] [font-size:11px]">Volume</span>
                   <input
-                    className="slider"
+                    className="slider [flex:1] [min-width:0] [height:4px] [margin:0] [appearance:none] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:999px] [outline:none] [cursor:pointer] [&::-webkit-slider-thumb]:[appearance:none] [&::-webkit-slider-thumb]:[width:14px] [&::-webkit-slider-thumb]:[height:14px] [&::-webkit-slider-thumb]:[background:var(--accent)] [&::-webkit-slider-thumb]:[border:none] [&::-webkit-slider-thumb]:[border-radius:50%] [&::-moz-range-thumb]:[width:14px] [&::-moz-range-thumb]:[height:14px] [&::-moz-range-thumb]:[background:var(--accent)] [&::-moz-range-thumb]:[border:none] [&::-moz-range-thumb]:[border-radius:50%] [&::-moz-range-progress]:[height:4px] [&::-moz-range-progress]:[background:var(--accent)]"
                     type="range"
                     min={0}
                     max={100}
@@ -168,12 +168,12 @@ export function SoundsSection({ settings, set }: Props) {
                     aria-label={`${event.label} volume`}
                     onChange={(e) => set(event.volumeKey, Number(e.target.value))}
                   />
-                  <span className="slider-readout">{volume}%</span>
+                  <span className="slider-readout [flex:0_0_auto] [min-width:34px] [color:var(--muted)] [font-size:11px] [font-variant-numeric:tabular-nums] [text-align:right]">{volume}%</span>
                 </label>
-                <label className="sound-gap-control">
-                  <span className="field-note">Cooldown</span>
+                <label className="sound-gap-control [display:flex] [align-items:center] [gap:8px] [&_.input]:[width:78px] [&_.input]:[min-height:30px] [&_.input]:[padding:4px_6px]">
+                  <span className="field-note [color:var(--muted)] [font-size:11px]">Cooldown</span>
                   <input
-                    className="input"
+                    className="input [flex:1] [min-width:0] [padding:9px_12px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [outline:none] [&:focus]:[border-color:var(--accent)] [&::placeholder]:[color:var(--muted)]"
                     type="number"
                     min={100}
                     max={30000}
@@ -182,7 +182,7 @@ export function SoundsSection({ settings, set }: Props) {
                     aria-label={`${event.label} cooldown in milliseconds`}
                     onChange={(e) => set(event.gapKey, Math.min(30000, Math.max(100, Number(e.target.value) || 100)))}
                   />
-                  <span className="field-note">ms</span>
+                  <span className="field-note [color:var(--muted)] [font-size:11px]">ms</span>
                 </label>
               </span>
             </div>
@@ -190,7 +190,7 @@ export function SoundsSection({ settings, set }: Props) {
         })}
       </div>
 
-      <span className="field-note">Each event has its own volume and cooldown. Cooldown is in milliseconds.</span>
+      <span className="field-note [color:var(--muted)] [font-size:11px]">Each event has its own volume and cooldown. Cooldown is in milliseconds.</span>
     </Section>
   )
 }

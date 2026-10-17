@@ -17,11 +17,11 @@ interface Props {
 export function LookSection({ settings, set }: Props) {
   return (
     <Section title="Look" defaultOpen>
-      <div className="settings-grid">
-        <label className="field">
-          <span className="field-label">Theme</span>
+      <div className="settings-grid [display:grid] [grid-template-columns:repeat(auto-fit,_minmax(120px,_1fr))] [gap:10px] [align-items:start] [&_.input]:[flex:0_0_auto]">
+        <label className="field [display:flex] [flex-direction:column] [gap:5px]">
+          <span className="field-label [color:var(--muted)] [font-size:11px] [text-transform:uppercase] [letter-spacing:0.06em]">Theme</span>
           <select
-            className="input"
+            className="input [flex:1] [min-width:0] [padding:9px_12px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [outline:none] [&:focus]:[border-color:var(--accent)] [&::placeholder]:[color:var(--muted)] appearance-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 [&_option]:bg-app-panel-2 [&_option]:text-app-text"
             value={settings.theme}
             onChange={(e) => set('theme', e.target.value as ViewSettings['theme'])}
           >
@@ -33,10 +33,10 @@ export function LookSection({ settings, set }: Props) {
           </select>
         </label>
 
-        <label className="field">
-          <span className="field-label">Font</span>
+        <label className="field [display:flex] [flex-direction:column] [gap:5px]">
+          <span className="field-label [color:var(--muted)] [font-size:11px] [text-transform:uppercase] [letter-spacing:0.06em]">Font</span>
           <select
-            className="input"
+            className="input [flex:1] [min-width:0] [padding:9px_12px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [outline:none] [&:focus]:[border-color:var(--accent)] [&::placeholder]:[color:var(--muted)] appearance-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 [&_option]:bg-app-panel-2 [&_option]:text-app-text"
             value={settings.font}
             onChange={(e) => set('font', e.target.value as ViewSettings['font'])}
           >
@@ -48,10 +48,10 @@ export function LookSection({ settings, set }: Props) {
           </select>
         </label>
 
-        <label className="field">
-          <span className="field-label">Density</span>
+        <label className="field [display:flex] [flex-direction:column] [gap:5px]">
+          <span className="field-label [color:var(--muted)] [font-size:11px] [text-transform:uppercase] [letter-spacing:0.06em]">Density</span>
           <select
-            className="input"
+            className="input [flex:1] [min-width:0] [padding:9px_12px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [outline:none] [&:focus]:[border-color:var(--accent)] [&::placeholder]:[color:var(--muted)] appearance-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 [&_option]:bg-app-panel-2 [&_option]:text-app-text"
             value={settings.density}
             onChange={(e) => set('density', e.target.value as ViewSettings['density'])}
           >

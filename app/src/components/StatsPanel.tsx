@@ -43,12 +43,12 @@ export function StatsPanel({ stats }: Props) {
   const visibleAvatars = chatterAvatars.slice(0, 5)
 
   return (
-    <div className="stats-panel">
-      <div className="stats-bar">
-        <span className="stats-glance" title="Watching now">
+    <div className="stats-panel [flex:0_0_auto] [background:var(--panel)] [border-top:1px_solid_var(--line)]">
+      <div className="stats-bar [display:flex] [align-items:center] [gap:10px] [padding:7px_20px]">
+        <span className="stats-glance [padding:0_8px] [border-radius:999px] [background:var(--panel-2)] [color:var(--text)] [font-size:11px] [font-variant-numeric:tabular-nums]" title="Watching now">
           <RollingNumber value={snapshot.viewers} />
         </span>
-        <span className="stats-glance" title="Chat messages per minute">
+        <span className="stats-glance [padding:0_8px] [border-radius:999px] [background:var(--panel-2)] [color:var(--text)] [font-size:11px] [font-variant-numeric:tabular-nums]" title="Chat messages per minute">
           {snapshot.messagesPerMinute.toLocaleString()}/min
         </span>
         {visibleAvatars.length > 0 && (
@@ -58,22 +58,22 @@ export function StatsPanel({ stats }: Props) {
           />
         )}
         {snapshot.diamonds > 0 && (
-          <span className="stats-glance stats-diamonds" title="Diamonds sent this session">
+          <span className="stats-glance stats-diamonds [padding:0_8px] [border-radius:999px] [background:var(--panel-2)] [color:var(--text)] [font-size:11px] [font-variant-numeric:tabular-nums] [color:var(--gold)]" title="Diamonds sent this session">
             {snapshot.diamonds.toLocaleString()} ◆
           </span>
         )}
 
-        <button className="btn btn-small stats-reset" onClick={() => stats.reset()}>
+        <button className="btn btn-small stats-reset [padding:9px_14px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [cursor:pointer] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)] [&:disabled]:[opacity:0.45] [&:disabled]:[cursor:not-allowed] [padding:4px_10px] [font-size:12px] [margin-left:auto]" onClick={() => stats.reset()}>
           Reset
         </button>
       </div>
 
-      <div className="stats-body">
+      <div className="stats-body [display:flex] [flex-direction:column] [gap:14px] [padding:16px_20px_18px] [border-top:1px_solid_var(--line)]">
           {!live ? (
-            <p className="stats-empty">Nothing yet. Connect to a room and the numbers fill in.</p>
+            <p className="stats-empty [margin:4px_0] [color:var(--muted)] [font-size:12px]">Nothing yet. Connect to a room and the numbers fill in.</p>
           ) : (
             <>
-              <div className="stat-tiles">
+              <div className="stat-tiles [display:grid] [grid-template-columns:repeat(auto-fit,_minmax(112px,_1fr))] [gap:10px]">
                 <Tile label="Watching" value={snapshot.viewers.toLocaleString()} />
                 <Tile label="Peak" value={snapshot.peakViewers.toLocaleString()} />
                 <Tile
@@ -95,33 +95,33 @@ export function StatsPanel({ stats }: Props) {
                 values={snapshot.viewerSeries}
               />
 
-              <div className="stat-board">
-                <div className="stat-board-head">
+              <div className="stat-board [padding:14px] [border:1px_solid_var(--line)] [border-radius:14px] [background:color-mix(in_srgb,_var(--panel-2)_66%,_transparent)]">
+                <div className="stat-board-head [display:flex] [align-items:baseline] [gap:10px] [margin-bottom:8px] [color:var(--text)] [font-size:12px] [font-weight:650] [text-transform:uppercase] [letter-spacing:0.05em]">
                   <span>Top {snapshot.topChatters.length || ''} chatters</span>
-                  <span className="stat-board-sub">
+                  <span className="stat-board-sub [margin-left:auto] [text-transform:none] [letter-spacing:0] [font-variant-numeric:tabular-nums]">
                     by messages · {snapshot.totalFollows.toLocaleString()} follows ·{' '}
                     {snapshot.totalShares.toLocaleString()} shares
                   </span>
                 </div>
                 {snapshot.topChatters.length === 0 ? (
-                  <p className="stats-empty">No one has talked yet.</p>
+                  <p className="stats-empty [margin:4px_0] [color:var(--muted)] [font-size:12px]">No one has talked yet.</p>
                 ) : (
-                  <ol className="chatter-list">
+                  <ol className="chatter-list [margin:0] [padding:0] [list-style:none]">
                     {snapshot.topChatters.map((chatter, index) => (
-                      <li key={chatter.id} className="chatter">
-                        <span className="chatter-rank">{index + 1}</span>
+                      <li key={chatter.id} className="chatter [display:flex] [align-items:center] [gap:8px] [min-height:38px] [padding:4px_8px] [border-radius:9px] [transition:background_120ms_ease] [&:hover]:[background:color-mix(in_srgb,_var(--accent)_6%,_var(--panel-2))]">
+                        <span className="chatter-rank [flex:0_0_auto] [width:22px] [color:var(--muted)] [font-size:11px] [text-align:center] [font-variant-numeric:tabular-nums]">{index + 1}</span>
                         {chatter.avatar ? (
-                          <img className="chatter-avatar" src={chatter.avatar} alt="" loading="lazy" referrerPolicy="no-referrer" />
+                          <img className="chatter-avatar [flex:0_0_auto] [width:28px] [height:28px] [border-radius:50%] [object-fit:cover] [background:var(--panel-2)]" src={chatter.avatar} alt="" loading="lazy" referrerPolicy="no-referrer" />
                         ) : (
-                          <span className="chatter-avatar chatter-fallback" aria-hidden="true">
+                          <span className="chatter-avatar chatter-fallback [flex:0_0_auto] [width:28px] [height:28px] [border-radius:50%] [object-fit:cover] [background:var(--panel-2)] [display:grid] [place-items:center] [font-size:10px] [font-weight:600] [color:var(--muted)]" aria-hidden="true">
                             {(chatter.nickname.trim()[0] ?? '?').toUpperCase()}
                           </span>
                         )}
-                        <span className="chatter-name">{chatter.nickname || 'Room'}</span>
+                        <span className="chatter-name [min-width:0] [font-weight:550] [overflow:hidden] [text-overflow:ellipsis] [white-space:nowrap]">{chatter.nickname || 'Room'}</span>
                         {chatter.diamonds > 0 && (
-                          <span className="chatter-diamonds">{chatter.diamonds.toLocaleString()} ◆</span>
+                          <span className="chatter-diamonds [color:var(--gold)] [font-size:11px] [font-variant-numeric:tabular-nums]">{chatter.diamonds.toLocaleString()} ◆</span>
                         )}
-                        <span className="chatter-count">{chatter.messages.toLocaleString()}</span>
+                        <span className="chatter-count [margin-left:auto] [flex:0_0_auto] [padding:0_8px] [background:var(--panel-2)] [border-radius:999px] [font-size:11px] [font-variant-numeric:tabular-nums]">{chatter.messages.toLocaleString()}</span>
                       </li>
                     ))}
                   </ol>
@@ -146,10 +146,10 @@ function Tile({
   gold?: boolean
 }) {
   return (
-    <div className={`stat-tile${gold ? ' stat-tile-gold' : ''}`}>
-      <div className="stat-value">{value}</div>
-      <div className="stat-label">{label}</div>
-      {hint && <div className="stat-hint">{hint}</div>}
+    <div className={`stat-tile [position:relative] [overflow:hidden] [min-height:78px] [padding:12px_14px] [background:linear-gradient(145deg,_color-mix(in_srgb,_var(--panel-2)_92%,_white_8%),_var(--panel-2))] [border:1px_solid_var(--line)] [border-radius:12px] [box-shadow:inset_0_1px_rgba(255,_255,_255,_0.025)] [&::before]:[position:absolute] [&::before]:[top:0] [&::before]:[left:14px] [&::before]:[width:26px] [&::before]:[height:2px] [&::before]:[border-radius:0_0_3px_3px] [&::before]:[background:var(--accent)] [&::before]:[opacity:0.65] [&::before]:[content:'']${gold ? ' stat-tile-gold' : ''}`}>
+      <div className="stat-value [font-size:22px] [font-weight:700] [font-variant-numeric:tabular-nums] [line-height:1.2]">{value}</div>
+      <div className="stat-label [color:var(--muted)] [font-size:11px] [text-transform:uppercase] [letter-spacing:0.05em]">{label}</div>
+      {hint && <div className="stat-hint [color:var(--muted)] [font-size:11px] [font-variant-numeric:tabular-nums]">{hint}</div>}
     </div>
   )
 }
@@ -245,16 +245,16 @@ function Spark({ now, peak, values }: { now: number; peak: number; values: numbe
   }), [categories, peak, values])
 
   return (
-    <div className="spark">
-      <div className="spark-head">
+    <div className="spark [min-width:0] [padding:14px_14px_8px] [color:#202832] [background:#fff] [border:1px_solid_#e2e7ec] [border-radius:14px] [overflow:hidden] [&_.apexcharts-canvas]:[max-width:100%] [&_.apexcharts-svg]:[max-width:100%] [&_.apexcharts-line]:[stroke:#111] [&_.apexcharts-line]:[stroke-width:3px]">
+      <div className="spark-head [display:flex] [align-items:flex-start] [justify-content:space-between] [gap:12px] [margin-bottom:2px]">
         <div>
-          <span className="spark-name">Audience trend</span>
-          <span className="spark-subtitle">Live viewers over this session</span>
+          <span className="spark-name [display:block] [color:#202832] [font-size:13px] [font-weight:650] [letter-spacing:0.01em]">Audience trend</span>
+          <span className="spark-subtitle [display:block] [margin-top:2px] [color:#66717d] [font-size:10px]">Live viewers over this session</span>
         </div>
-        <div className="spark-current">
-          <span className="spark-live-dot" />
-          <span className="spark-now">{now.toLocaleString()}</span>
-          <span className="spark-current-label">viewers</span>
+        <div className="spark-current [display:flex] [align-items:center] [gap:6px] [padding:4px_9px] [border:1px_solid_#dedede] [border-radius:999px] [background:#f5f5f5]">
+          <span className="spark-live-dot [width:6px] [height:6px] [border-radius:50%] [background:#111] [box-shadow:0_0_9px_rgb(0_0_0_/_24%)]" />
+          <span className="spark-now [font-size:16px] [font-weight:600] [font-variant-numeric:tabular-nums] [color:#202832]">{now.toLocaleString()}</span>
+          <span className="spark-current-label [color:#66717d] [font-size:10px]">viewers</span>
         </div>
       </div>
       <Chart options={options} series={series} type="line" height={230} />

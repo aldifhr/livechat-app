@@ -642,24 +642,22 @@ pub fn to_app_event(frame: &Value, now_ms: i64) -> Option<Value> {
         }),
         "status" => {
             let is_connected = frame.get("connected").and_then(Value::as_bool).unwrap_or(false);
-            if is_connected {
-                self.connected.store(true, Ordering::SeqCst);
-            }
             json!({
                 "type": "status", "platform": platform,
                 "connected": is_connected,
                 "connecting": frame.get("connecting").and_then(Value::as_bool).unwrap_or(false),
-            // The streamer stopped, as distinct from our connection dropping.
-            // Carried as sent and defaulted false, so a status frame from an older
-            // backend that knows nothing about live ends still maps cleanly.
-            "liveEnded": frame.get("liveEnded").and_then(Value::as_bool).unwrap_or(false),
-            // The backend is polling for a streamer with no live right now, as
-            // distinct from a handshake in flight. Same rule: carried as sent, and
-            // an older backend that has never heard of it maps to false, which is
-            // what its own statuses meant anyway.
-            "waiting": frame.get("waiting").and_then(Value::as_bool).unwrap_or(false),
-            "message": frame.get("message").and_then(Value::as_str).unwrap_or_default(),
-        }),
+                // The streamer stopped, as distinct from our connection dropping.
+                // Carried as sent and defaulted false, so a status frame from an older
+                // backend that knows nothing about live ends still maps cleanly.
+                "liveEnded": frame.get("liveEnded").and_then(Value::as_bool).unwrap_or(false),
+                // The backend is polling for a streamer with no live right now, as
+                // distinct from a handshake in flight. Same rule: carried as sent, and
+                // an older backend that has never heard of it maps to false, which is
+                // what its own statuses meant anyway.
+                "waiting": frame.get("waiting").and_then(Value::as_bool).unwrap_or(false),
+                "message": frame.get("message").and_then(Value::as_str).unwrap_or_default(),
+            })
+        }
         "error" => json!({
             "type": "error", "platform": platform,
             "message": frame.get("message").and_then(Value::as_str).unwrap_or_default(),
@@ -920,6 +918,12 @@ async fn run_once(
                     if let Some(count) = frame.get("count").and_then(Value::as_i64) {
                         state.set_viewers(count);
                     }
+                }
+                if frame.get("type").and_then(Value::as_str) == Some("status")
+                    && frame.get("connected").and_then(Value::as_bool) == Some(true)
+                {
+                    // This state belongs to the reader, not the pure frame mapper.
+                    state.connected.store(true, Ordering::SeqCst);
                 }
                 if let Some(event) = to_app_event(&frame, now_ms()) {
                     // Stamped so the app can drop it if a Stop lands before this

@@ -15,16 +15,22 @@ import { useEffect, useRef, useState } from 'react'
 
 /** How long one digit takes to roll to its new value. */
 const ROLL_MS = 320
+const DIGIT_TRANSFORM_CLASSES = [
+  '[transform:translateY(0)]', '[transform:translateY(-1em)]', '[transform:translateY(-2em)]',
+  '[transform:translateY(-3em)]', '[transform:translateY(-4em)]', '[transform:translateY(-5em)]',
+  '[transform:translateY(-6em)]', '[transform:translateY(-7em)]', '[transform:translateY(-8em)]',
+  '[transform:translateY(-9em)]',
+]
 
 /** One digit: a 0–9 strip translated to show `value`. */
 function Digit({ value, changed }: { value: number; changed: boolean }) {
   return (
-    <span className={`roll-digit${changed ? ' roll-digit-changed' : ''}`} aria-hidden="true">
+    <span className={`roll-digit [position:relative] [display:inline-block] [height:1em] [overflow:hidden] [line-height:1] [vertical-align:top]${changed ? ' roll-digit-changed' : ''}`} aria-hidden="true">
       {/* The strip. Ten rows tall; translated up by `value` rows to bring the
           wanted digit into the window. `will-change` keeps it on the GPU. */}
-      <span className="roll-strip" style={{ transform: `translateY(-${value}em)` }}>
+      <span className={`roll-strip [display:flex] [flex-direction:column] [transition:transform_320ms_cubic-bezier(0.22,_1,_0.36,_1)] [will-change:transform] motion-reduce:transition-none ${DIGIT_TRANSFORM_CLASSES[value] ?? DIGIT_TRANSFORM_CLASSES[0]}`}>
         {Array.from({ length: 10 }, (_, n) => (
-          <span className="roll-cell" key={n}>
+          <span className="roll-cell [height:1em] [line-height:1] [display:flex] [align-items:center] [justify-content:center]" key={n}>
             {n}
           </span>
         ))}
@@ -70,14 +76,14 @@ export function RollingNumber({ value }: { value: number }) {
     // `aria-label` carries the real value, and the strip is hidden from assistive
     // tech and from text selection: the visible digit is one of ten in a column, and
     // read as text the whole column would be "0123456789". The label is the truth.
-    <span className="roll-number" aria-label={value.toLocaleString()} role="text">
+    <span className="roll-number [display:inline-flex] [align-items:baseline] [font-variant-numeric:tabular-nums]" aria-label={value.toLocaleString()} role="text">
       {digits.map((d, i) => (
         // Keyed by position from the right so a digit keeps its identity as the
         // number grows — otherwise 9 → 10 would remount every digit and roll them
         // all instead of just the new one.
-        <span className="roll-slot" key={digits.length - i} style={{ transitionDuration: `${ROLL_MS}ms` }}>
+        <span className="roll-slot [display:inline-flex] [align-items:baseline]" key={digits.length - i}>
           <Digit value={d} changed={changedDigits[i] ?? false} />
-          {commas[i] && <span className="roll-comma">,</span>}
+          {commas[i] && <span className="roll-comma [display:inline-block]">,</span>}
         </span>
       ))}
     </span>

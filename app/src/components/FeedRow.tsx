@@ -54,12 +54,12 @@ interface Props {
  */
 function Nickname({ name, handle }: { name: string; handle: string }) {
   const url = tiktokProfileUrl(handle)
-  if (!url) return <span className="nickname">{name}</span>
+  if (!url) return <span className="nickname [font-size:inherit] [font-weight:600] [overflow:hidden] [text-overflow:ellipsis] [white-space:nowrap]">{name}</span>
 
   return (
     <button
       type="button"
-      className="nickname nickname-link"
+      className="nickname nickname-link [font-size:inherit] [font-weight:600] [overflow:hidden] [text-overflow:ellipsis] [white-space:nowrap] [padding:0] [border:0] [background:none] [font:inherit] [color:inherit] [cursor:pointer] [text-align:left] [&:hover]:[text-decoration:underline]"
       title={`Open @${name} on TikTok`}
       onClick={() => {
         void host.openStream(url).catch(() => {
@@ -89,17 +89,17 @@ function FeedRowImpl({ item, isLast }: Props) {
   }
 
   return (
-    <div className={`row row-${item.kind}${isLast ? ' row-new' : ''}`}>
+    <div className={`row row-${item.kind} [display:flex] [gap:var(--gap,_10px)] [padding:var(--pad-y,_7px)_var(--pad-x,_10px)] [border-radius:var(--radius)] [&:hover_.copy-message-btn]:[opacity:1]${isLast ? ' row-new' : ''}`}>
       {item.avatar ? (
-        <img className="avatar" src={item.avatar} alt="" loading="lazy" referrerPolicy="no-referrer" />
+        <img className="avatar [width:32px] [height:32px] [border-radius:50%] [object-fit:cover] [background:var(--panel-2)] [flex:0_0_auto]" src={item.avatar} alt="" loading="lazy" referrerPolicy="no-referrer" />
       ) : (
-        <div className="avatar avatar-fallback" aria-hidden="true">
+        <div className="avatar avatar-fallback [width:32px] [height:32px] [border-radius:50%] [object-fit:cover] [background:var(--panel-2)] [flex:0_0_auto] [display:grid] [place-items:center] [font-weight:600] [color:var(--muted)]" aria-hidden="true">
           {(item.nickname.trim()[0] ?? '?').toUpperCase()}
         </div>
       )}
 
-      <div className="row-body">
-        <div className="row-head">
+      <div className="row-body [min-width:0] [flex:1] [position:relative]">
+        <div className="row-head [&_.room-tag]:[min-width:20px] [&_.room-tag]:[padding:1px_4px] [&_.room-tag]:[font-size:9px] [display:flex] [align-items:baseline] [gap:8px]">
           {/* The name is a link to the viewer's TikTok profile — the one thing on a
               chat row worth following up on. Opened through the host, not a plain
               anchor: the webview's content security policy will not navigate, so an
@@ -113,21 +113,21 @@ function FeedRowImpl({ item, isLast }: Props) {
               than a name that is plainly not a link. */}
           <Nickname name={item.nickname || 'Room'} handle={item.id || item.nickname || ''} />
           {item.isModerator && (
-            <span className="badge-mod" title="Room moderator">
+            <span className="badge-mod [flex:0_0_auto] [padding:1px_5px] [border-radius:4px] [background:rgba(61,_220,_132,_0.18)] [color:var(--green)] [font-size:9px] [font-weight:700] [letter-spacing:0.04em]" title="Room moderator">
               MOD
             </span>
           )}
           {item.isFiltered && (
-            <span className="badge-filtered" title="Filtered by TikTok">
+            <span className="badge-filtered [flex:0_0_auto] [padding:1px_5px] [border-radius:4px] [background:var(--panel-2)] [color:var(--muted)] [font-size:9px]" title="Filtered by TikTok">
               filtered
             </span>
           )}
 {item.isBot && (
-            <span className="badge-bot" title="Automatic reply">
+            <span className="badge-bot [flex:0_0_auto] [padding:1px_5px] [border-radius:4px] [background:rgba(120,_160,_255,_0.18)] [color:var(--accent,_#7aa0ff)] [font-size:9px] [font-weight:700] [letter-spacing:0.04em]" title="Automatic reply">
               auto
             </span>
           )}
-          <span className="time">{formatTime(item.timestamp)}</span>
+          <span className="time [font-size:inherit] [flex:0_0_auto] [color:var(--muted)] [font-size:11px] [font-variant-numeric:tabular-nums]">{formatTime(item.timestamp)}</span>
           {item.kind === 'chat' && (
             <button
               className={`copy-message-btn${copyState === 'copied' ? ' is-copied' : ''}`}
@@ -143,13 +143,13 @@ function FeedRowImpl({ item, isLast }: Props) {
 
         {item.kind === 'chat' ? (
           <>
-            <p className="text">{item.text}</p>
+            <p className="text [font-size:inherit] [margin:1px_0_0] [overflow-wrap:anywhere]">{item.text}</p>
             {item.emotes && item.emotes.length > 0 && (
-              <div className="emotes">
+              <div className="emotes [display:flex] [gap:4px] [margin-top:3px]">
                 {item.emotes.map((emote) => (
                   <img
                     key={emote.id || emote.url}
-                    className="emote"
+                    className="emote [width:22px] [height:22px] [object-fit:contain]"
                     src={emote.url}
                     alt=""
                     loading="lazy"
@@ -160,24 +160,27 @@ function FeedRowImpl({ item, isLast }: Props) {
             )}
           </>
         ) : (
-          <p className="event">
+          <p className="event [font-size:inherit] [margin:1px_0_0] [display:flex] [align-items:center] [gap:8px] [flex-wrap:wrap]">
             {item.giftImage && (
               <img
-                className="gift-image"
+                className="gift-image [flex:0_0_auto] [width:20px] [height:20px] [object-fit:contain] [vertical-align:middle] [border-radius:4px]"
                 src={item.giftImage}
                 alt=""
                 loading="lazy"
                 referrerPolicy="no-referrer"
               />
             )}
-            <span className="event-label">{describe(item)}</span>
+            <span className={`event-label ${item.kind === 'gift' ? 'text-app-gold' : item.kind === 'join' ? 'text-app-green' : item.kind === 'follow' ? 'text-app-follow' : item.kind === 'share' ? 'text-app-share' : item.kind === 'like' ? 'text-red-500' : 'text-app-muted'}`}>
+              {item.kind === 'like' && <span aria-hidden="true">👍 </span>}
+              {describe(item)}
+            </span>
             {item.kind === 'gift' && (item.diamonds ?? 0) > 0 && (
-              <span className="diamonds">{item.diamonds} diamonds</span>
+              <span className="diamonds [padding:1px_7px] [background:rgba(245,_196,_81,_0.14)] [border-radius:999px] [color:var(--gold)] [font-size:12px] [font-variant-numeric:tabular-nums]">{item.diamonds} diamonds</span>
             )}
           </p>
         )}
 
-        {repeat > 1 && <span className="repeat">x{repeat}</span>}
+        {repeat > 1 && <span className="repeat [position:absolute] [right:8px] [top:6px] [padding:1px_7px] [background:var(--accent)] [border-radius:999px] [color:var(--bg)] [font-size:11px] [font-weight:600]">x{repeat}</span>}
       </div>
     </div>
   )

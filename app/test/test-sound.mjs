@@ -201,21 +201,11 @@ console.log('an emoji at the cut is not sliced in half')
 check('speech waits longer than a blip does', CHAT_TTS_GAP_MS > CHAT_SOUND_GAP_MS, String(CHAT_TTS_GAP_MS))
 
 console.log('what a gift sounds like when spoken')
-check('a gift is announced with its sender', /ana mengirim Rose/.test(giftAnnouncement('ana', 'Rose', 1, 0)), giftAnnouncement('ana', 'Rose', 1, 0))
-check('a repeat count is spoken, not repeated', /kali 3/.test(giftAnnouncement('ana', 'Rose', 3, 0)), giftAnnouncement('ana', 'Rose', 3, 0))
-check('the value is spoken as diamonds, because a bare number says nothing', /99 diamonds/.test(giftAnnouncement('ana', 'Rose', 1, 99)), giftAnnouncement('ana', 'Rose', 1, 99))
-check('a nameless sender still gets named', /Someone/.test(giftAnnouncement('', 'Rose', 1, 0)), giftAnnouncement('', 'Rose', 1, 0))
-check('a gift with no name in the catalogue still reads as a gift', /a gift/.test(giftAnnouncement('ana', '', 1, 0)), giftAnnouncement('ana', '', 1, 0))
-check('no diamonds means no diamond count', !/diamonds/.test(giftAnnouncement('ana', 'Rose', 1, 0)), giftAnnouncement('ana', 'Rose', 1, 0))
-// The count agrees with the word. One diamond is the smallest gift anybody sends,
-// so this is not a rare slip — it is the most common sentence here, and "1 diamonds"
-// is the one a listener is most likely to hear.
-check('one is one diamond, not one diamonds', giftAnnouncement('ana', 'Rose', 1, 1) === 'ana mengirim Rose, 1 diamond', giftAnnouncement('ana', 'Rose', 1, 1))
-check('two is still diamonds', giftAnnouncement('ana', 'Rose', 1, 2) === 'ana mengirim Rose, 2 diamonds', giftAnnouncement('ana', 'Rose', 1, 2))
-// A repeated gift multiplies the value, so a repeat of a one-diamond gift is the
-// case where the singular would otherwise leak out twice over.
-check('a repeat of one is still singular', giftAnnouncement('ana', 'Rose', 3, 1) === 'ana mengirim Rose kali 3, 1 diamond', giftAnnouncement('ana', 'Rose', 3, 1))
-check('and the repeat itself is plural', giftAnnouncement('ana', 'Rose', 3, 6) === 'ana mengirim Rose kali 3, 6 diamonds', giftAnnouncement('ana', 'Rose', 3, 6))
+check('a gift is announced with its sender and quantity', giftAnnouncement('ana', 'Rose', 1) === 'ana mengirim 1 Rose', giftAnnouncement('ana', 'Rose', 1))
+check('a repeat quantity is spoken with the gift name', giftAnnouncement('ana', 'Rose', 3) === 'ana mengirim 3 Rose', giftAnnouncement('ana', 'Rose', 3))
+check('a gift announcement never includes diamond value', !/diamonds?/.test(giftAnnouncement('ana', 'Rose', 1)), giftAnnouncement('ana', 'Rose', 1))
+check('a nameless sender still gets named', /Someone/.test(giftAnnouncement('', 'Rose', 1)), giftAnnouncement('', 'Rose', 1))
+check('a gift with no name in the catalogue still reads as a gift', /a gift/.test(giftAnnouncement('ana', '', 1)), giftAnnouncement('ana', '', 1))
 
 console.log(failures === 0 ? '\nall passed' : `\n${failures} failed`)
 process.exit(failures === 0 ? 0 : 1)

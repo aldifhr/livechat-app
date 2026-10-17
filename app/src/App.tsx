@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { FeedRow } from './components/FeedRow'
 import { EventPopup } from './components/EventPopup'
 import { AnimatedListItem } from './components/ui/animated-list'
@@ -24,6 +24,43 @@ import { host } from './lib/sidecar'
 import type { VoiceOptions } from './lib/voices'
 
 type AppPage = 'home' | 'stats' | 'log' | 'test' | 'settings'
+
+// Runtime theme variations are still emitted as Tailwind utilities. Keeping the
+// selector utilities in this literal lets Tailwind see every class at compile
+// time while the selected skin remains a normal setting.
+const BRUTALISM_CLASSES = [
+  '[font-family:Arial_Black,Helvetica_Neue,Impact,sans-serif]', '[font-weight:700]', '[letter-spacing:-0.01em]',
+  '[&_.toolbar]:[border-top:4px_solid_#000]', '[&_.toolbar]:[border-bottom:4px_solid_#000]',
+  '[&_.log-panel]:[border-top:4px_solid_#000]', '[&_.log-panel]:[border-bottom:4px_solid_#000]',
+  '[&_.ask-panel]:[border-top:4px_solid_#000]', '[&_.ask-panel]:[border-bottom:4px_solid_#000]',
+  '[&_.btn]:[border:3px_solid_#000]', '[&_.btn]:[border-radius:0]', '[&_.btn]:[box-shadow:4px_4px_0_#000]',
+  '[&_.btn]:[text-transform:uppercase]', '[&_.btn]:[font-weight:900]',
+  '[&_.btn:hover:not(:disabled)]:[border-color:#000]', '[&_.btn:hover:not(:disabled)]:[transform:translate(-1px,-1px)]', '[&_.btn:hover:not(:disabled)]:[box-shadow:5px_5px_0_#000]',
+  '[&_.btn:active:not(:disabled)]:[transform:translate(3px,3px)]', '[&_.btn:active:not(:disabled)]:[box-shadow:1px_1px_0_#000]',
+  '[&_.btn:disabled]:[box-shadow:none]', '[&_.btn:disabled]:[opacity:0.5]',
+  '[&_.btn-primary]:[background:var(--accent)]', '[&_.btn-primary]:[color:#fff]',
+  '[&_.btn-danger]:[background:#fff]', '[&_.btn-danger]:[color:#000]', '[&_.btn-danger]:[border-color:#000]',
+  '[&_.input]:[border:3px_solid_#000]', '[&_.input]:[border-radius:0]', '[&_.input]:[background:#fff]', '[&_.input]:[color:#000]', '[&_.input]:[font-weight:700]',
+  '[&_.input:focus]:[outline:3px_solid_var(--accent)]', '[&_.input:focus]:[outline-offset:1px]',
+  '[&_.row]:[border:3px_solid_#000]', '[&_.row]:[border-radius:0]', '[&_.row]:[margin-bottom:6px]', '[&_.row]:[background:#fff]',
+  '[&_.row-new]:[box-shadow:none]', '[&_.row-new]:[background:var(--panel-2)]', '[&_.row-new]:[border-color:#000]',
+  '[&_.avatar]:[border-radius:0]', '[&_.avatar]:[border:3px_solid_#000]', '[&_.avatar-fallback]:[border-radius:0]', '[&_.avatar-fallback]:[border:3px_solid_#000]',
+  '[&_.nickname]:[text-transform:uppercase]', '[&_.nickname]:[font-weight:900]',
+  '[&_.chip]:[border:3px_solid_#000]', '[&_.chip]:[border-radius:0]', '[&_.chip]:[box-shadow:3px_3px_0_#000]',
+  '[&_.chip-active]:[background:var(--panel-2)]', '[&_.chip-active]:[color:#000]',
+  '[&_.status_.dot]:[border-radius:0]', '[&_.status_.dot]:[width:12px]', '[&_.status_.dot]:[height:12px]', '[&_.status_.dot]:[border:2px_solid_#000]',
+  '[&_.badge-mod]:[background:#ffe600]', '[&_.badge-mod]:[color:#000]', '[&_.badge-mod]:[border:2px_solid_#000]', '[&_.badge-mod]:[border-radius:0]',
+  '[&_.badge-filtered]:[border:2px_solid_#000]', '[&_.badge-filtered]:[border-radius:0]', '[&_.badge-filtered]:[background:#fff]', '[&_.badge-filtered]:[color:#000]',
+  '[&_.modal]:[border:4px_solid_#000]', '[&_.modal]:[border-radius:0]', '[&_.modal]:[box-shadow:10px_10px_0_#000]',
+  '[&_.jump]:[border:3px_solid_#000]', '[&_.jump]:[border-radius:0]', '[&_.jump]:[box-shadow:4px_4px_0_#000]', '[&_.jump]:[color:#fff]', '[&_.jump]:[text-transform:uppercase]',
+].join(' ')
+
+const BASE_THEME_CLASSES = [
+  '[--bg:#000]', '[--panel:#101010]', '[--panel-2:#1a1a1a]', '[--line:#303030]',
+  '[--text:#f5f5f5]', '[--muted:#a3a3a3]', '[--accent:#f5f5f5]', '[--accent-soft:rgba(255,255,255,0.14)]',
+  '[--gold:#d4af37]', '[--green:#22c55e]', '[--follow:#f472b6]', '[--share:#38bdf8]',
+  '[--destructive:#ef4444]', '[--radius:10px]',
+].join(' ')
 
 export default function App() {
   const [activePage, setActivePage] = useState<AppPage>('home')
@@ -61,7 +98,9 @@ export default function App() {
   useEventSound({ type: 'share', enabled: settings.shareSound, templateId: settings.shareTemplate, customPath: settings.shareSoundPath, volume: settings.shareSoundVolume, gapMs: settings.shareSoundGapMs })
   useGiftNotification({
     notice: settings.giftNotice,
-    voice: settings.giftVoice,
+    giftVoice: settings.giftVoice,
+    followVoice: settings.followVoice,
+    shareVoice: settings.shareVoice,
     speech: voice,
   })
   useAutoReply({ enabled: settings.autoReply })
@@ -126,11 +165,12 @@ export default function App() {
   useEffect(() => {
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey) return
+      if (e.deltaY === 0) return
       e.preventDefault()
-      nudgeFontScale(e.deltaY > 0 ? -0.1 : 0.1)
+      nudgeFontScale(e.deltaY > 0 ? -0.05 : 0.05)
     }
-    window.addEventListener('wheel', onWheel, { passive: false })
-    return () => window.removeEventListener('wheel', onWheel)
+    window.addEventListener('wheel', onWheel, { capture: true, passive: false })
+    return () => window.removeEventListener('wheel', onWheel, true)
   }, [nudgeFontScale])
 
   const listRef = useRef<HTMLDivElement>(null)
@@ -191,8 +231,19 @@ export default function App() {
     if (node) node.scrollTop = node.scrollHeight
   }, [activePage])
 
+  useEffect(() => {
+    if (settings.autoScrollMode !== 'always') return
+    pinned.current = true
+    setUnseen(0)
+    const node = listRef.current
+    if (node) node.scrollTop = node.scrollHeight
+  }, [settings.autoScrollMode])
+
   return (
-    <div className="app flex h-full flex-col bg-app-bg text-app-text">
+    <div
+      className={`app flex h-full flex-col bg-app-bg text-sm leading-[1.5] text-app-text ${settings.font === 'mono' ? 'font-mono' : 'font-sans'} ${settings.theme === 'brutalism' ? `${BRUTALISM_CLASSES} [--bg:#f4f1e8] [--panel:#fff] [--panel-2:#ffe600] [--line:#000] [--text:#000] [--muted:#555] [--accent:#ff2e00] [--accent-soft:rgba(255,46,0,0.16)] [--gold:#000] [--green:#00c] [--destructive:#c00] [--radius:0px] [color-scheme:light]` : `${BASE_THEME_CLASSES} [color-scheme:dark]`} ${settings.density === 'compact' ? '[--gap:4px] [--pad-x:8px] [--pad-y:2px]' : settings.density === 'roomy' ? '[--gap:14px] [--pad-x:22px] [--pad-y:14px]' : '[--gap:8px] [--pad-x:14px] [--pad-y:8px]'}`}
+      style={{ '--feed-font-scale': settings.fontScale } as CSSProperties}
+    >
       {activePage === 'home' && <>
         <Toolbar
         room={room}
@@ -210,43 +261,25 @@ export default function App() {
         onClearChat={clear}
         />
 
-        <div className="feed-wrap">
+        <div className="feed-wrap [position:relative] [flex:1_1_auto] [display:flex] [min-height:120px]">
         <div
-          className="feed flex-[1_1_auto] overflow-y-auto px-5 pt-3 pb-6"
+          className="feed flex-[1_1_auto] overflow-y-auto px-5 pt-3 pb-6 [scrollbar-width:thin] [font-size:calc(14px_*_var(--feed-font-scale))]"
           ref={listRef}
           onScroll={(e) => {
             const node = e.currentTarget
             const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 40
-            pinned.current = atBottom
+            const alwaysFollow = settings.autoScrollMode === 'always'
+            pinned.current = alwaysFollow || atBottom
             // Reaching the bottom by hand counts as having seen everything.
-            if (atBottom) setUnseen(0)
-          }}
-          // Pause on hover: pointing at a message to read it must not be undone by
-          // the next one arriving. The feed freezes while the pointer is over it and
-          // resumes when it leaves — but only if it was still at the bottom, so
-          // hovering a feed the streamer had already scrolled up does not yank it
-          // back down. The same freeze scrolling up triggers, for the reader who
-          // never touches the wheel.
-          onMouseEnter={() => {
-            pinned.current = false
-          }}
-          onMouseLeave={(e) => {
-            const node = e.currentTarget
-            const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 40
-            // Resume following only from the bottom; a feed left scrolled up stays
-            // put rather than jumping to the newest message on the way out.
-            if (atBottom) {
-              pinned.current = true
-              setUnseen(0)
-            }
+            if (atBottom || alwaysFollow) setUnseen(0)
           }}
         >
           {visible.length === 0 ? (
-            <div className="empty">
-              <p className="empty-title">
+            <div className="empty [display:grid] [place-content:center] [gap:6px] [height:100%] [text-align:center]">
+              <p className="empty-title [margin:0] [font-size:16px] [font-weight:600]">
                 {room.status === 'connected' ? 'Waiting for chat…' : 'No messages yet'}
               </p>
-              <p className="empty-hint">
+              <p className="empty-hint [max-width:42ch] [margin:0] [color:var(--muted)]">
                 {items.length > 0
                   ? 'No messages match the current filter.'
                   : 'Enter a username above and press Connect. The streamer has to be live.'}
@@ -272,7 +305,7 @@ export default function App() {
         </div>
 
         {unseen > 0 && (
-          <button className="jump" onClick={jumpToLatest}>
+          <button className="jump [position:absolute] [left:50%] [bottom:12px] [transform:translateX(-50%)] [display:inline-flex] [align-items:center] [gap:6px] [padding:6px_14px] [background:var(--accent)] [border:0] [border-radius:999px] [color:var(--bg)] [font:inherit] [font-size:12px] [font-weight:600] [cursor:pointer] [box-shadow:0_2px_10px_rgba(0,_0,_0,_0.45)] [&:hover]:[filter:brightness(1.1)]" onClick={jumpToLatest}>
             {unseen.toLocaleString()} new {unseen === 1 ? 'message' : 'messages'} <span aria-hidden="true">▾</span>
           </button>
         )}
@@ -281,8 +314,8 @@ export default function App() {
       </>}
 
       {activePage === 'stats' && (
-        <main className="page-view stats-page">
-          <header className="page-view-head">
+        <main className="page-view stats-page [flex:1_1_auto] [min-height:0] [overflow:auto] [padding:20px] [&_.stats-panel]:[width:min(900px,_100%)] [&_.stats-panel]:[margin:0_auto] [&_.stats-panel]:[border:1px_solid_var(--line)] [&_.stats-panel]:[border-radius:var(--radius)] [&_.log-panel]:[width:min(900px,_100%)] [&_.log-panel]:[margin:0_auto] [&_.log-panel]:[border:1px_solid_var(--line)] [&_.log-panel]:[border-radius:var(--radius)] [&_.stats-body]:[max-height:none] [&_.stats-body]:[overflow:visible] [&_.log-panel]:[display:flex] [&_.log-panel]:[min-height:180px] [&_.log-panel]:[flex-direction:column] [&_.log-list]:[flex:1_1_auto] [&_.log-list]:[max-height:none] [&_.log-list]:[min-height:120px]">
+          <header className="page-view-head [margin:0_auto_18px] [width:min(900px,_100%)] [&_h1]:[margin:0] [&_h1]:[font-size:20px] [&_p]:[margin:4px_0_0] [&_p]:[color:var(--muted)] [&_p]:[font-size:12px]">
             <h1>Stream stats</h1>
             <p>Session totals and activity from the connected stream.</p>
           </header>
@@ -291,8 +324,8 @@ export default function App() {
       )}
 
       {activePage === 'log' && (
-        <main className="page-view log-page">
-          <header className="page-view-head">
+        <main className="page-view log-page [flex:1_1_auto] [min-height:0] [overflow:auto] [padding:20px] [&_.stats-panel]:[width:min(900px,_100%)] [&_.stats-panel]:[margin:0_auto] [&_.stats-panel]:[border:1px_solid_var(--line)] [&_.stats-panel]:[border-radius:var(--radius)] [&_.log-panel]:[width:min(900px,_100%)] [&_.log-panel]:[margin:0_auto] [&_.log-panel]:[border:1px_solid_var(--line)] [&_.log-panel]:[border-radius:var(--radius)] [&_.stats-body]:[max-height:none] [&_.stats-body]:[overflow:visible] [&_.log-panel]:[display:flex] [&_.log-panel]:[min-height:180px] [&_.log-panel]:[flex-direction:column] [&_.log-list]:[flex:1_1_auto] [&_.log-list]:[max-height:none] [&_.log-list]:[min-height:120px]">
+          <header className="page-view-head [margin:0_auto_18px] [width:min(900px,_100%)] [&_h1]:[margin:0] [&_h1]:[font-size:20px] [&_p]:[margin:4px_0_0] [&_p]:[color:var(--muted)] [&_p]:[font-size:12px]">
             <h1>Event log</h1>
             <p>Connection updates and bridge diagnostics.</p>
           </header>
@@ -307,53 +340,58 @@ export default function App() {
       {activePage === 'settings' && <SettingsPage settings={settings} />}
 
       {activePage === 'home' && (
-        <EventPopup enabled={{ gift: settings.giftPopup, follow: settings.followPopup, share: settings.sharePopup }} />
+        <EventPopup
+          enabled={{ gift: settings.giftPopup, follow: settings.followPopup, share: settings.sharePopup }}
+          giftDurationSeconds={settings.giftPopupDurationSeconds}
+          giftSize={settings.giftPopupSize}
+          giftPosition={settings.giftPopupPosition}
+        />
       )}
 
-      <nav className="app-dock-wrap" aria-label="App pages">
-        <Dock className="app-dock" iconSize={48} iconMagnification={56} iconDistance={120}>
+      <nav className="app-dock-wrap flex w-full flex-none justify-center px-0 pb-2" aria-label="App pages">
+        <Dock className="app-dock mt-0 h-[58px] max-w-full gap-1 rounded-2xl border-app-line bg-app-panel px-2 py-2 shadow-[0_4px_18px_rgba(0,0,0,0.3)] [&_.dock-action]:[width:56px]" iconSize={56} iconMagnification={56} iconDistance={100}>
           <DockIcon>
-            <button className="dock-action" type="button" title="Home" aria-label="Home" aria-current={activePage === 'home' ? 'page' : undefined} onClick={() => setActivePage('home')}>
-              <span className="dock-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m3.5 10 8.5-7 8.5 7M5.5 9v11h13V9M9.5 20v-6h5v6" /></svg></span>
-              <span className="dock-label">Home</span>
+            <button className="dock-action [display:flex] [flex-direction:column] [width:72px] [height:46px] [flex:0_0_auto] [align-items:center] [justify-content:center] [gap:1px] [padding:0] [border:1px_solid_transparent] [border-radius:13px] [background:transparent] [color:var(--muted)] [font:inherit] [font-weight:500] [cursor:pointer] [transition:color_140ms_ease,_background_140ms_ease,_border-color_140ms_ease,_transform_140ms_ease] [&:hover]:[outline:none] [&:hover]:[border-color:var(--line)] [&:hover]:[background:color-mix(in_srgb,_var(--accent)_9%,_var(--panel))] [&:hover]:[color:var(--accent)] [&:hover]:[transform:translateY(-2px)] [&:focus-visible]:[outline:none] [&:focus-visible]:[border-color:var(--line)] [&:focus-visible]:[background:color-mix(in_srgb,_var(--accent)_9%,_var(--panel))] [&:focus-visible]:[color:var(--accent)] [&:focus-visible]:[transform:translateY(-2px)] [&[aria-current=page]]:[position:relative] [&[aria-current=page]]:[border-color:transparent] [&[aria-current=page]]:[background:color-mix(in_srgb,_var(--gold)_10%,_var(--panel))] [&[aria-current=page]]:[color:var(--gold)] [&[aria-current=page]]:[box-shadow:none] [&[aria-current=page]::after]:[position:absolute] [&[aria-current=page]::after]:[bottom:2px] [&[aria-current=page]::after]:[width:18px] [&[aria-current=page]::after]:[height:2px] [&[aria-current=page]::after]:[border-radius:999px] [&[aria-current=page]::after]:[background:var(--gold)] [&[aria-current=page]::after]:[content:'']" type="button" title="Home" aria-label="Home" aria-current={activePage === 'home' ? 'page' : undefined} onClick={() => setActivePage('home')}>
+              <span className="dock-glyph [display:grid] [width:22px] [height:22px] [place-items:center] [&_svg]:[width:19px] [&_svg]:[height:19px] [&_svg]:[fill:none] [&_svg]:[stroke:currentColor] [&_svg]:[stroke-width:1.7] [&_svg]:[stroke-linecap:round] [&_svg]:[stroke-linejoin:round]" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m3.5 10 8.5-7 8.5 7M5.5 9v11h13V9M9.5 20v-6h5v6" /></svg></span>
+              <span className="dock-label [font-size:10px] [line-height:1.1] [letter-spacing:0.01em]">Home</span>
             </button>
           </DockIcon>
           <DockIcon>
             <button
-              className="dock-action"
+              className="dock-action [display:flex] [flex-direction:column] [width:72px] [height:46px] [flex:0_0_auto] [align-items:center] [justify-content:center] [gap:1px] [padding:0] [border:1px_solid_transparent] [border-radius:13px] [background:transparent] [color:var(--muted)] [font:inherit] [font-weight:500] [cursor:pointer] [transition:color_140ms_ease,_background_140ms_ease,_border-color_140ms_ease,_transform_140ms_ease] [&:hover]:[outline:none] [&:hover]:[border-color:var(--line)] [&:hover]:[background:color-mix(in_srgb,_var(--accent)_9%,_var(--panel))] [&:hover]:[color:var(--accent)] [&:hover]:[transform:translateY(-2px)] [&:focus-visible]:[outline:none] [&:focus-visible]:[border-color:var(--line)] [&:focus-visible]:[background:color-mix(in_srgb,_var(--accent)_9%,_var(--panel))] [&:focus-visible]:[color:var(--accent)] [&:focus-visible]:[transform:translateY(-2px)] [&[aria-current=page]]:[position:relative] [&[aria-current=page]]:[border-color:transparent] [&[aria-current=page]]:[background:color-mix(in_srgb,_var(--gold)_10%,_var(--panel))] [&[aria-current=page]]:[color:var(--gold)] [&[aria-current=page]]:[box-shadow:none] [&[aria-current=page]::after]:[position:absolute] [&[aria-current=page]::after]:[bottom:2px] [&[aria-current=page]::after]:[width:18px] [&[aria-current=page]::after]:[height:2px] [&[aria-current=page]::after]:[border-radius:999px] [&[aria-current=page]::after]:[background:var(--gold)] [&[aria-current=page]::after]:[content:'']"
               type="button"
               title="Stats"
               aria-label="Stats page"
               aria-current={activePage === 'stats' ? 'page' : undefined}
               onClick={() => setActivePage('stats')}
             >
-              <span className="dock-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 16v-5M12 16V7M16 16v-8M20 16v-4" /></svg></span>
-              <span className="dock-label">Stats</span>
+              <span className="dock-glyph [display:grid] [width:22px] [height:22px] [place-items:center] [&_svg]:[width:19px] [&_svg]:[height:19px] [&_svg]:[fill:none] [&_svg]:[stroke:currentColor] [&_svg]:[stroke-width:1.7] [&_svg]:[stroke-linecap:round] [&_svg]:[stroke-linejoin:round]" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 16v-5M12 16V7M16 16v-8M20 16v-4" /></svg></span>
+              <span className="dock-label [font-size:10px] [line-height:1.1] [letter-spacing:0.01em]">Stats</span>
             </button>
           </DockIcon>
           <DockIcon>
             <button
-              className="dock-action"
+              className="dock-action [display:flex] [flex-direction:column] [width:72px] [height:46px] [flex:0_0_auto] [align-items:center] [justify-content:center] [gap:1px] [padding:0] [border:1px_solid_transparent] [border-radius:13px] [background:transparent] [color:var(--muted)] [font:inherit] [font-weight:500] [cursor:pointer] [transition:color_140ms_ease,_background_140ms_ease,_border-color_140ms_ease,_transform_140ms_ease] [&:hover]:[outline:none] [&:hover]:[border-color:var(--line)] [&:hover]:[background:color-mix(in_srgb,_var(--accent)_9%,_var(--panel))] [&:hover]:[color:var(--accent)] [&:hover]:[transform:translateY(-2px)] [&:focus-visible]:[outline:none] [&:focus-visible]:[border-color:var(--line)] [&:focus-visible]:[background:color-mix(in_srgb,_var(--accent)_9%,_var(--panel))] [&:focus-visible]:[color:var(--accent)] [&:focus-visible]:[transform:translateY(-2px)] [&[aria-current=page]]:[position:relative] [&[aria-current=page]]:[border-color:transparent] [&[aria-current=page]]:[background:color-mix(in_srgb,_var(--gold)_10%,_var(--panel))] [&[aria-current=page]]:[color:var(--gold)] [&[aria-current=page]]:[box-shadow:none] [&[aria-current=page]::after]:[position:absolute] [&[aria-current=page]::after]:[bottom:2px] [&[aria-current=page]::after]:[width:18px] [&[aria-current=page]::after]:[height:2px] [&[aria-current=page]::after]:[border-radius:999px] [&[aria-current=page]::after]:[background:var(--gold)] [&[aria-current=page]::after]:[content:'']"
               type="button"
               title="Log"
               aria-label="Log page"
               aria-current={activePage === 'log' ? 'page' : undefined}
               onClick={() => setActivePage('log')}
             >
-              <span className="dock-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11" /><circle cx="4.5" cy="6" r=".75" /><circle cx="4.5" cy="12" r=".75" /><circle cx="4.5" cy="18" r=".75" /></svg></span>
-              <span className="dock-label">Log</span>
+              <span className="dock-glyph [display:grid] [width:22px] [height:22px] [place-items:center] [&_svg]:[width:19px] [&_svg]:[height:19px] [&_svg]:[fill:none] [&_svg]:[stroke:currentColor] [&_svg]:[stroke-width:1.7] [&_svg]:[stroke-linecap:round] [&_svg]:[stroke-linejoin:round]" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11" /><circle cx="4.5" cy="6" r=".75" /><circle cx="4.5" cy="12" r=".75" /><circle cx="4.5" cy="18" r=".75" /></svg></span>
+              <span className="dock-label [font-size:10px] [line-height:1.1] [letter-spacing:0.01em]">Log</span>
             </button>
           </DockIcon>
           <DockIcon>
-            <button className="dock-action" type="button" title="Test" aria-label="Event simulator page" aria-current={activePage === 'test' ? 'page' : undefined} onClick={() => setActivePage('test')}>
-              <span className="dock-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 2 1.9 6.1L20 10l-6.1 1.9L12 18l-1.9-6.1L4 10l6.1-1.9L12 2Z" /><path d="m19 16 .8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8L19 16Z" /></svg></span>
-              <span className="dock-label">Test</span>
+            <button className="dock-action [display:flex] [flex-direction:column] [width:72px] [height:46px] [flex:0_0_auto] [align-items:center] [justify-content:center] [gap:1px] [padding:0] [border:1px_solid_transparent] [border-radius:13px] [background:transparent] [color:var(--muted)] [font:inherit] [font-weight:500] [cursor:pointer] [transition:color_140ms_ease,_background_140ms_ease,_border-color_140ms_ease,_transform_140ms_ease] [&:hover]:[outline:none] [&:hover]:[border-color:var(--line)] [&:hover]:[background:color-mix(in_srgb,_var(--accent)_9%,_var(--panel))] [&:hover]:[color:var(--accent)] [&:hover]:[transform:translateY(-2px)] [&:focus-visible]:[outline:none] [&:focus-visible]:[border-color:var(--line)] [&:focus-visible]:[background:color-mix(in_srgb,_var(--accent)_9%,_var(--panel))] [&:focus-visible]:[color:var(--accent)] [&:focus-visible]:[transform:translateY(-2px)] [&[aria-current=page]]:[position:relative] [&[aria-current=page]]:[border-color:transparent] [&[aria-current=page]]:[background:color-mix(in_srgb,_var(--gold)_10%,_var(--panel))] [&[aria-current=page]]:[color:var(--gold)] [&[aria-current=page]]:[box-shadow:none] [&[aria-current=page]::after]:[position:absolute] [&[aria-current=page]::after]:[bottom:2px] [&[aria-current=page]::after]:[width:18px] [&[aria-current=page]::after]:[height:2px] [&[aria-current=page]::after]:[border-radius:999px] [&[aria-current=page]::after]:[background:var(--gold)] [&[aria-current=page]::after]:[content:'']" type="button" title="Test" aria-label="Event simulator page" aria-current={activePage === 'test' ? 'page' : undefined} onClick={() => setActivePage('test')}>
+              <span className="dock-glyph [display:grid] [width:22px] [height:22px] [place-items:center] [&_svg]:[width:19px] [&_svg]:[height:19px] [&_svg]:[fill:none] [&_svg]:[stroke:currentColor] [&_svg]:[stroke-width:1.7] [&_svg]:[stroke-linecap:round] [&_svg]:[stroke-linejoin:round]" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 2 1.9 6.1L20 10l-6.1 1.9L12 18l-1.9-6.1L4 10l6.1-1.9L12 2Z" /><path d="m19 16 .8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8L19 16Z" /></svg></span>
+              <span className="dock-label [font-size:10px] [line-height:1.1] [letter-spacing:0.01em]">Test</span>
             </button>
           </DockIcon>
           <DockIcon>
-            <button className="dock-action" type="button" title="Settings" aria-label="Settings page" aria-current={activePage === 'settings' ? 'page' : undefined} onClick={() => setActivePage('settings')}>
-              <span className="dock-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z" /><path d="M19.4 15.2a8 8 0 0 0 0-6.4l1.2-1-1.4-2.4-1.5.6a8 8 0 0 0-5.6-3.2L11.8 1h-2.8l-.3 1.8a8 8 0 0 0-5.1 3.4l-1.6-.6L.6 8l1.2 1a8 8 0 0 0 0 6.4l-1.2 1L2 18.8l1.6-.6a8 8 0 0 0 5.1 3.4l.3 1.8h2.8l.3-1.8a8 8 0 0 0 5.6-3.2l1.5.6 1.4-2.4-1.2-1Z" transform="translate(1 0) scale(.92)" /></svg></span>
-              <span className="dock-label">Settings</span>
+            <button className="dock-action [display:flex] [flex-direction:column] [width:72px] [height:46px] [flex:0_0_auto] [align-items:center] [justify-content:center] [gap:1px] [padding:0] [border:1px_solid_transparent] [border-radius:13px] [background:transparent] [color:var(--muted)] [font:inherit] [font-weight:500] [cursor:pointer] [transition:color_140ms_ease,_background_140ms_ease,_border-color_140ms_ease,_transform_140ms_ease] [&:hover]:[outline:none] [&:hover]:[border-color:var(--line)] [&:hover]:[background:color-mix(in_srgb,_var(--accent)_9%,_var(--panel))] [&:hover]:[color:var(--accent)] [&:hover]:[transform:translateY(-2px)] [&:focus-visible]:[outline:none] [&:focus-visible]:[border-color:var(--line)] [&:focus-visible]:[background:color-mix(in_srgb,_var(--accent)_9%,_var(--panel))] [&:focus-visible]:[color:var(--accent)] [&:focus-visible]:[transform:translateY(-2px)] [&[aria-current=page]]:[position:relative] [&[aria-current=page]]:[border-color:transparent] [&[aria-current=page]]:[background:color-mix(in_srgb,_var(--gold)_10%,_var(--panel))] [&[aria-current=page]]:[color:var(--gold)] [&[aria-current=page]]:[box-shadow:none] [&[aria-current=page]::after]:[position:absolute] [&[aria-current=page]::after]:[bottom:2px] [&[aria-current=page]::after]:[width:18px] [&[aria-current=page]::after]:[height:2px] [&[aria-current=page]::after]:[border-radius:999px] [&[aria-current=page]::after]:[background:var(--gold)] [&[aria-current=page]::after]:[content:'']" type="button" title="Settings" aria-label="Settings page" aria-current={activePage === 'settings' ? 'page' : undefined} onClick={() => setActivePage('settings')}>
+              <span className="dock-glyph [display:grid] [width:22px] [height:22px] [place-items:center] [&_svg]:[width:19px] [&_svg]:[height:19px] [&_svg]:[fill:none] [&_svg]:[stroke:currentColor] [&_svg]:[stroke-width:1.7] [&_svg]:[stroke-linecap:round] [&_svg]:[stroke-linejoin:round]" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z" /><path d="M19.4 15.2a8 8 0 0 0 0-6.4l1.2-1-1.4-2.4-1.5.6a8 8 0 0 0-5.6-3.2L11.8 1h-2.8l-.3 1.8a8 8 0 0 0-5.1 3.4l-1.6-.6L.6 8l1.2 1a8 8 0 0 0 0 6.4l-1.2 1L2 18.8l1.6-.6a8 8 0 0 0 5.1 3.4l.3 1.8h2.8l.3-1.8a8 8 0 0 0 5.6-3.2l1.5.6 1.4-2.4-1.2-1Z" transform="translate(1 0) scale(.92)" /></svg></span>
+              <span className="dock-label [font-size:10px] [line-height:1.1] [letter-spacing:0.01em]">Settings</span>
             </button>
           </DockIcon>
         </Dock>

@@ -190,10 +190,10 @@ export function Toolbar({
   }
 
   return (
-    <div className="toolbar">
-      <div className="room-row">
+    <div className="toolbar [flex:0_0_auto] [display:flex] [flex-direction:column] [gap:10px] [padding:14px_20px] [background:var(--panel)] [border-bottom:1px_solid_var(--line)] [max-height:min(40vh,_440px)] [overflow-y:auto] [scrollbar-width:thin]">
+      <div className="room-row [display:flex] [align-items:center] [gap:8px] [flex-wrap:wrap] [&_.input]:[flex:1_1_260px] [&_.handle-input]:[flex:0_1_240px]">
         <input
-          className="input handle-input"
+          className="input handle-input [flex:1] [min-width:0] [padding:9px_12px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [outline:none] [&:focus]:[border-color:var(--accent)] [&::placeholder]:[color:var(--muted)]"
           placeholder="Streamer's handle"
           aria-label="Streamer's TikTok handle"
           value={handle}
@@ -204,17 +204,17 @@ export function Toolbar({
           }}
         />
         {isConnected || isWaiting ? (
-          <button className="btn btn-danger" onClick={disconnect}>
+          <button className="btn btn-danger [padding:9px_14px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [cursor:pointer] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)] [&:disabled]:[opacity:0.45] [&:disabled]:[cursor:not-allowed] [background:transparent] [border-color:var(--accent)] [color:var(--accent)]" onClick={disconnect}>
             Stop
           </button>
         ) : (
-          <button className="btn btn-primary" onClick={connect} disabled={!canConnect}>
+          <button className="btn btn-primary [padding:9px_14px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [cursor:pointer] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)] [&:disabled]:[opacity:0.45] [&:disabled]:[cursor:not-allowed] [background:var(--accent)] [border-color:var(--accent)] [color:var(--bg)] [font-weight:600]" onClick={connect} disabled={!canConnect}>
             {isConnecting ? 'Connecting…' : 'Connect'}
           </button>
         )}
         {isConnected && room.target && (
           <button
-            className="btn btn-small watch-btn"
+            className="btn btn-small watch-btn [padding:9px_14px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [cursor:pointer] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)] [&:disabled]:[opacity:0.45] [&:disabled]:[cursor:not-allowed] [align-self:center] [padding:4px_10px] [font-size:12px]"
             title={`Open tiktok.com/@${room.target}/live in your browser`}
             onClick={() =>
               host
@@ -225,7 +225,7 @@ export function Toolbar({
             Watch
           </button>
         )}
-        <div className={`status status-${room.status} room-status`}>
+        <div className={`status status-${room.status} room-status [display:flex] [align-items:center] [gap:8px] [font-size:13px] [color:var(--muted)] [&_.dot]:[width:8px] [&_.dot]:[height:8px] [&_.dot]:[border-radius:50%] [&_.dot]:[background:var(--muted)] [&_.dot]:[flex:0_0_auto] [&.status-connected]:[color:var(--text)] [&.status-connected_.dot]:[background:var(--green)] [&.status-connecting_.dot]:[background:var(--gold)] [&.status-waiting_.dot]:[background:var(--gold)] [&.status-error]:[color:var(--accent)] [&.status-error_.dot]:[background:var(--accent)] [&.status-ended]:[color:var(--muted)]`}>
           <span className="dot" />
           <span>
             {health === 'stalled'
@@ -240,11 +240,11 @@ export function Toolbar({
                     'Not connected — enter a handle and press Connect')}
           </span>
           {isConnected && room.viewers > 0 && (
-            <span className="viewers"><RollingNumber value={room.viewers} /> watching</span>
+            <span className="viewers [padding:2px_8px] [background:color-mix(in_srgb,_var(--green)_14%,_transparent)] [border-radius:999px] [color:var(--green)] [font-weight:600] [font-variant-numeric:tabular-nums]"><RollingNumber value={room.viewers} /> watching</span>
           )}
         {isConnected && liveSince !== null && <LiveTimer startedAt={liveSince} />}
         </div>
-        {room.title && <p className="room-title">{room.title}</p>}
+        {room.title && <p className="room-title [flex:1_1_100%] [margin:0] [width:100%] [color:var(--muted)] [font-size:13px] [overflow:hidden] [text-overflow:ellipsis] [white-space:nowrap]">{room.title}</p>}
       </div>
 
       {/* Filters and search appear only once there is a feed to filter. Before
@@ -252,24 +252,24 @@ export function Toolbar({
           chips and an empty search box reads as clutter, and the search field
           suggests there is content to look through when there is not. */}
       {(room.status === 'connected' || items > 0) && (
-        <div className="toolbar-bottom">
-          <div className="filters">
+        <div className="toolbar-bottom [display:flex] [align-items:center] [gap:12px] [flex-wrap:wrap]">
+          <div className="filters [display:flex] [gap:5px] [flex-wrap:wrap] [&_.chip]:[gap:4px] [&_.chip-count]:[padding:0_4px] [&_.chip-count]:[font-size:10px]">
             {spec.kinds.map((option) => (
               <button
                 key={option.value}
-                className={`chip chip-small${kind === option.value ? ' chip-active' : ''}`}
+                className={`chip chip-small [display:inline-flex] [align-items:center] [gap:6px] [padding:6px_11px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:999px] [color:var(--muted)] [font:inherit] [font-size:13px] [cursor:pointer] [&:hover]:[color:var(--text)] [padding:3px_8px] [font-size:11px]${kind === option.value ? ' chip-active' : ''}`}
                 onClick={() => onFiltersChange({ kind: option.value })}
               >
                 {option.label}
                 {option.value !== 'all' && counts[option.value] > 0 && (
-                  <span className="chip-count">{counts[option.value]}</span>
+                  <span className="chip-count [padding:0_5px] [background:rgba(255,_255,_255,_0.08)] [border-radius:999px] [font-size:11px] [font-variant-numeric:tabular-nums]">{counts[option.value]}</span>
                 )}
               </button>
             ))}
           </div>
 
           <input
-            className="input input-search"
+            className="input input-search [flex:1] [min-width:0] [padding:9px_12px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [outline:none] [&:focus]:[border-color:var(--accent)] [&::placeholder]:[color:var(--muted)] [flex:0_1_240px]"
             placeholder="Filter by name or text"
             value={search}
             onChange={(e) => onFiltersChange({ search: e.target.value })}
@@ -287,16 +287,16 @@ export function Toolbar({
         because there is a single auto margin doing the pushing; two of them split
         the free space instead of dividing the row.
       */}
-      <div className="view-toggles">
-        <span className="summary">
+      <div className="view-toggles [display:flex] [align-items:center] [gap:14px] [flex-wrap:wrap]">
+        <span className="summary [color:var(--muted)] [font-size:11px] [font-variant-numeric:tabular-nums]">
           {totalReceived.toLocaleString()} events
           {kind !== 'all' && ` · ${spec.kinds.find((k) => k.value === kind)?.label.toLowerCase()}`}
           {search.trim() && ' · search'}
         </span>
 
-        <span className="view-actions">
+        <span className="view-actions [display:flex] [align-items:center] [gap:8px] [margin-left:auto]">
           <button
-            className="btn btn-small"
+            className="btn btn-small [padding:9px_14px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [cursor:pointer] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)] [&:disabled]:[opacity:0.45] [&:disabled]:[cursor:not-allowed] [padding:4px_10px] [font-size:12px]"
             onClick={onClearChat}
             disabled={items === 0}
             title="Clear every row from the feed"
@@ -304,7 +304,7 @@ export function Toolbar({
             Clear
           </button>
 
-          <span className="font-hint" title="Ctrl + scroll anywhere in the window">
+          <span className="font-hint [color:var(--muted)] [font-size:11px] [font-variant-numeric:tabular-nums]" title="Ctrl + scroll anywhere in the window">
             {Math.round(settings.fontScale * 100)}%
           </span>
         </span>
@@ -326,5 +326,5 @@ function LiveTimer({ startedAt }: { startedAt: number }) {
   const seconds = elapsedSeconds % 60
   const time = [hours, minutes, seconds].map((part) => String(part).padStart(2, '0')).join(':')
 
-  return <span className="live-timer" title="Time connected to the live stream">LIVE {time}</span>
+  return <span className="live-timer [padding:3px_8px] [border:1px_solid_color-mix(in_srgb,_var(--green)_34%,_transparent)] [border-radius:999px] [background:color-mix(in_srgb,_var(--green)_9%,_transparent)] [color:var(--green)] [font-size:10px] [font-variant-numeric:tabular-nums] [font-weight:700] [letter-spacing:0.04em]" title="Time connected to the live stream">LIVE {time}</span>
 }

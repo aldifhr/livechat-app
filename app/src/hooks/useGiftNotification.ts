@@ -7,13 +7,11 @@ import { say, hush } from '../lib/voice'
 import type { VoiceOptions } from '../lib/voices'
 
 /**
- * What a gift does besides chime and appear in the feed: a toast, and a voice.
+ * Gift toasts and voice announcements for gifts, follows and shares.
  *
- * Both are gapped together, on the toast's gap rather than the chime's, because
- * they are the same announcement in two channels and one without the other reads
- * as a half-finished thing — a toast with no sound, or a voice naming a gift that
- * never appeared on screen. A gift wave arrives as one frame per member, so the
- * gap is what keeps one wave to one announcement instead of twenty.
+ * Gift toast cooldowns are independent from voice. A gift wave arrives as one frame
+ * per member, so the toast gap keeps one wave from producing a desktop toast per
+ * person. Follow and share announcements use the same voice when enabled.
  *
  * The voice is the shared one, so a gift arriving mid-sentence cuts off the chat
  * being read rather than talking over it.
@@ -28,12 +26,16 @@ interface Options {
   /** Raise a desktop toast. */
   notice: boolean
   /** Announce the gift with the neural voice. */
-  voice: boolean
+  giftVoice: boolean
+  /** Announce follows with the neural voice. */
+  followVoice: boolean
+  /** Announce shares with the neural voice. */
+  shareVoice: boolean
   /** Pace, language and volume for the voice, from the settings the user picked. */
   speech: VoiceOptions
 }
 
-export function useGiftNotification({ notice, voice, speech }: Options): void {
+export function useGiftNotification({ notice, giftVoice, followVoice, shareVoice, speech }: Options): void {
   // Two clocks, one per channel. They were a single `lastShownAt` gated by the
   // toast's eight-second gap, which meant the voice inherited it: any gift
   // arriving within eight seconds of the previous one was skipped entirely. On a
@@ -44,8 +46,17 @@ export function useGiftNotification({ notice, voice, speech }: Options): void {
   const lastToastAt = useRef<number | null>(null)
 
   useRoomEvents((event: SidecarEvent) => {
-    if (event.type !== 'gift') return
-    if (!notice && !voice) return
+    if (event.type !== 'gift' && event.type !== 'follow' && event.type !== 'share') return
+    if (!notice && !giftVoice && !followVoice && !shareVoice) return
+
+    if (event.type === 'follow') {
+      if (followVoice) say(`${event.nickname.trim() || 'Someone'} followed the stream`, speech)
+      return
+    }
+    if (event.type === 'share') {
+      if (shareVoice) say(`${event.nickname.trim() || 'Someone'} shared the stream`, speech)
+      return
+    }
 
     const now = Date.now()
     const count = event.count ?? 1
@@ -60,14 +71,14 @@ export function useGiftNotification({ notice, voice, speech }: Options): void {
       })
     }
 
-    if (voice) {
+    if (giftVoice) {
       // Ordinary: waits behind whatever chat sentence is still being read, and is
       // dropped by `voice.ts`'s own gap if one just finished. A gift announcement
       // that cuts off the reader mid-sentence is worse than one that arrives a
       // beat later — the chat is what the voice is primarily for.
-      say(giftAnnouncement(event.nickname, event.giftName, count, diamonds), speech)
+      say(giftAnnouncement(event.nickname, event.giftName, count), speech)
     }
-  }, [notice, voice, speech.pace, speech.language, speech.volume])
+  }, [notice, giftVoice, followVoice, shareVoice, speech.pace, speech.language, speech.volume])
 
   // Silence forgets when the last toast was, so turning it back on does not wait
   // out a gap that started while it was off. The voice is stopped too, but only
@@ -77,6 +88,6 @@ export function useGiftNotification({ notice, voice, speech }: Options): void {
     if (!notice) lastToastAt.current = null
   }, [notice])
   useEffect(() => {
-    if (!voice) hush()
-  }, [voice])
+    if (!giftVoice && !followVoice && !shareVoice) hush()
+  }, [giftVoice, followVoice, shareVoice])
 }

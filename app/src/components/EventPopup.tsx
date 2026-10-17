@@ -6,36 +6,85 @@ import { AnimatedListItem } from './ui/animated-list'
 import { Confetti, type ConfettiRef } from './ui/confetti'
 import { TextAnimate } from './ui/text-animate'
 
-const POPUP_DURATION_MS = 3_000
-
 /**
  * How many events may wait behind the one on screen.
  *
- * One popup shows for three seconds, so a burst arrives faster than it can be
+ * One popup shows for a few seconds, so a burst arrives faster than it can be
  * displayed — a gift train is exactly that. Unbounded, the queue grows without
  * limit and the backlog is not just late, it is *stale*: a toast about a gift from
  * two minutes ago, shown over a stream that has moved on. The cost is not only the
  * wait, either; every queued event holds its frame alive, and a busy room can
  * produce thousands.
  *
- * Twelve is a little over half a minute of backlog, which is the point past which a
- * popup stops being news. Past that the newest events win, because the reason to
+ * Twelve events bound the backlog. Past that the newest events win, because the reason to
  * show a gift at all is that it just happened.
  */
 const MAX_QUEUED_POPUPS = 12
 
+const POPUP_SIZE_CLASSES = {
+  small: 'w-[min(300px,calc(100vw_-_32px))]',
+  medium: 'w-[min(360px,calc(100vw_-_32px))]',
+  large: 'w-[min(460px,calc(100vw_-_32px))]',
+} as const
+
+const PROGRESS_DURATION_CLASSES: Record<number, string> = {
+  1000: 'duration-[1000ms]', 2000: 'duration-[2000ms]', 3000: 'duration-[3000ms]',
+  4000: 'duration-[4000ms]', 5000: 'duration-[5000ms]', 6000: 'duration-[6000ms]',
+  7000: 'duration-[7000ms]', 8000: 'duration-[8000ms]', 9000: 'duration-[9000ms]',
+  10000: 'duration-[10000ms]',
+}
+
+const POPUP_TONE_CLASSES = {
+  gift: {
+    card: '[&[data-event-type=gift]]:[border-color:color-mix(in_srgb,var(--gold)_55%,transparent)]',
+    eyebrow: 'text-app-gold',
+    progress: '[&_span]:bg-app-gold',
+  },
+  follow: {
+    card: '[&[data-event-type=follow]]:[border-color:color-mix(in_srgb,var(--follow)_58%,transparent)] [&[data-event-type=follow]]:[box-shadow:0_10px_32px_rgba(0,0,0,0.42),0_0_24px_color-mix(in_srgb,var(--follow)_12%,transparent)]',
+    eyebrow: 'text-app-follow',
+    progress: '[&_span]:bg-app-follow',
+  },
+  share: {
+    card: '[&[data-event-type=share]]:[border-color:color-mix(in_srgb,var(--share)_58%,transparent)] [&[data-event-type=share]]:[box-shadow:0_10px_32px_rgba(0,0,0,0.42),0_0_24px_color-mix(in_srgb,var(--share)_12%,transparent)]',
+    eyebrow: 'text-app-share',
+    progress: '[&_span]:bg-app-share',
+  },
+} as const
+
 type PopupEvent = Extract<SidecarEvent, { type: 'gift' | 'follow' | 'share' }>
+
+function GiftPopupProgress({ durationMs, className }: { durationMs: number; className: string }) {
+  const [started, setStarted] = useState(false)
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => setStarted(true))
+    return () => window.cancelAnimationFrame(frame)
+  }, [])
+
+  return (
+    <div className={`gift-popup-progress h-[3px] w-full overflow-hidden rounded-full bg-app-line [&_span]:bg-app-gold ${className}`} aria-hidden="true">
+      <span
+        className={`block h-full w-full origin-left transition-[transform] ease-linear ${PROGRESS_DURATION_CLASSES[durationMs] ?? 'duration-[3000ms]'} ${started ? '[transform:scaleX(0)]' : '[transform:scaleX(1)]'}`}
+      />
+    </div>
+  )
+}
 
 interface Props {
   enabled: { gift: boolean; follow: boolean; share: boolean }
+  giftDurationSeconds: number
+  giftSize: 'small' | 'medium' | 'large'
+  giftPosition: 'center' | 'top' | 'bottom'
 }
 
 /** A brief queued toast for gifts, follows and shares. */
-export function EventPopup({ enabled }: Props) {
+export function EventPopup({ enabled, giftDurationSeconds, giftSize, giftPosition }: Props) {
   const [activeEvent, setActiveEvent] = useState<PopupEvent | null>(null)
   const [eventQueue, setEventQueue] = useState<PopupEvent[]>([])
   const confettiRef = useRef<ConfettiRef>(null)
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const popupDurationMs = activeEvent?.type === 'gift' ? giftDurationSeconds * 1000 : 3_000
 
   useRoomEvents((event) => {
     if (event.type !== 'gift' && event.type !== 'follow' && event.type !== 'share') return
@@ -85,12 +134,12 @@ export function EventPopup({ enabled }: Props) {
     dismissTimer.current = setTimeout(() => {
       dismissTimer.current = null
       setActiveEvent(null)
-    }, POPUP_DURATION_MS)
+    }, popupDurationMs)
     return () => {
       if (dismissTimer.current) clearTimeout(dismissTimer.current)
       dismissTimer.current = null
     }
-  }, [activeEvent])
+  }, [activeEvent, popupDurationMs])
 
   const title = activeEvent?.type === 'gift'
     ? 'Gift received'
@@ -98,14 +147,16 @@ export function EventPopup({ enabled }: Props) {
       ? 'New follower'
       : 'Stream shared'
   const message = activeEvent?.type === 'gift'
-    ? `${activeEvent.nickname || 'Someone'} sent ${activeEvent.giftName || 'a gift'}`
+    ? `${activeEvent.nickname || 'Someone'} ${activeEvent.giftName
+      ? `sent ${activeEvent.count ?? 1} ${activeEvent.giftName}`
+      : 'sent a gift'}`
     : activeEvent?.type === 'follow'
       ? `${activeEvent.nickname || 'Someone'} followed the stream`
       : activeEvent?.type === 'share'
         ? `${activeEvent.nickname || 'Someone'} shared the stream`
         : ''
   const detail = activeEvent?.type === 'gift'
-    ? `x${activeEvent.count ?? 1}${(activeEvent.diamonds ?? 0) > 0 ? ` · ${activeEvent.diamonds} diamonds` : ''}`
+    ? ''
     : activeEvent?.type === 'follow'
       ? 'Thanks for following!'
       : activeEvent?.type === 'share'
@@ -114,27 +165,38 @@ export function EventPopup({ enabled }: Props) {
   const image = activeEvent?.type === 'gift'
     ? activeEvent.giftImage || activeEvent.avatar
     : activeEvent?.avatar
-  const popupDuration = `${POPUP_DURATION_MS}ms`
+  const popupSize = activeEvent?.type === 'gift' ? giftSize : 'medium'
+  const popupPosition = activeEvent?.type === 'gift' ? giftPosition : 'center'
+  const popupPositionClasses = popupPosition === 'top'
+    ? '[place-items:start_center] [padding:24px_16px_0]'
+    : popupPosition === 'bottom'
+      ? '[place-items:end_center] [padding:0_16px_84px]'
+      : '[place-items:center]'
 
   return (
     <>
-      <Confetti ref={confettiRef} manualstart className="gift-confetti-canvas" />
-      <div className="gift-popup-layer" aria-live="polite" aria-atomic="true">
+      <Confetti ref={confettiRef} manualstart className="gift-confetti-canvas [position:fixed] [z-index:31] [inset:0] [width:100vw] [height:100vh] [pointer-events:none]" />
+      <div
+        className={`gift-popup-layer [position:fixed] [z-index:30] [inset:0] [display:grid] [pointer-events:none] ${popupPositionClasses}`}
+        data-position={popupPosition}
+        aria-live="polite"
+        aria-atomic="true"
+      >
         <AnimatePresence>
           {activeEvent && (
             <AnimatedListItem
               key={`${activeEvent.type}-${activeEvent.timestamp}-${activeEvent.id}`}
-              className="gift-popup-motion"
+              className={`gift-popup-motion ${POPUP_SIZE_CLASSES[popupSize]}`}
             >
-              <div className={`gift-popup-card event-popup-${activeEvent.type}`}>
-                <div className="gift-popup-content">
+              <div className={`gift-popup-card [display:flex] [flex-direction:column] [gap:10px] [padding:14px_16px_10px] [border:1px_solid_var(--accent-soft)] [border-radius:14px] [background:var(--panel)] [color:var(--text)] [box-shadow:0_10px_32px_rgba(0,_0,_0,_0.42)] ${POPUP_TONE_CLASSES[activeEvent.type].card}`} data-event-type={activeEvent.type}>
+                <div className="gift-popup-content [display:flex] [align-items:center] [gap:12px] [width:100%]">
                   {image && (
-                    <img className="gift-popup-image" src={image} alt="" />
+                    <img className="gift-popup-image [width:52px] [height:52px] [object-fit:contain] [flex:0_0_auto]" src={image} alt="" />
                   )}
-                  <div className="gift-popup-copy">
+                  <div className="gift-popup-copy [display:flex] [min-width:0] [flex-direction:column] [line-height:1.35]">
                     <TextAnimate
                       as="span"
-                      className="gift-popup-eyebrow"
+                      className={`gift-popup-eyebrow [font-size:11px] [font-weight:700] [letter-spacing:0.08em] [text-transform:uppercase] ${POPUP_TONE_CLASSES[activeEvent.type].eyebrow}`}
                       animation="fadeIn"
                       by="word"
                       duration={0.28}
@@ -142,13 +204,15 @@ export function EventPopup({ enabled }: Props) {
                     >
                       {title}
                     </TextAnimate>
-                    <div className="gift-popup-message">{message}</div>
-                    <span className="gift-popup-detail">{detail}</span>
+                    <div className="gift-popup-message [font-weight:700] [overflow-wrap:anywhere] [white-space:normal]">{message}</div>
+                    {detail && <span className="gift-popup-detail [color:var(--muted)] [font-size:12px]">{detail}</span>}
                   </div>
                 </div>
-                <div className="gift-popup-progress" aria-hidden="true">
-                  <span style={{ animationDuration: popupDuration }} />
-                </div>
+                <GiftPopupProgress
+                  key={`${activeEvent.type}-${activeEvent.timestamp}-${activeEvent.id}`}
+                  durationMs={popupDurationMs}
+                  className={POPUP_TONE_CLASSES[activeEvent.type].progress}
+                />
               </div>
             </AnimatedListItem>
           )}

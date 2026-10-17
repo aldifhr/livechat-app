@@ -18,9 +18,8 @@ import type { ReactNode } from 'react'
  * `defaultOpen` keeps the group people return to — Look — in the
  * state most useful on open, while the rarely-touched ones stay shut.
  *
- * The `<summary>` has to stay an immediate child of the `<details>`: the chevron
- * animation in styles.css is `.settings-section[open] > .settings-heading`, so
- * wrapping the summary in anything stops it turning.
+ * The `<summary>` has to stay an immediate child of the `<details>` so the
+ * Tailwind open-state variant can rotate its chevron.
  */
 export function Section({
   title,
@@ -35,9 +34,11 @@ export function Section({
   children: ReactNode
 }) {
   return (
-    <details className="settings-section" data-section={section} open={defaultOpen}>
-      <summary className="settings-heading">{title}</summary>
-      <div className="settings-body">{children}</div>
+    <details className="settings-section mx-auto flex w-full max-w-[900px] flex-col gap-2.5 border-t border-app-line pt-1 [&[open]_>_.settings-heading::before]:[transform:rotate(90deg)]" data-section={section} open={defaultOpen}>
+      <summary className="settings-heading mt-1 flex cursor-pointer list-none items-center gap-1.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-app-muted hover:text-app-text [&::-webkit-details-marker]:[display:none] [&::before]:[content:'▸'] [&::before]:[font-size:9px] [&::before]:[transition:transform_0.15s_ease]">
+        {title}
+      </summary>
+      <div className="settings-body flex flex-col gap-2.5 pt-1">{children}</div>
     </details>
   )
 }

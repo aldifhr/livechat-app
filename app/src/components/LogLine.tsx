@@ -20,10 +20,10 @@ function clock(timestamp: number): string {
 
 function FeedRowImpl({ entry }: { entry: LogEntry }) {
   return (
-    <div className={`log-line log-${entry.level}`}>
-      <span className="log-time">{clock(entry.at)}</span>
-      <span className="log-level">{entry.level}</span>
-      <span className="log-message">{entry.message}</span>
+    <div className={`log-line log-${entry.level} [display:flex] [gap:9px] [padding:2px_0] [line-height:1.45] [&.log-warn_.log-level]:[color:var(--gold)] [&.log-error_.log-level]:[color:var(--accent)]`}>
+      <span className="log-time [flex:0_0_auto] [color:var(--muted)] [font-variant-numeric:tabular-nums]">{clock(entry.at)}</span>
+      <span className="log-level [flex:0_0_auto] [width:42px] [text-transform:uppercase] [font-size:10px] [letter-spacing:0.04em] [padding-top:1px] [color:var(--muted)]">{entry.level}</span>
+      <span className="log-message [min-width:0] [overflow-wrap:anywhere] [color:var(--text)]">{entry.message}</span>
     </div>
   )
 }
