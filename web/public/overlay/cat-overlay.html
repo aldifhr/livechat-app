@@ -14,8 +14,7 @@ button,select{font:inherit;color:var(--ink);background:var(--bg);border:3px soli
 button:hover,button.on{background:var(--acc);color:#2b1f2d}
 .clean #ui,.hide #ui,.clean #tip{display:none}
 #tip{width:100%;text-align:center;opacity:.7;font-weight:600;font-size:12px}
-#bub{position:fixed;display:none;background:#fff;color:#2b1f2d;font:800 18px "Courier New",monospace;padding:8px 14px;white-space:nowrap;pointer-events:none;box-shadow:0 -4px 0 #2b1f2d,0 4px 0 #2b1f2d,-4px 0 0 #2b1f2d,4px 0 0 #2b1f2d;max-width:80vw;overflow:hidden;text-overflow:ellipsis}
-#bub::after{content:"";position:absolute;left:calc(var(--tx,50%) - 4px);bottom:-8px;width:8px;height:8px;background:#fff;box-shadow:-4px 0 0 #2b1f2d,4px 0 0 #2b1f2d,0 4px 0 #2b1f2d}
+
 #chat{position:fixed;left:0;right:0;bottom:0;pointer-events:none;z-index:10}
 #chat .msg{max-width:60vw;margin:4px auto;padding:6px 14px;background:rgba(0,0,0,.75);color:#fff;border-radius:999px;font:600 14px/1.3 "Segoe UI",system-ui,sans-serif;text-align:center;opacity:0;transform:translateY(8px);transition:opacity .3s,transform .3s}
 #chat .msg.show{opacity:1;transform:translateY(0)}
@@ -137,7 +136,7 @@ wash:{d:[3,4],T:{sit:1,wash:1},say:['jilat2','mandi kucing','bersih2']},
 knead:{d:[3,5],T:{knead:1},say:['biscuit time 🍞','uwu','ulen2 ulen2']}}
 const WT=[['walk',5],['sit',2],['sleep',1.5],['roll',2],['zoom',1.5],['flop',1.5],['vibe',1.5],['stare',1.5],['jump',1.5],['yawn',1],['wash',1.5],['knead',1.2],['idle',1]]
 const C={x:100,dir:1,mode:'idle',t:0,tm:2,vx:0,roll:0,jy:0,jv:0,ph:0,boop:0,land:0,ef:0,earT:2,es:1,jd:1,blink:3,bt:0,pt:0,P:{amp:0,sit:0,loaf:0,ball:0,tuck:0,gl:0,fl:0,wash:0,knead:0}},B={t:0},pts=[]
-function say(t){bub.textContent=t;B.t=2.4}
+function say(t){/* speech bubble removed */}
 function setMode(n){const m=M[n];C.mode=n;C.t=0;C.tm=(!auto&&!m.once)?1e9:rnd(m.d[0],m.d[1])
 if(m.v)C.dir=C.x<w*.2?1:C.x>w*.8?-1:(Math.random()<.5?1:-1)
 C.jd=n!=='jump';if(m.say&&Math.random()<.9)say(pick(m.say))}
@@ -242,7 +241,8 @@ const sw=Math.round(28*(1-Math.min(.6,c.jy/60)));g.fillStyle='rgba(0,0,0,.25)';g
 if(c.mode==='zoom'&&Math.abs(c.vx)>40)for(let i=0;i<4;i++)R(cx-c.dir*(16+i*5)-(c.dir>0?14:0),GY-8-i*8,14,1,'rgba(120,110,130,.6)')
 const src=sprite();g.save();g.translate(cx,GY-jy);g.scale(c.dir,1);g.drawImage(src,-48,-87);g.restore()
 X=g;for(const p of pts){const a=p.l/p.L;if(p.t==='puff')R(p.x,p.y,Math.max(1,Math.round(p.sz*(1.4-a))),Math.max(1,Math.round(p.sz*(1.4-a))),'#d9d2c7');else{if(a<.25&&Math.floor(TT*20)%2)continue;const s=SP[p.t];spr(s[0],Math.round(p.x),Math.round(p.y),s[1])}}
-if(B.t>0){bub.style.display='block';const bw=bub.offsetWidth,bh=bub.offsetHeight,left=cl(cx*PS-bw/2,10,W-bw-10);bub.style.left=left+'px';bub.style.top=Math.max(8,(GY-64-jy)*PS-bh-14)+'px';bub.style.setProperty('--tx',cl(cx*PS-left,14,bw-14)+'px')}else bub.style.display='none'}
+// speech bubble removed — no B.t display logic
+}
 let last=performance.now();function loop(n){const dt=Math.min(.05,(n-last)/1000);last=n;upd(dt);render();requestAnimationFrame(loop)}
 cv.addEventListener('pointermove',e=>{mx=e.clientX;my=e.clientY})
 cv.addEventListener('pointerdown',e=>{mx=e.clientX;my=e.clientY;if(Math.hypot(e.clientX/PS-C.x,e.clientY/PS-(GY-24))<30)boop()})
