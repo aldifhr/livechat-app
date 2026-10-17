@@ -121,14 +121,20 @@ const PAL={
   hitam:{s:'#191622',lo:'#262438',d:'#393352',b:'#544a75',hi:'#a394d4',belly:'#a49bbf',ear:'#e46a8c'},
   putih:{s:'#d99a5c',lo:'#d8c3a4',d:'#e8d9c0',b:'#f6eddc',hi:'#ffffe0',belly:'#ffffff',ear:'#f7a3ae'},
 }
-// 4x4 ordered dither, indexed y*4+x. Not the pattern that matters — the banding it
-// breaks up. Three flat bands with hard edges read as vector shapes; the same three
-// bands with an ordered threshold scattering pixels across each boundary read as a
-// limited-palette machine, which is the whole look.
+// 4x4 ordered dither, indexed y*4+x. Not the pattern that matters — where it is applied
+// that does. Quantise into thirds and let the threshold decide which side of a boundary a
+// pixel falls on, so the checkerboard appears only in the two thin bands straddling each
+// edge and the middle of each region stays solid.
+//
+// The first attempt added the threshold to the lighting value as a perturbation, with
+// hard edges at 0.34 and 0.70. The threshold spans 0..1 and the lighting value spans
+// 0..1, so it was not a perturbation at all — it dominated the input, and the result was
+// 6% highlight, 19% mid, 76% shadow: a dark speckled mass where a lit body should be.
+// Quantising rather than perturbing gives 33/33/33 and dithers only the edges.
 const BAYER=[0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5]
 const R=(x,y,a,c2,col)=>{if(a<=0||c2<=0)return;X.fillStyle=col;X.fillRect(Math.round(x),Math.round(y),Math.round(a),Math.round(c2))}
-// `sh` is a palette: with one, the ellipse is lit from the upper left and banded into
-// that palette's own highlight / body / shadow. Without one it stays a flat fill, which
+// `sh` is a palette: with one, the ellipse is lit from the upper left and quantised into
+// that palette's highlight / body / shadow. Without one it stays a flat fill, which
 // is what the small shapes — muzzle, cheek, bubble — still want.
 function E(cx,cy,rx,ry,col,o,sh){
   cx=Math.round(cx);cy=Math.round(cy)
@@ -137,9 +143,12 @@ function E(cx,cy,rx,ry,col,o,sh){
     const t=y/Math.max(ry,.5),hw=Math.round(rx*Math.sqrt(Math.max(0,1-t*t)))
     if(!sh){R(cx-hw,cy+y,hw*2+1,1,col);continue}
     for(let x=-hw;x<=hw;x++){
+      // 0 at the lit upper-left edge, 1 at the shaded lower-right one.
       const d=cl((x/Math.max(rx,.5)+y/Math.max(ry,.5))*.5+.5,0,1)
-      const n=(BAYER[(((cy+y)&3)<<2)|((cx+x)&3)]+.5)/16
-      R(cx+x,cy+y,1,1,d+n<.34?sh.hi:d+n<.70?sh.b:sh.lo)
+      // Centred so the middle tone owns the middle of the ellipse, and the threshold only
+      // moves a pixel across the boundary it is already sitting on.
+      const q=d*3-.5,i=Math.floor(q),up=(BAYER[(((cy+y)&3)<<2)|((cx+x)&3)]+.5)/16<q-i?1:0
+      R(cx+x,cy+y,1,1,[sh.hi,sh.b,sh.lo][cl(i+up,0,2)])
     }
   }
 }
@@ -224,13 +233,13 @@ const v=jumping&&c.jph===0?0:(m.v||0)
 // keeps momentum bleeding off for a fifth of a second with dust under the feet.
 const turning=c.turn>0
 c.vx+=(v*c.dir-c.vx)*Math.min(1,dt*(turning?2.2:6))
-if(turning){c.turn-=dt;if(Math.random()<dt*45)em('puff',c.x+rnd(-6,6),GY-rnd(1,5),rnd(-26,26),rnd(-26,-4),rnd(.22,.4),rnd(2,4))}
+if(turning){c.turn-=dt;if(Math.random()<dt*45)em('puff',c.x+rnd(-6,6),GY-rnd(1,5),rnd(-26,26),rnd(-26,-4),rnd(.22,.4),rnd(1,3))}
 c.x+=c.vx*dt
 const lim=w-30
 if(c.x<30||c.x>lim){
   const side=c.x<30?1:-1
   c.x=cl(c.x,30,lim)
-  if(c.dir!==side&&c.turn<=0){c.turn=.26;c.wall=side;for(let i=0;i<5;i++)em('puff',c.x+rnd(-8,8),GY-rnd(1,4),-side*rnd(14,50),rnd(-26,-4),rnd(.24,.45),rnd(2,4))}
+  if(c.dir!==side&&c.turn<=0){c.turn=.26;c.wall=side;for(let i=0;i<5;i++)em('puff',c.x+rnd(-8,8),GY-rnd(1,4),-side*rnd(14,50),rnd(-26,-4),rnd(.24,.45),rnd(1,3))}
   c.dir=side
 }
 c.lean+=(cl(c.vx/90,-1,1)*.42-c.lean)*Math.min(1,dt*7)
@@ -247,7 +256,7 @@ if(c.jy>0||c.jv>0){c.jv-=GRAV*dt;c.jy+=c.jv*dt;if(c.jy<=0){
   const hard=cl(-c.jv/150,0,1)
   c.jy=0;c.jv=0;c.jph=2
   c.land0=.42*hard+.05;c.landT=.42
-  for(let i=0;i<2+hard*6|0;i++)em('puff',c.x+rnd(-12,12),GY-rnd(1,3),rnd(-26,26)*(1+hard),rnd(-14,-2),rnd(.28,.5),rnd(2,4))
+  for(let i=0;i<2+hard*6|0;i++)em('puff',c.x+rnd(-12,12),GY-rnd(1,3),rnd(-26,26)*(1+hard),rnd(-14,-2),rnd(.28,.5),rnd(1,3))
 }}
 // Ease-out, not linear: squash that decays at a constant rate reads as a mechanism
 // resetting rather than a body springing back.
@@ -260,9 +269,9 @@ c.blink-=dt;if(c.blink<0){c.bt=.15;c.blink=rnd(2,5)}c.bt=Math.max(0,c.bt-dt)
 c.pt-=dt;if(c.pt<=0){const hx=c.x+c.dir*4,hy=backY(),n=c.mode
 if(n==='sleep'){em('z',hx+8,hy,3,-9,2);c.pt=1}
 else if(n==='vibe'){em('note',hx,hy-4,rnd(-8,8),-12,1.4);c.pt=.45}
-else if(n==='zoom'){em('puff',c.x-c.dir*14,GY-3,-c.dir*15,-2,.5,4);c.pt=.05}
-else if(n==='roll'){em('puff',c.x,GY-2,-c.dir*8,-3,.5,3);c.pt=.12}
-else if(n==='walk'){em('puff',c.x-c.dir*10,GY-1,-c.dir*4,-2,.45,2);c.pt=.3}
+else if(n==='zoom'){em('puff',c.x-c.dir*14,GY-3,-c.dir*15,-2,.4,2);c.pt=.05}
+else if(n==='roll'){em('puff',c.x,GY-2,-c.dir*8,-3,.4,2);c.pt=.12}
+else if(n==='walk'){em('puff',c.x-c.dir*10,GY-1,-c.dir*4,-2,.35,1);c.pt=.3}
 else if(n==='dizzy'){em('star',hx+rnd(-8,8),hy-6,rnd(-6,6),-5,1);c.pt=.25}
 else if(n==='knead'||n==='wash'){em('heart',hx+rnd(-8,8),hy-4,rnd(-4,4),-12,1.2);c.pt=.7}
 else c.pt=.2}
@@ -413,7 +422,15 @@ X=g
 // the last quarter of every heart's life blinked in and out together, and a dozen
 // simultaneous hearts blinked as one object.
 for(const p of pts){const a=p.l/p.L
-if(p.t==='puff'){const s=Math.max(1,Math.round(p.sz*(1.4-a)));R(p.x,p.y,s,s,'#d9d2c7')}
+if(p.t==='puff'){
+  // Dust fades by going transparent, not by shrinking. Growing it to 1.4x its spawn size
+  // made a 4px puff a 6px block, and a 6px block at PS=10 is a 60px slab of flat tan
+  // hanging beside the cat. Spawn sizes are 1-3 now; here it only ever loses a pixel at
+  // the very end of its life.
+  const s=Math.max(1,p.sz-(a>.7?1:0))
+  const al=cl(a,0,1)*150
+  if(al>0)R(p.x,p.y,s,s,'rgba(150,140,126,'+(al/255).toFixed(3)+')')
+}
 else{if(a<.25&&Math.floor(a*20)%2)continue
 const s=SP[p.t];spr(s[0],Math.round(p.x),Math.round(p.y),s[1])}}
 // speech bubble removed — no B.t display logic
