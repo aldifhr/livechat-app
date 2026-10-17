@@ -136,6 +136,17 @@ async def chat_overlay(request: Request) -> HTMLResponse:
     return await render_overlay("overlay.html", request)
 
 
+@router.get("/overlay/cat-overlay", response_class=HTMLResponse, include_in_schema=False)
+@router.get("/overlay/cat-overlay/", response_class=HTMLResponse, include_in_schema=False)
+async def cat_overlay(request: Request) -> HTMLResponse:
+    """Serve the pixel-cat overlay with live chat bubbles.
+
+    Same `?room=` query param as the other overlays. The cat walks, sits,
+    sleeps, zooms — and chat messages appear as speech bubbles above it.
+    """
+    return await render_overlay("cat-overlay.html", request)
+
+
 @router.get("/topchatter/", response_class=HTMLResponse, include_in_schema=False)
 @router.get("/topchatter", response_class=HTMLResponse, include_in_schema=False)
 @router.get("/overlay/top-chatter", response_class=HTMLResponse, include_in_schema=False)

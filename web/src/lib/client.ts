@@ -183,6 +183,7 @@ export const api = {
     return url.toString()
   },
   topChatterOverlay: (id: string) => overlayUrl('/overlay/top-chatter', id),
+  catOverlay: (id: string) => overlayUrl('/overlay/cat-overlay', id),
 
   /**
    * The backend's recent log records.
