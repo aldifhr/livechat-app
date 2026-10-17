@@ -124,14 +124,18 @@ const OL='#2b1f2d',lerp=(a,b,t)=>a+(b-a)*t,rnd=(a,b)=>a+Math.random()*(b-a),pick
 const PAL={
   oren :{s:'#7a3410',lo:'#b8571a',d:'#cd6a22',b:'#e8813a',hi:'#ffc169',belly:'#fadfae',ear:'#f4737f',paw:'#f0c98d'},
   abu  :{s:'#333d4d',lo:'#59647a',d:'#6f7b93',b:'#8490a8',hi:'#c9d6e8',belly:'#e9eef6',ear:'#f2909f',paw:'#c6d1e0'},
-  // An actual black cat. The previous "hitam" had a body at value 46% — a mid grey with a
-  // violet cast, which is why it never read as black however the shading was tuned. Value
-  // is nearly useless on a black cat; there is none of it to spend. So the form comes from
-  // hue. The shadow sits at hue 264 (violet) and the rim light at hue 233 (blue), 31
-  // degrees apart, with saturation rising into the highlight — moonlight on black fur,
-  // which is the reason a black cat reads as a black cat and not as a hole in the frame.
-  // The outline stays the darkest thing in it so the silhouette holds.
-  hitam:{s:'#171225',lo:'#241a33',d:'#2f2745',b:'#3d3358',hi:'#5f6ddb',belly:'#574d7d',paw:'#463c68',ear:'#d1567f'},
+  // Black. The body sits at value 26% and the whole ramp spans 51 points of value, because
+  // that is how much value a black cat has: almost none. The previous two attempts both
+  // got this wrong in opposite directions - a value-46% body with a value-46% highlight
+  // never read as black at all, and a 57%-saturation blue rim at 19% of the sprite read as
+  // a blue cat, because blue outweighs its own value by a long way and the eye weighs hue
+  // before it weighs brightness.
+  //
+  // So: small value range, and a highlight that is desaturated (35%) and pale enough to
+  // read as light rather than as a colour. The hue shift is still there - shadow at 253,
+  // rim at 227 - but it is carried by a thin rim rather than by large fields, which is what
+  // moonlight on black fur actually looks like.
+  hitam:{s:'#0f0d16',lo:'#191527',d:'#221d33',b:'#2c2542',hi:'#6e7ba8',belly:'#3a3255',paw:'#332c4b',ear:'#c04a72'},
   putih:{s:'#d99a5c',lo:'#d0b894',d:'#e2d2b6',b:'#f6eddc',hi:'#ffffe0',belly:'#ffffff',ear:'#f7a3ae',paw:'#ecdfc6'},
 }
 // 4x4 ordered dither, indexed y*4+x. Not the pattern that matters — where it is applied,
@@ -366,7 +370,7 @@ function headS(x,y,st,open,sq,sleepy,ef){const p=PAL[pal],P=C.P,hs=(chonk?1.1:1)
 const lx=cl(Math.round((mx/PS-C.x)*C.dir/30),-2,2),fk=C.ef>0?Math.sin(C.ef*40)*1.2:0,eh=Math.round((8-ef*3)*lerp(1,.5,P.ball)),xo=Math.round(rx*.55)
 for(const s of[-1,1]){const sl=s*(1+ef*3)+(C.ef>0&&C.es===s?fk:0),ex=x+s*xo;tri(ex,y-ry+3,eh,Math.round(9*hs),sl,OL,1);tri(ex,y-ry+3,eh,Math.round(9*hs),sl,p.b,0);tri(ex,y-ry+3,Math.max(2,eh-3),Math.round(5*hs),sl*.7,p.ear,0)}
 R(x-rx-3,y+2,4,4,OL);R(x-rx-2,y+3,3,2,p.b);R(x+rx,y+2,4,4,OL);R(x+rx,y+3,3,2,p.b)
-E(x,y,rx,ry,p.b,1,p,.58);R(x-8,y-ry+2,5,1,lt);R(x-10,y-ry+3,3,1,lt);R(x-11,y-ry+4,2,1,lt)
+E(x,y,rx,ry,p.b,1,p,.45);R(x-8,y-ry+2,5,1,lt);R(x-10,y-ry+3,3,1,lt);R(x-11,y-ry+4,2,1,lt)
 for(const d of[-4,0,4])R(x+d,y-ry+1,1,d?3:4,p.s)
 E(x+lx,y+4,5,3,p.belly);R(x-12,y+3,3,2,'#ff9ab5');R(x+9,y+3,3,2,'#ff9ab5')
 const sty=C.bt>0&&!SHUT[st]?'blink':st;eye(x+lx-7,y,sty,p);eye(x+lx+7,y,sty,p)
@@ -413,7 +417,7 @@ curl=lerp(curl,-.34,P.ball)
 const A=(.25+.35*P.amp+hap+pw*.5)*(1-cu*.6),fr=2.5+P.amp*3+hap*4+pw*6,tb=[cx-rx+2,cy-1]
 if(!top)tail(tb[0],tb[1],th0,curl,A,fr,p,P.ball)
 if(P.ball<.6){leg(bh+4,hy,bF,p.d,p);leg(fh-4,hy,fF,p.d,p)}
-E(cx,cy,rx,ry,p.b,1,p);R(cx-Math.round(rx*.4),cy-ry+1,Math.round(rx*.5),1,p.hi)
+E(cx,cy,rx,ry,p.b,1,p,.7);R(cx-Math.round(rx*.4),cy-ry+1,Math.round(rx*.5),1,p.hi)
 E(cx+1,cy+Math.round(ry*.55),Math.round(rx*.6),Math.max(1,Math.round(ry*.4)),p.belly)
 for(const i of[-2,-1,0,1]){const dx=i*5+1,top_=cy-Math.round(ry*Math.sqrt(Math.max(0,1-(dx/rx)**2)));R(cx+dx,top_+1,2,3,p.s)}
 E(cx-Math.round(rx*.45),cy+Math.round(ry*.15),Math.round(rx*.35),Math.max(1,Math.round(ry*.6)),p.d,1)
