@@ -57,6 +57,7 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
   const [rulesCopied, setRulesCopied] = useState(false)
   const [snapshotUrl, setSnapshotUrl] = useState('')
   const [snapshotMessage, setSnapshotMessage] = useState('')
+  const [downloadMessage, setDownloadMessage] = useState('')
   const [publishingSnapshot, setPublishingSnapshot] = useState(false)
   const [announcedWinnerId, setAnnouncedWinnerId] = useState<string | null>(null)
   const [status, setStatus] = useState<GiveawayStatus>('idle')
@@ -318,13 +319,24 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
   }
 
   function downloadAuditReport() {
-    const report = buildAuditReport()
-    const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' }))
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `giveaway-audit-${closedAt ? closedAt.replace(/[:.]/g, '-') : 'report'}.json`
-    link.click()
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    let url = ''
+    const fileName = `giveaway-audit-${closedAt ? closedAt.replace(/[:.]/g, '-') : 'report'}.json`
+    try {
+      const report = buildAuditReport()
+      url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = fileName
+      link.style.display = 'none'
+      document.body.append(link)
+      link.click()
+      link.remove()
+      setDownloadMessage(`Download started: ${fileName}. Check your Downloads folder.`)
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (error) {
+      if (url) URL.revokeObjectURL(url)
+      setDownloadMessage(error instanceof Error ? `Download failed: ${error.message}` : 'Download failed. Please try again.')
+    }
   }
 
   async function publishWebSnapshot() {
@@ -342,7 +354,10 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
     setPublishingSnapshot(true)
     setSnapshotMessage('Publishing snapshot…')
     try {
-      const response = await fetch(`${GIVEAWAY_WEB_ORIGIN}/api/giveaways/snapshots`, {
+      const snapshotEndpoint = import.meta.env.DEV
+        ? '/api/giveaways/snapshots'
+        : `${GIVEAWAY_WEB_ORIGIN}/api/giveaways/snapshots`
+      const response = await fetch(snapshotEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ report: buildAuditReport() }),
@@ -449,7 +464,7 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
         {status === 'idle' && !connected && !testMode && <p className="m-0 text-xs text-app-muted">Connect to a live room before starting the countdown.</p>}
         {status === 'open' && <p className="m-0 text-xs text-app-muted">Include <strong className="text-app-text">{entryKeyword}</strong> in a chat message and follow the stream before time runs out to enter.</p>}
         {status === 'review' && <p className="m-0 text-xs text-app-muted">Entries are paused. Review the list below and remove invalid entries before the 15-second review period ends.</p>}
-        {status === 'closed' && <div className="flex flex-col gap-3"><div className="flex flex-wrap items-center justify-between gap-3"><p className="m-0 text-xs text-app-muted">Entries are locked. Winners will not repeat. {isTestRun && <strong className="text-amber-400">TEST RUN — fictional participants</strong>}</p><div className="flex flex-wrap gap-2"><button className="btn rounded-lg border border-app-line px-3 py-2 text-xs" type="button" onClick={downloadAuditReport}>Download JSON</button><button className="btn rounded-lg border border-app-line px-3 py-2 text-xs disabled:opacity-50" type="button" onClick={publishWebSnapshot} disabled={publishingSnapshot || !canPublishSnapshot}>{publishingSnapshot ? 'Publishing…' : snapshotUrl ? 'Copy web link' : canPublishSnapshot ? (isTestRun ? 'Publish test snapshot to web' : 'Publish snapshot to web') : 'Finish winner draws to publish'}</button></div></div><p className="m-0 text-[11px] text-app-muted">{isTestRun ? 'Public test snapshot; participants are fictional.' : 'Web snapshot is public and includes participant handles.'}</p>{snapshotMessage && <p className="m-0 break-all text-xs text-app-muted" aria-live="polite">{snapshotMessage}</p>}{snapshotUrl && <a className="break-all text-xs text-app-accent underline" href={snapshotUrl} target="_blank" rel="noreferrer">{snapshotUrl}</a>}</div>}
+        {status === 'closed' && <div className="flex flex-col gap-3"><div className="flex flex-wrap items-center justify-between gap-3"><p className="m-0 text-xs text-app-muted">Entries are locked. Winners will not repeat. {isTestRun && <strong className="text-amber-400">TEST RUN — fictional participants</strong>}</p><div className="flex flex-wrap gap-2"><button className="btn rounded-lg border border-app-line px-3 py-2 text-xs" type="button" onClick={downloadAuditReport}>Download JSON</button><button className="btn rounded-lg border border-app-line px-3 py-2 text-xs disabled:opacity-50" type="button" onClick={publishWebSnapshot} disabled={publishingSnapshot || !canPublishSnapshot}>{publishingSnapshot ? 'Publishing…' : snapshotUrl ? 'Copy web link' : canPublishSnapshot ? (isTestRun ? 'Publish test snapshot to web' : 'Publish snapshot to web') : 'Finish winner draws to publish'}</button></div></div>{downloadMessage && <p className={`m-0 text-xs ${downloadMessage.startsWith('Download failed:') ? 'text-rose-400' : 'text-emerald-400'}`} role="status" aria-live="polite">{downloadMessage}</p>}<p className="m-0 text-[11px] text-app-muted">{isTestRun ? 'Public test snapshot; participants are fictional.' : 'Web snapshot is public and includes participant handles.'}</p>{snapshotMessage && <p className="m-0 break-all text-xs text-app-muted" aria-live="polite">{snapshotMessage}</p>}{snapshotUrl && <a className="break-all text-xs text-app-accent underline" href={snapshotUrl} target="_blank" rel="noreferrer">{snapshotUrl}</a>}</div>}
       </section>
 
       <Confetti ref={confettiRef} manualstart className="[position:fixed] [inset:0] [z-index:60] [height:100vh] [width:100vw] [pointer-events:none]" />

@@ -23,6 +23,15 @@ export default defineConfig({
   server: {
     port: 5183,
     strictPort: true,
+    // Keep local giveaway uploads same-origin in the webview, avoiding browser
+    // CORS preflight while forwarding them to the public snapshot endpoint.
+    proxy: {
+      '/api/giveaways/snapshots': {
+        target: 'https://streamtools.aldifhr.my.id',
+        changeOrigin: true,
+        headers: { origin: 'https://tauri.localhost' },
+      },
+    },
     // target/ is cargo's, not the frontend's. Watching it meant watching tens of
     // thousands of build artifacts, and watching the .exe specifically meant
     // failing with EBUSY every time cargo held it open to link - which takes the
