@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic'
 const OVERLAYS: Record<string, string> = {
   'chat-overlay': 'chat-overlay.html',
   'cat-overlay': 'cat-overlay.html',
+  'top-chatter': 'top-chatter.html',
 }
 
 /** Serve the overlay from this web host while pointing its live socket at the backend. */

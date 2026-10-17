@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Top Chatters Overlay</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: transparent;
+  color: #fff;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+}
+#board {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  gap: 12px;
+}
+#board h2 {
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255,255,255,0.85);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+#board h2 .sub {
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: rgba(255,255,255,0.5);
+  margin-left: auto;
+}
+#list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+#list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: rgba(0,0,0,0.45);
+  border-radius: 10px;
+  min-height: 40px;
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.rank {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.6);
+  font-variant-numeric: tabular-nums;
+}
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: rgba(255,255,255,0.1);
+  flex: 0 0 auto;
+}
+.name {
+  font-weight: 600;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(255,255,255,0.9);
+  min-width: 0;
+  flex: 1;
+}
+.count {
+  margin-left: auto;
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  background: rgba(255,255,255,0.12);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255,255,255,0.8);
+}
+#empty {
+  color: rgba(255,255,255,0.4);
+  font-size: 13px;
+  text-align: center;
+  margin-top: auto;
+  margin-bottom: auto;
+}
+</style>
+</head>
+<body>
+<div id="board">
+  <h2><span>Top 10 Chatters</span><span class="sub" id="sub"></span></h2>
+  <ol id="list"></ol>
+  <div id="empty" style="display:none">No chat yet — waiting for messages…</div>
+</div>
+<script>
+const q = new URLSearchParams(location.search)
+const roomId = q.get('room') || ''
+const clean = q.has('clean')
+const root = document.documentElement
+if (clean) root.classList.add('clean')
+
+// WebSocket for live config + events
+let socket = null
+let connected = false
+let topChatters = []
+
+function connect() {
+  if (!roomId) return
+  const base = location.origin.replace(/^http/, 'ws')
+  const url = base + '/ws/overlay/' + encodeURIComponent(roomId)
+  socket = new WebSocket(url)
+
+  socket.onopen = () => {
+    connected = true
+  }
+
+  socket.onmessage = (event) => {
+    try {
+      const frame = JSON.parse(event.data)
+      if (frame.type === 'comment' && frame.user) {
+        addComment(frame.user, frame.avatar)
+      }
+    } catch (e) {}
+  }
+
+  socket.onclose = () => {
+    connected = false
+    setTimeout(connect, 3000)
+  }
+
+  socket.onerror = () => { try { socket.close() } catch (e) {} }
+}
+
+function addComment(user, avatar) {
+  const existing = topChatters.find(c => c.nickname === user)
+  if (existing) {
+    existing.count++
+    if (avatar) existing.avatar = avatar
+  } else {
+    topChatters.push({ nickname: user, count: 1, avatar: avatar || '' })
+  }
+  topChatters.sort((a, b) => b.count - a.count)
+  topChatters = topChatters.slice(0, 10)
+  render()
+}
+
+function render() {
+  const list = document.getElementById('list')
+  const empty = document.getElementById('empty')
+  const sub = document.getElementById('sub')
+
+  if (topChatters.length === 0) {
+    list.innerHTML = ''
+    empty.style.display = 'block'
+    sub.textContent = ''
+    return
+  }
+
+  empty.style.display = 'none'
+
+  const totalFollows = topChatters.reduce((s, c) => s + c.follows, 0)
+  const totalShares = topChatters.reduce((s, c) => s + c.shares, 0)
+  sub.textContent = topChatters[0]?.count + ' messages · ' + totalFollows + ' follows · ' + totalShares + ' shares'
+
+  const medals = ['🥇', '🥈', '🥉']
+  list.innerHTML = topChatters.map((c, i) => {
+    const rank = i < 3 ? medals[i] : (i + 1)
+    return `<li>
+      <span class="rank">${rank}</span>
+      ${c.avatar ? `<img class="avatar" src="${escapeHtml(c.avatar)}" alt="" loading="lazy">` : ''}
+      <span class="name">${escapeHtml(c.nickname)}</span>
+      <span class="count">${c.count}</span>
+    </li>`
+  }).join('')
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div')
+  div.textContent = str
+  return div.innerHTML
+}
+
+// Also poll /api/analytics every 30s for cross-session data
+async function pollAnalytics() {
+  if (!roomId) return
+  try {
+    const res = await fetch('/api/backend/analytics?room=' + encodeURIComponent(roomId), {
+      headers: { 'Content-Type': 'application/json' }
+    })
+    if (res.ok) {
+      const data = await res.json()
+      // Merge topChatters from analytics if available
+      // This is a fallback for cross-session data
+    }
+  } catch (e) {}
+}
+
+// Start
+if (roomId) connect()
+pollAnalytics()
+setInterval(pollAnalytics, 30000)
+</script>
+</body>
+</html>

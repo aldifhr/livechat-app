@@ -43,6 +43,7 @@ export function streamLinks(roomId: string) {
     original: api.chatOverlay(roomId),
     studio: api.chatOverlay(roomId, 'studio'),
     cat: api.catOverlay(roomId),
+    topChatters: api.topChatterOverlay(roomId),
   }
 }
 
@@ -51,4 +52,5 @@ export const LINK_LABELS = {
   original: 'Chat overlay · Original',
   studio: 'Chat overlay · Studio',
   cat: 'Kucing Pixel Stream',
+  topChatters: 'Top Chatters',
 } as const
