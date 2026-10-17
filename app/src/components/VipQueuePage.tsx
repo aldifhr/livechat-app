@@ -82,7 +82,7 @@ export function VipQueuePage({ items }: { items: FeedItem[] }) {
             className="input min-h-10 min-w-0 flex-1 resize-y rounded-lg border border-app-line bg-app-bg px-3 py-2 text-app-text outline-none focus:border-app-accent"
             value={handle}
             onChange={(event) => setHandle(event.target.value)}
-            placeholder="TikTok username"
+            placeholder="nickname or id"
             aria-label="VIP TikTok usernames"
             rows={2}
           />
