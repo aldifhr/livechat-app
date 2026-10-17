@@ -15,7 +15,6 @@ from typing import Any, AsyncGenerator
 
 from protocols import EventAdapter
 from sources.viewers_count import judge
-import alerts
 import events
 from events import COMMENT, FOLLOW, GIFT, JOIN, LIKE, SHARE, VIEWERS, Event
 
@@ -570,7 +569,7 @@ class TikTokAdapter(EventAdapter):
             # first connect. A room coming back on its own after a blip is exactly
             # what an operator walked away from the screen for; the first connect of
             # a session is not news, because they pressed Connect and watched it.
-            recovered = self._live_ended or self._offline_waiting or self._attempt > 0
+
             # A completed handshake is what "consecutive" counts from: the retry
             # budget exists to survive a run of failures, and a connection that
             # came up is proof the last run ended. Without this reset the budget
@@ -587,13 +586,7 @@ class TikTokAdapter(EventAdapter):
             await events.emit_status(
                 self.room_id, connected=True, message=f"Connected to @{self.username}"
             )
-            if recovered:
-                alerts.notify_soon(
-                    alerts.STREAM_BACK,
-                    self.room_id,
-                    self.username,
-                    "the stream is being read again",
-                )
+
 
         @client.on(DisconnectEvent)
         async def on_disconnect(_):
@@ -631,16 +624,7 @@ class TikTokAdapter(EventAdapter):
                 message=f"@{self.username} is no longer live",
                 live_ended=True,
             )
-            # With the session's own numbers attached, because that is the useful
-            # part: a stream that ran three hours and one that never started should
-            # not read the same. Read before the wait, so the summary is of the
-            # stream that just finished rather than of whatever comes next.
-            alerts.notify_soon(
-                alerts.LIVE_ENDED,
-                self.room_id,
-                self.username,
-                alerts.describe(self.room_id),
-            )
+
 
         @client.on(CommentEvent)
         async def on_comment(event):
@@ -1087,16 +1071,7 @@ class TikTokAdapter(EventAdapter):
                 )
             except Exception:  # noqa: BLE001 — a status frame must not kill the loop
                 pass
-            # The one case that will not fix itself. A live that ended waits for
-            # the streamer; this is retries exhausted, the circuit breaker, or a
-            # client that could not be rebuilt — nothing will bring the room back
-            # until somebody presses Connect, and nobody is watching at 02:00.
-            alerts.notify_soon(
-                alerts.GAVE_UP,
-                self.room_id,
-                self.username,
-                "the source gave up and will not retry; press Connect when the stream is back",
-            )
+
 
         # The loop gave up on its own (retries exhausted, circuit breaker, live
         # ended) rather than through `disconnect()`, so the observer parked in

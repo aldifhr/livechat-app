@@ -18,7 +18,7 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-import alerts
+
 
 import events
 import logbuffer
@@ -72,9 +72,7 @@ async def lifespan(app: FastAPI):
     # restarted process cannot otherwise be asked about.
     logbuffer.install()
 
-    # Says whether alerts are on, without printing the URL. A deploy that meant to
-    # configure one and did not is otherwise indistinguishable from a quiet week.
-    logger.info("alerts: %s", alerts.describe_json())
+
 
     # Re-aim every room that was pointed at a room when the process last went
     # down.
