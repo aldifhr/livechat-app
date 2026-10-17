@@ -207,15 +207,15 @@ flop:{d:[3.5,4.5],T:{amp:.5,fl:1},say:['elus dong 🥺','mager parah','rebahan i
 // A jump is crouch + launch + flight + settle: the crouch alone is CRUNCH_T, and the
 // flight is 2*JUMP_V/GRAV. At 1.2s the old duration cut the flight in half, so the cat
 // landed and then stood in a jump pose for the rest of the mode.
-jump:{d:[1.7,1.7],T:{},v:22,once:1,say:['hup!','NYAWIT!','ampun bang']},
+jump:{d:[1.2,1.2],T:{},v:22,once:1,say:['hup!','NYAWIT!','ampun bang']},
 dizzy:{d:[2.2,2.2],T:{sit:1},once:1,say:['pusing...','dunia muter','mual dikit']},
 yawn:{d:[1.8,1.8],T:{sit:1},once:1,say:['hoaaam']},
 wash:{d:[3,4],T:{sit:1,wash:1},say:['jilat2','mandi kucing','bersih2']},
 knead:{d:[3,5],T:{knead:1},say:['biscuit time 🍞','uwu','ulen2 ulen2']}}
 const WT=[['walk',5],['sit',2],['sleep',1.5],['roll',2],['zoom',1.5],['flop',1.5],['vibe',1.5],['stare',1.5],['jump',1.5],['yawn',1],['wash',1.5],['knead',1.2],['idle',1]]
-// A jump apex of JUMP_V²/(2*GRAV) ≈ 50px, against a ~48px standing body: high enough
-// to read as a jump, low enough to stay inside the frame at PS=10.
-const GRAV=320,JUMP_V=180,CRUNCH_T=.3,APEX=JUMP_V*JUMP_V/(2*GRAV)
+// A jump apex of JUMP_V²/(2*GRAV) ≈ 22px, against a ~48px standing body: a soft hop,
+// not a launch. 180 was 50px — too high, the cat left the frame on every gift.
+const GRAV=320,JUMP_V=120,CRUNCH_T=.3,APEX=JUMP_V*JUMP_V/(2*GRAV)
 // Every pose channel, and the rate each one blends at. `ext` and `trail` exist because
 // a jump cannot be authored as static weights — see the jump timeline in upd().
 const CH={amp:7,sit:7,loaf:7,ball:7,tuck:16,gl:4,fl:7,wash:9,knead:7,ext:18,trail:14}
