@@ -40,6 +40,16 @@ async def create_giveaway_snapshot(request: SnapshotRequest):
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+@router.get("/api/giveaways/snapshots")
+async def list_giveaway_snapshots() -> dict[str, Any]:
+    """List every stored giveaway snapshot, newest first.
+
+    The report body is excluded — a list request would otherwise carry
+    every full report. Fetch by id for the full snapshot.
+    """
+    return {"snapshots": giveaway_store.list_snapshots()}
+
+
 @router.get("/api/giveaways/snapshots/{snapshot_id}")
 async def read_giveaway_snapshot(snapshot_id: str):
     if not SNAPSHOT_ID.fullmatch(snapshot_id):

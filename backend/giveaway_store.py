@@ -60,3 +60,28 @@ def get_snapshot(snapshot_id: str) -> dict[str, Any] | None:
     with _lock:
         record = _data().get(snapshot_id)
         return json.loads(json.dumps(record, ensure_ascii=False)) if record else None
+
+
+def list_snapshots() -> list[dict[str, Any]]:
+    """Every stored snapshot, newest first, without the full report body.
+
+    The dashboard lists snapshots; the report itself is fetched by id.
+    Returning it here would make every list request carry every report.
+    """
+    with _lock:
+        items = [
+            {
+                "id": key,
+                "createdAt": value.get("createdAt", ""),
+                "report": {
+                    "format": (value.get("report") or {}).get("format", ""),
+                    "streamHandle": (value.get("report") or {}).get("streamHandle", ""),
+                    "isTestRun": (value.get("report") or {}).get("isTestRun", False),
+                    "entrantCount": len((value.get("report") or {}).get("entrants") or []),
+                    "winnerCount": len((value.get("report") or {}).get("draws") or []),
+                },
+            }
+            for key, value in _data().items()
+        ]
+    items.sort(key=lambda item: item["createdAt"], reverse=True)
+    return items

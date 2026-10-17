@@ -14,7 +14,7 @@
 
 'use client'
 
-import type { AnalyticsSummary, LogPage, Room, RoomSession, RoomStatus } from './types'
+import type { AnalyticsSummary, GiveawaySnapshot, LogPage, Room, RoomSession, RoomStatus } from './types'
 
 export class ApiError extends Error {
   constructor(
@@ -184,6 +184,8 @@ export const api = {
   },
   catOverlay: (id: string) => overlayUrl('/overlay/cat-overlay', id),
   topChatterOverlay: (id: string) => overlayUrl('/overlay/top-chatter', id),
+  giveawaySnapshots: () => request<{ snapshots: GiveawaySnapshot[] }>('GET', '/giveaways/snapshots'),
+  giveawaySnapshot: (id: string) => request<{ id: string; createdAt: string; report: Record<string, unknown> }>('GET', `/giveaways/snapshots/${id}`),
 
 
   /**

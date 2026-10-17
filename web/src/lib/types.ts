@@ -84,6 +84,19 @@ export interface SessionPerson {
   diamonds?: number
 }
 
+/** A published giveaway snapshot (list view, without full report). */
+export interface GiveawaySnapshot {
+  id: string
+  createdAt: string
+  report: {
+    format: string
+    streamHandle: string
+    isTestRun: boolean
+    entrantCount: number
+    winnerCount: number
+  }
+}
+
 /**
  * What a room's current session has accumulated.
  *
