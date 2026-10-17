@@ -268,7 +268,7 @@ export default function StreamProfile({ handle }: { handle: string }) {
         <div className="stream-links">
           <LinkLine label={LINK_LABELS.original} url={links.original} />
           <LinkLine label={LINK_LABELS.studio} url={links.studio} />
-          <LinkLine label={LINK_LABELS.board} url={links.board} />
+          <LinkLine label={LINK_LABELS.cat} url={links.cat} />
           {/* All three, in full, for the times they do have to be read: checking
               what is already sitting in OBS, or copying one by hand. */}
           <details className="stream-links-more">
@@ -282,9 +282,9 @@ export default function StreamProfile({ handle }: { handle: string }) {
               <dd>
                 <code>{links.studio}</code>
               </dd>
-              <dt>{LINK_LABELS.board}</dt>
+              <dt>{LINK_LABELS.cat}</dt>
               <dd>
-                <code>{links.board}</code>
+                <code>{links.cat}</code>
               </dd>
             </dl>
           </details>

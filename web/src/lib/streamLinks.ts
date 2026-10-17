@@ -28,24 +28,28 @@ export function profilePath(username: string, id: string): string {
 }
 
 /**
- * The three overlay links for one stream, in full.
+ * The overlay links for one stream, in full.
  *
  * Named rather than inlined because a link pasted into OBS is the product's
  * terminal action, and every page that offers one has to offer the same three. The
  * studio variant is the same page with a different parameter, which is why it looks
  * like a sibling here and is a separate link to whoever copies it.
+ *
+ * The cat is a third visual option alongside the chat overlays — a pixel-cat
+ * animation with chat bubbles, for when the streamer wants something other than
+ * the standard chat cards.
  */
 export function streamLinks(roomId: string) {
   return {
     original: api.chatOverlay(roomId),
     studio: api.chatOverlay(roomId, 'studio'),
-    board: api.topChatterOverlay(roomId),
+    cat: api.catOverlay(roomId),
   }
 }
 
-/** The label each of those three is offered under, in the order they are offered. */
+/** The label each of those is offered under, in the order they are offered. */
 export const LINK_LABELS = {
   original: 'Chat overlay · Original',
   studio: 'Chat overlay · Studio',
-  board: 'Top chatters',
+  cat: 'Kucing Pixel Stream',
 } as const
