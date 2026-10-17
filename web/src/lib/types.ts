@@ -97,6 +97,13 @@ export interface GiveawaySnapshot {
   }
 }
 
+/** Provably-fair data published alongside a giveaway report. */
+export interface GiveawayFairness {
+  commitHash: string
+  poolHash: string
+  revealSeed: string
+}
+
 /**
  * What a room's current session has accumulated.
  *

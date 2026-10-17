@@ -399,7 +399,10 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
       entrants: entrySnapshot,
       eligibleCount: eligibleSnapshot.length,
       draws: drawHistory,
-      randomness: 'winner determined by Fisher-Yates shuffle using crypto.getRandomValues; wheel spin is visual only',
+      randomness: 'winner derived from SHA-256(seed + sorted_pool); wheel spin is visual only',
+      commitHash,
+      poolHash: entrantHash,
+      revealSeed,
       note: 'This report records the frozen entries and draw pools; it is not a cryptographic proof that the application itself was not modified.',
     }
   }

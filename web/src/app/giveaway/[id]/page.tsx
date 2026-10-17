@@ -27,6 +27,10 @@ type GiveawayReport = {
   entrants: Entrant[]
   eligibleCount: number
   draws: Draw[]
+  commitHash?: string
+  poolHash?: string
+  revealSeed?: string
+  randomness?: string
 }
 type Snapshot = { id: string; createdAt: string; report: GiveawayReport }
 
@@ -104,8 +108,36 @@ export default async function GiveawaySnapshotPage({ params }: { params: Promise
             <tbody>{report.entrants.map((entrant) => <tr key={entrant.id} className="border-t border-zinc-800"><td className="px-3 py-2"><div className="font-medium">{entrant.nickname || `@${entrant.id}`}</div><div className="text-xs text-zinc-500">@{entrant.id}</div></td><td className="px-3 py-2 text-zinc-300">{entrant.keywordMessages > 1 ? `${entrant.keywordMessages} messages · 1 entry` : '1 entry'}</td><td className={`px-3 py-2 text-xs font-semibold ${entrant.eligible ? 'text-emerald-400' : 'text-zinc-500'}`}>{winners.has(entrant.id) ? 'Winner' : entrant.eligible ? 'Eligible' : entrant.reason || 'Not eligible'}</td></tr>)}</tbody>
           </table>
         </div>
-        <p className="mb-0 mt-4 text-xs leading-relaxed text-zinc-500">Follow eligibility reflects follow events detected during the live session. This public snapshot records the submitted report; it is not a cryptographic proof that the desktop app was unmodified.</p>
+        <p className="mb-0 mt-4 text-xs leading-relaxed text-zinc-500">Follow eligibility reflects follow events detected during the live session. This public snapshot records the submitted report; it is not a cryptographic proof that the application itself was unmodified.</p>
       </section>
+
+      {(report.commitHash || report.poolHash || report.revealSeed) && (
+        <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
+          <h2 className="mb-4 mt-0 text-base font-semibold">Provably fair</h2>
+          {report.randomness && <p className="mb-4 text-xs text-zinc-500">{report.randomness}</p>}
+          <dl className="grid gap-3 text-sm sm:grid-cols-2">
+            {report.commitHash && (
+              <div className="break-all">
+                <dt className="text-zinc-500">Commit hash (SHA-256 of seed)</dt>
+                <dd className="mb-0 mt-1 font-mono text-xs">{report.commitHash}</dd>
+              </div>
+            )}
+            {report.poolHash && (
+              <div className="break-all">
+                <dt className="text-zinc-500">Pool hash (SHA-256 of sorted entrants)</dt>
+                <dd className="mb-0 mt-1 font-mono text-xs">{report.poolHash}</dd>
+              </div>
+            )}
+            {report.revealSeed && (
+              <div className="break-all sm:col-span-2">
+                <dt className="text-zinc-500">Revealed seed</dt>
+                <dd className="mb-0 mt-1 font-mono text-xs">{report.revealSeed}</dd>
+                <dd className="mb-0 mt-2 text-xs text-zinc-500">Verify: SHA-256(revealed_seed) === commitHash</dd>
+              </div>
+            )}
+          </dl>
+        </section>
+      )}
     </main>
   )
 }
