@@ -90,9 +90,9 @@ function connectChat(){
     try{
       const frame=JSON.parse(event.data)
       if(frame.type==='comment'&&frame.text){
-        chatQueue.push({user:frame.user||'',text:frame.text})
-        if(chatQueue.length>20)chatQueue.splice(0,chatQueue.length-20)
-        processChatQueue()
+        // Comments do not show a bubble — they just make the cat react (hearts).
+        C.boop=1.2
+        for(let i=0;i<6;i++)em('heart',C.x+rnd(-10,10),GY-44,rnd(-8,8),rnd(-30,-18),1.2)
       } else if(frame.type==='gift'||frame.type==='like'||frame.type==='follow'){
         react(frame)
       }
