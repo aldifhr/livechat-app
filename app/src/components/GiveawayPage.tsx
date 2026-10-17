@@ -22,6 +22,19 @@ function secureShuffle<T>(items: T[]): T[] {
   }
   return result
 }
+
+/** SHA-256 hash of a string, hex-encoded. */
+async function sha256(text: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+/** Generate a cryptographically secure random seed. */
+function generateSeed(): string {
+  const buf = new Uint8Array(32)
+  crypto.getRandomValues(buf)
+  return Array.from(buf).map(b => b.toString(16).padStart(2, '0')).join('')
+}
 import { Confetti, type ConfettiRef } from './ui/confetti'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
 import type { StatsRecorder } from '../hooks/useStats'
@@ -97,6 +110,10 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
   const [entryCounts, setEntryCounts] = useState<Record<string, number>>({})
   const [mockParticipants, setMockParticipants] = useState<Chatter[]>([])
   const [spinning, setSpinning] = useState(false)
+  const [commitHash, setCommitHash] = useState('')
+  const [revealSeed, setRevealSeed] = useState('')
+  const [entrantHash, setEntrantHash] = useState('')
+  const [showSeed, setShowSeed] = useState(false)
   const spinWheelRef = useRef<SpinWheelHandle>(null)
   const confettiRef = useRef<ConfettiRef>(null)
   const enteredRef = useRef(new Set<string>())
@@ -121,7 +138,7 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
   const displayParticipants = mockParticipants.length > 0 ? mockParticipants : participants
   const announcedWinner = announcedWinnerId ? displayParticipants.find((person) => person.id === announcedWinnerId) : undefined
 
-  const closeGiveaway = useCallback(() => {
+  const closeGiveaway = useCallback(async () => {
     if (status !== 'open') return
     const currentParticipants = typeof stats.getChatParticipants === 'function'
       ? stats.getChatParticipants()
@@ -146,6 +163,16 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
     setReviewEndsAt(Date.now() + 15_000)
     setRemainingMs(15_000)
     setStatus('review')
+
+    // Commit-reveal: generate a seed and publish its SHA-256 hash plus the
+    // hash of the frozen entrant list. The seed is revealed after the draw.
+    const seed = generateSeed()
+    setRevealSeed(seed)
+    const sortedIds = [...snapshot].sort()
+    const listHash = await sha256(sortedIds.join('|'))
+    setEntrantHash(listHash)
+    const commit = await sha256(seed)
+    setCommitHash(commit)
   }, [status, stats])
 
   const lockEntries = useCallback(() => {
@@ -159,7 +186,7 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
     const tick = () => {
       const remaining = Math.max(0, endsAt - Date.now())
       setRemainingMs(remaining)
-      if (remaining === 0) closeGiveaway()
+      if (remaining === 0) void closeGiveaway()
     }
     tick()
     const timer = window.setInterval(tick, 250)
@@ -286,6 +313,7 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
 
     setSpinning(true)
     spinWheelRef.current.spin() // visual only — winner already decided
+    setRevealSeed('') // hide until reveal
     setDrawHistory((current) => [...current, { drawnAt: new Date().toISOString(), pool, winner }])
     setWinners((current) => [...current, winner])
     setAnnouncedWinnerId(winner)
@@ -323,6 +351,10 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
     setEntryCounts({})
     setSnapshotUrl('')
     setSnapshotMessage('')
+    setCommitHash('')
+    setRevealSeed('')
+    setEntrantHash('')
+    setShowSeed(false)
     entryCountsRef.current = {}
     setMockParticipants([])
     setIsTestRun(false)
@@ -474,6 +506,18 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
             <div className="text-[11px] uppercase tracking-wider text-app-muted">{status === 'open' ? 'Entry closes in' : status === 'review' ? 'Review locks in' : status === 'closed' ? 'Entries locked' : 'Ready to start'}</div>
             <CountdownRoll value={status === 'open' || status === 'review' ? formatTime(remainingMs) : status === 'closed' ? '00:00' : formatTime(durationMinutes * 60_000)} active={status === 'open' || status === 'review'} accent={status === 'open' || status === 'review'} />
           </div>
+          {(status === 'open' || status === 'review') && (
+            <div className="ml-auto text-right">
+              <div className="text-[11px] uppercase tracking-wider text-app-muted">Live participants</div>
+              <div className="text-sm font-semibold text-app-text">{eligibleIds.length}</div>
+            </div>
+          )}
+          {commitHash && (
+            <div className="w-full text-[10px] text-app-muted">
+              <span className="font-semibold">Commit:</span> {commitHash.slice(0, 16)}…
+              {entrantHash && <><span className="ml-2 font-semibold">Pool hash:</span> {entrantHash.slice(0, 16)}…</>}
+            </div>
+          )}
           <div className="flex flex-wrap gap-2">
             {status === 'idle' || status === 'closed' ? (
               <button className="btn btn-primary rounded-lg bg-app-accent px-4 py-2 font-semibold text-app-bg disabled:opacity-50" type="button" onClick={startGiveaway} disabled={(!connected && !testMode) || !entryKeyword || spinning}>{status === 'closed' ? 'Start new giveaway' : testMode ? 'Run test draw' : 'Start countdown'}</button>
@@ -546,6 +590,17 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
           <button className="btn btn-primary rounded-lg bg-app-accent px-5 py-2.5 font-semibold text-app-bg disabled:opacity-50" type="button" onClick={spinForWinner} disabled={spinning || availableIds.length === 0 || winners.length >= winnerCount}>
             {spinning ? 'Spinning…' : winners.length >= winnerCount ? 'All winners selected' : availableIds.length === 0 ? 'Everyone eligible has won' : winners.length > 0 ? `Spin for winner ${winners.length + 1} of ${winnerCount}` : `Spin for winner 1 of ${winnerCount}`}
           </button>
+          {revealSeed && (
+            <button className="btn rounded-lg border border-app-line px-3 py-2 text-xs" type="button" onClick={() => setShowSeed((v) => !v)}>
+              {showSeed ? 'Hide seed' : 'Reveal seed'}
+            </button>
+          )}
+          {showSeed && revealSeed && (
+            <div className="w-full rounded-lg bg-app-bg p-3 text-[10px] text-app-muted">
+              <p className="m-0 break-all"><span className="font-semibold">Seed:</span> {revealSeed}</p>
+              <p className="m-1 break-all"><span className="font-semibold">Verify:</span> sha256(seed) = {commitHash}</p>
+            </div>
+          )}
           {prize.trim() && <p className="m-0 text-xs text-app-muted">Prize: {prize.trim()}</p>}
         </section>
       )}
