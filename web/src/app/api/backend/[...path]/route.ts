@@ -38,6 +38,12 @@ const ALLOWED = [
   /^\/api\/analytics$/,
   /^\/api\/health$/,
   /^\/api\/metrics$/,
+  // Giveaway snapshots: the desktop app (no credential) POSTs from its
+  // Tauri webview to this proxy, and the public snapshot page reads the
+  // result. The backend exempts this path from its own token gate for
+  // the same reason — the published link is meant to be opened by anyone.
+  /^\/api\/giveaways\/snapshots$/,
+  /^\/api\/giveaways\/snapshots\/[A-Za-z0-9_-]{16}$/,
 
   // The backend's own log records. A read, and the backend gates it on the token
   // rather than on the method — so it is in `SENSITIVE_READ` below too, or the
@@ -74,6 +80,11 @@ const MUTATING = new Set(['POST', 'PATCH', 'DELETE'])
  * from `/api/rooms`, so it is not reaching anything new.
  */
 const SENSITIVE_READ = /^\/api\/(rooms(\/|$)|logs$|analytics$)/
+// Giveaway snapshots are deliberately NOT sensitive-read: the desktop
+// app has no token, and the public snapshot page must load without one.
+// Without this exclusion the proxy would forward the read with no
+// credential and the backend would answer 401.
+const PUBLIC_READ = /^\/api\/giveaways\/snapshots/
 
 function allowed(path: string): boolean {
   return ALLOWED.some((pattern) => pattern.test(path))
@@ -99,7 +110,7 @@ async function proxy(request: NextRequest): Promise<Response> {
 
   const method = request.method
   const body = MUTATING.has(method) ? await request.text() : undefined
-  const forwardToken = MUTATING.has(method) || SENSITIVE_READ.test(path)
+  const forwardToken = MUTATING.has(method) || (SENSITIVE_READ.test(path) && !PUBLIC_READ.test(path))
 
   try {
     const result = await backendFetch(`${path}${query}`, {
