@@ -4,6 +4,8 @@
 #   /login                the sign-in page
 #   /overlay/             the chat overlay OBS loads
 #   /topchatter/          the leaderboard overlay
+#   /giveaway/<id>        public, read-only giveaway snapshot
+#   /api/giveaways/snapshots  validated desktop-app snapshot upload
 #   /api/backend/*        proxied to Next, which attaches the backend's token
 #   /ws/                  proxied straight to the backend, no credential
 #
@@ -32,10 +34,10 @@
 # disconnect streamers. The gate is what makes the token in Next's environment
 # mean something.
 #
-# Everything the login page itself needs — /login, /api/auth/*, and Next's build
-# output under /_next/ — is outside the gate, or the gate would redirect the page
-# that is supposed to be reachable without signing in. /api/* answers 401 rather
-# than a redirect, so a fetch that has lost its session is told so instead of
+# Everything the login page itself needs — /login, /api/auth/*, public giveaway
+# snapshots, and Next's build output under /_next/ — is outside the gate, or the
+# gate would redirect pages meant to be shared. Other /api/* routes answer 401
+# rather than a redirect, so an expired dashboard session is told so instead of
 # being handed the login page's HTML as if it were data.
 
 server {
@@ -166,6 +168,19 @@ server {
     # The one page that has to be reachable with no session: it is what tells a
     # visitor this is a product and points them at the login.
     location = / {
+        include snippets/streamtools-next.conf;
+    }
+
+    # Public, unguessable giveaway snapshot pages. The matching Next routes
+    # validate and store the report; these links intentionally do not need a
+    # dashboard session so a creator can share them with viewers.
+    location ~ ^/giveaway/[A-Za-z0-9_-]{16}$ {
+        include snippets/streamtools-next.conf;
+    }
+
+    # The desktop app has no dashboard cookie. Its bounded report upload is
+    # validated/rate-limited by Next and forwarded to the token-protected API.
+    location = /api/giveaways/snapshots {
         include snippets/streamtools-next.conf;
     }
 

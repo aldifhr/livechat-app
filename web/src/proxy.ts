@@ -59,6 +59,10 @@ function isOpen(pathname: string): boolean {
     // login form — which is what happened, and looked exactly like the overlays
     // being broken.
     pathname.startsWith('/overlay/') ||
+    // Giveaway reports are public, unguessable snapshot links. Creation is
+    // bounded and validated by its route handler; private dashboard APIs remain gated.
+    /^\/giveaway\/[A-Za-z0-9_-]{16}$/.test(pathname) ||
+    pathname === '/api/giveaways/snapshots' ||
     // Next's own static assets, which carry no data.
     pathname.startsWith('/_next/') ||
     pathname === '/favicon.ico'

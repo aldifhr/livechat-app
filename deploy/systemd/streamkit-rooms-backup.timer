@@ -1,5 +1,5 @@
 [Unit]
-Description=Back up the StreamKit room store
+Description=Back up the StreamKit room and giveaway stores
 
 [Timer]
 OnCalendar=daily

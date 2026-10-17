@@ -440,6 +440,12 @@ bind_state(
     default_room_config=DEFAULT_ROOM_CONFIG,
 )
 app.include_router(ops_router)
+
+# Public giveaway snapshots are created through the token-holding web app and
+# read later by an unguessable link. The global mutation guard protects POST.
+from routes.giveaways import router as giveaways_router  # noqa: E402
+
+app.include_router(giveaways_router)
 mount_gifts(app, str(Path(__file__).parent / "static"))
 
 

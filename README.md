@@ -333,11 +333,13 @@ scripts/backup-rooms.sh  # daily rooms.json copy, 14-day prune
 |---|---|
 | `streamer-api.service` | Backend, loopback only, `User=streamkit` |
 | `streamtools-web.service` | Next dashboard from `.next/standalone` |
-| `streamkit-rooms-backup.service`/`.timer` | Daily room store backup |
+| `streamkit-rooms-backup.service`/`.timer` | Daily room and giveaway snapshot backup |
 
 nginx holds back part of the surface: `/ws/` and `= /api/room-connect-by-username`
 are proxied to the backend **outside the gate**, because OBS cannot carry a
-credential and the overlay pages do not need one. The rest of `/api/` and the
+credential and the overlay pages do not need one. Public giveaway snapshot pages
+and their validated upload endpoint are also open so viewers can read shared
+reports and the desktop app can publish them. Other `/api/` routes and dashboard
 pages are gated by `auth_request` to `/api/auth/verify`; `/login` is open and
 rate-limited. Overlays are served from disk and never touch the dashboard.
 

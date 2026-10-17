@@ -95,38 +95,6 @@ export function StatsPanel({ stats }: Props) {
                 values={snapshot.viewerSeries}
               />
 
-              <div className="stat-board [padding:14px] [border:1px_solid_var(--line)] [border-radius:14px] [background:color-mix(in_srgb,_var(--panel-2)_66%,_transparent)]">
-                <div className="stat-board-head [display:flex] [align-items:baseline] [gap:10px] [margin-bottom:8px] [color:var(--text)] [font-size:12px] [font-weight:650] [text-transform:uppercase] [letter-spacing:0.05em]">
-                  <span>Top {snapshot.topChatters.length || ''} chatters</span>
-                  <span className="stat-board-sub [margin-left:auto] [text-transform:none] [letter-spacing:0] [font-variant-numeric:tabular-nums]">
-                    by messages · {snapshot.totalFollows.toLocaleString()} follows ·{' '}
-                    {snapshot.totalShares.toLocaleString()} shares
-                  </span>
-                </div>
-                {snapshot.topChatters.length === 0 ? (
-                  <p className="stats-empty [margin:4px_0] [color:var(--muted)] [font-size:12px]">No one has talked yet.</p>
-                ) : (
-                  <ol className="chatter-list [margin:0] [padding:0] [list-style:none]">
-                    {snapshot.topChatters.map((chatter, index) => (
-                      <li key={chatter.id} className="chatter [display:flex] [align-items:center] [gap:8px] [min-height:38px] [padding:4px_8px] [border-radius:9px] [transition:background_120ms_ease] [&:hover]:[background:color-mix(in_srgb,_var(--accent)_6%,_var(--panel-2))]">
-                        <span className="chatter-rank [flex:0_0_auto] [width:22px] [color:var(--muted)] [font-size:11px] [text-align:center] [font-variant-numeric:tabular-nums]">{index + 1}</span>
-                        {chatter.avatar ? (
-                          <img className="chatter-avatar [flex:0_0_auto] [width:28px] [height:28px] [border-radius:50%] [object-fit:cover] [background:var(--panel-2)]" src={chatter.avatar} alt="" loading="lazy" referrerPolicy="no-referrer" />
-                        ) : (
-                          <span className="chatter-avatar chatter-fallback [flex:0_0_auto] [width:28px] [height:28px] [border-radius:50%] [object-fit:cover] [background:var(--panel-2)] [display:grid] [place-items:center] [font-size:10px] [font-weight:600] [color:var(--muted)]" aria-hidden="true">
-                            {(chatter.nickname.trim()[0] ?? '?').toUpperCase()}
-                          </span>
-                        )}
-                        <span className="chatter-name [min-width:0] [font-weight:550] [overflow:hidden] [text-overflow:ellipsis] [white-space:nowrap]">{chatter.nickname || 'Room'}</span>
-                        {chatter.diamonds > 0 && (
-                          <span className="chatter-diamonds [color:var(--gold)] [font-size:11px] [font-variant-numeric:tabular-nums]">{chatter.diamonds.toLocaleString()} ◆</span>
-                        )}
-                        <span className="chatter-count [margin-left:auto] [flex:0_0_auto] [padding:0_8px] [background:var(--panel-2)] [border-radius:999px] [font-size:11px] [font-variant-numeric:tabular-nums]">{chatter.messages.toLocaleString()}</span>
-                      </li>
-                    ))}
-                  </ol>
-                )}
-              </div>
             </>
           )}
       </div>

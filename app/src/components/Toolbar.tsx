@@ -114,6 +114,7 @@ export function Toolbar({
   // the user cannot leave is a trap rather than a state.
   const isWaiting = room.status === 'waiting' && !disconnected
   const wanted = normaliseUsername(handle)
+  const watchTarget = tiktokUsername(room.target || wanted)
   // Not while waiting: a source is running and the button beside it is Stop, so
   // offering Connect as well would invite a second connection to a room that
   // already has one.
@@ -218,14 +219,14 @@ export function Toolbar({
             {isConnecting ? 'Connecting…' : 'Connect'}
           </Button>
         )}
-        {isConnected && room.target && (
+        {isConnected && watchTarget && (
           <Button
             variant="secondary"
             className="btn btn-small watch-btn [padding:9px_14px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [cursor:pointer] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)] [&:disabled]:[opacity:0.45] [&:disabled]:[cursor:not-allowed] [align-self:center] [padding:4px_10px] [font-size:12px]"
-            title={`Open tiktok.com/@${room.target}/live in your browser`}
+            title={`Open tiktok.com/@${watchTarget}/live in your browser`}
             onClick={() =>
               host
-                .openStream(`https://www.tiktok.com/@${encodeURIComponent(tiktokUsername(room.target))}/live`)
+                .openStream(`https://www.tiktok.com/@${encodeURIComponent(watchTarget)}/live`)
                 .catch(() => {})
             }
           >
@@ -262,10 +263,11 @@ export function Toolbar({
         <div className="toolbar-bottom [display:flex] [align-items:center] [gap:12px] [flex-wrap:wrap]">
           <ToggleGroup
             type="single"
+            spacing={1}
             value={kind}
             onValueChange={(value) => { if (value) onFiltersChange({ kind: value as KindFilter }) }}
             aria-label="Filter feed by event type"
-            className="filters [display:flex] [gap:5px] [flex-wrap:wrap] [&_.chip]:[gap:4px] [&_.chip-count]:[padding:0_4px] [&_.chip-count]:[font-size:10px]"
+            className="filters [display:flex] [gap:8px] [flex-wrap:wrap] [&_.chip]:[gap:4px] [&_.chip-count]:[padding:0_4px] [&_.chip-count]:[font-size:10px]"
           >
             {spec.kinds.map((option) => (
               <ToggleGroupItem

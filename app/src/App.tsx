@@ -7,6 +7,8 @@ import { SettingsPage } from './components/SettingsPage'
 import { SimulatorDialog } from './components/SimulatorDialog'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from './components/ui/empty'
 import { StatsPanel } from './components/StatsPanel'
+import { VipQueuePage } from './components/VipQueuePage'
+import { GiveawayPage } from './components/GiveawayPage'
 import { Toolbar } from './components/Toolbar'
 import { Dock, DockIcon } from './components/ui/dock'
 
@@ -24,7 +26,7 @@ import { EMPTY_BACKEND, type BackendConfig } from './lib/backend'
 import { host } from './lib/sidecar'
 import type { VoiceOptions } from './lib/voices'
 
-type AppPage = 'home' | 'stats' | 'log' | 'test' | 'settings'
+type AppPage = 'home' | 'stats' | 'vip' | 'giveaway' | 'log' | 'test' | 'settings'
 
 // Runtime theme variations are still emitted as Tailwind utilities. Keeping the
 // selector utilities in this literal lets Tailwind see every class at compile
@@ -326,6 +328,9 @@ export default function App() {
         </main>
       )}
 
+      {activePage === 'vip' && <VipQueuePage items={items} />}
+      <GiveawayPage stats={stats} items={items} active={activePage === 'giveaway'} connected={room.status === 'connected'} streamer={room.target} />
+
       {activePage === 'log' && (
         <main className="page-view log-page [flex:1_1_auto] [min-height:0] [overflow:auto] [padding:20px] [&_.stats-panel]:[width:min(900px,_100%)] [&_.stats-panel]:[margin:0_auto] [&_.stats-panel]:[border:1px_solid_var(--line)] [&_.stats-panel]:[border-radius:var(--radius)] [&_.log-panel]:[width:min(900px,_100%)] [&_.log-panel]:[margin:0_auto] [&_.log-panel]:[border:1px_solid_var(--line)] [&_.log-panel]:[border-radius:var(--radius)] [&_.stats-body]:[max-height:none] [&_.stats-body]:[overflow:visible] [&_.log-panel]:[display:flex] [&_.log-panel]:[min-height:180px] [&_.log-panel]:[flex-direction:column] [&_.log-list]:[flex:1_1_auto] [&_.log-list]:[max-height:none] [&_.log-list]:[min-height:120px]">
           <header className="page-view-head [margin:0_auto_18px] [width:min(900px,_100%)] [&_h1]:[margin:0] [&_h1]:[font-size:20px] [&_p]:[margin:4px_0_0] [&_p]:[color:var(--muted)] [&_p]:[font-size:12px]">
@@ -357,6 +362,18 @@ export default function App() {
             <button className="dock-action [display:flex] [flex-direction:column] [width:72px] [height:46px] [flex:0_0_auto] [align-items:center] [justify-content:center] [gap:1px] [padding:0] [border:1px_solid_transparent] [border-radius:13px] [background:transparent] [color:var(--muted)] [font:inherit] [font-weight:500] [cursor:pointer] [transition:color_140ms_ease,_background_140ms_ease,_border-color_140ms_ease,_transform_140ms_ease] [&:hover]:[outline:none] [&:hover]:[border-color:var(--line)] [&:hover]:[background:color-mix(in_srgb,_var(--accent)_9%,_var(--panel))] [&:hover]:[color:var(--accent)] [&:hover]:[transform:translateY(-2px)] [&:focus-visible]:[outline:none] [&:focus-visible]:[border-color:var(--line)] [&:focus-visible]:[background:color-mix(in_srgb,_var(--accent)_9%,_var(--panel))] [&:focus-visible]:[color:var(--accent)] [&:focus-visible]:[transform:translateY(-2px)] [&[aria-current=page]]:[position:relative] [&[aria-current=page]]:[border-color:transparent] [&[aria-current=page]]:[background:color-mix(in_srgb,_var(--gold)_10%,_var(--panel))] [&[aria-current=page]]:[color:var(--gold)] [&[aria-current=page]]:[box-shadow:none] [&[aria-current=page]::after]:[position:absolute] [&[aria-current=page]::after]:[bottom:2px] [&[aria-current=page]::after]:[width:18px] [&[aria-current=page]::after]:[height:2px] [&[aria-current=page]::after]:[border-radius:999px] [&[aria-current=page]::after]:[background:var(--gold)] [&[aria-current=page]::after]:[content:'']" type="button" title="Home" aria-label="Home" aria-current={activePage === 'home' ? 'page' : undefined} onClick={() => setActivePage('home')}>
               <span className="dock-glyph [display:grid] [width:22px] [height:22px] [place-items:center] [&_svg]:[width:19px] [&_svg]:[height:19px] [&_svg]:[fill:none] [&_svg]:[stroke:currentColor] [&_svg]:[stroke-width:1.7] [&_svg]:[stroke-linecap:round] [&_svg]:[stroke-linejoin:round]" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m3.5 10 8.5-7 8.5 7M5.5 9v11h13V9M9.5 20v-6h5v6" /></svg></span>
               <span className="dock-label [font-size:10px] [line-height:1.1] [letter-spacing:0.01em]">Home</span>
+            </button>
+          </DockIcon>
+          <DockIcon>
+            <button className="dock-action [display:flex] [flex-direction:column] [width:72px] [height:46px] [flex:0_0_auto] [align-items:center] [justify-content:center] [gap:1px] [padding:0] [border:1px_solid_transparent] [border-radius:13px] [background:transparent] [color:var(--muted)] [font:inherit] [font-weight:500] [cursor:pointer] [transition:color_140ms_ease,_background_140ms_ease,_border-color_140ms_ease,_transform_140ms_ease] [&:hover]:[outline:none] [&:hover]:[border-color:var(--line)] [&:hover]:[background:color-mix(in_srgb,_var(--accent)_9%,_var(--panel))] [&:hover]:[color:var(--accent)] [&:hover]:[transform:translateY(-2px)] [&:focus-visible]:[outline:none] [&:focus-visible]:[border-color:var(--line)] [&:focus-visible]:[background:color-mix(in_srgb,_var(--accent)_9%,_var(--panel))] [&:focus-visible]:[color:var(--accent)] [&:focus-visible]:[transform:translateY(-2px)] [&[aria-current=page]]:[position:relative] [&[aria-current=page]]:[border-color:transparent] [&[aria-current=page]]:[background:color-mix(in_srgb,_var(--gold)_10%,_var(--panel))] [&[aria-current=page]]:[color:var(--gold)] [&[aria-current=page]]:[box-shadow:none] [&[aria-current=page]::after]:[position:absolute] [&[aria-current=page]::after]:[bottom:2px] [&[aria-current=page]::after]:[width:18px] [&[aria-current=page]::after]:[height:2px] [&[aria-current=page]::after]:[border-radius:999px] [&[aria-current=page]::after]:[background:var(--gold)] [&[aria-current=page]::after]:[content:'']" type="button" title="VIP Queue" aria-label="VIP Mabar Queue page" aria-current={activePage === 'vip' ? 'page' : undefined} onClick={() => setActivePage('vip')}>
+              <span className="dock-glyph [display:grid] [width:22px] [height:22px] [place-items:center] [&_svg]:[width:19px] [&_svg]:[height:19px] [&_svg]:[fill:none] [&_svg]:[stroke:currentColor] [&_svg]:[stroke-width:1.7] [&_svg]:[stroke-linecap:round] [&_svg]:[stroke-linejoin:round]" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 2.4 5 5.5.8-4 3.9.9 5.5-4.8-2.6-4.9 2.6.9-5.5-4-3.9 5.5-.8L12 3Z" /></svg></span>
+              <span className="dock-label [font-size:10px] [line-height:1.1] [letter-spacing:0.01em]">VIP</span>
+            </button>
+          </DockIcon>
+          <DockIcon>
+            <button className="dock-action [display:flex] [flex-direction:column] [width:72px] [height:46px] [flex:0_0_auto] [align-items:center] [justify-content:center] [gap:1px] [padding:0] [border:1px_solid_transparent] [border-radius:13px] [background:transparent] [color:var(--muted)] [font:inherit] [font-weight:500] [cursor:pointer] [transition:color_140ms_ease,_background_140ms_ease,_border-color_140ms_ease,_transform_140ms_ease] [&:hover]:[outline:none] [&:hover]:[border-color:var(--line)] [&:hover]:[background:color-mix(in_srgb,_var(--accent)_9%,_var(--panel))] [&:hover]:[color:var(--accent)] [&:hover]:[transform:translateY(-2px)] [&:focus-visible]:[outline:none] [&:focus-visible]:[border-color:var(--line)] [&:focus-visible]:[background:color-mix(in_srgb,_var(--accent)_9%,_var(--panel))] [&:focus-visible]:[color:var(--accent)] [&:focus-visible]:[transform:translateY(-2px)] [&[aria-current=page]]:[position:relative] [&[aria-current=page]]:[border-color:transparent] [&[aria-current=page]]:[background:color-mix(in_srgb,_var(--gold)_10%,_var(--panel))] [&[aria-current=page]]:[color:var(--gold)] [&[aria-current=page]]:[box-shadow:none] [&[aria-current=page]::after]:[position:absolute] [&[aria-current=page]::after]:[bottom:2px] [&[aria-current=page]::after]:[width:18px] [&[aria-current=page]::after]:[height:2px] [&[aria-current=page]::after]:[border-radius:999px] [&[aria-current=page]::after]:[background:var(--gold)] [&[aria-current=page]::after]:[content:'']" type="button" title="Giveaway Picker" aria-label="Giveaway picker page" aria-current={activePage === 'giveaway' ? 'page' : undefined} onClick={() => setActivePage('giveaway')}>
+              <span className="dock-glyph [display:grid] [width:22px] [height:22px] [place-items:center] [&_svg]:[width:19px] [&_svg]:[height:19px] [&_svg]:[fill:none] [&_svg]:[stroke:currentColor] [&_svg]:[stroke-width:1.7] [&_svg]:[stroke-linecap:round] [&_svg]:[stroke-linejoin:round]" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 4h12v3a6 6 0 0 1-12 0V4Z" /><path d="M6 6H3v1a4 4 0 0 0 4 4M18 6h3v1a4 4 0 0 1-4 4M12 13v5m-4 3h8m-7-3h6" /></svg></span>
+              <span className="dock-label [font-size:10px] [line-height:1.1] [letter-spacing:0.01em]">Draw</span>
             </button>
           </DockIcon>
           <DockIcon>

@@ -1,4 +1,17 @@
 @import 'tailwindcss';
+@import 'ts-spin-wheel/dist/index.css';
+
+/* Keep the giveaway package wheel aligned with the app's dark theme. */
+.giveaway-wheel .bulb-ring,
+.giveaway-wheel .wheel-base-img {
+  display: none;
+}
+
+.giveaway-wheel #wheel {
+  border: 4px solid var(--line);
+  background: transparent;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 40%);
+}
 
 /* Theme palettes remain CSS variables so the app can switch skins at runtime. */
 @theme inline {

@@ -111,6 +111,8 @@ export interface StatsRecorder {
    * the same as a single pass and the result does not change between them.
    */
   read: () => StatsSnapshot
+  /** Distinct viewers who have chatted this session. Stable until another first-time chatter arrives. */
+  getChatParticipants: () => Chatter[]
   /** Subscribes to "something changed". Returns the unsubscribe. */
   subscribe: (listener: () => void) => () => void
 }
@@ -129,6 +131,7 @@ export function createStats(): StatsRecorder {
   let viewers = 0
   let diamonds = 0
   const chatters = new Map<string, Chatter>()
+  let chatParticipants: Chatter[] = []
 
   let messages = 0
   let gifts = 0
@@ -192,7 +195,11 @@ export function createStats(): StatsRecorder {
     switch (item.kind) {
       case 'chat':
         messages += 1
-        if (chatter) chatter.messages += 1
+        if (chatter) {
+          const firstMessage = chatter.messages === 0
+          chatter.messages += 1
+          if (firstMessage) chatParticipants = [...chatParticipants, { ...chatter }]
+        }
         break
       case 'gift':
         gifts += 1
@@ -206,7 +213,14 @@ export function createStats(): StatsRecorder {
         break
       case 'follow':
         follows += 1
-        if (chatter) chatter.follows += 1
+        if (chatter) {
+          chatter.follows += 1
+          if (chatter.messages > 0) {
+            chatParticipants = chatParticipants.map((participant) =>
+              participant.id === chatter.id ? { ...chatter } : participant,
+            )
+          }
+        }
         break
       case 'share':
         shares += 1
@@ -283,6 +297,7 @@ export function createStats(): StatsRecorder {
     viewers = 0
     diamonds = 0
     chatters.clear()
+    chatParticipants = []
     messages = 0
     gifts = 0
     follows = 0
@@ -321,6 +336,10 @@ export function createStats(): StatsRecorder {
     }
   }
 
+  function getChatParticipants(): Chatter[] {
+    return chatParticipants
+  }
+
   return {
     record,
     setViewers,
@@ -329,6 +348,7 @@ export function createStats(): StatsRecorder {
     stopSampling,
     reset,
     read,
+    getChatParticipants,
     subscribe: (listener) => {
       listeners.add(listener)
       return () => {
