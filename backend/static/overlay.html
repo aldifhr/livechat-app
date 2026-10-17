@@ -504,7 +504,7 @@
         !event.data || !event.data.streamkitPreviewStyle) return
     previewOverride = event.data.streamkitPreviewStyle
     applyPreviewStyle(previewOverride)
-    if (event.data.streamkitPreviewSample === true) showPreviewSample()
+
   })
 
   function say(message) {
@@ -531,26 +531,6 @@
   // ---- the feed ------------------------------------------------------------
 
   var list = document.getElementById('chat')
-
-  function showPreviewSample() {
-    if (!list) return
-    var previous = list.querySelector('[data-preview-sample]')
-    if (previous) previous.remove()
-    var row = document.createElement('li')
-    row.className = 'preview-sample'
-    row.setAttribute('data-preview-sample', 'true')
-    var name = document.createElement('span')
-    name.className = 'name'
-    name.textContent = 'Viewer sample'
-    var message = document.createElement('span')
-    message.className = 'text'
-    message.textContent = 'This is a sample chat message'
-    row.appendChild(name)
-    row.appendChild(document.createTextNode(': '))
-    row.appendChild(message)
-    list.appendChild(row)
-    document.body.classList.add('ready')
-  }
 
   /**
    * Reports the rendered height of the chat to whoever embedded this page.
