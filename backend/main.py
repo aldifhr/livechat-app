@@ -331,19 +331,23 @@ async def _observe_source(room_id: str, source: TikTokAdapter) -> None:
 
 
 # --------------------------------------------------------------------------
-# the stream overlay, as a page
+# overlay styling, over the socket
 # --------------------------------------------------------------------------
 #
-# The overlay used to be served by the desktop app on its own loopback port,
-# which meant OBS had to run on the same machine as the app. It does not have to:
-# the page is one self-contained HTML file that opens its own socket to this
-# backend, so the only thing that has to be reachable is the backend itself. This
-# route serves that file from the domain OBS already points at, so a browser
-# Overlay pages are served by `routes/overlay`, which reads them from the
-# static file on each request and bakes in the named room's saved styling.
-from routes.overlay import page_config, router as overlay_router
-
-app.include_router(overlay_router)
+# The backend used to serve the overlay pages itself, from a second copy of each
+# one in `static/`, baking the room's styling into the HTML. It does not any more.
+# nginx serves those pages from disk off the dashboard host, which is the whole
+# point of them living there: a browser source in OBS has to keep working while
+# this service is restarting, so it cannot depend on a server rendering a page.
+# And baking bought nothing — `main.py` already pushes the same styling to every
+# overlay as a `config` frame the moment its socket opens, so the baked copy was
+# the same data arriving twice, and only on the address nobody's link pointed at.
+#
+# What is left is the one job that genuinely needs this side: translating the
+# store's namespaced keys into the names a page reads. `page_config` moved to
+# `models.py`, beside `OVERLAY_STORE_KEYS`, which is the same vocabulary in the
+# other direction.
+from models import page_config
 
 
 # --------------------------------------------------------------------------

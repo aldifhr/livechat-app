@@ -697,24 +697,28 @@ eventlog.forget("alpha-board")
 eventlog.forget("beta-board")
 
 
-print("the overlay page, served from the backend")
-# The point of serving it here rather than from the app's loopback port: OBS can
-# live on any machine and still reach it. The page takes its settings from the
-# query string, so the handler is nearly inert — it answers the file and leaves
-# the query for the page. What matters is that it answers at all, with and
-# without the trailing slash, because an OBS source is configured once by hand.
-page = client.get("/overlay/")
-check("the overlay page is served", page.status_code == 200, str(page.status_code))
-check("it is html", "text/html" in page.headers.get("content-type", ""))
-check("it is the real page, not a stub", "Live chat overlay" in page.text)
-check("the config placeholder is left for the page to read", "__OVERLAY_CONFIG__" in page.text)
-check("no-store, so a source reload picks up an edit", page.headers.get("cache-control") == "no-store")
-# With a query string, which is how OBS sends the handle and styling.
-check("it answers with a query string too", client.get("/overlay/?room=ana&size=22").status_code == 200)
-check("and without the trailing slash", client.get("/overlay").status_code == 200)
-# A mistyped path is a 404, not the page — otherwise a typo produces a working
-# chat and nobody can tell why.
-check("a mistyped path is a 404", client.get("/overlay-wrong").status_code == 404)
+print("the backend does not serve overlay pages")
+# The pages live in `web/public/overlay/` now and nginx serves them off disk. That is
+# not tidiness: a browser source in OBS has to keep working while this service is
+# restarting, so it cannot depend on a server rendering a page for it. Nothing was
+# lost with the second copy — the styling it baked was already being pushed to every
+# overlay as a `config` frame the moment its socket opened, so it arrived twice, and
+# only on the address no link pointed at.
+#
+# Asserted so it cannot creep back. A re-added copy is invisible: both copies answer
+# 200 and both look like an overlay, which is exactly how the two copies of the chat
+# overlay drifted apart by nineteen lines without a single test noticing until this
+# one compared them.
+for path in (
+    "/overlay/",
+    "/overlay",
+    "/overlay/chat-overlay",
+    "/overlay/top-chatter",
+    "/overlay/cat-overlay",
+    "/topchatter",
+):
+    got = client.get(path)
+    check(f"{path} is not served here", got.status_code == 404, str(got.status_code))
 
 print("a connect can remember the room's overlay styling")
 # The point of storing it on the room: the overlay link can then be a bare
@@ -746,9 +750,17 @@ check("the name colour was stored", saved.get("overlayNameColour") == "#abcdef",
 check("the background was stored", saved.get("overlayBg") == 0.2, json.dumps(saved))
 check("the font was stored", saved.get("overlayFont") == "Arial", json.dumps(saved))
 check("an unknown key was dropped, not stored", "notAnOverlayKey" not in saved, json.dumps(saved))
-# And the overlay page bakes that styling in, so the bare id link renders it.
-page = client.get(f"/overlay/?room={styled_id}").text
-check("the page carries the stored size", '"size": 30' in page or '"size":30' in page, page[page.find("__OVERLAY"):][:120] if "__OVERLAY" in page else "no placeholder")
+# And the styling reaches the overlay the only way it can now: over the socket, in a
+# `config` frame, under the names a page reads. That translation is `page_config`,
+# which moved to `models.py` when the HTML routes went, so it is asserted here at the
+# point that stores the keys it reads.
+from models import page_config  # noqa: E402
+
+check(
+    "page_config hands the page the names it reads, and nothing else",
+    page_config(saved) == {"size": 30, "nameColour": "#abcdef", "background": 0.2, "font": "Arial"},
+    json.dumps(page_config(saved), sort_keys=True),
+)
 
 print()
 if failures:

@@ -19,8 +19,8 @@ import { JSDOM } from 'jsdom'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-// The repo root, one level above app/: this test drives the pages the backend
-// serves, and the backend is a sibling of the app, not a part of it.
+// The repo root, one level above app/: the overlay pages are a sibling of the app,
+// not a part of it.
 const pkgRoot = fileURLToPath(new URL('../..', import.meta.url))
 
 let failures = 0
@@ -32,10 +32,13 @@ function check(name, condition, detail = '') {
   }
 }
 
-// The same file the backend serves and the host embeds, so this exercises the
-// page that actually ships rather than a copy of it.
-const CHAT_PAGE = readFileSync(`${pkgRoot}backend/static/overlay.html`, 'utf8')
-const BOARD_PAGE = readFileSync(`${pkgRoot}backend/static/topchatter.html`, 'utf8')
+// The one copy, in `web/public/overlay/`. It used to be read from `backend/static/`
+// as well, on the grounds that this should exercise "the page that actually ships"
+// — but that is what made the test worthless as a check on it. Two files, both
+// answering 200, both looking like an overlay: the chat pair drifted nineteen lines
+// apart and every assertion here still passed, because it was reading the stale one.
+const CHAT_PAGE = readFileSync(`${pkgRoot}web/public/overlay/chat-overlay.html`, 'utf8')
+const BOARD_PAGE = readFileSync(`${pkgRoot}web/public/overlay/top-chatter.html`, 'utf8')
 
 /**
  * The page's own `STYLE_DEFAULTS`, read out of the page rather than kept here.

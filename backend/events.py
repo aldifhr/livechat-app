@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from hub import hub
-from routes.overlay import page_config
+from models import page_config
 
 import eventlog
 

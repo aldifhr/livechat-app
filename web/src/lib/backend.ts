@@ -19,11 +19,15 @@ import 'server-only'
 export const BACKEND =
   process.env.BACKEND_URL?.replace(/\/+$/, '') ?? 'https://kit-backend.aldifhr.my.id'
 
-/** The overlay pages, which the dashboard hands to OBS. Same host as the backend
- *  by default because that is where they are served; set separately when a
- *  deployment splits them. */
+/** The overlay pages, which the dashboard hands to OBS.
+ *
+ *  These are served by nginx off this app's own host, out of `web/public/overlay/`.
+ *  There is no backend fallback any more: the backend used to keep a second copy of
+ *  each page and serve those, and defaulting here to `BACKEND` sent every link to
+ *  that copy. Set the variable only for a deployment that deliberately splits them.
+ */
 export const OVERLAY_ORIGIN =
-  process.env.OVERLAY_ORIGIN?.replace(/\/+$/, '') ?? BACKEND
+  process.env.OVERLAY_ORIGIN?.replace(/\/+$/, '') ?? ''
 
 /**
  * Whether a token is configured.

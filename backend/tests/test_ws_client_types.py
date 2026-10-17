@@ -2,10 +2,9 @@
 
 The socket route validates `client_type` before accepting, and for a while the
 list it validated against held only `room` and `customizer`. `overlay` — the type
-`static/overlay.html` and `static/topchatter.html` hardcode, and therefore the
-type every OBS browser source and every inline dashboard preview connects as — was
-not in it, so the route closed every real overlay with 1008 and the product was
-dark.
+the overlay pages in `web/public/overlay/` hardcode, and therefore the type every
+OBS browser source and every inline dashboard preview connects as — was not in it,
+so the route closed every real overlay with 1008 and the product was dark.
 
 It shipped green because the coverage was the other way round: every websocket
 suite here opened `/ws/room/`, which is what the desktop app uses, and not one

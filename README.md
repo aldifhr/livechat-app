@@ -7,7 +7,7 @@ manifest** — `npm install` at the root does nothing, and that is deliberate.
 
 | Part | What it is | Stack |
 |---|---|---|
-| `backend/` | Live chat API + serves the overlay pages | FastAPI + TikTokLive |
+| `backend/` | Live chat API | FastAPI + TikTokLive |
 | `web/` | Dashboard: stream list, per-stream pages, overlay builder | Next.js 16 + React 19 |
 | `app/` | Desktop viewer for the operator | Tauri + React |
 
@@ -37,7 +37,8 @@ manifest** — `npm install` at the root does nothing, and that is deliberate.
 ## Backend (StreamKit)
 
 FastAPI + TikTokLive for live chat rooms. Real-time WebSocket, token auth,
-multi-room. It serves its own overlay pages so it can stand alone without `web/`.
+multi-room. It serves the API and the WebSocket, and nothing else — the overlay
+pages are static files that live with the dashboard and are served by nginx.
 
 ```
 backend/
@@ -53,10 +54,9 @@ backend/
 ├── routes/
 │   ├── auth.py       Token gate + exemptions
 │   ├── rooms.py      Room CRUD + config
-│   ├── overlay.py    Overlay pages, config baked into the HTML
 │   └── ops.py        /health, /metrics, /gifts
 ├── sources/          TikTokLive adapter
-├── static/           overlay.html, topchatter.html, gifts/
+├── static/           gifts/ (the gallery served at /gifts)
 ├── config/           Runtime state (git-ignored)
 └── tests/            17 suites
 ```
@@ -116,9 +116,11 @@ host. `/health`, `/metrics`, the overlay pages, and the WebSocket stay open.
 | `POST` | `/api/hooks/{id}` | token | Webhook for outside integrations |
 | `GET` | `/health` | — | Status + uptime. Per-room map only for token holders |
 | `GET` | `/metrics` | — | Runtime counters |
-| `GET` | `/overlay`, `/overlay/chat-overlay` | — | Chat overlay page |
-| `GET` | `/topchatter`, `/overlay/top-chatter` | — | Leaderboard overlay page |
 | `GET` | `/gifts` | — | Gift sticker gallery |
+
+The overlay pages are **not** on this list on purpose — they are not served here
+at all any more. They are static files that nginx serves off the dashboard host
+(see [Overlay](#overlay)); the backend answers 404 for `/overlay/*`.
 | `WS` | `/ws/{client_type}/{id}` | — | Event stream |
 
 `client_type` is `room` (desktop app) or `overlay` (HTML pages). A socket that
@@ -220,7 +222,7 @@ All server-side. There are no `NEXT_PUBLIC_*` variables.
 | Name | Meaning |
 |---|---|
 | `BACKEND_URL` | Backend origin the server proxies to. |
-| `OVERLAY_ORIGIN` | Where overlay pages are served from. Defaults to `BACKEND_URL`. |
+| `OVERLAY_ORIGIN` | Where overlay pages are served from, if not this app's own host. Unset by default. |
 | `STREAMKIT_TOKEN` | Backend token, attached server-side. Empty shows a "no API token" banner. |
 | `STREAMKIT_HTPASSWD` | Path to the htpasswd file. |
 | `STREAMKIT_DASHBOARD_USER` | Account name inside that file. Default `admin`. |
@@ -284,16 +286,27 @@ rather than during one.
 
 ## Overlay
 
-Two pages, each with **two byte-identical copies**:
+Three pages, one copy of each, all in `web/public/overlay/`:
 
-- `backend/static/overlay.html` ≡ `web/public/overlay/chat-overlay.html`
-- `backend/static/topchatter.html` ≡ `web/public/overlay/top-chatter.html`
+- `chat-overlay.html`
+- `top-chatter.html`
+- `cat-overlay.html`
 
-Not by accident. nginx serves both from disk (`/var/www/streamtools`) so OBS
-keeps working while the dashboard is restarting — and on that path
-`__OVERLAY_CONFIG__` is **not** substituted, so all styling arrives via the query
-string and the live `config` frame. The backend serves the same files with the
-config already baked into the HTML, as a second surface that stands alone.
+nginx serves them from disk (`/var/www/streamtools`), deliberately bypassing the
+app: OBS loads them as a browser source, where a framework runtime is dead
+weight, and they have to keep working while the dashboard is restarting. On that
+path `__OVERLAY_CONFIG__` is **not** substituted, so all styling arrives over the
+socket the page already opens, as a `config` frame.
+
+There used to be a second copy of each page in `backend/static/`, kept by hand,
+which the backend served with the room's styling baked into the HTML. It was
+not worth having: a browser source cannot depend on a server rendering a page
+for it, the styling it baked was already arriving over the socket, and the two
+copies drifted — the chat pair was nineteen lines apart before this was removed,
+with `test-overlay-page.mjs` reading the stale twin and failing on a feature that
+had already shipped. `backend/routes/overlay.py` went with it; `page_config()`
+lives in `backend/models.py` now, because the socket is the only thing left that
+needs it.
 
 `shared/overlay.ts` is the single source for styling: defaults, numeric bounds,
 and key translation. There are **four different key vocabularies** here and not

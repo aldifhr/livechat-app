@@ -11,8 +11,9 @@ pada akhirnya terjadi.
 - **"Tidak menyentuh backend" tidak berlaku.** Rutenya memang benar, tapi
   *broadcast*-nya salah: `main.py` mengirim config mentah dengan nama store
   (`overlaySize`) ke halaman yang membaca nama lain (`size`). Translasi itu hanya
-  ada di `baked_config`, jadi jalur HTML benar dan jalur WebSocket salah.
-  `page_config()` sekarang dipakai di handshake, di broadcast, dan di HTML.
+ada di `baked_config`, jadi jalur HTML salah dan jalur WebSocket salah.
+  `page_config()` sekarang dipakai di handshake dan di broadcast, dan hidup di
+  `backend/models.py` setelah jalur HTML-nya dihapus.
   Selain itu ada **empat** kosakata key, bukan tiga — `resolveStyle()` cocok dengan
   tidak satu pun. Sudah tercatat di bagian config di bawah.
 - **Preview inline ternyata murah.** Awalnya ditulis sebagai "kalau ini murah".
@@ -54,12 +55,13 @@ Config sebenarnya sudah disiarkan saat overlay terhubung
 pernah sampai dan tetap dibuang. `top-chatter.html:396` utamanya hanya
 `topChatters`.
 
-**Link yang dipakai tidak pernah membawa config tersimpan.** Backend bisa
-memasukkan configroom ke placeholder `__OVERLAY_CONFIG__`
-(`backend/main.py:681 _render_overlay`), tapi jalur yang benar-benar dipakai
-adalah nginx menyajikan file statis mentah dari `/var/www/streamtools/overlay/`.
-Di sana placeholder-nya tidak pernah diganti. Praktisnya, query string
-adalah satu-satunya saluran style.
+**Link yang dipakai tidak pernah membawa config tersimpan.** Dulu backend bisa
+memasukkan config room ke placeholder `__OVERLAY_CONFIG__` lewat `_render_overlay`,
+tapi jalur yang benar-benar dipakai adalah nginx menyajikan file statis mentah
+dari `/var/www/streamtools/overlay/`. Di sana placeholder-nya tidak pernah
+diganti. Praktisnya, query string adalah satu-satunya saluran style — dan begitu
+juga setelah jalur HTML-nya dihapus seluruhnya, karena frame `config` di socket
+sudah membawa data yang sama.
 
 ### Akibatnya
 

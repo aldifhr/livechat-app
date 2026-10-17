@@ -92,6 +92,56 @@ def clean_overlay(raw: dict[str, Any] | None) -> dict[str, Any]:
     return out
 
 
+#: The room-config keys that carry overlay styling, mapped to the names a page reads.
+#: Wider than `OVERLAY_STORE_KEYS` on purpose: that tuple guards the unauthenticated
+#: connect path and must stay narrow, while this one only renames keys on the way out
+#: to a page that already knows them.
+OVERLAY_STYLE_KEYS = {
+    "overlaySize": "size",
+    "overlayNameColour": "nameColour",
+    "overlayTextColour": "textColour",
+    "overlayBg": "background",
+    "overlayMax": "max",
+    "overlayDelay": "delay",
+    "overlayFont": "font",
+    "overlayPosition": "position",
+    "overlayMaxWidth": "maxWidth",
+    "overlayBubbleOpacity": "bubbleOpacity",
+    "overlayGiftColour": "giftColour",
+    # The board's heading. Added with the config route, when saving styling became
+    # something the dashboard could do — see `page_config` for why this key is
+    # absent from `OVERLAY_STORE_KEYS` above, which guards a different path.
+    "overlayTitle": "title",
+}
+
+
+def page_config(config: dict[str, Any] | None) -> dict[str, Any]:
+    """A room's stored config under the names a page reads.
+
+    The store namespaces the overlay's settings — `overlaySize`, `overlayBg` — so
+    that a room's config can hold more than styling and an unnamespaced `size` would
+    be ambiguous. The page reads plain names. One translation between the two, used
+    by every path that hands styling to a page.
+
+    That is the whole point of this function: it used to exist only inside the HTML
+    baker, so the WebSocket path sent the *stored* names while the HTML path sent the
+    page's. A page asked to read `background` out of a frame carrying `overlayBg`
+    gets nothing back and falls back to its defaults, so restyling a stream changed
+    what OBS was pointed at without changing what OBS showed.
+
+    It now lives here rather than beside the HTML routes because the backend no longer
+    serves the pages. It was moved out of `routes/overlay.py` when that file went, and
+    the WebSocket is the only thing left that needs it.
+    """
+    if not isinstance(config, dict):
+        return {}
+    out: dict[str, Any] = {}
+    for room_key, page_key in OVERLAY_STYLE_KEYS.items():
+        if room_key in config and config[room_key] is not None:
+            out[page_key] = config[room_key]
+    return out
+
+
 class ConfigUpdateRequest(BaseModel):
     config: dict[str, Any]
     room_id: str | None = None

@@ -18,12 +18,30 @@ button:hover,button.on{background:var(--acc);color:#2b1f2d}
 
 </style></head><body>
 <canvas id="c"></canvas><div id="bub"></div><div id="ui"></div>
+<script id="overlay-config" type="application/json">__OVERLAY_CONFIG__</script>
 <script>
 // ---- config from URL ----
 const q=new URLSearchParams(location.search)
 const clean=q.has('clean')
 const root=document.documentElement
 root.classList.add('clean')
+// The page and its socket are served by different hosts in production: nginx serves
+// the page from the dashboard host, and the websocket lives on the backend. Reading the
+// socket origin off `location.origin` therefore dialled a host with no `/ws/` on it and
+// the overlay sat there silently reconnecting to itself. The host bakes the real one in
+// here, `?base=` still overrides it, and this page's own origin is the fallback for
+// when the page is opened straight off the backend.
+// The placeholder is left literal when the backend has no stored config for the room,
+// hence the try/catch rather than a direct parse.
+const baked=(()=>{try{return JSON.parse(document.getElementById('overlay-config').textContent)||{}}catch(e){return{}}})()
+const BASE=(q.get('base')||baked.baseUrl||location.origin).replace(/\/+$/,'')
+// One knob for every timer in the file, applied to `dt` so it is visual time and not
+// just a faster loop. An overlay can sit on a canvas for six hours; someone who finds
+// the cat restless needs to be able to turn it down without editing the file.
+// Written with Math rather than the `cl` helper below, which is not initialised yet.
+const REDUCED=matchMedia('(prefers-reduced-motion: reduce)').matches
+const rateFromUrl=parseFloat(q.get('speed'))
+let rate=q.has('speed')&&rateFromUrl>0?Math.min(2,Math.max(.25,rateFromUrl)):(REDUCED?.6:1)
 
 // ---- chat overlay (WebSocket) ----
 const roomId=q.get('room')||''
@@ -37,13 +55,20 @@ function wake(){
   lastEvent=Date.now()
 }
 
+/** Where the cat's shoulders are, for spawning particles off its body. */
+function backY(){return GY-(m_height(C.mode))}
+
+/** Height of the standing cat, so particle spawn points follow the pose instead of
+ *  guessing one number that is only right when the cat is upright. */
+function m_height(m){return m==='sleep'||m==='loaf'?30:m==='roll'?22:48}
+
 /** React to a gift / like / follow: hearts + animation, no bubble text. */
 function react(frame){
   wake()
   const kind=frame.type
   boop()
   C.boop=1.2
-  for(let i=0;i<8;i++)em('heart',C.x+rnd(-12,12),GY-50+rnd(-6,6),rnd(-10,10),rnd(-36,-20),1.4)
+  for(let i=0;i<6;i++)em('heart',C.x+rnd(-12,12),backY()+rnd(-6,6),rnd(-10,10),rnd(-36,-20),1.4)
   if(kind==='gift'){setMode('zoom')}
   else if(kind==='like'){setMode('jump')}
   else{setMode('vibe')}
@@ -51,7 +76,7 @@ function react(frame){
 
 function connectChat(){
   if(!roomId)return
-  const base=location.origin.replace(/^http/,'ws')
+  const base=BASE.replace(/^http/,'ws')
   const url=base+'/ws/overlay/'+encodeURIComponent(roomId)
   chatSocket=new WebSocket(url)
   chatSocket.onopen=()=>console.log('[cat] chat connected')
@@ -62,7 +87,7 @@ function connectChat(){
         // Comments do not show a bubble — they just make the cat react (hearts).
         wake()
         C.boop=1.2
-        for(let i=0;i<6;i++)em('heart',C.x+rnd(-10,10),GY-44,rnd(-8,8),rnd(-30,-18),1.2)
+        for(let i=0;i<6;i++)em('heart',C.x+rnd(-10,10),backY()-4,rnd(-8,8),rnd(-30,-18),1.2)
       } else if(frame.type==='gift'||frame.type==='like'||frame.type==='follow'){
         react(frame)
       }
@@ -79,10 +104,45 @@ const bc=document.createElement('canvas');bc.width=96;bc.height=96;const b=bc.ge
 const sc=document.createElement('canvas');sc.width=96;sc.height=96;const sx=sc.getContext('2d')
 let X=b,W,H,w,h,PS,GY,mx=-1e4,my=0,TT=0,pal='hitam',chonk=false,auto=true,bgm=q.get('bg')==='hijau'?'hijau':'kotak'
 const OL='#2b1f2d',lerp=(a,b,t)=>a+(b-a)*t,rnd=(a,b)=>a+Math.random()*(b-a),pick=a=>a[Math.random()*a.length|0],cl=(v,a,b)=>Math.max(a,Math.min(b,v))
-const PAL={oren:{b:'#f5a14f',d:'#d97f35',s:'#b9591f',belly:'#fff0d4',ear:'#ff9eb0'},abu:{b:'#a9b3c2',d:'#8590a2',s:'#5f6a7e',belly:'#eef1f7',ear:'#ffb3c1'},hitam:{b:'#524c63',d:'#3b3649',s:'#2a2638',belly:'#8680a0',ear:'#e0849c'},putih:{b:'#fcf7f0',d:'#e3d8c9',s:'#eebd8a',belly:'#ffffff',ear:'#ffb8c6'}}
-const mixc=c=>{const n=parseInt(c.slice(1),16);return'#'+[16,8,0].map(v=>Math.round(lerp((n>>v)&255,255,.4)).toString(16).padStart(2,'0')).join('')}
+// Each palette is a ramp, dark to light: `s` stripe, `lo` shadow, `d` far-side mid,
+// `b` body, `hi` highlight, then the two light materials.
+//
+// The ramp is the whole point. These used to be five flat colours and the highlight was
+// `mixc`, which lerped 40% toward white — so every palette shaded by *desaturating*:
+// orange lost 28 points of saturation on its highlight, the black cat lost 15, and the
+// hue never moved anywhere. That is how flat vector art shades. Pixel art on a
+// restricted palette shades by moving hue: shadows go cool toward blue and violet,
+// highlights go warm toward yellow. The hue column below is monotonic in every palette,
+// and saturation rises into the highlight instead of collapsing, which is what makes
+// the same three tones read as a machine with a fixed palette rather than a gradient.
+const PAL={
+  oren :{s:'#7a3410',lo:'#a34d15',d:'#c4631f',b:'#e8813a',hi:'#ffc169',belly:'#fadfae',ear:'#f4737f'},
+  abu  :{s:'#333d4d',lo:'#4a5468',d:'#66718a',b:'#8490a8',hi:'#c9d6e8',belly:'#e9eef6',ear:'#f2909f'},
+  hitam:{s:'#191622',lo:'#262438',d:'#393352',b:'#544a75',hi:'#a394d4',belly:'#a49bbf',ear:'#e46a8c'},
+  putih:{s:'#d99a5c',lo:'#d8c3a4',d:'#e8d9c0',b:'#f6eddc',hi:'#ffffe0',belly:'#ffffff',ear:'#f7a3ae'},
+}
+// 4x4 ordered dither, indexed y*4+x. Not the pattern that matters — the banding it
+// breaks up. Three flat bands with hard edges read as vector shapes; the same three
+// bands with an ordered threshold scattering pixels across each boundary read as a
+// limited-palette machine, which is the whole look.
+const BAYER=[0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5]
 const R=(x,y,a,c2,col)=>{if(a<=0||c2<=0)return;X.fillStyle=col;X.fillRect(Math.round(x),Math.round(y),Math.round(a),Math.round(c2))}
-function E(cx,cy,rx,ry,col,o){cx=Math.round(cx);cy=Math.round(cy);if(o)E(cx,cy,rx+1,ry+1,OL);for(let y=-ry;y<=ry;y++){const t=y/Math.max(ry,.5),hw=Math.round(rx*Math.sqrt(Math.max(0,1-t*t)));R(cx-hw,cy+y,hw*2+1,1,col)}}
+// `sh` is a palette: with one, the ellipse is lit from the upper left and banded into
+// that palette's own highlight / body / shadow. Without one it stays a flat fill, which
+// is what the small shapes — muzzle, cheek, bubble — still want.
+function E(cx,cy,rx,ry,col,o,sh){
+  cx=Math.round(cx);cy=Math.round(cy)
+  if(o)E(cx,cy,rx+1,ry+1,OL)
+  for(let y=-ry;y<=ry;y++){
+    const t=y/Math.max(ry,.5),hw=Math.round(rx*Math.sqrt(Math.max(0,1-t*t)))
+    if(!sh){R(cx-hw,cy+y,hw*2+1,1,col);continue}
+    for(let x=-hw;x<=hw;x++){
+      const d=cl((x/Math.max(rx,.5)+y/Math.max(ry,.5))*.5+.5,0,1)
+      const n=(BAYER[(((cy+y)&3)<<2)|((cx+x)&3)]+.5)/16
+      R(cx+x,cy+y,1,1,d+n<.34?sh.hi:d+n<.70?sh.b:sh.lo)
+    }
+  }
+}
 function L(x1,y1,x2,y2,t,col,o){const n=Math.max(Math.abs(x2-x1),Math.abs(y2-y1),1);for(let i=0;i<=n;i++){const x=x1+(x2-x1)*i/n,y=y1+(y2-y1)*i/n;R(x-t/2-o,y-t/2-o,t+2*o,t+2*o,col)}}
 function tri(cx,by,hh,ww,sl,col,o){for(let i=-o;i<=hh+o;i++){const a=Math.max(0,Math.round(ww*(1-i/(hh+1))))+2*o;R(cx+sl*i/hh-a/2,by-i,a,1,col)}}
 function spr(a,x,y,col){X=g;a.forEach((r,j)=>{for(let i=0;i<r.length;i++)if(r[i]==='1')R(x+i,y+j,1,1,col)})}
@@ -100,37 +160,104 @@ vibe:{d:[4,6],T:{sit:1,gl:1},say:['vibing 😎','deal with it','sksksk','ga ada 
 stare:{d:[3,4],T:{sit:1},say:['bruh.','liat apa lu','anda siapa?','...ok.']},
 roll:{d:[2,3],T:{ball:1},v:42,say:['gelindiiing~','wheeee','guling2','menggelinding']},
 flop:{d:[3.5,4.5],T:{amp:.5,fl:1},say:['elus dong 🥺','mager parah','rebahan is life']},
-jump:{d:[1.2,1.2],T:{tuck:.6},v:26,once:1,say:['hup!','NYAWIT!','ampun bang']},
+// `once` modes keep running with auto off, so a button press still shows the animation.
+// A jump is crouch + launch + flight + settle: the crouch alone is CRUNCH_T, and the
+// flight is 2*JUMP_V/GRAV. At 1.2s the old duration cut the flight in half, so the cat
+// landed and then stood in a jump pose for the rest of the mode.
+jump:{d:[1.7,1.7],T:{},v:22,once:1,say:['hup!','NYAWIT!','ampun bang']},
 dizzy:{d:[2.2,2.2],T:{sit:1},once:1,say:['pusing...','dunia muter','mual dikit']},
 yawn:{d:[1.8,1.8],T:{sit:1},once:1,say:['hoaaam']},
 wash:{d:[3,4],T:{sit:1,wash:1},say:['jilat2','mandi kucing','bersih2']},
 knead:{d:[3,5],T:{knead:1},say:['biscuit time 🍞','uwu','ulen2 ulen2']}}
 const WT=[['walk',5],['sit',2],['sleep',1.5],['roll',2],['zoom',1.5],['flop',1.5],['vibe',1.5],['stare',1.5],['jump',1.5],['yawn',1],['wash',1.5],['knead',1.2],['idle',1]]
-const C={x:100,dir:1,mode:'idle',t:0,tm:2,vx:0,roll:0,jy:0,jv:0,ph:0,boop:0,land:0,ef:0,earT:2,es:1,jd:1,blink:3,bt:0,pt:0,P:{amp:0,sit:0,loaf:0,ball:0,tuck:0,gl:0,fl:0,wash:0,knead:0}},B={t:0},pts=[]
+// A jump apex of JUMP_V²/(2*GRAV) ≈ 50px, against a ~48px standing body: high enough
+// to read as a jump, low enough to stay inside the frame at PS=10.
+const GRAV=320,JUMP_V=180,CRUNCH_T=.3,APEX=JUMP_V*JUMP_V/(2*GRAV)
+// Every pose channel, and the rate each one blends at. `ext` and `trail` exist because
+// a jump cannot be authored as static weights — see the jump timeline in upd().
+const CH={amp:7,sit:7,loaf:7,ball:7,tuck:16,gl:4,fl:7,wash:9,knead:7,ext:18,trail:14}
+const C={x:100,dir:1,mode:'idle',t:0,tm:2,vx:0,roll:0,jy:0,jv:0,ph:0,stridePx:8,boop:0,land:0,land0:0,landT:0,crunch:0,jph:0,turn:0,wall:1,lean:0,ef:0,earT:2,es:1,blink:3,bt:0,pt:0,P:{amp:0,sit:0,loaf:0,ball:0,tuck:0,gl:0,fl:0,wash:0,knead:0,ext:0,trail:0}},B={t:0},pts=[]
 function say(t){/* speech bubble removed */}
 function setMode(n){const m=M[n];C.mode=n;C.t=0;C.tm=(!auto&&!m.once)?1e9:rnd(m.d[0],m.d[1])
 if(m.v)C.dir=C.x<w*.2?1:C.x>w*.8?-1:(Math.random()<.5?1:-1)
-C.jd=n!=='jump';if(m.say&&Math.random()<.9)say(pick(m.say))}
+if(n==='jump'){C.jph=0;C.crunch=0}else{C.crunch=0}
+if(m.say&&Math.random()<.9)say(pick(m.say))}
 function nextMode(){const m=C.mode;if(m==='roll')return setMode('dizzy');if(m==='zoom')return setMode('sit');if(!auto)return setMode('idle')
 let r=Math.random()*WT.reduce((a,b)=>a+b[1],0);for(const[k,v]of WT){r-=v;if(r<=0&&k!==m)return setMode(k)}setMode('walk')}
-function em(t,x,y,vx,vy,l,sz){pts.push({t,x,y,vx,vy,l,L:l,sz})}
-function boop(){C.boop=1.2;for(let i=0;i<6;i++)em('heart',C.x+rnd(-10,10),GY-44,rnd(-8,8),rnd(-30,-18),1.2);say(pick(['meong!','mrrp~','aduh geli','>w<','ih apaan sih']));if(C.mode==='sleep')setMode('sit');if(C.jy<=0&&C.mode!=='roll')C.jv=70}
+// Per-particle physics. Without it a heart keeps its initial velocity for its whole
+// life: a burst of eight travelled in eight dead-straight parallel lines, and dust
+// floated upward instead of settling. Negative gravity is the float-up hearts want;
+// drag is what turns that into a rise that slows to a stop.
+const PG={heart:-9,note:-6,star:-3,z:-4,puff:120},PD={heart:1.9,note:1.5,star:1.2,z:1.2,puff:3},PF={heart:8,note:6,star:4,z:2,puff:0}
+function em(t,x,y,vx,vy,l,sz){pts.push({t,x,y,vx,vy,l,L:l,sz,g:PG[t]||0,dr:PD[t]||0,fl:PF[t]||0,ph:rnd(0,6.28)})}
+function boop(){C.boop=1.2;for(let i=0;i<6;i++)em('heart',C.x+rnd(-10,10),backY()-4,rnd(-8,8),rnd(-30,-18),1.2);say(pick(['meong!','mrrp~','aduh geli','>w<','ih apaan sih']));if(C.mode==='sleep')setMode('sit');if(C.jy<=0&&C.mode!=='roll'){C.jv=115;C.crunch=Math.max(C.crunch,.45)}}
 function upd(dt){const c=C,m=M[c.mode],P=c.P;c.t+=dt;TT+=dt
 // Idle → sleepy: after IDLE_SLEEP_MS with no events, put the cat to sleep.
 if(auto&&c.mode!=='sleep'&&Date.now()-lastEvent>IDLE_SLEEP_MS){setMode('sleep')}
-const T=Object.assign({amp:0,sit:0,loaf:0,ball:0,tuck:0,gl:0,fl:0,wash:0,knead:0},m.T)
-for(const k in T)P[k]+=(T[k]-P[k])*Math.min(1,dt*(k==='gl'?4:7))
-if(c.mode==='jump'&&!c.jd&&c.t>.28){c.jd=1;c.jv=115}
-const v=c.mode==='jump'&&!c.jd?0:(m.v||0)
-c.vx+=(v*c.dir-c.vx)*Math.min(1,dt*6);c.x+=c.vx*dt
-if(c.x<30){c.x=30;c.dir=1;c.vx=0}else if(c.x>w-30){c.x=w-30;c.dir=-1;c.vx=0}
-c.ph+=dt*(c.mode==='flop'?9:c.mode==='knead'?7:2.2+Math.abs(c.vx)/4)
-if(c.mode==='roll')c.roll+=Math.abs(c.vx)/15*dt;else{const tg=c.mode==='flop'?Math.PI+2*Math.PI*Math.round((c.roll-Math.PI)/(2*Math.PI)):2*Math.PI*Math.round(c.roll/(2*Math.PI));c.roll+=(tg-c.roll)*Math.min(1,dt*6)}
-if(c.jy>0||c.jv>0){c.jv-=320*dt;c.jy+=c.jv*dt;if(c.jy<=0){c.jy=0;if(c.jv<-40){c.land=.3;for(let i=0;i<5;i++)em('puff',c.x+rnd(-10,10),GY-2,rnd(-16,16),-3,.4,3)}c.jv=0}}
-c.land=Math.max(0,c.land-dt);c.boop=Math.max(0,c.boop-dt);B.t-=dt
+const T=Object.assign({amp:0,sit:0,loaf:0,ball:0,tuck:0,gl:0,fl:0,wash:0,knead:0,ext:0,trail:0},m.T)
+const jumping=c.mode==='jump'
+if(jumping){
+  // The jump is the one mode with its own timeline. As static weights it was one pose
+  // held for the whole flight, and with amp at 0 the stride term in foot() is zero —
+  // so the legs stayed welded to the hips from takeoff to landing and the cat read as
+  // sliding up and down.
+  if(c.jph===0){
+    // Load: compress, gather the legs under the body.
+    c.crunch=Math.min(1,c.t/CRUNCH_T)
+    if(c.t>=CRUNCH_T){c.jph=1;c.jv=JUMP_V}
+    T.tuck=c.crunch;T.ext=c.crunch*.25
+  }else{
+    // Flight, driven off the vertical velocity rather than off the clock: the hind
+    // pair trails back on the way up, the front pair reaches out on the way down, and
+    // they cross over exactly as the velocity does. `jph` only records which side of
+    // the apex this is, so the landing test has something to read.
+    c.crunch=Math.max(0,c.crunch-dt*5)
+    const up=cl(c.jv/JUMP_V,-1,1)
+    T.trail=cl(up*.85,0,1);T.ext=cl(.55-up*.7,-.2,1);T.tuck=cl(up*.45+.1,0,1)
+    if(c.jph===1&&c.jv<=0)c.jph=2
+  }
+}
+for(const k in T){const w=P[k],t=T[k];if(w!==t)P[k]=w+(t-w)*Math.min(1,dt*(CH[k]||7))}
+const v=jumping&&c.jph===0?0:(m.v||0)
+// A wall is a pivot, not a stop. The old code clamped x and zeroed vx on the frame of
+// contact, so at zoom speed the cat teleported to a dead halt and reversed; the skid
+// keeps momentum bleeding off for a fifth of a second with dust under the feet.
+const turning=c.turn>0
+c.vx+=(v*c.dir-c.vx)*Math.min(1,dt*(turning?2.2:6))
+if(turning){c.turn-=dt;if(Math.random()<dt*45)em('puff',c.x+rnd(-6,6),GY-rnd(1,5),rnd(-26,26),rnd(-26,-4),rnd(.22,.4),rnd(2,4))}
+c.x+=c.vx*dt
+const lim=w-30
+if(c.x<30||c.x>lim){
+  const side=c.x<30?1:-1
+  c.x=cl(c.x,30,lim)
+  if(c.dir!==side&&c.turn<=0){c.turn=.26;c.wall=side;for(let i=0;i<5;i++)em('puff',c.x+rnd(-8,8),GY-rnd(1,4),-side*rnd(14,50),rnd(-26,-4),rnd(.24,.45),rnd(2,4))}
+  c.dir=side
+}
+c.lean+=(cl(c.vx/90,-1,1)*.42-c.lean)*Math.min(1,dt*7)
+// Foot phase advances with distance covered, not with time. On a clock, a stride only
+// matches the ground at the one speed it was drawn for, so it slides everywhere else —
+// 16% overstride at a walk, far worse at zoomies. The frequency saturates instead:
+// past a run a cat shortens the cycle rather than lengthening it without limit.
+const spd=Math.abs(c.vx)
+if(spd>.6){const freq=cl(1+spd/40,1,2.6);c.stridePx=cl(spd/(2*freq),3,26);c.ph+=Math.PI*spd/c.stridePx*dt}
+else c.ph+=dt*(c.mode==='flop'?9:c.mode==='knead'?7:c.mode==='roll'?7:1.5)
+if(c.mode==='roll')c.roll+=Math.abs(c.vx)/11*dt;else{const tg=c.mode==='flop'?Math.PI+2*Math.PI*Math.round((c.roll-Math.PI)/(2*Math.PI)):2*Math.PI*Math.round(c.roll/(2*Math.PI));c.roll+=(tg-c.roll)*Math.min(1,dt*6)}
+if(c.jy>0||c.jv>0){c.jv-=GRAV*dt;c.jy+=c.jv*dt;if(c.jy<=0){
+  // Falling speed sets the absorb, so a boop-hop does not flatten the cat.
+  const hard=cl(-c.jv/150,0,1)
+  c.jy=0;c.jv=0;c.jph=2
+  c.land0=.42*hard+.05;c.landT=.42
+  for(let i=0;i<2+hard*6|0;i++)em('puff',c.x+rnd(-12,12),GY-rnd(1,3),rnd(-26,26)*(1+hard),rnd(-14,-2),rnd(.28,.5),rnd(2,4))
+}}
+// Ease-out, not linear: squash that decays at a constant rate reads as a mechanism
+// resetting rather than a body springing back.
+c.land=c.landT>0?c.land0*Math.pow(c.landT/.42,2):0
+if(c.landT>0)c.landT=Math.max(0,c.landT-dt)
+c.crunch=Math.max(0,c.crunch-dt*2.2)
+c.boop=Math.max(0,c.boop-dt);B.t-=dt
 c.earT-=dt;if(c.earT<0){c.ef=.25;c.es=Math.random()<.5?-1:1;c.earT=rnd(1.5,4)}c.ef=Math.max(0,c.ef-dt)
 c.blink-=dt;if(c.blink<0){c.bt=.15;c.blink=rnd(2,5)}c.bt=Math.max(0,c.bt-dt)
-c.pt-=dt;if(c.pt<=0){const hx=c.x+c.dir*4,hy=GY-48,n=c.mode
+c.pt-=dt;if(c.pt<=0){const hx=c.x+c.dir*4,hy=backY(),n=c.mode
 if(n==='sleep'){em('z',hx+8,hy,3,-9,2);c.pt=1}
 else if(n==='vibe'){em('note',hx,hy-4,rnd(-8,8),-12,1.4);c.pt=.45}
 else if(n==='zoom'){em('puff',c.x-c.dir*14,GY-3,-c.dir*15,-2,.5,4);c.pt=.05}
@@ -139,33 +266,71 @@ else if(n==='walk'){em('puff',c.x-c.dir*10,GY-1,-c.dir*4,-2,.45,2);c.pt=.3}
 else if(n==='dizzy'){em('star',hx+rnd(-8,8),hy-6,rnd(-6,6),-5,1);c.pt=.25}
 else if(n==='knead'||n==='wash'){em('heart',hx+rnd(-8,8),hy-4,rnd(-4,4),-12,1.2);c.pt=.7}
 else c.pt=.2}
-for(let i=pts.length-1;i>=0;i--){const p=pts[i];p.x+=p.vx*dt;p.y+=p.vy*dt;p.l-=dt;if(p.l<=0)pts.splice(i,1)}
+for(let i=pts.length-1;i>=0;i--){const p=pts[i]
+  p.vy+=p.g*dt
+  if(p.dr){p.vx-=p.vx*p.dr*dt;p.vy-=p.vy*p.dr*dt}
+  p.x+=(p.vx+Math.sin(TT*p.fl+p.ph)*p.fl*.55)*dt
+  p.y+=p.vy*dt
+  p.l-=dt
+  if(p.l<=0||p.y>GY+6)pts.splice(i,1)}
 if(c.t>=c.tm)nextMode()}
-function foot(hx,hy,a,front){const P=C.P;let fx=hx+Math.sin(a)*(5+P.amp*3)*P.amp,fy=62-Math.max(0,Math.cos(a))*(3+P.amp*2)*Math.min(P.amp,1)
+// Amplitude is half the stride, so a foot covers exactly the ground the body does in
+// half a cycle. The old fixed (5+amp*3)*amp swung further than the ground at every
+// speed — that mismatch is the slide. Lift rides on the forward swing only, on a
+// curve: a straight cosine leaves the foot skimming the floor the whole way through,
+// which is the other half of why the walk looked like gliding.
+function foot(hx,hy,a,front){const P=C.P,c=C,amp=Math.min(P.amp,1)
+let fx=hx+Math.sin(a)*c.stridePx/2*amp,fy=62-Math.pow(Math.max(0,Math.cos(a)),1.5)*amp*(2+amp*2.4)
 fx=front?lerp(fx,hx,P.sit):lerp(fx,hx+6,P.sit);fy=lerp(fy,62,P.sit)
 if(front){fx=lerp(fx,hx+4,P.knead);fy=lerp(fy,62-Math.max(0,Math.sin(a))*4,P.knead)}
+// Jump legs. `trail` throws the hind pair backwards and `ext` reaches the front pair
+// out, which is what separates a leap from a translate.
+if(P.ext>0){const e=P.ext*(front?1:.6);fx=lerp(fx,hx+(front?4:-1)*e,1);fy=lerp(fy,hy+7-7*e,P.ext)}
+if(P.trail>0&&!front){fx=lerp(fx,hx-6*P.trail,P.trail);fy=lerp(fy,hy+5,P.trail)}
 const tk=Math.max(P.loaf,P.ball,P.tuck);fx=lerp(fx,hx+3,tk);fy=lerp(fy,hy+4,tk)
 fx=lerp(fx,hx+Math.sin(a)*4,P.fl);fy=lerp(fy,hy+9,P.fl);return[Math.round(fx),Math.round(fy)]}
 function leg(hx,hy,f,col,p){L(hx,hy,f[0],f[1]-2,4,OL,1);L(hx,hy,f[0],f[1]-2,4,col,0);R(f[0]-3,f[1]-4,7,5,OL);R(f[0]-2,f[1]-3,5,3,p.belly)}
-function tail(bx,by,th0,curl,A,fr,p){const N=9,v=[];let x=bx,y=by;for(let i=0;i<N;i++){const th=th0+i*curl+A*Math.sin(TT*fr-i*.7)*(.35+i*.13);x+=3.2*Math.cos(th);y=Math.min(60,y+3.2*Math.sin(th));v.push([x,y,i])}
+// Clamped at both ends rather than one: a single ceiling meant the tail could rise
+// freely but flattened onto that line whenever it swung down, so it looked shorter on
+// the down-beat than the up-beat.
+// `ball` shortens the stride and tightens the curl, which is what turns the chain from
+// a 29px stick hanging off the back into a wrap around the body. Curled up in a ball
+// with a rigid tail still hanging, the sprite read as a lollipop: rotate that and the
+// head — the widest, highest-contrast part, furthest from the pivot — appeared to be
+// the only thing moving.
+function tail(bx,by,th0,curl,A,fr,p,ball){const N=9,st=lerp(3.2,1.55,ball),lo=lerp(30,40,ball),hi=lerp(68,72,ball),v=[]
+let x=bx,y=by
+for(let i=0;i<N;i++){const th=th0+i*curl+A*Math.sin(TT*fr-i*.7)*(.35+i*.13)*(1-ball*.8);x+=st*Math.cos(th);y=cl(y+st*Math.sin(th),lo,hi);v.push([x,y,i])}
 v.forEach(([x,y,i])=>{const s=i>4?6:5;R(x-s/2,y-s/2,s,s,OL)});v.forEach(([x,y,i])=>{const s=i>4?4:3;R(x-s/2,y-s/2,s,s,i%4===3||i===N-1?p.s:p.b)})}
 function eyeStyle(c){const m=c.mode;if(c.boop>0)return'heart';if(m==='sleep'||m==='yawn')return'sleep';if(m==='dizzy')return'dizzy';if(m==='wash'||m==='knead'||m==='roll'||m==='flop')return'happy';if(m==='stare')return c.t<1.4?'stare':'bruh';if(m==='zoom')return'stare';return'normal'}
+// A blink rides on top of every open eye, not just the neutral one. Gating it on
+// 'normal' left the cat wide-eyed and motionless through a three-second stare, which
+// is the pose a viewer looks at longest.
+const SHUT={sleep:1,happy:1}
 function eye(ex,y,st,p){
 if(st==='happy'){[[-2,0],[2,0],[-1,-1],[1,-1],[0,-2]].forEach(([a,b])=>R(ex+a,y+b,1,1,OL));return}
 if(st==='sleep'){[[-2,-2],[-1,-1],[0,-1],[1,-1],[2,-2]].forEach(([a,b])=>R(ex+a,y+b,1,1,OL));return}
 if(st==='blink'){R(ex-2,y-2,5,1,OL);return}
 if(st==='heart'){['.1.1.','11111','.111.','..1..'].forEach((r,j)=>{for(let i=0;i<5;i++)if(r[i]==='1')R(ex-2+i,y-4+j,1,1,'#ff4d6d')});R(ex-1,y-4,1,1,'#ff9db0');return}
-if(st==='dizzy'){if(Math.floor(TT*8)%2){R(ex-2,y-2,5,1,OL);R(ex,y-4,1,5,OL)}else[[-2,-4],[2,-4],[-1,-3],[1,-3],[0,-2],[-1,-1],[1,-1],[-2,0],[2,0]].forEach(([a,b])=>R(ex+a,y+b,1,1,OL));return}
+// The eye shape holds still and only the pupil orbits. Swapping the whole glyph at
+// 8Hz strobed a white sclera, which is a thing to avoid on a stream left running for
+// hours.
+if(st==='dizzy'){for(const s of[-1,1]){R(ex-3,y-5,7,7,OL);R(ex-2,y-4,5,5,'#fff')}
+for(const s of[-1,1]){const a=TT*7+s*Math.PI/2;R(ex+Math.cos(a)*2,y-1+Math.sin(a)*2,2,2,OL)}return}
 if(st==='stare'||st==='bruh'){R(ex-3,y-6,7,8,OL);R(ex-2,y-5,5,6,'#fff');if(st==='stare')R(ex,y-3,1,1,OL);else{R(ex-1,y-3,3,3,OL);R(ex-2,y-5,5,3,p.b);R(ex-2,y-2,5,1,OL)}return}
 R(ex-2,y-4,4,5,OL);R(ex-2,y-4,2,2,'#fff');R(ex+1,y,1,1,'#fff')}
-function headS(x,y,st,open,sq,sleepy,ef){const p=PAL[pal],P=C.P,hs=chonk?1.1:1,rx=Math.round(15*hs*(1+.08*sq)),ry=Math.round(12*hs*(1-.12*sq)),lt=mixc(p.b)
-const lx=cl(Math.round((mx/PS-C.x)*C.dir/30),-2,2),fk=C.ef>0?Math.sin(C.ef*40)*1.2:0,eh=Math.round(8-ef*3)
-for(const s of[-1,1]){const sl=s*(1+ef*3)+(C.ef>0&&C.es===s?fk:0),ex=x+s*8;tri(ex,y-ry+3,eh,9,sl,OL,1);tri(ex,y-ry+3,eh,9,sl,p.b,0);tri(ex,y-ry+3,Math.max(2,eh-3),5,sl*.7,p.ear,0)}
+// The head shrinks and its ears fold back as the cat curls up. At full size it is 30px
+// across against a 22px body, so in a ball the head set the silhouette's width and the
+// whole shape stopped reading as round — and being furthest from the rotation pivot, it
+// was also the part that swept the widest arc while the body sat still.
+function headS(x,y,st,open,sq,sleepy,ef){const p=PAL[pal],P=C.P,hs=(chonk?1.1:1)*lerp(1,.7,P.ball),rx=Math.round(15*hs*(1+.17*sq)),ry=Math.round(12*hs*(1-.22*sq)),lt=p.hi
+const lx=cl(Math.round((mx/PS-C.x)*C.dir/30),-2,2),fk=C.ef>0?Math.sin(C.ef*40)*1.2:0,eh=Math.round((8-ef*3)*lerp(1,.5,P.ball)),xo=Math.round(rx*.55)
+for(const s of[-1,1]){const sl=s*(1+ef*3)+(C.ef>0&&C.es===s?fk:0),ex=x+s*xo;tri(ex,y-ry+3,eh,Math.round(9*hs),sl,OL,1);tri(ex,y-ry+3,eh,Math.round(9*hs),sl,p.b,0);tri(ex,y-ry+3,Math.max(2,eh-3),Math.round(5*hs),sl*.7,p.ear,0)}
 R(x-rx-3,y+2,4,4,OL);R(x-rx-2,y+3,3,2,p.b);R(x+rx,y+2,4,4,OL);R(x+rx,y+3,3,2,p.b)
-E(x,y,rx,ry,p.b,1);R(x-8,y-ry+2,5,1,lt);R(x-10,y-ry+3,3,1,lt);R(x-11,y-ry+4,2,1,lt)
+E(x,y,rx,ry,p.b,1,p);R(x-8,y-ry+2,5,1,lt);R(x-10,y-ry+3,3,1,lt);R(x-11,y-ry+4,2,1,lt)
 for(const d of[-4,0,4])R(x+d,y-ry+1,1,d?3:4,p.s)
 E(x+lx,y+4,5,3,p.belly);R(x-12,y+3,3,2,'#ff9ab5');R(x+9,y+3,3,2,'#ff9ab5')
-const sty=C.bt>0&&st==='normal'?'blink':st;eye(x+lx-7,y,sty,p);eye(x+lx+7,y,sty,p)
+const sty=C.bt>0&&!SHUT[st]?'blink':st;eye(x+lx-7,y,sty,p);eye(x+lx+7,y,sty,p)
 R(x+lx-1,y+2,3,1,'#ff7f9a')
 if(open>.05){R(x+lx-2,y+4,5,3,'#7a2c3b');R(x+lx-1,y+6,3,1,'#ff8fa3')}else{R(x+lx,y+3,1,1,OL);R(x+lx-1,y+4,1,1,OL);R(x+lx+1,y+4,1,1,OL)}
 R(x-rx-5,y+3,4,1,OL);R(x-rx-4,y+6,4,1,OL);R(x+rx+2,y+3,4,1,OL);R(x+rx+1,y+6,4,1,OL)
@@ -175,7 +340,7 @@ function sprite(){const c=C,P=c.P,p=PAL[pal],cs=chonk?1.2:1,m=c.mode;X=b;b.setTr
 const am=Math.min(P.amp,1),hop=m==='flop'?0:Math.abs(Math.sin(c.ph))*am,hh=m==='flop'?0:Math.abs(Math.sin(c.ph-.8))*am
 let sq=Math.pow(1-hop,6)*.55*am-hop*.15+c.land*2.2+Math.sin(TT*2.2)*.04
 if(c.jy>0)sq-=cl(c.jv/130,-.6,.6)*.5
-if(m==='jump'&&!c.jd)sq+=.7*Math.min(1,c.t/.28)
+if(c.crunch>0)sq-=c.crunch*.62
 if(m==='vibe')sq+=Math.pow(1-Math.abs(Math.sin(TT*4.5)),3)*.35
 if(m==='yawn')sq-=.4*Math.sin(Math.PI*c.t/c.tm)
 sq=cl(sq,-.5,.8)
@@ -187,48 +352,75 @@ let cy=62-lh-ry-hop*3;cy=Math.round(lerp(lerp(cy,47,P.ball),49,P.fl));const cx=4
 let hx=cx+lerp(rx*.6,2,P.sit),hY=lerp(cy-ry-4,cy-ry-6,P.sit)
 hx=lerp(hx,cx+rx*.7,P.loaf);hY=lerp(hY,cy-4,P.loaf);hY=Math.min(hY,49)
 hx=lerp(hx,cx+2,P.ball);hY=lerp(hY,cy,P.ball);hY=lerp(hY,cy,P.fl)
-hY+=(hop-hh)*3+P.wash*2;if(m==='sleep')hY+=1.5+1.5*Math.sin(TT*1.3);if(m==='vibe')hY-=Math.abs(Math.sin(TT*4.5))*3
+// The head dips into the landing and lifts into the reach. It used to stay welded to
+// the body through both, which is what made a squash read as the body melting.
+hY+=(hop-hh)*3+c.land*3.5+P.ext*-2.5
+if(m==='sleep')hY+=1.5+1.5*Math.sin(TT*1.3)
+if(m==='vibe')hY-=Math.abs(Math.sin(TT*4.5))*3
+if(P.wash>.02)hY+=Math.sin(TT*13)*1.3*P.wash
 hx=Math.round(hx);hY=Math.round(hY)
-const hy=cy+Math.round(ry*.6),fh=cx+Math.round(rx*.5),bh=cx-Math.round(rx*.55),ph=c.ph
-let fN=foot(fh,hy,ph,1),fF=foot(fh-4,hy,ph+Math.PI,1),bN=foot(bh,hy,ph+Math.PI,0),bF=foot(bh+4,hy,ph,0)
-if(P.wash>.02)fN=[Math.round(lerp(fN[0],hx+9+Math.sin(TT*14)*2,P.wash)),Math.round(lerp(fN[1],hY+9+Math.sin(TT*14+1)*2,P.wash))]
-const wl=P.wash>.5,cu=Math.max(P.loaf,P.ball,P.sit*.85),hap=c.boop>0?1.2:0,top=P.ball>.5||P.loaf>.5,pw=m==='jump'&&!c.jd?1:0
+const hy=cy+Math.round(ry*.6),fh=cx+Math.round(rx*.5),bh=cx-Math.round(rx*.55),ph=c.ph,H2=Math.PI/2
+// Lateral-sequence gait: four beats, a quarter cycle apart, in the order a cat walks
+// them (hind-far, fore-far, hind-near, fore-near). The old offsets put the diagonal
+// pairs in phase, which is a trot — and a trot on a sprite with no hip motion over it
+// reads as gliding.
+let fN=foot(fh,hy,ph+H2*3,1),fF=foot(fh-4,hy,ph+H2,1),bN=foot(bh,hy,ph+H2*2,0),bF=foot(bh+4,hy,ph,0)
+// A circle around the muzzle, not the chest. At hY+9 the paw sat level with the belly,
+// so washing read as a scratch; the head bobs on the same clock as the paw.
+if(P.wash>.02){const la=TT*13;fN=[Math.round(lerp(fN[0],hx+10+Math.sin(la)*5,P.wash)),Math.round(lerp(fN[1],hY+4+Math.cos(la)*4,P.wash))]}
+const wl=P.wash>.5,cu=Math.max(P.loaf,P.ball,P.sit*.85),hap=c.boop>0?1.2:0,top=P.ball>.5||P.loaf>.5,pw=c.jy>0?1:0
 let th0=lerp(-1.9,2.7,cu),curl=lerp(.12,-.2,cu);th0=lerp(th0,3.14,P.fl)-.6*am*(1-cu);curl*=1-P.fl
+curl=lerp(curl,-.34,P.ball)
 const A=(.25+.35*P.amp+hap+pw*.5)*(1-cu*.6),fr=2.5+P.amp*3+hap*4+pw*6,tb=[cx-rx+2,cy-1]
-if(!top)tail(tb[0],tb[1],th0,curl,A,fr,p)
+if(!top)tail(tb[0],tb[1],th0,curl,A,fr,p,P.ball)
 if(P.ball<.6){leg(bh+4,hy,bF,p.d,p);leg(fh-4,hy,fF,p.d,p)}
-E(cx,cy,rx,ry,p.b,1);R(cx-Math.round(rx*.4),cy-ry+1,Math.round(rx*.5),1,mixc(p.b))
+E(cx,cy,rx,ry,p.b,1,p);R(cx-Math.round(rx*.4),cy-ry+1,Math.round(rx*.5),1,p.hi)
 E(cx+1,cy+Math.round(ry*.55),Math.round(rx*.6),Math.max(1,Math.round(ry*.4)),p.belly)
 for(const i of[-2,-1,0,1]){const dx=i*5+1,top_=cy-Math.round(ry*Math.sqrt(Math.max(0,1-(dx/rx)**2)));R(cx+dx,top_+1,2,3,p.s)}
 E(cx-Math.round(rx*.45),cy+Math.round(ry*.15),Math.round(rx*.35),Math.max(1,Math.round(ry*.6)),p.d,1)
 if(P.ball<.6){leg(bh,hy,bN,p.b,p);if(!wl)leg(fh,hy,fN,p.b,p)}
-if(top)tail(tb[0],tb[1],th0,curl,A,fr,p)
+if(top)tail(tb[0],tb[1],th0,curl,A,fr,p,P.ball)
 headS(hx,hY,eyeStyle(c),m==='yawn'?Math.sin(Math.PI*c.t/c.tm):(c.boop>.8?.6:0),sq,m==='sleep',m==='zoom'?1:0)
 if(wl)leg(fh,hy,fN,p.b,p)
-const qa=Math.round(c.roll/(Math.PI/8))*(Math.PI/8)
+// ONE rotation, applied here, to the sprite pixels. It used to also run as a
+// g.rotate(-qa) in the render transform, and two rotations of the same angle compose
+// to twice the angle: every authored eighth-turn (22.5°) went out at 45°, which both
+// doubled the tumble rate and made each quantisation step a 45° snap with nothing in
+// between. The lean rides on top unsnapped, because it is small and continuous.
+const qa=Math.round(c.roll/(Math.PI/8))*(Math.PI/8)+c.lean*.16
 if(Math.abs(Math.sin(qa/2))>.01){const id=b.getImageData(0,0,96,96),o=sx.createImageData(96,96),A_=new Uint32Array(id.data.buffer),D=new Uint32Array(o.data.buffer),co=Math.cos(qa),si=Math.sin(qa)
 for(let y=0;y<96;y++)for(let x=0;x<96;x++){const dx=x-48,dy=y-cy-24,u=Math.round(48+dx*co+dy*si),v=Math.round(cy+24-dx*si+dy*co);if(u>=0&&u<96&&v>=0&&v<96)D[y*96+x]=A_[v*96+u]}
 sx.putImageData(o,0,0);return sc}return bc}
 function render(){g.clearRect(0,0,w,h);X=g;const c=C,cx=Math.round(c.x),jy=Math.round(c.jy)
-const sw=Math.round(28*(1-Math.min(.6,c.jy/60)))
-// Shadow is drawn INSIDE the roll transform, directly under the cat.
-// Drawn after restore() it was a static oval while the cat rotated —
-// the visual equivalent of a person walking with a shadow stuck to the floor.
+// The shadow belongs to the floor. It was drawn inside the cat's own transform, which
+// included the -jy jump offset, so it rose off the ground with every hop and stayed
+// glued under the cat in mid-air; only its width was reduced, to sell a rise it was
+// still making. Now it stays at GY and shrinks and fades as the cat leaves it. Rotating
+// it during a tumble is also dropped: a two-row shadow turned 45° is a diagonal smear,
+// not a shadow, and a ball's ground shadow is an ellipse either way.
+const air=cl(jy/APEX,0,1)
+const sw=Math.round(30*(1-air*.5)),sa=(.26*(1-air*.75)).toFixed(3)
+g.fillStyle='rgba(0,0,0,'+sa+')'
+g.fillRect(cx-(sw/2|0),GY,sw,1);g.fillRect(cx-((sw-6)/2|0),GY+1,sw-6,1)
 const src=sprite()
 g.save();g.translate(cx,GY-jy);g.scale(c.dir,1)
-if(Math.abs(Math.sin(c.roll/2))>.01){
-  const qa=Math.round(c.roll/(Math.PI/8))*(Math.PI/8)
-  g.translate(0,6);g.rotate(-qa);g.translate(0,-6)
-  g.fillStyle='rgba(0,0,0,.25)';g.fillRect(-sw/2|0,0,sw,1);g.fillRect(-(sw-6)/2|0,1,sw-6,1)
-}else{
-  g.fillStyle='rgba(0,0,0,.25)';g.fillRect(-sw/2|0,0,sw,1);g.fillRect(-(sw-6)/2|0,1,sw-6,1)
-}
 g.drawImage(src,-48,-87);g.restore()
-if(c.mode==='zoom'&&Math.abs(c.vx)>40)for(let i=0;i<4;i++)R(cx-c.dir*(16+i*5)-(c.dir>0?14:0),GY-8-i*8,14,1,'rgba(120,110,130,.6)')
-X=g;for(const p of pts){const a=p.l/p.L;if(p.t==='puff')R(p.x,p.y,Math.max(1,Math.round(p.sz*(1.4-a))),Math.max(1,Math.round(p.sz*(1.4-a))),'#d9d2c7');else{if(a<.25&&Math.floor(TT*20)%2)continue;const s=SP[p.t];spr(s[0],Math.round(p.x),Math.round(p.y),s[1])}}
+// Symmetric trail: the old version subtracted 14 more when facing right, so the lines
+// sat 14px closer to the cat in one direction than the other.
+if(c.mode==='zoom'&&Math.abs(c.vx)>40)for(let i=0;i<4;i++)R(cx-c.dir*(30+i*5),GY-8-i*8,14,1,'rgba(120,110,130,.6)')
+X=g
+// The particle fade uses a step per particle rather than one shared 20Hz clock: at 20Hz
+// the last quarter of every heart's life blinked in and out together, and a dozen
+// simultaneous hearts blinked as one object.
+for(const p of pts){const a=p.l/p.L
+if(p.t==='puff'){const s=Math.max(1,Math.round(p.sz*(1.4-a)));R(p.x,p.y,s,s,'#d9d2c7')}
+else{if(a<.25&&Math.floor(a*20)%2)continue
+const s=SP[p.t];spr(s[0],Math.round(p.x),Math.round(p.y),s[1])}}
 // speech bubble removed — no B.t display logic
 }
-let last=performance.now();function loop(n){const dt=Math.min(.05,(n-last)/1000);last=n;upd(dt);render();requestAnimationFrame(loop)}
+// `rate` scales dt rather than skipping frames, so physics stays correct at any speed:
+// a slow cat takes smaller steps, it does not take longer strides less often.
+let last=performance.now();function loop(n){const dt=Math.min(.05,(n-last)/1000)*rate;last=n;upd(dt);render();requestAnimationFrame(loop)}
 cv.addEventListener('pointermove',e=>{mx=e.clientX;my=e.clientY})
 cv.addEventListener('pointerdown',e=>{mx=e.clientX;my=e.clientY;if(Math.hypot(e.clientX/PS-C.x,e.clientY/PS-(GY-24))<30)boop()})
 const BT=[['walk','🚶 Jalan'],['zoom','⚡ Zoomies'],['roll','🌀 Guling'],['flop','🙃 Rebahan'],['jump','🦘 Loncat'],['sit','🐱 Duduk'],['sleep','😴 Tidur'],['vibe','😎 Vibing'],['stare','🗿 Bruh'],['yawn','🥱 Nguap'],['wash','🧼 Jilat'],['knead','🍞 Uleni']]
@@ -237,6 +429,9 @@ function mkSel(o,cb){const s=document.createElement('select');o.forEach(([v,t])=
 mkSel([['oren','🧡 Oren'],['abu','🩶 Abu'],['hitam','🖤 Hitam'],['putih','🤍 Putih']],v=>pal=v)
 mkSel([['kotak','Latar: kotak2'],['hijau','Latar: hijau'],['gelap','Latar: gelap'],['terang','Latar: terang']],v=>{bgm=v;setBg()})
 function mkBtn(t,cb,on){const e=document.createElement('button');e.textContent=t;if(on)e.className='on';e.onclick=()=>cb(e);ui.appendChild(e)}
+// Cycle, not a slider: OBS is a browser source with no room for a drag handle, and the
+// value has to survive a reload — see the ?speed= read at the top.
+mkBtn('🐢 Kecepatan',e=>{const steps=[.5,.75,1,1.5,2];rate=steps[(steps.indexOf(rate)+1)%steps.length];e.textContent='🐢 Kecepatan '+rate+'×'})
 mkBtn('🍔 Chonk',e=>{chonk=!chonk;e.classList.toggle('on',chonk);say(chonk?'chonky boi':'diet dimulai')})
 mkBtn('🤖 Auto',e=>{auto=!auto;e.classList.toggle('on',auto);if(auto)nextMode()},1)
 mkBtn('🙈 Sembunyi',()=>{root.classList.add('hide');rs()})
