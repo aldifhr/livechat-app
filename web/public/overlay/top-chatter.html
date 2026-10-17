@@ -111,7 +111,7 @@ body {
 </head>
 <body>
 <div id="board">
-  <h2><span>Top 10 Chatters</span><span class="sub" id="sub"></span></h2>
+  <h2><span id="board-title">Top 10 Chatters</span><span class="sub" id="sub"></span></h2>
   <ol id="list"></ol>
   <div id="empty" style="display:none">No chat yet — waiting for messages…</div>
 </div>
@@ -140,6 +140,9 @@ function connect() {
   socket.onmessage = (event) => {
     try {
       const frame = JSON.parse(event.data)
+      if (frame.type === 'config' && frame.config && frame.config.title) {
+        document.getElementById('board-title').textContent = frame.config.title
+      }
       if (frame.type === 'comment' && frame.user) {
         addComment(frame.user, frame.avatar)
       } else if (frame.type === 'follow' && frame.user) {
