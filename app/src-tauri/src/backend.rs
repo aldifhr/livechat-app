@@ -207,6 +207,10 @@ pub struct BackendState {
     /// the generation is unchanged and nothing is reading. A reloaded page asking
     /// "is anything connected?" needs the second answer.
     running: std::sync::atomic::AtomicBool,
+    /// Whether the stream itself is actually connected. Set only on a real
+    /// handshake, cleared on stop/give_up — distinct from `running`, which is
+    /// true for the whole life of the pump including retries.
+    connected: std::sync::atomic::AtomicBool,
     /// The session details, written by the reader as it learns them.
     ///
     /// A `Mutex` rather than atomics: these are a handful of strings updated a
@@ -222,6 +226,7 @@ impl Default for BackendState {
         Self {
             generation: AtomicU64::default(),
             running: std::sync::atomic::AtomicBool::new(false),
+            connected: std::sync::atomic::AtomicBool::new(false),
             session: Mutex::new(SessionInfo::default()),
         }
     }
@@ -242,6 +247,7 @@ impl BackendState {
     pub fn stop(&self) {
         self.set_session(SessionInfo::default());
         self.running.store(false, Ordering::SeqCst);
+        self.connected.store(false, Ordering::SeqCst);
         self.generation.fetch_add(1, Ordering::SeqCst);
     }
 
@@ -253,6 +259,7 @@ impl BackendState {
     /// number the app has never seen a frame from.
     pub fn gave_up(&self) {
         self.running.store(false, Ordering::SeqCst);
+        self.connected.store(false, Ordering::SeqCst);
     }
 
     fn current(&self) -> u64 {
@@ -295,15 +302,18 @@ impl BackendState {
         self.session.lock().map(|held| held.clone()).unwrap_or_default()
     }
 
-    /// Whether a reader loop is running for the current generation.
+    /// Whether the stream is actually connected.
     ///
-    /// `running` is set for the whole life of the pump, including the retries, so
-    /// this is what separates "connected to a room" from "trying to reach one"
-    /// when the frontend asks. It is not the same question as the socket being up
-    /// — the app is told that separately, by the backend's own status frames.
+    /// Distinct from `running`, which is true for the whole life of the pump
+    /// including retries. A reloaded page asking "is anything connected?" needs
+    /// to know whether the stream is live, not whether we are trying to make it so.
+    pub fn is_connected(&self) -> bool {
+        self.connected.load(Ordering::SeqCst)
+    }
+
     pub fn snapshot(&self) -> Value {
         let info = self.session();
-        let connected = self.running.load(Ordering::SeqCst);
+        let connected = self.is_connected();
         let session = self.current();
         json!({
             "type": "status",
@@ -642,10 +652,15 @@ pub fn to_app_event(frame: &Value, now_ms: i64) -> Option<Value> {
             "type": "viewers", "platform": platform,
             "count": frame.get("count").and_then(Value::as_i64).unwrap_or(0),
         }),
-        "status" => json!({
-            "type": "status", "platform": platform,
-            "connected": frame.get("connected").and_then(Value::as_bool).unwrap_or(false),
-            "connecting": frame.get("connecting").and_then(Value::as_bool).unwrap_or(false),
+        "status" => {
+            let is_connected = frame.get("connected").and_then(Value::as_bool).unwrap_or(false);
+            if is_connected {
+                self.connected.store(true, Ordering::SeqCst);
+            }
+            json!({
+                "type": "status", "platform": platform,
+                "connected": is_connected,
+                "connecting": frame.get("connecting").and_then(Value::as_bool).unwrap_or(false),
             // The streamer stopped, as distinct from our connection dropping.
             // Carried as sent and defaulted false, so a status frame from an older
             // backend that knows nothing about live ends still maps cleanly.

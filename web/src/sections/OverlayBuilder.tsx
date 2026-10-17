@@ -229,7 +229,7 @@ function BoardCustomizer({ roomId, style, onChange }: {
   style: BoardStyle
   onChange: (change: Partial<BoardStyle>) => void
 }) {
-  const boardUrl = useMemo(() => (roomId ? api.topChatterOverlay(roomId) : ''), [roomId])
+  const boardUrl = useMemo(() => (roomId ? api.catOverlay(roomId) : ''), [roomId])
 
   return (
     <>
@@ -522,7 +522,7 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
                   a small box that swells as the room warms up. */}
               <OverlayStage
                 variant="canvas"
-                url={which === 'chat' ? api.chatOverlay(selected, chatDesign) : api.topChatterOverlay(selected)}
+                url={api.chatOverlay(selected, chatDesign)}
                 title={`${which === 'chat' ? 'Chat' : 'Top chatters'} overlay preview`}
                 canvas={canvas}
                 previewStyle={which === 'chat' ? chat.current : undefined}

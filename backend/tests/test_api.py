@@ -713,7 +713,6 @@ for path in (
     "/overlay/",
     "/overlay",
     "/overlay/chat-overlay",
-    "/overlay/top-chatter",
     "/overlay/cat-overlay",
     "/topchatter",
 ):

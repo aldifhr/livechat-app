@@ -7,7 +7,6 @@ export const dynamic = 'force-dynamic'
 
 const OVERLAYS: Record<string, string> = {
   'chat-overlay': 'chat-overlay.html',
-  'top-chatter': 'top-chatter.html',
   'cat-overlay': 'cat-overlay.html',
   'ghost-overlay': 'ghost-overlay.html',
 }
