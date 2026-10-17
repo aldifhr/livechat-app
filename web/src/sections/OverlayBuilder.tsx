@@ -522,7 +522,7 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
                   a small box that swells as the room warms up. */}
               <OverlayStage
                 variant="canvas"
-                url={api.chatOverlay(selected, chatDesign)}
+                url={which === 'chat' ? api.chatOverlay(selected, chatDesign) : api.topChatterOverlay(selected)}
                 title={`${which === 'chat' ? 'Chat' : 'Top chatters'} overlay preview`}
                 canvas={canvas}
                 previewStyle={which === 'chat' ? chat.current : undefined}
