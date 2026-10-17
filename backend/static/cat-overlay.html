@@ -237,9 +237,21 @@ if(Math.abs(Math.sin(qa/2))>.01){const id=b.getImageData(0,0,96,96),o=sx.createI
 for(let y=0;y<96;y++)for(let x=0;x<96;x++){const dx=x-48,dy=y-cy-24,u=Math.round(48+dx*co+dy*si),v=Math.round(cy+24-dx*si+dy*co);if(u>=0&&u<96&&v>=0&&v<96)D[y*96+x]=A_[v*96+u]}
 sx.putImageData(o,0,0);return sc}return bc}
 function render(){g.clearRect(0,0,w,h);X=g;const c=C,cx=Math.round(c.x),jy=Math.round(c.jy)
-const sw=Math.round(28*(1-Math.min(.6,c.jy/60)));g.fillStyle='rgba(0,0,0,.25)';g.fillRect(cx-sw/2|0,GY,sw,1);g.fillRect(cx-(sw-6)/2|0,GY+1,sw-6,1)
+const sw=Math.round(28*(1-Math.min(.6,c.jy/60)))
+// Shadow is drawn INSIDE the roll transform, directly under the cat.
+// Drawn after restore() it was a static oval while the cat rotated —
+// the visual equivalent of a person walking with a shadow stuck to the floor.
+const src=sprite()
+g.save();g.translate(cx,GY-jy);g.scale(c.dir,1)
+if(Math.abs(Math.sin(c.roll/2))>.01){
+  const qa=Math.round(c.roll/(Math.PI/8))*(Math.PI/8)
+  g.translate(0,6);g.rotate(-qa);g.translate(0,-6)
+  g.fillStyle='rgba(0,0,0,.25)';g.fillRect(-sw/2|0,0,sw,1);g.fillRect(-(sw-6)/2|0,1,sw-6,1)
+}else{
+  g.fillStyle='rgba(0,0,0,.25)';g.fillRect(-sw/2|0,0,sw,1);g.fillRect(-(sw-6)/2|0,1,sw-6,1)
+}
+g.drawImage(src,-48,-87);g.restore()
 if(c.mode==='zoom'&&Math.abs(c.vx)>40)for(let i=0;i<4;i++)R(cx-c.dir*(16+i*5)-(c.dir>0?14:0),GY-8-i*8,14,1,'rgba(120,110,130,.6)')
-const src=sprite();g.save();g.translate(cx,GY-jy);g.scale(c.dir,1);g.drawImage(src,-48,-87);g.restore()
 X=g;for(const p of pts){const a=p.l/p.L;if(p.t==='puff')R(p.x,p.y,Math.max(1,Math.round(p.sz*(1.4-a))),Math.max(1,Math.round(p.sz*(1.4-a))),'#d9d2c7');else{if(a<.25&&Math.floor(TT*20)%2)continue;const s=SP[p.t];spr(s[0],Math.round(p.x),Math.round(p.y),s[1])}}
 // speech bubble removed — no B.t display logic
 }
