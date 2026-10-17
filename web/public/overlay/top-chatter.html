@@ -111,7 +111,7 @@ body {
 </head>
 <body>
 <div id="board">
-  <h2><span id="board-title">Top 10 Chatters</span><span class="sub" id="sub"></span></h2>
+  <h2><span id="board-title">Top 10 Chatters</span></h2>
   <ol id="list"></ol>
   <div id="empty" style="display:none">No chat yet — waiting for messages…</div>
 </div>
@@ -209,10 +209,6 @@ function render() {
   }
 
   empty.style.display = 'none'
-
-  const totalFollows = topChatters.reduce((s, c) => s + c.follows, 0)
-  const totalShares = topChatters.reduce((s, c) => s + c.shares, 0)
-  sub.textContent = topChatters[0]?.count + ' messages · ' + totalFollows + ' follows · ' + totalShares + ' shares'
 
   const medals = ['🥇', '🥈', '🥉']
   list.innerHTML = topChatters.map((c, i) => {
