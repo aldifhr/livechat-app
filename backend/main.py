@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 import alerts
-import eventlog
+
 import events
 import logbuffer
 import store
