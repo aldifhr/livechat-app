@@ -129,15 +129,19 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
     return participants.filter((person) => entries.has(person.id) && followed.has(person.id)).map((person) => person.id)
   }, [status, eligibleSnapshot, participants, entries, followed])
   const availableIds = eligibleIds.filter((id) => !winners.includes(id))
-  const wheelSectors: Sector[] = availableIds.map((_, index) => ({
-    label: String(index + 1),
-    color: WHEEL_COLORS[index % WHEEL_COLORS.length],
-    text: '#fff',
-  }))
+  const displayParticipants = mockParticipants.length > 0 ? mockParticipants : participants
+  const wheelSectors: Sector[] = availableIds.map((id, index) => {
+    const person = displayParticipants.find((candidate) => candidate.id === id)
+    const nickname = person?.nickname || `@${id}`
+    return {
+      label: nickname,
+      color: WHEEL_COLORS[index % WHEEL_COLORS.length],
+      text: '#fff',
+    }
+  })
   const repeatedMessages = Object.values(entryCounts).reduce((total, count) => total + Math.max(0, count - 1), 0)
   const canPublishSnapshot = drawHistory.length > 0 && (winners.length >= winnerCount || availableIds.length === 0)
   const settingsLocked = status !== 'idle' || spinning || Boolean(snapshotUrl)
-  const displayParticipants = mockParticipants.length > 0 ? mockParticipants : participants
   const announcedWinner = announcedWinnerId ? displayParticipants.find((person) => person.id === announcedWinnerId) : undefined
 
   const closeGiveaway = useCallback(async () => {
