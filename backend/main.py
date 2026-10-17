@@ -154,6 +154,7 @@ app = FastAPI(title="StreamKit", lifespan=lifespan)
 # routing only.
 from routes.auth import (
     is_exempt_write_path,
+    is_public_read_path,
     is_sensitive_read_path,
     token_is_valid,
     warn_if_auth_unsatisfiable,
@@ -175,6 +176,12 @@ async def guard_mutations(request: Request, call_next):
     for an orchestrator, but `/health` withholds the per-room map from an
     unauthenticated caller.
 
+    `/api/rooms/public` is the exception: it answers with id, handle and
+    name only — no config, no styling, no session — and exists so the OBS
+    docks browser source can list rooms without a credential. Same rule as
+    `/api/room-connect-by-username` above: nothing there can be used to
+    reach anything the token would protect.
+
     /api/room-connect/{id} is exempt because the username comes from the room's
     own stored config — not from the caller — so there is nothing to forge.
 
@@ -189,7 +196,9 @@ async def guard_mutations(request: Request, call_next):
     if guarded:
         # room-connect is config-scoped (username from the stored room, never
         # from the caller) — exempt it from the token gate.
-        if not is_exempt_write_path(request.url.path) and not token_is_valid(request):
+        # /api/rooms/public is a safe read (id, handle, name only) needed by
+        # the OBS docks browser source.
+        if not is_exempt_write_path(request.url.path) and not is_public_read_path(request.url.path) and not token_is_valid(request):
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Invalid or missing STREAMKIT_TOKEN"},

@@ -206,6 +206,7 @@ export const api = {
 
   /** What this room's current session has accumulated — peaks, diamonds, leaders. */
   session: (id: string) => request<RoomSession>('GET', `/rooms/${id}/session`),
+  publicRooms: () => request<{ rooms: Array<{ id: string; username: string; name: string; connected: boolean }> }>('GET', '/rooms/public'),
 
   /**
    * Send one test alert.

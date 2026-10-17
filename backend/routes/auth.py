@@ -71,6 +71,17 @@ EXEMPT_WRITE_PATHS = frozenset({
 })
 
 
+def is_public_read_path(path: str) -> bool:
+    """Reads that answer with no credential and carry nothing sensitive.
+
+    `/api/rooms/public` lists id, handle and name only — no overlay config,
+    no styling, no session totals. The OBS docks browser source needs it to
+    build a room switcher, and a browser source has no way to present a
+    session cookie.
+    """
+    return path == "/api/rooms/public"
+
+
 def is_exempt_write_path(path: str) -> bool:
     for prefix in EXEMPT_WRITE_PATHS:
         if not path.startswith(prefix):

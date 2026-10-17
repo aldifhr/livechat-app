@@ -47,6 +47,27 @@ async def list_rooms():
     return {"rooms": [summary(oid, rec) for oid, rec in rooms.items()]}
 
 
+@router.get("/api/rooms/public")
+async def list_rooms_public():
+    """Room list for public browser sources (OBS docks).
+    
+    Returns id, username, connected, and name — no config, no styling,
+    no session data. Same shape as list_rooms minus everything sensitive.
+    """
+    rooms = await store.all_rooms_async()
+    return {
+        "rooms": [
+            {
+                "id": oid,
+                "username": rec.get("username", ""),
+                "name": rec.get("name", ""),
+                "connected": rec.get("connected", False),
+            }
+            for oid, rec in rooms.items()
+        ]
+    }
+
+
 @router.post("/api/rooms")
 async def create_room(req: CreateRoomRequest):
     name = req.name.strip() or "Untitled"

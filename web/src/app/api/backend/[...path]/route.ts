@@ -23,6 +23,7 @@ import { backendFetch, BackendError } from '@/lib/backend'
  */
 const ALLOWED = [
   /^\/api\/rooms$/,
+  /^\/api\/rooms\/public$/,
   /^\/api\/rooms\/[0-9a-f-]{36}$/,
   /^\/api\/rooms\/[0-9a-f-]{36}\/status$/,
   /^\/api\/rooms\/[0-9a-f-]{36}\/config$/,
@@ -91,7 +92,7 @@ const PUBLIC_READ = /^\/api\/giveaways\/snapshots/
 // These are aggregate numbers, not room configs — the docks page is a
 // public browser source in OBS and cannot carry a token. The same data
 // is already visible on the overlay.
-const DOCKS_READ = /^\/api\/rooms\/[0-9a-f-]{36}\/session$/
+const DOCKS_READ = /^\/api\/rooms\/(\/public$|[0-9a-f-]{36}\/session$)/
 
 function allowed(path: string): boolean {
   return ALLOWED.some((pattern) => pattern.test(path))

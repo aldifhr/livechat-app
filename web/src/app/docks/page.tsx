@@ -31,6 +31,7 @@ export default function DocksPage() {
   const [chat, setChat] = useState<ChatEvent[]>([])
   const [error, setError] = useState('')
   const [loaded, setLoaded] = useState(false)
+  const [rooms, setRooms] = useState<Array<{ id: string; username: string; name: string; connected: boolean }>>([])
   const wsRef = useRef<WebSocket | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
@@ -39,6 +40,15 @@ export default function DocksPage() {
     const params = new URLSearchParams(window.location.search)
     const id = params.get('room') || ''
     setRoomId(id)
+  }, [])
+
+  // Fetch public room list for the switcher
+  useEffect(() => {
+    api.publicRooms()
+      .then(({ rooms }) => {
+        setRooms(rooms.filter((room) => room.username || room.name))
+      })
+      .catch(() => {})
   }, [])
 
   // Poll status + session
@@ -132,8 +142,30 @@ export default function DocksPage() {
 
   return (
     <div className="flex h-full flex-col bg-zinc-900 text-zinc-100">
-      {/* Header — viewer count + status */}
-      <div className="flex items-center justify-between gap-3 border-b border-zinc-800 bg-zinc-950 px-3 py-2">
+      {/* Header — room switcher + status */}
+      <div className="flex items-center gap-2 border-b border-zinc-800 bg-zinc-950 px-3 py-2">
+        {rooms.length > 1 && (
+          <select
+            aria-label="Select room"
+            value={roomId}
+            onChange={(e) => {
+              const next = e.target.value
+              setRoomId(next)
+              const url = new URL(window.location.href)
+              if (next) url.searchParams.set('room', next)
+              else url.searchParams.delete('room')
+              window.history.replaceState({}, '', url.toString())
+            }}
+            className="max-w-32 rounded border border-zinc-700 bg-zinc-900 px-1.5 py-1 text-xs text-zinc-200 outline-none focus:border-zinc-500"
+          >
+            {!roomId && <option value="">Select room</option>}
+            {rooms.map((room) => (
+              <option key={room.id} value={room.id}>
+                {room.username ? `@${room.username}` : room.name || room.id.slice(0, 8)}
+              </option>
+            ))}
+          </select>
+        )}
         <div className="flex items-center gap-2">
           <span className={`inline-block h-2 w-2 rounded-full ${status?.connected ? 'bg-emerald-400' : status?.connecting ? 'bg-amber-400' : 'bg-zinc-600'}`} />
           <span className="text-xs font-medium text-zinc-300">
@@ -141,7 +173,7 @@ export default function DocksPage() {
           </span>
         </div>
         {status?.connected && status.viewers != null && (
-          <span className="rounded-full bg-emerald-400/10 px-2 py-0.5 text-xs font-semibold text-emerald-400">
+          <span className="ml-auto rounded-full bg-emerald-400/10 px-2 py-0.5 text-xs font-semibold text-emerald-400">
             {status.viewers.toLocaleString()} watching
           </span>
         )}
