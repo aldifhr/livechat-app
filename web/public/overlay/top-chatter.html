@@ -142,6 +142,10 @@ function connect() {
       const frame = JSON.parse(event.data)
       if (frame.type === 'comment' && frame.user) {
         addComment(frame.user, frame.avatar)
+      } else if (frame.type === 'follow' && frame.user) {
+        addFollow(frame.user, frame.avatar)
+      } else if (frame.type === 'share' && frame.user) {
+        addShare(frame.user, frame.avatar)
       }
     } catch (e) {}
   }
@@ -160,10 +164,32 @@ function addComment(user, avatar) {
     existing.count++
     if (avatar) existing.avatar = avatar
   } else {
-    topChatters.push({ nickname: user, count: 1, avatar: avatar || '' })
+    topChatters.push({ nickname: user, count: 1, avatar: avatar || '', follows: 0, shares: 0 })
   }
   topChatters.sort((a, b) => b.count - a.count)
   topChatters = topChatters.slice(0, 10)
+  render()
+}
+
+function addFollow(user, avatar) {
+  const existing = topChatters.find(c => c.nickname === user)
+  if (existing) {
+    existing.follows++
+    if (avatar) existing.avatar = avatar
+  } else {
+    topChatters.push({ nickname: user, count: 0, avatar: avatar || '', follows: 1, shares: 0 })
+  }
+  render()
+}
+
+function addShare(user, avatar) {
+  const existing = topChatters.find(c => c.nickname === user)
+  if (existing) {
+    existing.shares++
+    if (avatar) existing.avatar = avatar
+  } else {
+    topChatters.push({ nickname: user, count: 0, avatar: avatar || '', follows: 0, shares: 1 })
+  }
   render()
 }
 
