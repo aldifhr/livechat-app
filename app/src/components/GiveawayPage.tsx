@@ -11,7 +11,7 @@ import type { FeedItem } from '../types'
 type GiveawayStatus = 'idle' | 'open' | 'review' | 'closed'
 type GiveawayEntrant = { id: string; nickname: string; followed: boolean; eligible: boolean; keywordMessages: number; reason?: string }
 type GiveawayDraw = { drawnAt: string; pool: string[]; winner: string }
-const GIVEAWAY_WEB_ORIGIN = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5184'
+const GIVEAWAY_WEB_ORIGIN = 'https://streamtools.aldifhr.my.id'
 const WHEEL_COLORS = ['#f59e0b', '#fb7185', '#38bdf8', '#a78bfa', '#34d399', '#f97316', '#e879f9', '#2dd4bf']
 
 function formatTime(milliseconds: number): string {
