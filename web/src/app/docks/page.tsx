@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError } from '@/lib/client'
+import { Bubble, BubbleContent } from '@/components/ui/bubble'
 import type { RoomSession, RoomStatus } from '@/lib/types'
 
 const POLL_MS = 15_000
@@ -248,18 +249,14 @@ export default function DocksPage() {
           </p>
         ) : (
           chat.map((event, index) => (
-            <div key={`${event.type}-${event.user}-${index}`} className="flex items-start gap-1.5 py-0.5 text-xs leading-relaxed">
-              {event.type === 'gift' ? (
-                <span className="shrink-0 text-amber-400">🎁</span>
-              ) : event.type === 'follow' ? (
-                <span className="shrink-0 text-pink-400">💖</span>
-              ) : event.type === 'like' ? (
-                <span className="shrink-0 text-red-400">❤️</span>
-              ) : null}
-              <span className="shrink-0 font-medium text-zinc-300">{event.user}</span>
-              {event.text && <span className="min-w-0 break-words text-zinc-400">{event.text}</span>}
-              {event.giftName && <span className="text-zinc-500">sent {event.giftName}</span>}
-            </div>
+            <Bubble key={`${event.type}-${event.user}-${index}`} align={event.type === 'comment' ? 'start' : 'end'} variant={event.type === 'gift' ? 'tinted' : event.type === 'follow' ? 'secondary' : 'default'} className="max-w-full">
+              <BubbleContent>
+                {event.type === 'gift' ? <span className="shrink-0 text-amber-400">🎁 </span> : event.type === 'follow' ? <span className="shrink-0 text-pink-400">💖 </span> : event.type === 'like' ? <span className="shrink-0 text-red-400">❤️ </span> : null}
+                <span className="shrink-0 font-medium text-zinc-300">{event.user}</span>
+                {event.text && <span className="min-w-0 break-words text-zinc-400"> {event.text}</span>}
+                {event.giftName && <span className="text-zinc-500"> sent {event.giftName}</span>}
+              </BubbleContent>
+            </Bubble>
           ))
         )}
         <div ref={chatEndRef} />
