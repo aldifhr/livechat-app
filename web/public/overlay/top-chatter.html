@@ -89,7 +89,7 @@ body {
   min-width: 0;
   flex: 1;
 }
-.count {
+#count {
   margin-left: auto;
   flex: 0 0 auto;
   padding: 2px 8px;
@@ -100,6 +100,7 @@ body {
   font-variant-numeric: tabular-nums;
   color: rgba(255,255,255,0.8);
 }
+#count.hidden { display: none; }
 #empty {
   color: rgba(255,255,255,0.4);
   font-size: 13px;
@@ -126,6 +127,7 @@ if (clean) root.classList.add('clean')
 let socket = null
 let connected = false
 let topChatters = []
+let showCount = true
 
 function connect() {
   if (!roomId) return
@@ -140,8 +142,14 @@ function connect() {
   socket.onmessage = (event) => {
     try {
       const frame = JSON.parse(event.data)
-      if (frame.type === 'config' && frame.config && frame.config.title) {
-        document.getElementById('board-title').textContent = frame.config.title
+      if (frame.type === 'config' && frame.config) {
+        if (frame.config.title) {
+          document.getElementById('board-title').textContent = frame.config.title
+        }
+        if (frame.config.showCount !== undefined) {
+          showCount = !!frame.config.showCount
+          render()
+        }
       }
       if (frame.type === 'comment' && frame.user) {
         addComment(frame.user, frame.avatar)
@@ -217,7 +225,7 @@ function render() {
       <span class="rank">${rank}</span>
       ${c.avatar ? `<img class="avatar" src="${escapeHtml(c.avatar)}" alt="" loading="lazy">` : ''}
       <span class="name">${escapeHtml(c.nickname)}</span>
-      <span class="count">${c.count}</span>
+      <span id="count" class="${showCount ? '' : 'hidden'}">${c.count}</span>
     </li>`
   }).join('')
 }

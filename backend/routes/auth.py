@@ -63,6 +63,11 @@ def token_is_valid(request: Request) -> bool:
 EXEMPT_WRITE_PATHS = frozenset({
     "/api/room-connect/",
     "/api/room-connect-by-username",
+    # Giveaway snapshots are public by design — the desktop app has no
+    # credential, and the published link is meant to be opened by anyone.
+    # The caller only writes their own report; they cannot read or alter
+    # another snapshot (GET is by id, and the id is unguessable).
+    "/api/giveaways/snapshots",
 })
 
 
