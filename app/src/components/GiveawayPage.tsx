@@ -116,6 +116,8 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
   const [showSeed, setShowSeed] = useState(false)
   const spinWheelRef = useRef<SpinWheelHandle>(null)
   const confettiRef = useRef<ConfettiRef>(null)
+  const pendingWinnerRef = useRef<string | null>(null)
+  const pendingPoolRef = useRef<string[] | null>(null)
   const enteredRef = useRef(new Set<string>())
   const entryCountsRef = useRef<Record<string, number>>({})
   const followedRef = useRef(new Set<string>())
@@ -314,6 +316,17 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
     setSpinning(true)
     spinWheelRef.current.spin() // visual only — winner already decided
     setRevealSeed('') // hide until reveal
+    pendingWinnerRef.current = winner
+    pendingPoolRef.current = pool
+  }
+
+  // The wheel has stopped — only NOW reveal the winner.
+  function finishWheelSpin(_sector: Sector) {
+    const winner = pendingWinnerRef.current
+    if (!winner) return
+    pendingWinnerRef.current = null
+    const pool = pendingPoolRef.current ?? []
+    pendingPoolRef.current = null
     setDrawHistory((current) => [...current, { drawnAt: new Date().toISOString(), pool, winner }])
     setWinners((current) => [...current, winner])
     setAnnouncedWinnerId(winner)
@@ -325,13 +338,6 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
       origin: { y: 0.62 },
       colors: ['#f59e0b', '#fb7185', '#38bdf8', '#34d399', '#e879f9'],
     })
-  }
-
-  // finishWheelSpin is called when the wheel animation ends, but the winner was
-  // already determined by CSPRNG in spinForWinner. We ignore the sector label
-  // from the wheel — the result must not depend on animation physics or timing.
-  function finishWheelSpin(_sector: Sector) {
-    // No-op: winner already set. Wheel is visual only.
   }
 
   function resetGiveaway() {
@@ -355,6 +361,8 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
     setRevealSeed('')
     setEntrantHash('')
     setShowSeed(false)
+    pendingWinnerRef.current = null
+    pendingPoolRef.current = null
     entryCountsRef.current = {}
     setMockParticipants([])
     setIsTestRun(false)
