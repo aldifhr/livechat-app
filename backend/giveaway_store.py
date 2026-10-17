@@ -62,6 +62,17 @@ def get_snapshot(snapshot_id: str) -> dict[str, Any] | None:
         return json.loads(json.dumps(record, ensure_ascii=False)) if record else None
 
 
+def delete_snapshot(snapshot_id: str) -> bool:
+    """Remove one snapshot. Returns True if it existed."""
+    with _lock:
+        data = _data()
+        if snapshot_id not in data:
+            return False
+        del data[snapshot_id]
+        _flush()
+        return True
+
+
 def list_snapshots() -> list[dict[str, Any]]:
     """Every stored snapshot, newest first, without the full report body.
 

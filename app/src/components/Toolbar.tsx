@@ -248,7 +248,7 @@ export function Toolbar({
                     'Not connected — enter a handle and press Connect')}
           </span>
           {isConnected && room.viewers > 0 && (
-            <span className="viewers [padding:2px_8px] [background:color-mix(in_srgb,_var(--green)_14%,_transparent)] [border-radius:999px] [color:var(--green)] [font-weight:600] [font-variant-numeric:tabular-nums]"><RollingNumber value={room.viewers} /> watching</span>
+            <span className="viewers [padding:2px_8px] [background:color-mix(in_srgb,_var(--green)_14%,_transparent)] [border-radius:999px] [color:var(--green)] [font-weight:600] [font-variant-numeric:tabular-nums] [white-space:nowrap]"><RollingNumber value={room.viewers} /> watching</span>
           )}
         {isConnected && liveSince !== null && <LiveTimer startedAt={liveSince} />}
         </div>
