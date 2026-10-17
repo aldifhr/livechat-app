@@ -296,11 +296,11 @@ type Which = 'chat' | 'board'
 function SaveBadge({ state }: { state: SaveState }) {
   const text =
     state === 'pending'
-      ? 'Menyimpan…'
+      ? 'Saving…'
       : state === 'saved'
-        ? 'Tersimpan'
+        ? 'Saved'
         : state === 'failed'
-          ? 'Gagal menyimpan'
+          ? 'Save failed'
           : ''
   return (
     <span className={state === 'failed' ? 'save-state failed' : 'save-state'} role="status">
