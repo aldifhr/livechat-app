@@ -1,25 +1,21 @@
-/*
- * Tailwind, for one vendored component.
- *
- * Here to make a component lifted from a component library land and look like
- * itself; everything else in this app is still hand-written CSS below. What
- * Tailwind actually buys here is one thing — the utility layer — and what it
- * risks is preflight, a stylesheet-wide reset that would restyle every screen
- * for a component needing three utility classes.
- *
- * Preflight comes along with the import because the library's installer will not
- * proceed without it, and it was measured rather than assumed: preflight lands
- * in @layer base, every rule in this file is unlayered, and unlayered CSS
- * outranks any layer whatever its specificity. Three screens captured before and
- * after the import came back byte-identical, so nothing here needed undoing and
- * nothing did.
- *
- * Worth knowing before anyone moves a rule into a layer: that is the only thing
- * keeping this cheap. The same import in a stylesheet whose rules were layered
- * would restyle the whole app at once.
- */
-
 @import 'tailwindcss';
+
+/* Theme palettes remain CSS variables so the app can switch skins at runtime. */
+@theme inline {
+  --color-app-bg: var(--bg);
+  --color-app-panel: var(--panel);
+  --color-app-panel-2: var(--panel-2);
+  --color-app-line: var(--line);
+  --color-app-text: var(--text);
+  --color-app-muted: var(--muted);
+  --color-app-accent: var(--accent);
+  --color-app-gold: var(--gold);
+  --color-app-green: var(--green);
+  --color-app-follow: var(--follow);
+  --color-app-share: var(--share);
+  --radius-app: var(--radius);
+}
+
 :root {
   --feed-font-scale: 1;
   --bg: #000000;
@@ -54,12 +50,6 @@ body {
   color: var(--text);
   font: 14px/1.5 'Segoe UI', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
-}
-
-.app {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
 }
 
 .page-view {
@@ -835,9 +825,6 @@ select.input option {
 }
 
 .feed {
-  flex: 1 1 auto;
-  overflow-y: auto;
-  padding: 12px 20px 24px;
   scrollbar-width: thin;
   /* The one place the reading-preference scale applies, so the toolbar, the log
      and the jump button keep their own sizing. */
@@ -910,7 +897,7 @@ select.input option {
 }
 
 .gift-popup-motion {
-  width: min(360px, calc(100vw - 36px));
+  width: min(360px, calc(100vw - 32px));
 }
 
 .gift-popup-card {
@@ -948,9 +935,8 @@ select.input option {
 
 .gift-popup-message {
   font-weight: 700;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .gift-popup-eyebrow {
@@ -980,7 +966,7 @@ select.input option {
   height: 100%;
   transform-origin: left center;
   background: var(--accent);
-  animation: gift-popup-countdown 5s linear forwards;
+  animation: gift-popup-countdown 3s linear forwards;
 }
 
 .event-popup-gift {
@@ -1120,7 +1106,7 @@ select.input option {
 .sound-rows {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .sound-rows .field-row .input {
@@ -1135,8 +1121,14 @@ select.input option {
   display: grid;
   grid-template-columns: minmax(150px, 1fr) minmax(120px, 180px);
   align-items: center;
-  gap: 12px;
-  padding: 0 2px 4px;
+  gap: 8px;
+  padding: 0 2px;
+}
+
+.sound-file-note {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sound-volume-control,
@@ -1628,14 +1620,6 @@ textarea.input {
 .overlay-colour::-webkit-color-swatch {
   border: none;
   border-radius: 4px;
-}
-
-/* A message that mentions this reader. */
-.text-mention {
-  background: rgba(245, 196, 81, 0.12);
-  border-radius: 4px;
-  padding: 1px 4px;
-  margin-left: -4px;
 }
 
 .emotes {

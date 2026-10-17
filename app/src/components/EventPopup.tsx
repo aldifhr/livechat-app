@@ -6,19 +6,19 @@ import { AnimatedListItem } from './ui/animated-list'
 import { Confetti, type ConfettiRef } from './ui/confetti'
 import { TextAnimate } from './ui/text-animate'
 
-const COOLDOWN_MS = 5_000
+const POPUP_DURATION_MS = 3_000
 
 /**
  * How many events may wait behind the one on screen.
  *
- * One popup shows for five seconds, so a burst arrives faster than it can be
+ * One popup shows for three seconds, so a burst arrives faster than it can be
  * displayed — a gift train is exactly that. Unbounded, the queue grows without
  * limit and the backlog is not just late, it is *stale*: a toast about a gift from
  * two minutes ago, shown over a stream that has moved on. The cost is not only the
  * wait, either; every queued event holds its frame alive, and a busy room can
  * produce thousands.
  *
- * Twelve is a little over a minute of backlog, which is the point past which a
+ * Twelve is a little over half a minute of backlog, which is the point past which a
  * popup stops being news. Past that the newest events win, because the reason to
  * show a gift at all is that it just happened.
  */
@@ -85,7 +85,7 @@ export function EventPopup({ enabled }: Props) {
     dismissTimer.current = setTimeout(() => {
       dismissTimer.current = null
       setActiveEvent(null)
-    }, COOLDOWN_MS)
+    }, POPUP_DURATION_MS)
     return () => {
       if (dismissTimer.current) clearTimeout(dismissTimer.current)
       dismissTimer.current = null
@@ -114,7 +114,7 @@ export function EventPopup({ enabled }: Props) {
   const image = activeEvent?.type === 'gift'
     ? activeEvent.giftImage || activeEvent.avatar
     : activeEvent?.avatar
-  const popupDuration = '5s'
+  const popupDuration = `${POPUP_DURATION_MS}ms`
 
   return (
     <>
@@ -142,16 +142,7 @@ export function EventPopup({ enabled }: Props) {
                     >
                       {title}
                     </TextAnimate>
-                    <TextAnimate
-                      as="div"
-                      className="gift-popup-message"
-                      animation="blurInUp"
-                      by="word"
-                      duration={0.4}
-                      startOnView={false}
-                    >
-                      {message}
-                    </TextAnimate>
+                    <div className="gift-popup-message">{message}</div>
                     <span className="gift-popup-detail">{detail}</span>
                   </div>
                 </div>

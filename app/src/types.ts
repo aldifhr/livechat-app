@@ -38,8 +38,6 @@ export interface FeedItem extends Viewer {
   isModerator?: boolean
   /** TikTok has filtered this message itself; it is usually noise. */
   isFiltered?: boolean
-  /** Usernames this message is directed at. */
-  mentions?: string[]
   /** Emoji images sent alongside the text. */
   emotes?: { url: string; id: string }[]
   /**

@@ -15,7 +15,6 @@
  */
 
 import { resolveTemplate, type SoundTemplate } from './templates'
-import { mentionAlert } from './sound'
 import { fileUrl } from './sidecar'
 
 /** Attack time, in ms. Short: a slower attack reads as a swell, not as a tap. */
@@ -101,20 +100,6 @@ function playNote(
   oscillator.connect(envelope).connect(context.destination)
   oscillator.start(start)
   oscillator.stop(end + 0.02)
-}
-
-/**
- * Plays the mention alert: two notes rising.
- *
- * Separate from the templates because it is not one of the choices — a mention is
- * the one sound in the app the user does not pick, because its job is to be
- * recognised without being looked up.
- */
-export function playMention(context: AudioContext): void {
-  const alert = mentionAlert()
-  const start = context.currentTime
-  playNote(context, alert.low, start, alert.durationMs, alert.gain, 'sine')
-  playNote(context, alert.high, start + 0.09, alert.durationMs, alert.gain, 'sine')
 }
 
 /** Plays a whole template through the context. */

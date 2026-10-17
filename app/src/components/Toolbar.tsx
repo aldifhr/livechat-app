@@ -326,5 +326,5 @@ function LiveTimer({ startedAt }: { startedAt: number }) {
   const seconds = elapsedSeconds % 60
   const time = [hours, minutes, seconds].map((part) => String(part).padStart(2, '0')).join(':')
 
-  return <span className="live-timer" title="Durasi terhubung ke live">LIVE {time}</span>
+  return <span className="live-timer" title="Time connected to the live stream">LIVE {time}</span>
 }

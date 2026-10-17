@@ -90,25 +90,6 @@ export interface ViewSettings {
   /** Announce gifts with the neural voice. */
   giftVoice: boolean
   /**
-   * The handles that count as "me", comma-separated.
-   *
-   * More than one because a person streams under one name and chats under
-   * another, and a mention of either is a mention of them. Empty means nothing is
-   * highlighted and no mention is alerted on — which is the default, because a
-   * highlight that fires on the wrong name is worse than none.
-   */
-  myHandle: string
-  /** Play a sound when a message mentions one of those handles. */
-  mentionAlert: boolean
-  /**
-   * Speak the sender's name when a message mentions one of those handles.
-   *
-   * Its own setting rather than the gift one. They were sharing a flag, which
-   * meant the spoken mention was unreachable unless "Say gifts" was also on,
-   * and turning that on enabled this as a side effect nobody could see.
-   */
-  mentionVoice: boolean
-  /**
    * How fast the room is read aloud.
    *
    * One value for all three speaking settings, because they are the same mouth —
@@ -199,9 +180,6 @@ export const DEFAULT_SETTINGS: ViewSettings = {
   chatSound: false,
   chatTts: false,
   giftVoice: false,
-  myHandle: '',
-  mentionAlert: false,
-  mentionVoice: false,
   ttsPace: NORMAL_PACE,
   ttsLanguage: DEFAULT_LANGUAGE,
   ttsVolume: TTS_VOLUME_MAX,
@@ -233,6 +211,12 @@ function load(): ViewSettings {
     // the built-ins would look like the file they chose had been forgotten. The
     // old key is destructured out so it does not linger in what we save back.
     const { customSoundPath, ...saved } = parsed
+    // These mention settings belonged to a removed feature. Strip them from old
+    // profiles too, so saving the remaining preferences cleans up localStorage.
+    const legacySettings = saved as Record<string, unknown>
+    delete legacySettings.myHandle
+    delete legacySettings.mentionAlert
+    delete legacySettings.mentionVoice
     const legacy = typeof customSoundPath === 'string' ? customSoundPath : ''
     return {
       ...DEFAULT_SETTINGS,

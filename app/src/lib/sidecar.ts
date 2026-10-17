@@ -88,8 +88,6 @@ export type SidecarEvent = Tagged &
         isModerator?: boolean
         /** TikTok has filtered this message itself. */
         isFiltered?: boolean
-        /** Usernames the message is directed at. */
-        mentions?: string[]
         /** Emoji images sent alongside the text. */
         emotes?: { url: string; id: string }[]
       }
@@ -241,7 +239,7 @@ const listeners = new Set<EventHandler>()
  * line or any of the alert hooks see it.
  *
  * It has to be here rather than in `useChat` because the feed is not the only
- * consumer: a gift sound, a spoken mention and an auto-reply all read the same
+ * consumer: a gift sound and an auto-reply both read the same
  * frames, and a stopped session must not ring a bell or answer a greeting
  * either. One gate at the door covers all of them.
  *

@@ -105,8 +105,7 @@ export function SoundsSection({ settings, set }: Props) {
   return (
     <Section title="Sounds" section="sounds">
       <p className="modal-hint">
-        Each event has its own sound: pick a template, or choose a file to play instead. A file
-        applies to its own event only, so a gift and a chat line can sound nothing alike.
+        Choose a template or custom file for each event. A custom file takes priority.
       </p>
 
       <div className="sound-rows">
@@ -155,9 +154,7 @@ export function SoundsSection({ settings, set }: Props) {
                   </button>
                 )}
               </span>
-              <span className="field-note">
-                {customPath ? basename(customPath) : 'No file — the template is used.'}
-              </span>
+              {customPath && <span className="field-note sound-file-note">{basename(customPath)}</span>}
               <span className="sound-event-options">
                 <label className="sound-volume-control">
                   <span className="field-note">Volume</span>

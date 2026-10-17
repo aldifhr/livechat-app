@@ -71,5 +71,5 @@ export function isGreeting(text: string): boolean {
  * so there is one place to change it and a test can pin the behaviour.
  */
 export function greetingReply(): string {
-  return 'Halo! Senang kamu mampir 👋'
+  return 'Hello! Glad you stopped by 👋'
 }

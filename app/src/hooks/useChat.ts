@@ -250,7 +250,6 @@ export function useChat({ collapseWindowMs, collapseThreshold }: UseChatOptions)
             // Only carried when set, so a plain message stays a plain message.
             ...(event.isModerator ? { isModerator: true } : {}),
             ...(event.isFiltered ? { isFiltered: true } : {}),
-            ...(event.mentions?.length ? { mentions: event.mentions } : {}),
             ...(event.emotes?.length ? { emotes: event.emotes } : {}),
           })
           bump('chat')

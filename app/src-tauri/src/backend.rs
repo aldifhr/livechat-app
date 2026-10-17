@@ -573,17 +573,6 @@ pub fn to_app_event(frame: &Value, now_ms: i64) -> Option<Value> {
 
     let count = frame.get("count").and_then(Value::as_i64).unwrap_or(1);
 
-    // The handles a comment is addressed to, passed through from the backend
-    // when it reported any. TikTok's own mention list, not a scan of the text:
-    // it is exact, and it catches a mention of a display name that could never
-    // be typed as `@name`. Empty for the ordinary comment, which the app reads
-    // as "nobody was addressed" and the feed leaves unhighlighted.
-    let mentions = frame
-        .get("mentions")
-        .and_then(Value::as_array)
-        .map(|list| Value::Array(list.clone()))
-        .unwrap_or_else(|| Value::Array(Vec::new()));
-
     // The MOD badge and custom emotes. Both were read by the app since it had a
     // feed and neither was ever sent, so the badge could not appear and emotes
     // could not render. `isModerator` is a plain bool (absent means false) and
@@ -603,7 +592,6 @@ pub fn to_app_event(frame: &Value, now_ms: i64) -> Option<Value> {
             "type": "chat", "platform": platform, "nickname": user(), "id": id(),
             "avatar": avatar, "text": frame.get("text").and_then(Value::as_str).unwrap_or_default(),
             "timestamp": timestamp,
-            "mentions": mentions,
             "isModerator": is_moderator,
             "emotes": emotes,
         }),
@@ -1202,26 +1190,6 @@ mod tests {
         // Without this the app treats the frame as being about the bridge and
         // drops it, which is a silent total blackout rather than a visible fault.
         assert_eq!(out["platform"], "tiktok");
-    }
-
-    #[test]
-    fn a_mention_reaches_the_app() {
-        // The field the app has read since it had a feed, and which nothing on
-        // the producing side ever sent — so `mentionsMe` was always false and the
-        // highlight, the alert and the spoken name never fired on a real room.
-        let out = mapped(json!({
-            "type": "comment", "user": "eko", "userId": "7", "text": "@ana hi",
-            "mentions": ["ana", "budi"],
-        }));
-        assert_eq!(out["mentions"], json!(["ana", "budi"]));
-    }
-
-    #[test]
-    fn a_plain_comment_carries_no_mentions() {
-        // An empty list, never a missing key or a null: the app checks `.length`
-        // and a null would make a client that trusts the field throw.
-        let out = mapped(json!({ "type": "comment", "user": "eko", "userId": "7", "text": "hi" }));
-        assert_eq!(out["mentions"], json!([]));
     }
 
     #[test]

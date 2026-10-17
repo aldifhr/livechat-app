@@ -1,6 +1,5 @@
 import { memo, useState } from 'react'
 import { kindLabel } from '../hooks/useFeed'
-import { mentionsMe } from '../lib/mentions'
 import { tiktokProfileUrl } from '../lib/platforms'
 import { host } from '../lib/sidecar'
 import type { FeedItem } from '../types'
@@ -42,8 +41,6 @@ interface Props {
   item: FeedItem
   /** The newest row, highlighted and used as the scroll anchor. */
   isLast: boolean
-  /** Usernames that count as "you" when deciding whether a mention is for this reader. */
-  myNames?: string[]
 }
 
 /**
@@ -77,20 +74,8 @@ function Nickname({ name, handle }: { name: string; handle: string }) {
   )
 }
 
-/**
- * Whether a mention names this reader.
- *
- * The rule itself lives in `lib/mentions` and is shared with the alert hook: one
- * rule, one normalisation. A second copy here drifted from it — it did not trim,
- * so `" ana "` highlighted through the alert path but not in the feed.
- */
-function mentionsSomebody(item: FeedItem, myNames: string[]): boolean {
-  return mentionsMe(item.mentions, myNames)
-}
-
-function FeedRowImpl({ item, isLast, myNames }: Props) {
+function FeedRowImpl({ item, isLast }: Props) {
   const repeat = item.repeatCount ?? 1
-  const mentioned = mentionsSomebody(item, myNames ?? [])
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
 
   async function copyMessage() {
@@ -147,8 +132,8 @@ function FeedRowImpl({ item, isLast, myNames }: Props) {
             <button
               className={`copy-message-btn${copyState === 'copied' ? ' is-copied' : ''}`}
               type="button"
-              title={copyState === 'copied' ? 'Pesan tersalin' : copyState === 'failed' ? 'Pesan gagal disalin' : 'Salin pesan'}
-              aria-label={copyState === 'copied' ? 'Pesan tersalin' : 'Salin pesan'}
+              title={copyState === 'copied' ? 'Message copied' : copyState === 'failed' ? 'Could not copy message' : 'Copy message'}
+              aria-label={copyState === 'copied' ? 'Message copied' : 'Copy message'}
               onClick={() => void copyMessage()}
             >
               {copyState === 'copied' ? '✓' : '⧉'}
@@ -158,7 +143,7 @@ function FeedRowImpl({ item, isLast, myNames }: Props) {
 
         {item.kind === 'chat' ? (
           <>
-            <p className={`text${mentioned ? ' text-mention' : ''}`}>{item.text}</p>
+            <p className="text">{item.text}</p>
             {item.emotes && item.emotes.length > 0 && (
               <div className="emotes">
                 {item.emotes.map((emote) => (
@@ -214,10 +199,5 @@ export const FeedRow = memo(
     previous.item.isModerator === next.item.isModerator &&
     previous.item.isFiltered === next.item.isFiltered &&
     // Compared by identity: `mark` replaces the object rather than editing one, so
-    previous.item.emotes === next.item.emotes &&
-    // The highlight, not the row: without this, editing "My handles" in settings
-    // left every already-painted row showing the old answer, so the highlight
-    // only appeared on rows that changed for some unrelated reason.
-    mentionsSomebody(previous.item, previous.myNames ?? []) ===
-      mentionsSomebody(next.item, next.myNames ?? []),
+    previous.item.emotes === next.item.emotes,
 )

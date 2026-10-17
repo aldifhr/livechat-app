@@ -6,10 +6,7 @@ import tailwindcss from '@tailwindcss/vite'
 // Tauri serves the frontend from a fixed port in dev and expects the build in
 // dist/. Do not change this without updating devUrl in tauri.conf.json.
 export default defineConfig({
-  // Tailwind, for the one component that is vendored from a component library
-  // rather than written here (`number-ticker`). Everything else in this app is
-  // still hand-written CSS in styles.css; see the note on the import there for
-  // why the utility layer sits beside it rather than replacing it.
+  // Tailwind v4 drives the app stylesheets and utility classes.
   plugins: [react(), tailwindcss()],
   // shared/ is a sibling of app/, not a part of it, so it needs a name rather
   // than a relative path that would climb out of the package on every import.

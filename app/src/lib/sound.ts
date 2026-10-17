@@ -154,47 +154,6 @@ export function shouldPlayJoinSound(
 }
 
 /**
- * The mention alert.
- *
- * Two notes, and deliberately not the chat blip: a blip is something happened, a
- * mention is something happened *to you*, and they have to be told apart without
- * looking. Rising rather than level, because a rise reads as a question being
- * asked and a level tone reads as another message arriving.
- *
- * Quieter than the gift chime, which stays the loudest thing in the app — a gift
- * is worth money and a mention is worth attention.
- */
-export const MENTION_GAIN = 0.13
-
-const MENTION_LOW_HZ = 784
-const MENTION_HIGH_HZ = 1047
-
-export function mentionAlert(): { low: number; high: number; gain: number; durationMs: number } {
-  return { low: MENTION_LOW_HZ, high: MENTION_HIGH_HZ, gain: MENTION_GAIN, durationMs: 130 }
-}
-
-/**
- * Shortest gap between two mention alerts.
- *
- * Longer than the chat blip's and shorter than the gift's. A mention wave — three
- * people saying your name at once — is one event, and the gap is what makes it
- * sound like one rather than like three separate demands for attention.
- */
-export const MENTION_GAP_MS = 2500
-
-/** Whether a mention arriving now is worth alerting on. */
-export function shouldPlayMentionAlert(
-  enabled: boolean,
-  lastPlayedAt: number | null,
-  now: number,
-  gapMs: number = MENTION_GAP_MS,
-): boolean {
-  if (!enabled) return false
-  if (lastPlayedAt === null) return true
-  return now - lastPlayedAt >= gapMs
-}
-
-/**
  * A bracketed emote, the way TikTok writes them: `[thanks]`, `[heart]`.
  *
  * Anything inside a pair of brackets with no whitespace. Mentions are written

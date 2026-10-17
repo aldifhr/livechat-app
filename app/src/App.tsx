@@ -16,12 +16,10 @@ import { useGiftNotification } from './hooks/useGiftNotification'
 import { useGiftSound } from './hooks/useGiftSound'
 import { useJoinSound } from './hooks/useJoinSound'
 import { useEventSound } from './hooks/useEventSound'
-import { useMentionAlert } from './hooks/useMentionAlert'
 
 import { useSettings } from './hooks/useSettings'
 import { useKindCounts, useVisibleItems, type FeedFilters } from './hooks/useVisibleItems'
 import { EMPTY_BACKEND, type BackendConfig } from './lib/backend'
-import { myHandles } from './lib/mentions'
 import { host } from './lib/sidecar'
 import type { VoiceOptions } from './lib/voices'
 
@@ -67,16 +65,6 @@ export default function App() {
     speech: voice,
   })
   useAutoReply({ enabled: settings.autoReply })
-  useMentionAlert({
-    myHandle: settings.myHandle,
-    sound: settings.mentionAlert,
-    voice: settings.mentionVoice,
-    speech: voice,
-  })
-
-  // The handles that count as "me", parsed once here rather than per row: the feed
-  // is the busiest path in the app and every chat row is checked against them.
-  const mine = myHandles(settings.myHandle)
   useChatAlerts({
     chatSound: settings.chatSound,
     chatTts: settings.chatTts,
@@ -204,7 +192,7 @@ export default function App() {
   }, [activePage])
 
   return (
-    <div className="app">
+    <div className="app flex h-full flex-col bg-app-bg text-app-text">
       {activePage === 'home' && <>
         <Toolbar
         room={room}
@@ -224,7 +212,7 @@ export default function App() {
 
         <div className="feed-wrap">
         <div
-          className="feed"
+          className="feed flex-[1_1_auto] overflow-y-auto px-5 pt-3 pb-6"
           ref={listRef}
           onScroll={(e) => {
             const node = e.currentTarget
@@ -271,7 +259,6 @@ export default function App() {
                   key={item.key}
                   item={item}
                   isLast={index === visible.length - 1}
-                  myNames={mine}
                 />
               )
 

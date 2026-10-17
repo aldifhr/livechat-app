@@ -302,7 +302,7 @@ await act(async () => {
 })
 const botRows = () => $$('.row').filter((r) => r.querySelector('.badge-bot'))
 check('a greeting drew a reply', botRows().length === 1, `got ${botRows().length}`)
-check('the reply is the app\u2019s own line', /Senang kamu mampir/.test(botRows()[0]?.textContent ?? ''), botRows()[0]?.textContent)
+check('the reply is the app\u2019s own line', /Glad you stopped by/.test(botRows()[0]?.textContent ?? ''), botRows()[0]?.textContent)
 // The same viewer saying hello again is one reply, not one per hello — a bot that
 // answers every repeat is a bot that spams.
 await act(async () => {
@@ -682,13 +682,13 @@ await act(async () => {
 })
 check('the toggle actually hides a join row', $$('.row-join').length === 0, String($$('.row-join').length))
 await openSettings()
-await selectFeedCategory('Tampilan')
+await selectFeedCategory('Display')
 await click(dialogToggle('Hide joins'))
 await goHome()
 check('and they come back when it is off', $$('.row-join').length === 1, String($$('.row-join').length))
 
 await openSettings()
-await selectFeedCategory('Tampilan')
+await selectFeedCategory('Display')
 await click(dialogToggle('Hide filtered'))
 await goHome()
 await act(async () => {
@@ -703,7 +703,7 @@ await act(async () => {
 })
 check('hide-filtered removes filtered messages', $$('.badge-filtered').length === 0)
 await openSettings()
-await selectFeedCategory('Tampilan')
+await selectFeedCategory('Display')
 await click(dialogToggle('Hide filtered'))
 await goHome()
 check('filtered messages return when the setting is off', $$('.badge-filtered').length === 1)
@@ -741,10 +741,10 @@ check('a gift with the sound on still lands in the feed', $$('.row-gift').some((
 check('and nothing about the room broke', $$('.row').length > 0)
 
 await openSettings()
-await selectFeedCategory('Tampilan')
+await selectFeedCategory('Display')
 // Collapse spam moved here too. It used to be component state on the toolbar, so
 // it silently reset on every launch — which is the thing this now asserts against.
-await selectFeedCategory('Tampilan')
+await selectFeedCategory('Display')
 check('collapse spam is offered here', Boolean(dialogToggle('Collapse spam')))
 check('and it starts on', dialogToggle('Collapse spam')?.checked === true)
 await selectFeedCategory('Event alerts')
@@ -760,14 +760,12 @@ await act(async () => {
     text: 'keep this room tidy',
     timestamp: 1700000006600,
     isModerator: true,
-    mentions: ['someone_else'],
     emotes: [{ url: 'https://example.test/e.png', id: 'e1' }],
   })
 })
 check('a moderator is badged', $$('.badge-mod').length === 1)
 check('the badge sits on the moderator row', /badge-mod/.test($$('.row').find((r) => /keep this room tidy/.test(r.textContent ?? ''))?.className ?? 'x') || Boolean($$('.badge-mod')[0]))
 check('an emote image is rendered', $$('.emote').length === 1)
-check('a mention of someone else is not highlighted', $$('.text-mention').length === 0)
 
 console.log('the jump button stands in for autoscroll')
 
@@ -1197,61 +1195,6 @@ check(
 )
 
 
-console.log('mentions of me')
-// The highlight has existed in FeedRow for a long time; this is the half that was
-// missing — a handle to compare against. Without one nothing is highlighted, which
-// is the default: a highlight on the wrong name is worse than none.
-check('no handles by default, so nothing is highlighted yet', $('[data-section="feed"] input[placeholder*="yourname"]')?.value === '', $('[data-section="feed"] input[placeholder*="yourname"]')?.value)
-const handleField = () => $('[data-section="feed"] input[placeholder*="yourname"]')
-await type(handleField(), 'ana')
-check('the handle reaches the setting', handleField().value === 'ana', handleField().value)
-
-// A message naming that handle is highlighted; one naming someone else is not.
-await goHome()
-await act(async () => {
-  fake.emit({
-    platform: 'tiktok',
-    type: 'chat',
-    ...viewer({ id: 'm1', nickname: 'budi' }),
-    text: 'halo ana, nonton ya',
-    timestamp: 1700000012000,
-    mentions: ['ana'],
-  })
-})
-check('a message naming me is highlighted', $$('.text-mention').length === 1, String($$('.text-mention').length))
-check('and it is the right row', /halo ana/.test($('.text-mention')?.textContent ?? ''), $('.text-mention')?.textContent)
-
-await act(async () => {
-  fake.emit({
-    platform: 'tiktok',
-    type: 'chat',
-    ...viewer({ id: 'm2', nickname: 'citra' }),
-    text: 'halo budi, nonton ya',
-    timestamp: 1700000012100,
-    mentions: ['budi'],
-  })
-})
-check('a message naming someone else is not', $$('.text-mention').length === 1, String($$('.text-mention').length))
-
-// Case and a leading @ are the same person, because TikTok sends all three forms.
-await act(async () => {
-  fake.emit({
-    platform: 'tiktok',
-    type: 'chat',
-    ...viewer({ id: 'm3', nickname: 'dewi' }),
-    text: 'ANA lihat ini',
-    timestamp: 1700000012200,
-    mentions: ['@ANA'],
-  })
-})
-check('case and a leading @ still count', $$('.text-mention').length === 2, String($$('.text-mention').length))
-
-await openSettings()
-await selectFeedCategory('Event alerts')
-check('the mention alert is offered off', dialogToggle('Mention alert')?.checked === false)
-await click(dialogToggle('Mention alert'))
-check('and turns on', dialogToggle('Mention alert')?.checked === true)
-
 console.log('sound templates and a custom file')
 // Scoped to the Sounds section: the Look section above also has selects, and the
 // first select on the page is the theme, not a sound.
@@ -1396,22 +1339,6 @@ await act(async () => {
   rowMounted.render(React.createElement(FeedRow, { item: bumped, isLast: true }))
 })
 check('and it repaints when the count changes', (rowBox.textContent ?? '').includes('x4'), rowBox.textContent)
-
-console.log('editing your handles repaints the highlight')
-const mentionRow = { ...item, kind: 'chat', text: 'hi ana', mentions: ['ana'] }
-await act(async () => {
-  rowMounted.render(React.createElement(FeedRow, { item: mentionRow, isLast: true, myNames: [] }))
-})
-check('not highlighted for someone else', !/text-mention/.test(rowBox.innerHTML), rowBox.innerHTML.slice(0, 200))
-await act(async () => {
-  rowMounted.render(React.createElement(FeedRow, { item: mentionRow, isLast: true, myNames: ['ana'] }))
-})
-check('highlighted once the handle matches', /text-mention/.test(rowBox.innerHTML), rowBox.innerHTML.slice(0, 200))
-// Unchanged item, unchanged everything else — only the handles moved.
-await act(async () => {
-  rowMounted.render(React.createElement(FeedRow, { item: mentionRow, isLast: true, myNames: ['someone_else'] }))
-})
-check('and un-highlighted when it stops matching', !/text-mention/.test(rowBox.innerHTML), rowBox.innerHTML.slice(0, 200))
 
 await act(async () => {
   rowMounted.unmount()

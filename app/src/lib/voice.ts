@@ -1,8 +1,8 @@
 /**
  * The one voice.
  *
- * A single place that speaks, shared by chat read-aloud, gift announcements and
- * mentions, because they are the same resource: one mouth. Two hooks each holding
+ * A single place that speaks, shared by chat read-aloud and gift announcements,
+ * because they are the same resource: one mouth. Two hooks each holding
  * their own `<audio>` element would talk over each other the moment a gift arrived
  * mid-sentence, which is the one thing this exists to prevent.
  *
@@ -12,9 +12,9 @@
  * every second word is not reading — it is stuttering, and every sentence is
  * heard only as its first half.
  *
- * The one exception used to be an *urgent* utterance — a gift, a mention — which
+ * The one exception used to be an *urgent* utterance — a gift — which
  * took the slot rather than waiting. That is gone: no caller ever passed it, and
- * the gift and mention hooks were written to wait on purpose (a gift that cuts
+ * the gift hook was written to wait on purpose (a gift that cuts
  * off the reader mid-sentence is worse than one that arrives a beat later). A
  * parameter whose only correct value is "never" is a trap for the next reader, so
  * `hush()` is now the only way an ordinary utterance is cut off.

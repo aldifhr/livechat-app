@@ -128,7 +128,7 @@ export function clampVolume(value: unknown): number {
  * Everything one utterance needs to know about how to sound.
  *
  * One object rather than three parameters because the three always travel together
- * — chat, gifts and mentions share a mouth — and because a fourth is coming: the
+ * — chat and gifts share a mouth — and because a fourth is coming: the
  * call sites are hooks with dependency arrays, and a fourth positional argument is
  * one more name to keep in step in three of them.
  */
