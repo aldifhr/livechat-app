@@ -14,6 +14,33 @@ type ChatEvent = {
   text?: string
   giftName?: string
   avatar?: string
+  time: string
+}
+
+function playChime(type: 'gift' | 'follow') {
+  try {
+    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+    const ctx = new AudioContextClass()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    const now = ctx.currentTime
+    if (type === 'gift') {
+      osc.frequency.setValueAtTime(783.99, now)
+      osc.frequency.setValueAtTime(1046.5, now + 0.1)
+      gain.gain.setValueAtTime(0.15, now)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35)
+      osc.start(now)
+      osc.stop(now + 0.35)
+    } else {
+      osc.frequency.setValueAtTime(659.25, now)
+      gain.gain.setValueAtTime(0.1, now)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25)
+      osc.start(now)
+      osc.stop(now + 0.25)
+    }
+  } catch {}
 }
 
 function duration(seconds: number | null): string {
@@ -63,11 +90,39 @@ export default function DocksPage() {
   const [session, setSession] = useState<RoomSession | null>(null)
   const [chat, setChat] = useState<ChatEvent[]>([])
   const [filter, setFilter] = useState<FilterType>('all')
+  const [soundEnabled, setSoundEnabled] = useState(false)
+  const [isPaused, setIsPaused] = useState(false)
+  const [newCount, setNewCount] = useState(0)
   const [error, setError] = useState('')
   const [loaded, setLoaded] = useState(false)
   const [rooms, setRooms] = useState<Array<{ id: string; username: string; name: string; connected: boolean }>>([])
   const wsRef = useRef<WebSocket | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const feedContainerRef = useRef<HTMLDivElement>(null)
+  const soundRef = useRef(false)
+  const isPausedRef = useRef(false)
+
+  // Sync refs so callbacks have fresh values
+  soundRef.current = soundEnabled
+  isPausedRef.current = isPaused
+
+  // Load sound setting
+  useEffect(() => {
+    try {
+      setSoundEnabled(localStorage.getItem('docks_sound') === '1')
+    } catch {}
+  }, [])
+
+  const toggleSound = () => {
+    setSoundEnabled((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem('docks_sound', next ? '1' : '0')
+      } catch {}
+      if (next) playChime('gift')
+      return next
+    })
+  }
 
   // Read room id from URL
   useEffect(() => {
@@ -136,31 +191,45 @@ export default function DocksPage() {
       console.log('[docks] WS frame received:', event.data)
       try {
         const frame = JSON.parse(event.data)
+        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        let added = false
+
         if (frame.type === 'comment' && frame.user) {
           setChat((current) => [
             ...current.slice(-MAX_CHAT_LINES + 1),
-            { type: 'comment', user: frame.user, text: frame.text, avatar: frame.avatar },
+            { type: 'comment', user: frame.user, text: frame.text, avatar: frame.avatar, time },
           ])
+          added = true
         } else if (frame.type === 'gift' && frame.user) {
           setChat((current) => [
             ...current.slice(-MAX_CHAT_LINES + 1),
-            { type: 'gift', user: frame.user, giftName: frame.giftName || 'gift', avatar: frame.avatar },
+            { type: 'gift', user: frame.user, giftName: frame.giftName || 'gift', avatar: frame.avatar, time },
           ])
+          if (soundRef.current) playChime('gift')
+          added = true
         } else if (frame.type === 'follow' && frame.user) {
           setChat((current) => [
             ...current.slice(-MAX_CHAT_LINES + 1),
-            { type: 'follow', user: frame.user, avatar: frame.avatar },
+            { type: 'follow', user: frame.user, avatar: frame.avatar, time },
           ])
+          if (soundRef.current) playChime('follow')
+          added = true
         } else if (frame.type === 'like' && frame.user) {
           setChat((current) => [
             ...current.slice(-MAX_CHAT_LINES + 1),
-            { type: 'like', user: frame.user, avatar: frame.avatar },
+            { type: 'like', user: frame.user, avatar: frame.avatar, time },
           ])
+          added = true
         } else if (frame.type === 'join' && frame.user) {
           setChat((current) => [
             ...current.slice(-MAX_CHAT_LINES + 1),
-            { type: 'join', user: frame.user, avatar: frame.avatar },
+            { type: 'join', user: frame.user, avatar: frame.avatar, time },
           ])
+          added = true
+        }
+
+        if (added && isPausedRef.current) {
+          setNewCount((c) => c + 1)
         }
       } catch (err) {
         console.error('[docks] Failed to parse frame:', err)
@@ -181,10 +250,30 @@ export default function DocksPage() {
     }
   }, [roomId])
 
-  // Auto-scroll chat
+  // Auto-scroll chat only when not paused
   useEffect(() => {
+    if (!isPaused) {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [chat, isPaused])
+
+  const handleScroll = () => {
+    const el = feedContainerRef.current
+    if (!el) return
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48
+    if (atBottom) {
+      setIsPaused(false)
+      setNewCount(0)
+    } else {
+      setIsPaused(true)
+    }
+  }
+
+  const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [chat])
+    setIsPaused(false)
+    setNewCount(0)
+  }
 
   // No room in URL: auto-select the first room if there's exactly one,
   // otherwise show the room list so the user can pick.
@@ -281,6 +370,19 @@ export default function DocksPage() {
             {status.viewers.toLocaleString()} watching
           </span>
         )}
+        <button
+          type="button"
+          onClick={toggleSound}
+          title={soundEnabled ? 'Mute alert sounds' : 'Enable alert sounds for gifts & follows'}
+          className={`shrink-0 rounded p-1 text-xs transition-colors ${
+            soundEnabled
+              ? 'bg-amber-400/20 text-amber-300 hover:bg-amber-400/30'
+              : 'text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300'
+          } ${status?.connected && status.viewers != null ? 'ml-1' : 'ml-auto'}`}
+          aria-label={soundEnabled ? 'Mute alert sound' : 'Enable alert sound'}
+        >
+          {soundEnabled ? '🔔' : '🔕'}
+        </button>
       </div>
 
       {/* Quick stats */}
@@ -323,42 +425,71 @@ export default function DocksPage() {
         ))}
       </div>
 
-      {/* Live chat feed */}
-      <div className="flex-1 overflow-y-auto px-3 py-3 [scrollbar-width:thin]">
-        {filteredChat.length === 0 ? (
-          <p className="py-4 text-center text-xs text-zinc-600">
-            {chat.length === 0
-              ? status?.connected
-                ? 'Waiting for chat…'
-                : 'Not connected'
-              : 'No events matching filter'}
-          </p>
-        ) : (
-          filteredChat.map((event, index) => (
-            <div
-              key={`${event.type}-${event.user}-${index}`}
-              className="mb-1.5 flex items-start gap-1.5"
-            >
-              <UserAvatar avatar={event.avatar} user={event.user} />
-              <Bubble
-                align="start"
-                variant={event.type === 'gift' ? 'tinted' : event.type === 'follow' || event.type === 'join' ? 'secondary' : 'default'}
-                className="max-w-[calc(100%-2rem)]"
+      {/* Live chat feed with auto-scroll pause */}
+      <div className="relative flex-1 min-h-0">
+        <div
+          ref={feedContainerRef}
+          onScroll={handleScroll}
+          className="h-full overflow-y-auto px-3 py-3 [scrollbar-width:thin]"
+        >
+          {filteredChat.length === 0 ? (
+            <p className="py-4 text-center text-xs text-zinc-600">
+              {chat.length === 0
+                ? status?.connected
+                  ? 'Waiting for chat…'
+                  : 'Not connected'
+                : 'No events matching filter'}
+            </p>
+          ) : (
+            filteredChat.map((event, index) => (
+              <div
+                key={`${event.type}-${event.user}-${index}`}
+                className="mb-1.5 flex items-start gap-1.5"
               >
-                <BubbleContent>
-                  {event.type === 'gift' ? <span className="shrink-0 text-amber-400">🎁 </span> : event.type === 'follow' ? <span className="shrink-0 text-pink-400">💖 </span> : event.type === 'like' ? <span className="shrink-0 text-red-400">❤️ </span> : event.type === 'join' ? <span className="shrink-0 text-emerald-400">👋 </span> : null}
-                  <span className="shrink-0 font-medium text-zinc-300">{event.user}</span>
-                  {event.text && <span className="min-w-0 break-words text-zinc-400"> {event.text}</span>}
-                  {event.giftName && <span className="text-zinc-500"> sent {event.giftName}</span>}
-                  {event.type === 'like' && <span className="text-zinc-500"> liked the stream</span>}
-                  {event.type === 'follow' && <span className="text-zinc-500"> followed</span>}
-                  {event.type === 'join' && <span className="text-zinc-500"> joined</span>}
-                </BubbleContent>
-              </Bubble>
-            </div>
-          ))
+                <UserAvatar avatar={event.avatar} user={event.user} />
+                <Bubble
+                  align="start"
+                  variant={event.type === 'gift' ? 'tinted' : event.type === 'follow' || event.type === 'join' ? 'secondary' : 'default'}
+                  className="max-w-[calc(100%-2rem)]"
+                >
+                  <BubbleContent className="text-xs">
+                    {event.type === 'comment' ? (
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="shrink-0 font-semibold text-sky-400">{event.user}</span>
+                          <span className="shrink-0 text-[10px] text-zinc-500 font-normal tabular-nums">{event.time}</span>
+                        </div>
+                        <p className="mt-0.5 m-0 min-w-0 break-words text-zinc-100 leading-snug">{event.text}</p>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {event.type === 'gift' ? <span className="shrink-0 text-amber-400">🎁</span> : event.type === 'follow' ? <span className="shrink-0 text-pink-400">💖</span> : event.type === 'like' ? <span className="shrink-0 text-red-400">❤️</span> : event.type === 'join' ? <span className="shrink-0 text-emerald-400">👋</span> : null}
+                        <span className="shrink-0 font-semibold text-zinc-200">{event.user}</span>
+                        {event.giftName && <span className="text-amber-300 font-medium">sent {event.giftName}</span>}
+                        {event.type === 'like' && <span className="text-zinc-400">liked the stream</span>}
+                        {event.type === 'follow' && <span className="text-pink-300 font-medium">followed</span>}
+                        {event.type === 'join' && <span className="text-zinc-400">joined</span>}
+                        <span className="shrink-0 text-[10px] text-zinc-500 font-normal tabular-nums ml-auto">{event.time}</span>
+                      </div>
+                    )}
+                  </BubbleContent>
+                </Bubble>
+              </div>
+            ))
+          )}
+          <div ref={chatEndRef} />
+        </div>
+
+        {isPaused && (
+          <button
+            type="button"
+            onClick={scrollToBottom}
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full bg-zinc-800/95 hover:bg-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-200 shadow-xl border border-zinc-700 backdrop-blur transition-all"
+          >
+            <span>↓</span>
+            <span>New messages{newCount > 0 ? ` (${newCount})` : ''}</span>
+          </button>
         )}
-        <div ref={chatEndRef} />
       </div>
     </div>
   )
