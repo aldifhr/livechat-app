@@ -114,21 +114,12 @@ class RoomLog:
     gifters: dict[str, int] = field(default_factory=dict)
     gifter_names: dict[str, str] = field(default_factory=dict)
 
-    #: Per-chatter message counts and the last avatar seen for each. The overlay's
-    #: leaderboard reads this; it is kept here because this is the one place
-    #: every comment already passes through, keyed on the stable handle so a
-    #: display-name change does not split one person into two.
-    chatter_counts: dict[str, int] = field(default_factory=dict)
-    chatter_names: dict[str, str] = field(default_factory=dict)
-
     def reset(self) -> None:
         """Forget this connection's events, keeping the connected flag's caller
         to set. A reconnect is a new session and its counters start again."""
         self.totals.clear()
         self.repeats.clear()
         self.last_user.clear()
-        self.chatter_counts.clear()
-        self.chatter_names.clear()
         # Session stats — reset on reconnect for accurate per-session tracking
         self.peak_viewers = 0
         self.peak_viewers_at = 0.0
@@ -262,21 +253,6 @@ def record(
     if user:
         room.last_user[kind] = user
 
-    # Count this message against the chatter, keyed on the stable handle so one
-    # person is one row however their display name is spelled. Only comments count
-    # toward the leaderboard — a gift or a join is not someone talking.
-    #
-    # Bounded: a busy two-hour session can see tens of thousands of unique
-    # user_ids. Without a cap these dicts grow for the life of the session,
-    # holding every nickname and count ever seen. TOP_N limits what is
-    # returned, not what is stored. Keep only the top TOP_N * 2 — enough
-    # headroom that a new leader displaces an old one without churning.
-    if kind == "comment" and user:
-        key = user_id or user
-        room.chatter_counts[key] = room.chatter_counts.get(key, 0) + 1
-        room.chatter_names[key] = user
-        _prune_leaders(room.chatter_counts, room.chatter_names, TOP_N * 10)
-
     # Track gift diamonds and top gifters
     _diamond_value = (meta or {}).get("value", 0)
     if kind == "gift" and _diamond_value and user:
@@ -307,25 +283,6 @@ def note(message: str) -> None:
 
 def error(message: str) -> None:
     log.error("%s", message)
-
-
-def top_chatters(room_id: str, limit: int = TOP_N) -> list[dict[str, Any]]:
-    """The chattiest viewers in one room, most messages first.
-
-    By message count only — a gift is not someone talking. Ties broken by name so
-    the order is stable between polls rather than shuffling on every refresh.
-    """
-    room = _rooms.get(room_id)
-    if room is None:
-        return []
-    ranked = sorted(
-        room.chatter_counts.items(),
-        key=lambda kv: (-kv[1], room.chatter_names.get(kv[0], "")),
-    )
-    return [
-        {"id": key, "nickname": room.chatter_names.get(key, key), "messages": count}
-        for key, count in ranked[:limit]
-    ]
 
 
 def top_gifters(room_id: str, limit: int = TOP_N) -> list[dict[str, Any]]:
@@ -367,7 +324,6 @@ def snapshot(room_id: str) -> dict[str, Any]:
             "peak_viewers_age": None,
             "live_seconds": None,
             "total_diamonds": 0,
-            "topChatters": [],
             "topGifters": [],
         }
     return {
@@ -382,6 +338,5 @@ def snapshot(room_id: str) -> dict[str, Any]:
         # room that just dropped still reports the length of the stream it had.
         "live_seconds": round(time.time() - room.connected_at, 1) if room.connected_at else None,
         "total_diamonds": room.total_diamonds,
-        "topChatters": top_chatters(room_id),
         "topGifters": top_gifters(room_id),
     }

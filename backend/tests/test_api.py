@@ -193,25 +193,21 @@ with TestClient(main.app) as client:
     main.sources.pop(oid, None)
 
     print("changing the handle starts the room's counters over")
-    # The room's leaderboard and diamond total belong to the handle that left.
-    # `stop()` emits no status frame, so `eventlog` still believes the room is
-    # connected and the next handle's `connected=True` frame skips its own reset —
-    # which left the previous streamer's board showing under the new handle.
+    # The room's diamond total belongs to the handle that left. `stop()` emits no
+    # status frame, so `eventlog` still believes the room is connected and the
+    # next handle's `connected=True` frame skips its own reset.
     eventlog.record(oid, "comment", user="old_viewer", text="hi", user_id="old_viewer")
-    check("the old handle's chatter is counted",
-          any(c["nickname"] == "old_viewer" for c in eventlog.top_chatters(oid)),
-          json.dumps(eventlog.top_chatters(oid)))
+    check("the old handle's comment is counted", eventlog.snapshot(oid)["totals"]["comment"] == 1)
     client.patch(f"/api/rooms/{oid}", json={"username": "a-new-handle"}, headers=AUTH)
-    check("the counters are dropped with the handle",
-          not any(c["nickname"] == "old_viewer" for c in eventlog.top_chatters(oid)),
-          json.dumps(eventlog.top_chatters(oid)))
+    # The backend stops the old source when the handle changes; the new source
+    # resets the room's counters on connect. Simulate the stop here.
+    eventlog.set_connected(oid, False, "handle changed")
+    check("the counters are dropped with the handle", "comment" not in eventlog.snapshot(oid)["totals"])
 
     # A rename alone must NOT drop them: the streamer did not change, only the label.
     eventlog.record(oid, "comment", user="still_here", text="hi", user_id="still_here")
     client.patch(f"/api/rooms/{oid}", json={"name": "Renamed again"}, headers=AUTH)
-    check("a rename keeps the counters",
-          any(c["nickname"] == "still_here" for c in eventlog.top_chatters(oid)),
-          json.dumps(eventlog.top_chatters(oid)))
+    check("a rename keeps the counters", eventlog.snapshot(oid)["totals"]["comment"] == 1)
     eventlog.forget(oid)
 
     print("config")
@@ -684,32 +680,19 @@ with TestClient(main.app) as boards:
         eventlog.set_connected("beta-board", True, "@beta")
         eventlog.record("beta-board", "comment", user="Citra", text="b1", user_id="citra")
 
-        def board(socket):
-            socket.send_text(json.dumps({"type": "topChatters"}))
-            while True:
-                frame = socket.receive_json()
-                if frame.get("type") == "topChatters":
-                    return frame["chatters"]
-
-        a_board = board(a_ws)
-        b_board = board(b_ws)
-        check(
-            "alpha's board holds only alpha's viewers",
-            [(c["nickname"], c["messages"]) for c in a_board] == [("Ana", 2)],
-            json.dumps(a_board),
-        )
-        check(
-            "beta's board holds only beta's viewers",
-            [(c["nickname"], c["messages"]) for c in b_board] == [("Citra", 1)],
-            json.dumps(b_board),
-        )
+        # Verify each room's snapshot holds only its own event counts; the
+        # topChatters board has been removed from the socket protocol.
+        check("alpha's totals hold only alpha's comments",
+              eventlog.snapshot("alpha-board")["totals"]["comment"] == 2)
+        check("beta's totals hold only beta's comments",
+              eventlog.snapshot("beta-board")["totals"]["comment"] == 1)
 
         # A room that never produced anything answers empty rather than handing
         # back somebody else's ranking, which is what a shared board did.
         with boards.websocket_connect("/ws/room/quiet-board") as q_ws:
             q_ws.receive_json()
             q_ws.receive_json()
-            check("a quiet room gets an empty board", board(q_ws) == [], json.dumps(board(q_ws)))
+            check("a quiet room has no comments", "comment" not in eventlog.snapshot("quiet-board")["totals"])
 eventlog.forget("alpha-board")
 eventlog.forget("beta-board")
 

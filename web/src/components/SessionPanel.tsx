@@ -43,7 +43,7 @@ function Leaders({
   unit,
 }: {
   label: string
-  people: RoomSession['topChatters']
+  people: RoomSession['topGifters']
   unit: string
 }) {
   const top = people.slice(0, 3)
@@ -56,7 +56,7 @@ function Leaders({
           {index > 0 && ', '}
           <strong>{person.nickname}</strong>{' '}
           <span className="faint">
-            {(person[unit === 'messages' ? 'messages' : 'diamonds'] ?? 0).toLocaleString()} {unit}
+            {(person.diamonds ?? 0).toLocaleString()} {unit}
           </span>
         </span>
       ))}
@@ -84,7 +84,6 @@ export default function SessionPanel({ session }: { session: RoomSession }) {
         />
         <Stat label="Events" value={events ? events.toLocaleString() : '—'} />
       </dl>
-      <Leaders label="Top chatters" people={session.topChatters} unit="messages" />
       <Leaders label="Top gifters" people={session.topGifters} unit="diamonds" />
     </div>
   )

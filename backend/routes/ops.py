@@ -216,13 +216,11 @@ async def analytics(request: Request) -> dict[str, Any]:
         "total_diamonds": 0,
         "total_events": 0,
         "rooms": [],
-        "topChatters": [],
         "topGifters": [],
     }
-    # room id -> (name, total) for both leaderboards. Keyed on the user id, which
-    # is the only thing that means the same person in two rooms; a nickname does
-    # not, and a display name can change mid-session.
-    chatter_totals: dict[str, tuple[str, int]] = {}
+    # room id -> (name, total) for the gifter leaderboard. Keyed on the user id,
+    # which is the only thing that means the same person in two rooms; a nickname
+    # does not, and a display name can change mid-session.
     gifter_totals: dict[str, tuple[str, int]] = {}
 
     for room_id, record in rooms.items():
@@ -235,11 +233,6 @@ async def analytics(request: Request) -> dict[str, Any]:
         out["total_peak_viewers"] += peak
         out["total_diamonds"] += diamonds
         out["total_events"] += events
-
-        for person in snap.get("topChatters") or []:
-            key = str(person.get("id") or person.get("nickname") or "")
-            name, running = chatter_totals.get(key, (str(person.get("nickname") or key), 0))
-            chatter_totals[key] = (name, running + int(person.get("messages") or 0))
 
         for person in snap.get("topGifters") or []:
             key = str(person.get("id") or person.get("nickname") or "")
@@ -258,7 +251,6 @@ async def analytics(request: Request) -> dict[str, Any]:
         })
 
     out["rooms"].sort(key=lambda r: r["viewers"], reverse=True)
-    out["topChatters"] = _rank(chatter_totals, "messages", eventlog.TOP_N)
     out["topGifters"] = _rank(gifter_totals, "diamonds", eventlog.TOP_N)
     return out
 

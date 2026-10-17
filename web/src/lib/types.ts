@@ -64,16 +64,7 @@ export interface AnalyticsSummary {
     events: number
     live_seconds: number | null
   }>
-  /**
-   * Chatters summed across every room, on the stable user id — so one person who
-   * appeared on two streams is one row.
-   *
-   * These are the top twenty of each room added together, because that is what
-   * `eventlog` keeps. A chatter ranked twenty-first everywhere does not appear
-   * here, and that is a ceiling on the data rather than a smoothing of it.
-   */
-  topChatters: SessionPerson[]
-  /** The same, by diamond value. */
+  /** Gifters summed across every room, by diamond value. */
   topGifters: SessionPerson[]
 }
 
@@ -90,7 +81,6 @@ export interface LogPage {
 export interface SessionPerson {
   id: string
   nickname: string
-  messages?: number
   diamonds?: number
 }
 
@@ -115,6 +105,5 @@ export interface RoomSession {
   /** How long the session has run, or null if it never connected. */
   live_seconds: number | null
   total_diamonds: number
-  topChatters: SessionPerson[]
   topGifters: SessionPerson[]
 }

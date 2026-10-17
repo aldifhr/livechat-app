@@ -145,26 +145,6 @@ for name, n in [("ana", 3), ("budi", 5), ("citra", 1)]:
         eventlog.record(_ROOM, "comment", user=name, text="hi", user_id=name)
 # A gift is not someone talking, so it must not climb the board.
 eventlog.record(_ROOM, "gift", user="ana", text="Rose", meta={"count": 1})
-top = eventlog.top_chatters(_ROOM)
-check("ranked most messages first", [c["nickname"] for c in top] == ["budi", "ana", "citra"], str(top))
-check("the counts are right", top[0]["messages"] == 5 and top[1]["messages"] == 3, str(top))
-check("a gift did not add to the chatter's count", top[1]["messages"] == 3, str(top))
-
-print("one person is one row however the display name is spelled")
-# Keyed on the stable handle: the same account showing two nicknames is one
-# chatter, not two, or the leaderboard splits them and undercounts both.
-eventlog.set_connected(_ROOM, True, "@chan")
-eventlog.record(_ROOM, "comment", user="Ana", text="a", user_id="u1")
-eventlog.record(_ROOM, "comment", user="anaaa", text="b", user_id="u1")
-top = eventlog.top_chatters(_ROOM)
-check("one row for the stable id", len(top) == 1 and top[0]["messages"] == 2, str(top))
-
-print("the board is capped at ten")
-eventlog.set_connected(_ROOM, True, "@chan")
-for i in range(15):
-    eventlog.record(_ROOM, "comment", user=f"user{i}", text="hi", user_id=f"user{i}")
-check("at most ten are ranked", len(eventlog.top_chatters(_ROOM)) == 10, str(len(eventlog.top_chatters(_ROOM))))
-
 print("a room nobody has heard from answers empty rather than raising")
 # The WebSocket is unauthenticated and the room id arrives in the URL, so a read
 # for a room that does not exist is a thing a stranger can ask for. It must not
@@ -173,7 +153,6 @@ print("a room nobody has heard from answers empty rather than raising")
 empty = eventlog.snapshot("never-seen-this-room")
 check("it is not connected", empty["connected"] is False)
 check("no counters", empty["totals"] == {} and empty["viewers"] is None)
-check("an empty leaderboard", eventlog.top_chatters("never-seen-this-room") == [])
 check("reading did not allocate", "never-seen-this-room" not in eventlog._rooms)
 
 print("two rooms do not answer for each other")
@@ -207,31 +186,20 @@ check("B counted its own two", eventlog.snapshot(b)["totals"]["comment"] == 2,
 check("the shared handle is not a repeat across rooms",
       eventlog.snapshot(b)["repeats"].get("comment", 0) == 0, str(eventlog.snapshot(b)["repeats"]))
 
-print("each leaderboard holds only its own room")
-board_a = eventlog.top_chatters(a)
-board_b = eventlog.top_chatters(b)
-check("A's board is just A", [c["nickname"] for c in board_a] == ["Ana"], str(board_a))
-check("B's board is just B", [c["nickname"] for c in board_b] == ["Ana", "Budi"], str(board_b))
-check("A's viewer count is A's", board_a[0]["messages"] == 2, str(board_a))
-check("B's viewer count is B's", [c["messages"] for c in board_b] == [1, 1], str(board_b))
-
 print("one room dropping does not disturb the other")
 eventlog.set_connected(b, False, "B dropped")
 check("B reads disconnected", eventlog.is_connected(b) is False)
 check("A still reads connected", eventlog.is_connected(a) is True)
 check("A kept its comments", eventlog.snapshot(a)["totals"]["comment"] == 2,
       str(eventlog.snapshot(a)["totals"]))
-check("A kept its leaderboard", [c["nickname"] for c in eventlog.top_chatters(a)] == ["Ana"],
-      str(eventlog.top_chatters(a)))
 check("A kept its viewer count", eventlog.snapshot(a)["viewers"] == 100)
 check("B still reports what it sent before it dropped",
       eventlog.snapshot(b)["totals"].get("comment") == 2, str(eventlog.snapshot(b)["totals"]))
 
-print("a deleted room stops holding a leaderboard")
+print("a deleted room stops holding counters")
 # Left behind, a room that no longer exists would still answer a request with the
 # viewers it used to have.
 eventlog.forget(a)
-check("it answers empty", eventlog.top_chatters(a) == [])
 check("and no longer holds state", "room-alpha" not in eventlog._rooms)
 check("B is untouched by A being forgotten", eventlog.snapshot(b)["totals"].get("comment") == 2,
       str(eventlog.snapshot(b)["totals"]))

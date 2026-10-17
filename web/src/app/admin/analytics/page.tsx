@@ -95,13 +95,11 @@ function BarChart({ data, metric }: { data: AnalyticsSummary; metric: Metric }) 
 function Leaderboard({
   title,
   people,
-  field,
   unit,
   empty,
 }: {
   title: string
   people: SessionPerson[]
-  field: 'messages' | 'diamonds'
   unit: string
   empty: string
 }) {
@@ -117,7 +115,7 @@ function Leaderboard({
               <span className="leaderboard-rank">{index + 1}</span>
               <span className="leaderboard-name">{person.nickname}</span>
               <span className="leaderboard-value">
-                {((person[field] as number) ?? 0).toLocaleString()} {unit}
+                {((person.diamonds ?? 0) as number).toLocaleString()} {unit}
               </span>
             </li>
           ))}
@@ -235,16 +233,8 @@ export default function Analytics() {
           <h3 className="section-heading">Across every stream</h3>
           <div className="leaderboards">
             <Leaderboard
-              title="Top chatters"
-              people={data.topChatters ?? []}
-              field="messages"
-              unit="messages"
-              empty="Nobody has said anything yet this session."
-            />
-            <Leaderboard
               title="Top gifters"
               people={data.topGifters ?? []}
-              field="diamonds"
               unit="diamonds"
               empty="No gifts this session."
             />

@@ -71,7 +71,7 @@
     /* In `em` rather than the fixed 24px it was: the canvas is a fixed number of
        pixels but the text is not, and 24px is a hair's breadth on a 1080p source
        and a visible border on a 720p one. */
-    padding: 1em;
+    padding: 16px;
     font-family: var(--font);
     font-size: var(--size);
     line-height: 1.3;
@@ -85,7 +85,7 @@
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.25em;
+    gap: 4px;
     /* A column, not a field. `max-width: 100%` on its own meant one long message
        could run the whole width of a 1920px canvas — a single thin line the width
        of the screen, which is the hardest shape there is to read. In `em`, so it
@@ -110,8 +110,8 @@
        stream reads as a dialog box, and most overlays want the video visible
        behind the text. Set by `?bg=`, and off unless asked for. */
     background: rgba(0, 0, 0, var(--background));
-    border-radius: 0.25em;
-    padding: 0.1em 0.35em;
+    border-radius: 4px;
+    padding: 2px 6px;
     /* A hint of outline rather than a drop shadow: a shadow is invisible on a
        bright scene, and this reads on any of them. */
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 1px rgba(0, 0, 0, 0.9);
@@ -135,8 +135,7 @@
 
   /* A gift row. Its own colour and a diamond badge, so the money that just arrived
      is the thing the eye lands on — distinct from the chat it sits among. */
-  li.gift {
-    color: var(--gift-colour, #ffd76a);
+  li.gift { display: none !important;
     font-weight: 700;
   }
 
@@ -145,8 +144,8 @@
   .gift-text { color: var(--text-colour); font-weight: 400; }
 
   .gift-diamonds {
-    margin-left: 0.4em;
-    padding: 0 0.35em;
+    margin-left: 6px;
+    padding: 0 6px;
     border-radius: 4px;
     background: color-mix(in srgb, var(--gift-colour, #ffd76a) 18%, transparent);
     color: var(--gift-colour, #ffd76a);
@@ -163,7 +162,7 @@
     height: 20px;
     object-fit: contain;
     vertical-align: middle;
-    margin-left: 0.3em;
+    margin-left: 4px;
     border-radius: 4px;
   }
 
@@ -316,8 +315,8 @@
   }
 
   html.design-studio #chat .emote {
-    width: 1.25em;
-    height: 1.25em;
+   width: 20px;
+   height: 20px;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -1083,7 +1082,9 @@
       // not a message in a conversation, and holding it behind twenty queued
       // comments would bury the one thing everyone looks up for.
       if (frame.type === 'gift') {
-        renderGift(frame.user, frame.giftName, frame.count, frame.value, frame.userId, frame.giftImage)
+        // Gifts are not chat. This overlay shows comments only — a gift would
+        // interrupt the conversation with something viewers already see on the
+        // stream itself, and it would make the page a duplicate of TikTok.
         return
       }
       // Comments only beyond this. The rest of the wire — likes, joins, view

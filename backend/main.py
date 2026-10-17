@@ -404,20 +404,6 @@ async def websocket_endpoint(websocket: WebSocket, client_type: str, room_id: st
         # lost, and are delivered in order behind them.
         hub.prime(client_id)
 
-        # The leaderboard, sent to this socket only — never fanned out to the room.
-        # It is asked for, not pushed on a timer: a periodic room-wide broadcast
-        # would interleave with the event stream every client reads frame by frame,
-        # and a leaderboard is something an overlay polls when it wants the current
-        # ranking, not a firehose. Recomputed here rather than kept per comment,
-        # because a busy room produces comments faster than anyone reads a ranking.
-        async def send_leaderboard() -> None:
-            await websocket.send_text(
-                json.dumps(
-                    {"type": "topChatters", "chatters": eventlog.top_chatters(room_id)},
-                    ensure_ascii=False,
-                )
-            )
-
         while True:
             data = await websocket.receive_text()
             try:
@@ -434,8 +420,6 @@ async def websocket_endpoint(websocket: WebSocket, client_type: str, room_id: st
                 continue
             if msg.get("type") == "ping":
                 await websocket.send_text(json.dumps({"type": "pong"}))
-            elif msg.get("type") == "topChatters":
-                await send_leaderboard()
     except WebSocketDisconnect:
         pass
     finally:
