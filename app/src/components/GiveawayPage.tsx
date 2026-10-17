@@ -1,5 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import SpinWheel, { type Sector, type SpinWheelHandle } from 'ts-spin-wheel'
+
+/** Cryptographically secure random integer in [0, max) using rejection sampling.
+ *  Avoids modulo bias that Math.random() % max would introduce. */
+function secureRandomInt(max: number): number {
+  if (max <= 0) return 0
+  const range = Math.floor(0x100000000 / max) * max
+  const buf = new Uint32Array(1)
+  do {
+    crypto.getRandomValues(buf)
+  } while (buf[0] >= range)
+  return buf[0] % max
+}
+
+/** Fisher-Yates shuffle using CSPRNG — sampling without replacement. */
+function secureShuffle<T>(items: T[]): T[] {
+  const result = [...items]
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = secureRandomInt(i + 1)
+    ;[result[i], result[j]] = [result[j], result[i]]
+  }
+  return result
+}
 import { Confetti, type ConfettiRef } from './ui/confetti'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
 import type { StatsRecorder } from '../hooks/useStats'
@@ -251,18 +273,20 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
   function spinForWinner() {
     if (spinning || status !== 'closed' || winners.length >= winnerCount || availableIds.length === 0) return
     if (!spinWheelRef.current) return
-    setSpinning(true)
-    spinWheelRef.current.spin()
-  }
 
-  function finishWheelSpin(sector: Sector) {
-    const winnerIndex = Number(sector.label) - 1
-    const winner = availableIds[winnerIndex]
+    // Determine winner BEFORE animation starts. The wheel spin is purely visual;
+    // the result comes from CSPRNG (Fisher-Yates sampling without replacement).
+    const pool = [...availableIds] // immutable snapshot at spin time
+    const shuffled = secureShuffle(pool)
+    const winner = shuffled[0]
     if (!winner) {
       setSpinning(false)
       return
     }
-    setDrawHistory((current) => [...current, { drawnAt: new Date().toISOString(), pool: [...availableIds], winner }])
+
+    setSpinning(true)
+    spinWheelRef.current.spin() // visual only — winner already decided
+    setDrawHistory((current) => [...current, { drawnAt: new Date().toISOString(), pool, winner }])
     setWinners((current) => [...current, winner])
     setAnnouncedWinnerId(winner)
     setSpinning(false)
@@ -273,6 +297,13 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
       origin: { y: 0.62 },
       colors: ['#f59e0b', '#fb7185', '#38bdf8', '#34d399', '#e879f9'],
     })
+  }
+
+  // finishWheelSpin is called when the wheel animation ends, but the winner was
+  // already determined by CSPRNG in spinForWinner. We ignore the sector label
+  // from the wheel — the result must not depend on animation physics or timing.
+  function finishWheelSpin(_sector: Sector) {
+    // No-op: winner already set. Wheel is visual only.
   }
 
   function resetGiveaway() {
@@ -313,7 +344,7 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
       entrants: entrySnapshot,
       eligibleCount: eligibleSnapshot.length,
       draws: drawHistory,
-      randomness: 'ts-spin-wheel selection using Math.random',
+      randomness: 'winner determined by Fisher-Yates shuffle using crypto.getRandomValues; wheel spin is visual only',
       note: 'This report records the frozen entries and draw pools; it is not a cryptographic proof that the application itself was not modified.',
     }
   }
