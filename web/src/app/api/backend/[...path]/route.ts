@@ -35,8 +35,9 @@ const ALLOWED = [
   /^\/api\/room-connect-by-username$/,
   /^\/api\/room-connect\/[0-9a-f-]{36}$/,
   /^\/api\/disconnect$/,
-  /^\/api\/alerts\/test$/,
   /^\/api\/analytics$/,
+  /^\/api\/health$/,
+  /^\/api\/metrics$/,
 
   // The backend's own log records. A read, and the backend gates it on the token
   // rather than on the method — so it is in `SENSITIVE_READ` below too, or the

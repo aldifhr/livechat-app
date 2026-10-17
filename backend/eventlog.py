@@ -106,6 +106,7 @@ class RoomLog:
     #: Set on connect and cleared on reset — a duration is a property of the
     #: session, and the session is what `reset` begins.
     connected_at: float = 0.0
+    disconnected_at: float = 0.0
 
     #: Total diamonds (gift value) accumulated this session.
     total_diamonds: int = 0
@@ -124,7 +125,10 @@ class RoomLog:
         self.peak_viewers = 0
         self.peak_viewers_at = 0.0
         self.connected_at = 0.0
+        self.disconnected_at = 0.0
         self.total_diamonds = 0
+        self.viewers = None
+        self.viewers_at = 0.0
         self.gifters.clear()
         self.gifter_names.clear()
 
@@ -168,6 +172,7 @@ def set_connected(room_id: str, connected: bool, detail: str = "") -> None:
         log.info("[%s] connected %s", room_id, detail or "")
     else:
         summary = ", ".join(f"{k}={v}" for k, v in sorted(room.totals.items())) or "no events"
+        room.disconnected_at = time.time()
         log.info("[%s] disconnected %s (%s)", room_id, detail or "", summary)
         # Persist the finished session so its numbers survive a restart. Only on a
         # real disconnect: a reconnect resets the counters in memory and would
@@ -334,9 +339,9 @@ def snapshot(room_id: str) -> dict[str, Any]:
         "viewers_age": round(time.time() - room.viewers_at, 1) if room.viewers_at else None,
         "peak_viewers": room.peak_viewers,
         "peak_viewers_age": round(time.time() - room.peak_viewers_at, 1) if room.peak_viewers_at else None,
-        # How long the session has run. Kept on a disconnect, like the totals, so a
-        # room that just dropped still reports the length of the stream it had.
-        "live_seconds": round(time.time() - room.connected_at, 1) if room.connected_at else None,
+        # How long the session has run. Stops at disconnect time, not now —
+        # otherwise the duration keeps climbing after the stream drops.
+        "live_seconds": round((room.disconnected_at or time.time()) - room.connected_at, 1) if room.connected_at else None,
         "total_diamonds": room.total_diamonds,
         "topGifters": top_gifters(room_id),
     }
