@@ -35,7 +35,7 @@
  * upstream of all of it and stable.
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { OverlayStyle } from '@shared/overlay'
 
 interface Props {
