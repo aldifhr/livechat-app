@@ -269,7 +269,6 @@ export default function StreamProfile({ handle }: { handle: string }) {
           <LinkLine label={LINK_LABELS.original} url={links.original} />
           <LinkLine label={LINK_LABELS.studio} url={links.studio} />
           <LinkLine label={LINK_LABELS.cat} url={links.cat} />
-          <LinkLine label={LINK_LABELS.ghost} url={links.ghost} />
           {/* All of them, in full, for the times they do have to be read: checking
               what is already sitting in OBS, or copying one by hand. */}
           <details className="stream-links-more">
@@ -286,10 +285,6 @@ export default function StreamProfile({ handle }: { handle: string }) {
               <dt>{LINK_LABELS.cat}</dt>
               <dd>
                 <code>{links.cat}</code>
-              </dd>
-              <dt>{LINK_LABELS.ghost}</dt>
-              <dd>
-                <code>{links.ghost}</code>
               </dd>
             </dl>
           </details>
