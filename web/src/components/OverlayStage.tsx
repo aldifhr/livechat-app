@@ -161,6 +161,10 @@ export default function OverlayStage({
   // set from out here.
   const staged = new URL(url)
   staged.searchParams.set('backdrop', 'dark')
+  // Bust the browser cache so a freshly deployed overlay.html is always loaded.
+  // Without this the iframe serves the old file — a stale `showPreviewSample`
+  // keeps injecting the sample row after the code is gone.
+  staged.searchParams.set('cb', Date.now().toString())
   const framed = staged.toString()
 
   if (variant === 'canvas') {
