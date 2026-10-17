@@ -63,6 +63,7 @@ function isOpen(pathname: string): boolean {
     // bounded and validated by its route handler; private dashboard APIs remain gated.
     /^\/giveaway\/[A-Za-z0-9_-]{16}$/.test(pathname) ||
     pathname === '/api/giveaways/snapshots' ||
+    pathname === '/api/tts' ||
     // Next's own static assets, which carry no data.
     pathname.startsWith('/_next/') ||
     pathname === '/favicon.ico'
