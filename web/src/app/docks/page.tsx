@@ -5,6 +5,13 @@ import { api, ApiError } from '@/lib/client'
 import { RollingNumber } from '@/components/RollingNumber'
 import { BubbleChat } from '@/components/BubbleChat'
 import { BubbleJoined } from '@/components/BubbleJoined'
+import { BubbleEvent } from '@/components/BubbleEvent'
+import { UserAvatar } from '@/components/UserAvatar'
+import { playChime } from '@/lib/chime'
+import { speakText, clearTtsQueue } from '@/lib/tts'
+import { useDragScroll } from '@/hooks/useDragScroll'
+import { tiktokProfileUrl } from '@shared/platforms'
+import type { OverlayEventFrame } from '@shared/events'
 import type { RoomSession, RoomStatus } from '@/lib/types'
 
 const POLL_MS = 15_000
@@ -18,230 +25,6 @@ type ChatEvent = {
   giftName?: string
   avatar?: string
   time: string
-}
-
-function tiktokProfileUrl(userId?: string, user?: string): string {
-  const handle = (userId || user || '').trim().replace(/^@+/, '')
-  return handle ? `https://www.tiktok.com/@${encodeURIComponent(handle)}` : ''
-}
-
-function playChime(type: 'gift' | 'follow' | 'comment') {
-  try {
-    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-    const ctx = new AudioContextClass()
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    const now = ctx.currentTime
-    if (type === 'gift') {
-      osc.frequency.setValueAtTime(783.99, now)
-      osc.frequency.setValueAtTime(1046.5, now + 0.1)
-      gain.gain.setValueAtTime(0.15, now)
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35)
-      osc.start(now)
-      osc.stop(now + 0.35)
-    } else if (type === 'follow') {
-      osc.frequency.setValueAtTime(659.25, now)
-      gain.gain.setValueAtTime(0.1, now)
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25)
-      osc.start(now)
-      osc.stop(now + 0.25)
-    } else {
-      // Soft gentle 'pop' for incoming chat comments
-      osc.frequency.setValueAtTime(520, now)
-      gain.gain.setValueAtTime(0.05, now)
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1)
-      osc.start(now)
-      osc.stop(now + 0.1)
-    }
-  } catch {}
-}
-
-// FIFO Queue for Text-to-Speech
-const ttsQueue: string[] = []
-let isTtsPlaying = false
-let activeTtsAudio: HTMLAudioElement | null = null
-
-function clearTtsQueue() {
-  ttsQueue.length = 0
-  if (activeTtsAudio) {
-    activeTtsAudio.pause()
-    activeTtsAudio = null
-  }
-  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-    try {
-      window.speechSynthesis.cancel()
-    } catch {}
-  }
-  isTtsPlaying = false
-}
-
-function playNextTts() {
-  if (ttsQueue.length === 0) {
-    isTtsPlaying = false
-    activeTtsAudio = null
-    return
-  }
-
-  isTtsPlaying = true
-  const text = ttsQueue.shift()!
-  const clean = text.slice(0, 180)
-  const url = `/api/tts?q=${encodeURIComponent(clean)}`
-  const audio = new Audio(url)
-  activeTtsAudio = audio
-
-  let finished = false
-  const finish = () => {
-    if (finished) return
-    finished = true
-    activeTtsAudio = null
-    playNextTts()
-  }
-
-  audio.onended = finish
-  audio.onerror = () => {
-    // Fallback suara cewek di browser jika audio terblokir
-    if ('speechSynthesis' in window) {
-      try {
-        const utterance = new SpeechSynthesisUtterance(text)
-        utterance.rate = 1.05
-        utterance.pitch = 1.25
-        const voices = window.speechSynthesis.getVoices()
-        const femaleIdVoice = voices.find(
-          (v) =>
-            (v.lang.startsWith('id') || v.lang.startsWith('ID')) &&
-            (v.name.toLowerCase().includes('gadis') ||
-              v.name.toLowerCase().includes('siti') ||
-              v.name.toLowerCase().includes('female') ||
-              v.name.toLowerCase().includes('google')),
-        ) || voices.find((v) => v.lang.startsWith('id') || v.lang.startsWith('ID'))
-        if (femaleIdVoice) utterance.voice = femaleIdVoice
-        utterance.onend = finish
-        utterance.onerror = finish
-        window.speechSynthesis.speak(utterance)
-        return
-      } catch {}
-    }
-    finish()
-  }
-
-  const playPromise = audio.play()
-  if (playPromise !== undefined) {
-    playPromise.catch(() => {
-      audio.onerror?.(new Event('error'))
-    })
-  }
-}
-
-function speakText(text: string) {
-  if (typeof window === 'undefined') return
-  const trimmed = text.trim()
-  if (!trimmed) return
-
-  // Batas antrean maksimal 30 pesan agar tidak overload saat live sangat ramai
-  if (ttsQueue.length >= 30) {
-    ttsQueue.shift()
-  }
-  ttsQueue.push(trimmed)
-
-  if (!isTtsPlaying) {
-    playNextTts()
-  }
-}
-
-function UserAvatar({
-  avatar,
-  user,
-  profileUrl,
-}: {
-  avatar?: string
-  user: string
-  profileUrl?: string
-}) {
-  const [failed, setFailed] = useState(false)
-  const initial = (user.trim()[0] || '?').toUpperCase()
-
-  const avatarCircle = (
-    <div className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-zinc-800 text-xs font-semibold text-zinc-300 overflow-hidden ring-1 ring-zinc-700/50 hover:ring-sky-400 transition-all">
-      <span>{initial}</span>
-      {avatar && !failed && (
-        <img
-          src={avatar}
-          alt=""
-          onError={() => setFailed(true)}
-          className="absolute inset-0 h-full w-full rounded-full object-cover"
-          loading="lazy"
-          referrerPolicy="no-referrer"
-        />
-      )}
-    </div>
-  )
-
-  if (profileUrl) {
-    return (
-      <a
-        href={profileUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        title={`Buka @${user} di TikTok`}
-        className="shrink-0 rounded-full hover:scale-105 active:scale-95 transition-transform"
-      >
-        {avatarCircle}
-      </a>
-    )
-  }
-
-  return avatarCircle
-}
-
-function BubbleEvent({ event, profileUrl }: { event: ChatEvent; profileUrl?: string }) {
-  const isGift = event.type === 'gift'
-  const isFollow = event.type === 'follow'
-
-  return (
-    <div
-      style={{
-        backgroundColor: isGift ? '#2a1a08' : isFollow ? '#2a101b' : '#27272a',
-        borderColor: isGift ? '#854d0e' : isFollow ? '#9d174d' : '#3f3f46',
-      }}
-      className="w-fit max-w-[calc(100%-2rem)] min-w-0 rounded-[4px_14px_14px_14px] border px-3 py-1.5 text-xs shadow-sm"
-    >
-      <div className="flex items-center gap-1.5">
-        {profileUrl ? (
-          <a
-            href={profileUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ color: isGift ? '#fcd34d' : isFollow ? '#f472b6' : '#ffffff' }}
-            className="shrink-0 font-semibold hover:underline"
-            title={`Buka @${event.user} di TikTok`}
-          >
-            {event.user}
-          </a>
-        ) : (
-          <span
-            style={{ color: isGift ? '#fcd34d' : isFollow ? '#f472b6' : '#ffffff' }}
-            className="shrink-0 font-semibold"
-          >
-            {event.user}
-          </span>
-        )}
-        <span style={{ color: '#71717a' }} className="shrink-0 text-[10px] font-normal tabular-nums">
-          {event.time}
-        </span>
-      </div>
-      {event.type === 'like' && (
-        <p style={{ color: '#a1a1aa' }} className="mt-0.5 m-0 leading-snug">❤️ liked the stream</p>
-      )}
-      {event.type === 'follow' && (
-        <p style={{ color: '#f472b6' }} className="mt-0.5 m-0 font-medium leading-snug">💖 followed</p>
-      )}
-      {event.type === 'gift' && (
-        <p style={{ color: '#fcd34d' }} className="mt-0.5 m-0 font-medium leading-snug">🎁 sent {event.giftName}</p>
-      )}
-    </div>
-  )
 }
 
 type FilterType = 'all' | 'comment' | 'gift' | 'join' | 'like' | 'follow'
@@ -273,11 +56,7 @@ export default function DocksPage() {
   const wsRef = useRef<WebSocket | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const feedContainerRef = useRef<HTMLDivElement>(null)
-  const filterScrollRef = useRef<HTMLDivElement>(null)
-  const isDraggingFilter = useRef(false)
-  const filterStartX = useRef(0)
-  const filterScrollLeft = useRef(0)
-  const filterHasMoved = useRef(false)
+  const filterScroll = useDragScroll<HTMLDivElement>()
   const soundRef = useRef(false)
   const ttsRef = useRef(false)
   const isPausedRef = useRef(false)
@@ -396,7 +175,7 @@ export default function DocksPage() {
       ws.onmessage = (event) => {
         console.log('[docks] WS frame received:', event.data)
         try {
-          const frame = JSON.parse(event.data)
+          const frame = JSON.parse(event.data) as OverlayEventFrame
           const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           let added = false
 
@@ -498,33 +277,6 @@ export default function DocksPage() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     setIsPaused(false)
     setNewCount(0)
-  }
-
-  // Draggable filter bar
-  const onFilterMouseDown = (e: React.MouseEvent) => {
-    const el = filterScrollRef.current
-    if (!el) return
-    isDraggingFilter.current = true
-    filterHasMoved.current = false
-    filterStartX.current = e.pageX - el.offsetLeft
-    filterScrollLeft.current = el.scrollLeft
-  }
-
-  const onFilterMouseMove = (e: React.MouseEvent) => {
-    if (!isDraggingFilter.current) return
-    const el = filterScrollRef.current
-    if (!el) return
-    e.preventDefault()
-    const x = e.pageX - el.offsetLeft
-    const walk = x - filterStartX.current
-    if (Math.abs(walk) > 4) {
-      filterHasMoved.current = true
-    }
-    el.scrollLeft = filterScrollLeft.current - walk
-  }
-
-  const onFilterMouseUpOrLeave = () => {
-    isDraggingFilter.current = false
   }
 
   // No room in URL: auto-select the first room if there's exactly one,
@@ -699,11 +451,8 @@ export default function DocksPage() {
       <div className="border-b border-zinc-800 bg-zinc-950 px-3 py-1.5 space-y-1.5">
         <div className="flex items-center gap-2">
           <div
-            ref={filterScrollRef}
-            onMouseDown={onFilterMouseDown}
-            onMouseMove={onFilterMouseMove}
-            onMouseUp={onFilterMouseUpOrLeave}
-            onMouseLeave={onFilterMouseUpOrLeave}
+            ref={filterScroll.ref}
+            {...filterScroll.events}
             className="flex-1 min-w-0 flex items-center gap-1.5 overflow-x-auto pr-3 [scrollbar-width:none] cursor-grab active:cursor-grabbing select-none [mask-image:linear-gradient(to_right,white_calc(100%-20px),transparent)]"
           >
             {FILTERS.map((f) => (
@@ -711,7 +460,7 @@ export default function DocksPage() {
                 key={f.id}
                 type="button"
                 onClick={() => {
-                  if (!filterHasMoved.current) {
+                  if (!filterScroll.hasMoved.current) {
                     setFilter(f.id)
                   }
                 }}
@@ -780,7 +529,7 @@ export default function DocksPage() {
             </p>
           ) : (
           filteredChat.map((event, index) => {
-            const profileUrl = tiktokProfileUrl(event.userId, event.user)
+            const profileUrl = tiktokProfileUrl(event.userId || event.user)
             return (
               <div
                 key={`${event.type}-${event.user}-${index}`}
@@ -801,7 +550,13 @@ export default function DocksPage() {
                     profileUrl={profileUrl}
                   />
                 ) : (
-                  <BubbleEvent event={event} profileUrl={profileUrl} />
+                  <BubbleEvent
+                    type={event.type as 'gift' | 'like' | 'follow'}
+                    user={event.user}
+                    time={event.time}
+                    giftName={event.giftName}
+                    profileUrl={profileUrl}
+                  />
                 )}
               </div>
             )
