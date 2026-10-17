@@ -88,11 +88,7 @@ const SENSITIVE_READ = /^\/api\/(rooms(\/|$)|logs$|analytics$)/
 // credential and the backend would answer 401.
 const PUBLIC_READ = /^\/api\/giveaways\/snapshots/
 
-// Session stats for the OBS docks page: viewer counts, diamonds, totals.
-// These are aggregate numbers, not room configs — the docks page is a
-// public browser source in OBS and cannot carry a token. The same data
-// is already visible on the overlay.
-const DOCKS_READ = /^\/api\/rooms\/(\/public$|[0-9a-f-]{36}\/session$)/
+
 
 function allowed(path: string): boolean {
   return ALLOWED.some((pattern) => pattern.test(path))
@@ -118,7 +114,7 @@ async function proxy(request: NextRequest): Promise<Response> {
 
   const method = request.method
   const body = MUTATING.has(method) ? await request.text() : undefined
-  const forwardToken = MUTATING.has(method) || (SENSITIVE_READ.test(path) && !PUBLIC_READ.test(path) && !DOCKS_READ.test(path))
+  const forwardToken = MUTATING.has(method) || (SENSITIVE_READ.test(path) && !PUBLIC_READ.test(path))
 
   try {
     const result = await backendFetch(`${path}${query}`, {

@@ -9,7 +9,7 @@ const POLL_MS = 15_000
 const MAX_CHAT_LINES = 50
 
 type ChatEvent = {
-  type: 'comment' | 'gift' | 'like' | 'follow'
+  type: 'comment' | 'gift' | 'like' | 'follow' | 'join'
   user: string
   text?: string
   giftName?: string
@@ -25,11 +25,44 @@ function duration(seconds: number | null): string {
   return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`
 }
 
+function UserAvatar({ avatar, user }: { avatar?: string; user: string }) {
+  const [failed, setFailed] = useState(false)
+  if (avatar && !failed) {
+    return (
+      <img
+        src={avatar}
+        alt=""
+        onError={() => setFailed(true)}
+        className="h-6 w-6 shrink-0 rounded-full object-cover bg-zinc-800"
+        loading="lazy"
+        referrerPolicy="no-referrer"
+      />
+    )
+  }
+  return (
+    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-800 text-[10px] font-semibold text-zinc-400">
+      {(user.trim()[0] || '?').toUpperCase()}
+    </div>
+  )
+}
+
+type FilterType = 'all' | 'comment' | 'gift' | 'join' | 'like' | 'follow'
+
+const FILTERS: Array<{ id: FilterType; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'comment', label: '💬 Chat' },
+  { id: 'gift', label: '🎁 Gift' },
+  { id: 'join', label: '👋 Join' },
+  { id: 'like', label: '❤️ Like' },
+  { id: 'follow', label: '💖 Follow' },
+]
+
 export default function DocksPage() {
   const [roomId, setRoomId] = useState('')
   const [status, setStatus] = useState<RoomStatus | null>(null)
   const [session, setSession] = useState<RoomSession | null>(null)
   const [chat, setChat] = useState<ChatEvent[]>([])
+  const [filter, setFilter] = useState<FilterType>('all')
   const [error, setError] = useState('')
   const [loaded, setLoaded] = useState(false)
   const [rooms, setRooms] = useState<Array<{ id: string; username: string; name: string; connected: boolean }>>([])
@@ -79,12 +112,28 @@ export default function DocksPage() {
   // WebSocket for live chat
   useEffect(() => {
     if (!roomId) return
-    const base = location.origin.replace(/^http/, 'ws')
+    const params = new URLSearchParams(window.location.search)
+    const custom = params.get('ws') || params.get('backend')
+    const base = custom
+      ? custom.replace(/\/+$/, '').replace(/^http/, 'ws')
+      : location.hostname === 'localhost' || location.hostname === '127.0.0.1'
+        ? 'wss://kit-backend.aldifhr.my.id'
+        : location.origin.replace(/^http/, 'ws')
     const url = `${base}/ws/overlay/${encodeURIComponent(roomId)}`
+    console.log('[docks] Connecting WebSocket:', url)
     const ws = new WebSocket(url)
     wsRef.current = ws
 
+    ws.onopen = () => {
+      console.log('[docks] WebSocket connected to', url)
+    }
+
+    ws.onerror = (err) => {
+      console.error('[docks] WebSocket error:', err)
+    }
+
     ws.onmessage = (event) => {
+      console.log('[docks] WS frame received:', event.data)
       try {
         const frame = JSON.parse(event.data)
         if (frame.type === 'comment' && frame.user) {
@@ -95,24 +144,38 @@ export default function DocksPage() {
         } else if (frame.type === 'gift' && frame.user) {
           setChat((current) => [
             ...current.slice(-MAX_CHAT_LINES + 1),
-            { type: 'gift', user: frame.user, giftName: frame.giftName || 'gift' },
+            { type: 'gift', user: frame.user, giftName: frame.giftName || 'gift', avatar: frame.avatar },
           ])
         } else if (frame.type === 'follow' && frame.user) {
           setChat((current) => [
             ...current.slice(-MAX_CHAT_LINES + 1),
-            { type: 'follow', user: frame.user },
+            { type: 'follow', user: frame.user, avatar: frame.avatar },
+          ])
+        } else if (frame.type === 'like' && frame.user) {
+          setChat((current) => [
+            ...current.slice(-MAX_CHAT_LINES + 1),
+            { type: 'like', user: frame.user, avatar: frame.avatar },
+          ])
+        } else if (frame.type === 'join' && frame.user) {
+          setChat((current) => [
+            ...current.slice(-MAX_CHAT_LINES + 1),
+            { type: 'join', user: frame.user, avatar: frame.avatar },
           ])
         }
-      } catch {}
+      } catch (err) {
+        console.error('[docks] Failed to parse frame:', err)
+      }
     }
 
-    ws.onclose = () => {
+    ws.onclose = (ev) => {
+      console.warn('[docks] WebSocket closed:', ev.code, ev.reason)
       setTimeout(() => {
         if (wsRef.current === ws) wsRef.current = null
       }, 3000)
     }
 
     return () => {
+      console.log('[docks] Cleaning up WebSocket')
       ws.close()
       wsRef.current = null
     }
@@ -179,6 +242,7 @@ export default function DocksPage() {
   }
 
   const events = session ? Object.values(session.totals).reduce((sum, n) => sum + n, 0) : 0
+  const filteredChat = filter === 'all' ? chat : chat.filter((e) => e.type === filter)
 
   return (
     <div className="flex h-full flex-col bg-zinc-900 text-zinc-100">
@@ -241,22 +305,57 @@ export default function DocksPage() {
         </div>
       )}
 
+      {/* Filter bar */}
+      <div className="flex items-center gap-1.5 overflow-x-auto border-b border-zinc-800 bg-zinc-950 px-3 py-2 [scrollbar-width:none]">
+        {FILTERS.map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            onClick={() => setFilter(f.id)}
+            className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+              filter === f.id
+                ? 'bg-zinc-200 text-zinc-900 font-semibold'
+                : 'bg-zinc-800/60 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
       {/* Live chat feed */}
-      <div className="flex-1 overflow-y-auto px-2 py-1.5 [scrollbar-width:thin]">
-        {chat.length === 0 ? (
+      <div className="flex-1 overflow-y-auto px-3 py-3 [scrollbar-width:thin]">
+        {filteredChat.length === 0 ? (
           <p className="py-4 text-center text-xs text-zinc-600">
-            {status?.connected ? 'Waiting for chat…' : 'Not connected'}
+            {chat.length === 0
+              ? status?.connected
+                ? 'Waiting for chat…'
+                : 'Not connected'
+              : 'No events matching filter'}
           </p>
         ) : (
-          chat.map((event, index) => (
-            <Bubble key={`${event.type}-${event.user}-${index}`} align={event.type === 'comment' ? 'start' : 'end'} variant={event.type === 'gift' ? 'tinted' : event.type === 'follow' ? 'secondary' : 'default'} className="max-w-full">
-              <BubbleContent>
-                {event.type === 'gift' ? <span className="shrink-0 text-amber-400">🎁 </span> : event.type === 'follow' ? <span className="shrink-0 text-pink-400">💖 </span> : event.type === 'like' ? <span className="shrink-0 text-red-400">❤️ </span> : null}
-                <span className="shrink-0 font-medium text-zinc-300">{event.user}</span>
-                {event.text && <span className="min-w-0 break-words text-zinc-400"> {event.text}</span>}
-                {event.giftName && <span className="text-zinc-500"> sent {event.giftName}</span>}
-              </BubbleContent>
-            </Bubble>
+          filteredChat.map((event, index) => (
+            <div
+              key={`${event.type}-${event.user}-${index}`}
+              className="mb-1.5 flex items-start gap-1.5"
+            >
+              <UserAvatar avatar={event.avatar} user={event.user} />
+              <Bubble
+                align="start"
+                variant={event.type === 'gift' ? 'tinted' : event.type === 'follow' || event.type === 'join' ? 'secondary' : 'default'}
+                className="max-w-[calc(100%-2rem)]"
+              >
+                <BubbleContent>
+                  {event.type === 'gift' ? <span className="shrink-0 text-amber-400">🎁 </span> : event.type === 'follow' ? <span className="shrink-0 text-pink-400">💖 </span> : event.type === 'like' ? <span className="shrink-0 text-red-400">❤️ </span> : event.type === 'join' ? <span className="shrink-0 text-emerald-400">👋 </span> : null}
+                  <span className="shrink-0 font-medium text-zinc-300">{event.user}</span>
+                  {event.text && <span className="min-w-0 break-words text-zinc-400"> {event.text}</span>}
+                  {event.giftName && <span className="text-zinc-500"> sent {event.giftName}</span>}
+                  {event.type === 'like' && <span className="text-zinc-500"> liked the stream</span>}
+                  {event.type === 'follow' && <span className="text-zinc-500"> followed</span>}
+                  {event.type === 'join' && <span className="text-zinc-500"> joined</span>}
+                </BubbleContent>
+              </Bubble>
+            </div>
           ))
         )}
         <div ref={chatEndRef} />
