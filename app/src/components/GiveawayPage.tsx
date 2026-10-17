@@ -282,6 +282,18 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
       setEndsAt(null)
       setRemainingMs(0)
       setStatus('closed')
+
+      // Commit-reveal: same path as closeGiveaway. Test mode skips the
+      // countdown, so without this the seed would never be set and the
+      // spin button would stay disabled.
+      const seed = generateSeed()
+      setRevealSeed(seed)
+      committedSeedRef.current = seed
+      const sortedIds = [...fakeIds].sort()
+      const listHash = await sha256(sortedIds.join('|'))
+      setEntrantHash(listHash)
+      const commit = await sha256(seed)
+      setCommitHash(commit)
       return
     }
     setMockParticipants([])
