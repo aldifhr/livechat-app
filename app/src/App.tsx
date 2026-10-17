@@ -65,6 +65,20 @@ const BASE_THEME_CLASSES = [
   '[--destructive:#ef4444]', '[--radius:10px]',
 ].join(' ')
 
+function ConnectGate() {
+  return (
+    <main className="flex flex-1 flex-col items-center justify-center p-5">
+      <div className="w-full max-w-[520px] rounded-xl border border-line bg-panel p-8 text-center">
+        <h2 className="m-0 mb-2 text-lg font-semibold text-text">Connect to a stream first</h2>
+        <p className="m-0 text-sm text-muted">
+          This feature needs an active stream connection. Enter a TikTok handle
+          and press Connect to get started.
+        </p>
+      </div>
+    </main>
+  )
+}
+
 export default function App() {
   const [activePage, setActivePage] = useState<AppPage>('home')
   const [backend, setBackend] = useState<BackendConfig>(EMPTY_BACKEND)
@@ -123,6 +137,8 @@ export default function App() {
     // messages in a row are usually just someone repeating themselves.
     collapseThreshold: settings.collapse ? 2 : 0,
   })
+
+  const isConnected = room.status === 'connected'
 
   useEffect(() => {
     if (room.status === 'connected') {
@@ -318,7 +334,14 @@ export default function App() {
 
       </>}
 
-      {activePage === 'stats' && (
+      {activePage === 'stats' && !isConnected && <ConnectGate />}
+      {activePage === 'vip' && !isConnected && <ConnectGate />}
+      {activePage === 'giveaway' && !isConnected && <ConnectGate />}
+      {activePage === 'log' && !isConnected && <ConnectGate />}
+      {activePage === 'test' && !isConnected && <ConnectGate />}
+      {activePage === 'settings' && !isConnected && <ConnectGate />}
+
+      {activePage === 'stats' && isConnected && (
         <main className="page-view stats-page [flex:1_1_auto] [min-height:0] [overflow:auto] [padding:20px] [&_.stats-panel]:[width:min(900px,_100%)] [&_.stats-panel]:[margin:0_auto] [&_.stats-panel]:[border:1px_solid_var(--line)] [&_.stats-panel]:[border-radius:var(--radius)] [&_.log-panel]:[width:min(900px,_100%)] [&_.log-panel]:[margin:0_auto] [&_.log-panel]:[border:1px_solid_var(--line)] [&_.log-panel]:[border-radius:var(--radius)] [&_.stats-body]:[max-height:none] [&_.stats-body]:[overflow:visible] [&_.log-panel]:[display:flex] [&_.log-panel]:[min-height:180px] [&_.log-panel]:[flex-direction:column] [&_.log-list]:[flex:1_1_auto] [&_.log-list]:[max-height:none] [&_.log-list]:[min-height:120px]">
           <header className="page-view-head [margin:0_auto_18px] [width:min(900px,_100%)] [&_h1]:[margin:0] [&_h1]:[font-size:20px] [&_p]:[margin:4px_0_0] [&_p]:[color:var(--muted)] [&_p]:[font-size:12px]">
             <h1>Stream stats</h1>
@@ -328,10 +351,10 @@ export default function App() {
         </main>
       )}
 
-      {activePage === 'vip' && <VipQueuePage items={items} />}
-      <GiveawayPage stats={stats} items={items} active={activePage === 'giveaway'} connected={room.status === 'connected'} streamer={room.target} />
+      {activePage === 'vip' && isConnected && <VipQueuePage items={items} />}
+      {activePage === 'giveaway' && isConnected && <GiveawayPage stats={stats} items={items} active={activePage === 'giveaway'} connected={room.status === 'connected'} streamer={room.target} />}
 
-      {activePage === 'log' && (
+      {activePage === 'log' && isConnected && (
         <main className="page-view log-page [flex:1_1_auto] [min-height:0] [overflow:auto] [padding:20px] [&_.stats-panel]:[width:min(900px,_100%)] [&_.stats-panel]:[margin:0_auto] [&_.stats-panel]:[border:1px_solid_var(--line)] [&_.stats-panel]:[border-radius:var(--radius)] [&_.log-panel]:[width:min(900px,_100%)] [&_.log-panel]:[margin:0_auto] [&_.log-panel]:[border:1px_solid_var(--line)] [&_.log-panel]:[border-radius:var(--radius)] [&_.stats-body]:[max-height:none] [&_.stats-body]:[overflow:visible] [&_.log-panel]:[display:flex] [&_.log-panel]:[min-height:180px] [&_.log-panel]:[flex-direction:column] [&_.log-list]:[flex:1_1_auto] [&_.log-list]:[max-height:none] [&_.log-list]:[min-height:120px]">
           <header className="page-view-head [margin:0_auto_18px] [width:min(900px,_100%)] [&_h1]:[margin:0] [&_h1]:[font-size:20px] [&_p]:[margin:4px_0_0] [&_p]:[color:var(--muted)] [&_p]:[font-size:12px]">
             <h1>Event log</h1>
@@ -341,11 +364,11 @@ export default function App() {
         </main>
       )}
 
-      {activePage === 'test' && (
+      {activePage === 'test' && isConnected && (
         <SimulatorDialog open inline onClose={() => setActivePage('home')} />
       )}
 
-      {activePage === 'settings' && <SettingsPage settings={settings} />}
+      {activePage === 'settings' && isConnected && <SettingsPage settings={settings} />}
 
       {activePage === 'home' && (
         <EventPopup
