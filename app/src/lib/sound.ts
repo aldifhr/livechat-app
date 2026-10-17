@@ -206,15 +206,10 @@ export function ttsText(text: string): string {
 }
 
 /**
- * Shortest gap between two spoken messages.
- *
- * Far longer than the blip's gap, and for a different reason: speech is not a
- * tap, it is a sentence, and two spoken messages that overlap are unintelligible
- * rather than merely busy. This is a floor on the start of the next one; the
- * voice finishing the current utterance is handled separately, by cancelling it
- * only when a newer message arrives.
+ * A short pause between queued spoken messages. Playback is serialized, so the
+ * pause is for natural phrasing; it is not a cooldown that drops incoming chat.
  */
-export const CHAT_TTS_GAP_MS = 1800
+export const CHAT_TTS_GAP_MS = 250
 
 /**
  * The sentence a gift is announced with.

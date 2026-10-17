@@ -8,9 +8,8 @@
  *
  * Every utterance goes through here, so the rules that make speech listenable are
  * written once. The rule is: **a sentence that is already speaking runs to its
- * end.** A live room sends a message every second, and a reader that cuts off
- * every second word is not reading — it is stuttering, and every sentence is
- * heard only as its first half.
+ * end.** A live room sends a message every second, so a reader needs a queue:
+ * cutting off the current sentence or dropping the next one makes it stutter.
  *
  * The one exception used to be an *urgent* utterance — a gift — which
  * took the slot rather than waiting. That is gone: no caller ever passed it, and
@@ -22,8 +21,8 @@
  * Synthesis is a network round trip — the host splits a long line into pieces and
  * fetches each one — so a request made two seconds ago may only now be audible.
  * The voice is therefore claimed for the whole round trip, not just for playback:
- * an utterance that arrives mid-synthesis sees a busy voice and waits, rather
- * than being synthesised into a sentence that cuts the first one off.
+ * an utterance that arrives mid-synthesis waits in arrival order rather than
+ * being dropped or synthesised into a sentence that cuts the first one off.
  *
  * The gap between two utterances is measured from when the previous one *ended*,
  * not from when it was requested. Measuring it from the request makes the gap lie
@@ -53,15 +52,26 @@ let claimed = false
 /** When the last utterance finished, so two do not begin inside the gap. */
 let lastEndedAt: number | null = null
 
+type SpeechChannel = 'chat' | 'event' | 'preview'
+interface SpeechRequest {
+  text: string
+  options: VoiceOptions
+  channel: SpeechChannel
+}
+
+/** Spoken in arrival order, so a busy voice never silently discards a message. */
+const queue: SpeechRequest[] = []
+let queueTimer: ReturnType<typeof setTimeout> | null = null
+let activeChannel: SpeechChannel | null = null
+
 /**
- * Counts utterances asked for, so one that arrives late knows it has been
- * superseded.
+ * Counts active utterances, so a late audio event from an older line cannot
+ * release the claim held by a newer line.
  *
  * `host.speak` is a network round trip, and the slot is claimed before it
  * returns. Without this counter, `hush()` fired during that round trip paused
  * nothing — there was no audio yet — and the sentence then started playing
- * *after* the user had asked for silence. The same applied to a second `say()`
- * whose synthesis came back after a third had begun.
+ * *after* the user had asked for silence.
  */
 let requested = 0
 
@@ -78,27 +88,37 @@ let requested = 0
  *
  * @param options - pace, language and volume for this utterance.
  */
-export function say(text: string, options: VoiceOptions): void {
+export function say(text: string, options: VoiceOptions, channel: SpeechChannel = 'event'): void {
   const spoken = text.trim()
   if (spoken === '') return
+  queue.push({ text: spoken, options, channel })
+  pump()
+}
 
-  // The voice is busy — mid-sentence, or still being synthesised. An utterance
-  // that arrives now waits for it to finish: cutting it off is what turns a
-  // reader into a stutter, and the next message is a second away.
-  if (claimed) return
+/** Start the next queued line after the current audio and short natural pause. */
+function pump(): void {
+  if (claimed || queueTimer !== null || queue.length === 0) return
 
-  const now = Date.now()
-  // The gap is measured from the end of the last utterance, so it reflects how
-  // much of the room has actually been heard rather than when a request was sent.
-  if (lastEndedAt !== null && now - lastEndedAt < CHAT_TTS_GAP_MS) return
+  const pause = lastEndedAt === null
+    ? 0
+    : Math.max(0, CHAT_TTS_GAP_MS - (Date.now() - lastEndedAt))
+  if (pause > 0) {
+    queueTimer = setTimeout(() => {
+      queueTimer = null
+      pump()
+    }, pause)
+    return
+  }
 
-  // This one is the current request; everything already in flight is now stale.
+  const next = queue.shift()
+  if (!next) return
+
+  // Each utterance gets its own ticket. A late event from an older audio element
+  // can therefore never release the claim held by a newer line.
   const ticket = (requested += 1)
-  // Claimed before the round trip, so a second utterance arriving mid-synthesis
-  // sees a busy voice and waits instead of being cut off by this one.
   claimed = true
-
-  void speak(spoken, options, ticket).catch(() => release(ticket))
+  activeChannel = next.channel
+  void speak(next.text, next.options, ticket).catch(() => release(ticket))
 }
 
 /**
@@ -123,11 +143,11 @@ export async function preview(text: string, options: VoiceOptions): Promise<void
   hush()
   const ticket = (requested += 1)
   claimed = true
+  activeChannel = 'preview'
   try {
     const played = await speak(spoken, options, ticket)
-    // Superseded while it was being synthesised — a message arrived, or the tester
-    // was pressed again. Reporting success here would claim a sentence was heard
-    // that never was.
+    // Hushed or superseded while it was being synthesised. Reporting success here
+    // would claim a sentence was heard that never was.
     if (!played) throw new Error('stopped before it played')
   } catch (error: unknown) {
     release(ticket)
@@ -138,9 +158,9 @@ export async function preview(text: string, options: VoiceOptions): Promise<void
 /**
  * Fetches the audio and plays it, returning whether anything was actually played.
  *
- * A `false` means something newer took the voice while this was being synthesised,
- * which is not a failure of the voice service and not something the ordinary reader
- * needs to hear about. An empty answer and a rejection are both failures and both
+ * A `false` means the utterance was hushed while it was being synthesised, which
+ * is not a failure of the voice service and not something the ordinary reader needs
+ * to hear about. An empty answer and a rejection are both failures and both
  * throw, because both leave the user hearing nothing and neither is worth
  * distinguishing from inside here.
  */
@@ -166,15 +186,23 @@ async function speak(text: string, options: VoiceOptions, ticket: number): Promi
   audio.volume = clampVolume(options.volume)
   // Released when it ends so the next utterance is not measured against a
   // cut-off one, and so a stale element is never paused by mistake.
-  const onEnded = () => {
+  let onEnded: () => void = () => {}
+  let onError: () => void = () => {}
+  const finish = (played: boolean) => {
     if (ticket === requested) {
       speaking = null
       claimed = false
-      lastEndedAt = Date.now()
+      activeChannel = null
+      lastEndedAt = played ? Date.now() : null
+      pump()
     }
     audio.removeEventListener('ended', onEnded)
+    audio.removeEventListener('error', onError)
   }
+  onEnded = () => finish(true)
+  onError = () => finish(false)
   audio.addEventListener('ended', onEnded)
+  audio.addEventListener('error', onError)
   speaking = audio
 
   // One more guard before play: a newer utterance may have arrived between the check
@@ -196,10 +224,41 @@ function release(ticket: number): void {
   if (ticket !== requested) return
   speaking = null
   claimed = false
+  activeChannel = null
+  lastEndedAt = null
+  pump()
 }
 
-/** Stops whatever is being said and forgets the gap. */
-export function hush(): void {
+/** Stop speech, or clear only one source while preserving the other source's queue. */
+export function hush(channel?: SpeechChannel): void {
+  if (channel) {
+    for (let index = queue.length - 1; index >= 0; index -= 1) {
+      if (queue[index].channel === channel) queue.splice(index, 1)
+    }
+    if (activeChannel === channel) {
+      requested += 1
+      if (speaking) {
+        speaking.pause()
+        speaking.removeAttribute('src')
+        speaking = null
+      }
+      claimed = false
+      activeChannel = null
+      lastEndedAt = null
+    }
+    if (queue.length === 0 && queueTimer !== null) {
+      clearTimeout(queueTimer)
+      queueTimer = null
+    }
+    pump()
+    return
+  }
+
+  queue.length = 0
+  if (queueTimer !== null) {
+    clearTimeout(queueTimer)
+    queueTimer = null
+  }
   // Anything already being synthesised is cancelled before it can start, which
   // is what stops an in-flight request from speaking over the silence.
   requested += 1
@@ -211,5 +270,6 @@ export function hush(): void {
     speaking = null
   }
   claimed = false
+  activeChannel = null
   lastEndedAt = null
 }

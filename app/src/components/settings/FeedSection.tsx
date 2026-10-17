@@ -5,6 +5,9 @@ import { useState } from 'react'
 import { Section } from './Section'
 import { TTS_LANGUAGES, TTS_PACES, languageSample } from '../../lib/voices'
 import { preview } from '../../lib/voice'
+import { Toggle } from '../ui/toggle'
+import { ToggleGroup as SegmentedControl, ToggleGroupItem } from '../ui/toggle-group'
+import { NativeSelect, NativeSelectOption } from '../ui/native-select'
 
 interface Props {
   settings: ViewSettings
@@ -86,11 +89,11 @@ const ALERT_TOGGLES: {
  * "hide the joins" sat between a gift sound and an auto-reply. Each group gets a
  * small caption so the eye can find the one it wants without reading every label.
  */
-function ToggleGroup({ label, children }: { label: string; children: ReactNode }) {
+function ToggleSection({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="toggle-group [display:flex] [flex-direction:column] [gap:6px]">
       <span className="toggle-group-label [color:var(--muted)] [font-size:10px] [font-weight:600] [text-transform:uppercase] [letter-spacing:0.06em]">{label}</span>
-      <div className="settings-toggles [&_.toggle]:[min-width:0] [&_.toggle_span]:[min-width:0] [&_.toggle_span]:[overflow-wrap:anywhere] [display:grid] [grid-template-columns:repeat(auto-fit,_minmax(140px,_1fr))] [gap:8px_12px]">{children}</div>
+      <div className="settings-toggles [&_.toggle-row]:[min-width:0] [&_.toggle-row>span]:[min-width:0] [&_.toggle-row>span]:[overflow-wrap:anywhere] [display:grid] [grid-template-columns:repeat(auto-fit,_minmax(140px,_1fr))] [gap:8px_12px]">{children}</div>
     </div>
   )
 }
@@ -147,28 +150,29 @@ function VoiceSettings({ settings, set }: Props) {
       <div className="grid grid-cols-2 gap-3 mt-2">
         <label className="field [display:flex] [flex-direction:column] [gap:5px]">
           <span className="field-label [color:var(--muted)] [font-size:11px] [text-transform:uppercase] [letter-spacing:0.06em]">Language</span>
-          <select
-            className="input [flex:1] [min-width:0] [padding:9px_12px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [outline:none] [&:focus]:[border-color:var(--accent)] [&::placeholder]:[color:var(--muted)] appearance-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 [&_option]:bg-app-panel-2 [&_option]:text-app-text"
+          <NativeSelect
+            wrapperClassName="w-full"
+            className="input w-full min-w-0 [background:var(--panel-2)] [color:var(--text)]"
             value={settings.ttsLanguage}
             onChange={(e) => set('ttsLanguage', e.target.value)}
           >
             {TTS_LANGUAGES.map((language) => (
-              <option key={language.value} value={language.value}>
+              <NativeSelectOption key={language.value} value={language.value}>
                 {language.label}
-              </option>
+              </NativeSelectOption>
             ))}
-          </select>
+          </NativeSelect>
         </label>
 
         <label className="field [display:flex] [flex-direction:column] [gap:5px]">
           <span className="field-label [color:var(--muted)] [font-size:11px] [text-transform:uppercase] [letter-spacing:0.06em]">Reading pace</span>
-          <select className="input [flex:1] [min-width:0] [padding:9px_12px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [outline:none] [&:focus]:[border-color:var(--accent)] [&::placeholder]:[color:var(--muted)] appearance-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 [&_option]:bg-app-panel-2 [&_option]:text-app-text" value={settings.ttsPace} onChange={(e) => set('ttsPace', e.target.value)}>
+          <NativeSelect wrapperClassName="w-full" className="input w-full min-w-0 [background:var(--panel-2)] [color:var(--text)]" value={settings.ttsPace} onChange={(e) => set('ttsPace', e.target.value)}>
             {TTS_PACES.map((p) => (
-              <option key={p.value} value={p.value} title={p.note}>
+              <NativeSelectOption key={p.value} value={p.value} title={p.note}>
                 {p.label}
-              </option>
+              </NativeSelectOption>
             ))}
-          </select>
+          </NativeSelect>
         </label>
 
         <label className="field col-span-2 [display:flex] [flex-direction:column] [gap:5px]">
@@ -224,52 +228,61 @@ export function FeedSection({ settings, set }: Props) {
 
   function toggles(options: ToggleOption[]) {
     return options.map((option) => (
-      <label key={option.key} className="toggle [display:inline-flex] [align-items:center] [gap:6px] [color:var(--muted)] [font-size:13px] [cursor:pointer] [user-select:none]" title={option.hint}>
-        <input
-          type="checkbox"
-          checked={Boolean(settings[option.key])}
-          onChange={(e) => set(option.key, e.target.checked)}
-        />
+      <div key={option.key} className="toggle-row [display:inline-flex] [align-items:center] [gap:6px] [color:var(--muted)] [font-size:13px] [user-select:none]" title={option.hint}>
+        <Toggle
+          className="toggle h-[18px] w-[18px] min-w-[18px] shrink-0 rounded border border-[var(--line)] p-0 text-[10px] data-[state=on]:border-[var(--accent)] data-[state=on]:bg-[var(--accent)] data-[state=on]:text-[var(--bg)]"
+          variant="outline"
+          size="sm"
+          pressed={Boolean(settings[option.key])}
+          aria-label={option.label}
+          onPressedChange={(pressed) => set(option.key, pressed)}
+        >
+          {settings[option.key] ? '✓' : ''}
+        </Toggle>
         <span>{option.label}</span>
-      </label>
+      </div>
     ))
   }
 
   return (
     <Section title="Feed" section="feed">
-      <div className="feed-category-tabs [display:flex] [gap:6px] [padding:4px] [border:1px_solid_var(--line)] [border-radius:10px] [background:var(--panel-2)] [overflow-x:auto]" role="tablist" aria-label="Feed setting categories">
+      <SegmentedControl
+        type="single"
+        value={category}
+        onValueChange={(value) => { if (value) setCategory(value as typeof category) }}
+        className="feed-category-tabs [display:flex] [gap:6px] [padding:4px] [border:1px_solid_var(--line)] [border-radius:10px] [background:var(--panel-2)] [overflow-x:auto]"
+        aria-label="Feed setting categories"
+      >
         {categories.map((item) => (
-          <button
+          <ToggleGroupItem
             key={item.id}
-            className={`feed-category-tab [flex:1_0_auto] [border:0] [border-radius:7px] [padding:7px_11px] [color:var(--muted)] [background:transparent] [font:inherit] [font-size:11px] [cursor:pointer] [transition:color_140ms_ease,_background_140ms_ease] [&:hover]:[color:var(--text)] [&.is-active]:[color:var(--text)] [&.is-active]:[background:var(--panel)] [&.is-active]:[box-shadow:inset_0_0_0_1px_var(--line)]${category === item.id ? ' is-active' : ''}`}
-            type="button"
-            role="tab"
-            aria-selected={category === item.id}
-            onClick={() => setCategory(item.id)}
+            value={item.id}
+            className="feed-category-tab [flex:1_0_auto] [border:0] [border-radius:7px] [padding:7px_11px] [color:var(--muted)] [background:transparent] [font:inherit] [font-size:11px] [&:hover]:[color:var(--text)] data-[state=on]:[color:var(--text)] data-[state=on]:[background:var(--panel)] data-[state=on]:[box-shadow:inset_0_0_0_1px_var(--line)]"
           >
             {item.label}
-          </button>
+          </ToggleGroupItem>
         ))}
-      </div>
+      </SegmentedControl>
 
       <div className="feed-category-panel [min-height:92px]" role="tabpanel">
         {category === 'display' && <>
-          <ToggleGroup label="Feed appearance and visibility">{toggles(FEED_TOGGLES)}</ToggleGroup>
+          <ToggleSection label="Feed appearance and visibility">{toggles(FEED_TOGGLES)}</ToggleSection>
           <label className="field mt-3 [display:flex] [flex-direction:column] [gap:5px]">
             <span className="field-label [color:var(--muted)] [font-size:11px] [text-transform:uppercase] [letter-spacing:0.06em]">Auto-scroll</span>
-            <select
-              className="input [flex:1] [min-width:0] [padding:9px_12px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [outline:none] [&:focus]:[border-color:var(--accent)] [&::placeholder]:[color:var(--muted)] appearance-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 [&_option]:bg-app-panel-2 [&_option]:text-app-text"
+            <NativeSelect
+              wrapperClassName="w-full"
+              className="input w-full min-w-0 [background:var(--panel-2)] [color:var(--text)]"
               value={settings.autoScrollMode}
               onChange={(e) => set('autoScrollMode', e.target.value as ViewSettings['autoScrollMode'])}
             >
-              <option value="smart">Pause when I scroll up</option>
-              <option value="always">Always follow latest</option>
-            </select>
+              <NativeSelectOption value="smart">Pause when I scroll up</NativeSelectOption>
+              <NativeSelectOption value="always">Always follow latest</NativeSelectOption>
+            </NativeSelect>
             <span className="field-note [color:var(--muted)] [font-size:11px]">Choose whether new messages should pull the feed to the bottom.</span>
           </label>
         </>}
         {category === 'popups' && <>
-          <ToggleGroup label="Choose which events show a popup">{toggles(POPUP_TOGGLES)}</ToggleGroup>
+          <ToggleSection label="Choose which events show a popup">{toggles(POPUP_TOGGLES)}</ToggleSection>
           <div className="grid grid-cols-2 gap-3 mt-3">
             <label className="field [display:flex] [flex-direction:column] [gap:5px]">
               <span className="field-label [color:var(--muted)] [font-size:11px] [text-transform:uppercase] [letter-spacing:0.06em]">Gift popup duration</span>
@@ -289,35 +302,37 @@ export function FeedSection({ settings, set }: Props) {
             </label>
             <label className="field [display:flex] [flex-direction:column] [gap:5px]">
               <span className="field-label [color:var(--muted)] [font-size:11px] [text-transform:uppercase] [letter-spacing:0.06em]">Gift popup size</span>
-              <select
-                className="input [flex:1] [min-width:0] [padding:9px_12px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [outline:none] [&:focus]:[border-color:var(--accent)] [&::placeholder]:[color:var(--muted)] appearance-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 [&_option]:bg-app-panel-2 [&_option]:text-app-text"
+              <NativeSelect
+                wrapperClassName="w-full"
+                className="input w-full min-w-0 [background:var(--panel-2)] [color:var(--text)]"
                 value={settings.giftPopupSize}
                 onChange={(e) => set('giftPopupSize', e.target.value as ViewSettings['giftPopupSize'])}
               >
-                <option value="small">Small</option>
-                <option value="medium">Medium</option>
-                <option value="large">Large</option>
-              </select>
+                <NativeSelectOption value="small">Small</NativeSelectOption>
+                <NativeSelectOption value="medium">Medium</NativeSelectOption>
+                <NativeSelectOption value="large">Large</NativeSelectOption>
+              </NativeSelect>
             </label>
             <label className="field col-span-2 [display:flex] [flex-direction:column] [gap:5px]">
               <span className="field-label [color:var(--muted)] [font-size:11px] [text-transform:uppercase] [letter-spacing:0.06em]">Gift popup position</span>
-              <select
-                className="input [flex:1] [min-width:0] [padding:9px_12px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [outline:none] [&:focus]:[border-color:var(--accent)] [&::placeholder]:[color:var(--muted)] appearance-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 [&_option]:bg-app-panel-2 [&_option]:text-app-text"
+              <NativeSelect
+                wrapperClassName="w-full"
+                className="input w-full min-w-0 [background:var(--panel-2)] [color:var(--text)]"
                 value={settings.giftPopupPosition}
                 onChange={(e) => set('giftPopupPosition', e.target.value as ViewSettings['giftPopupPosition'])}
               >
-                <option value="center">Center</option>
-                <option value="top">Top</option>
-                <option value="bottom">Bottom, above navigation</option>
-              </select>
+                <NativeSelectOption value="center">Center</NativeSelectOption>
+                <NativeSelectOption value="top">Top</NativeSelectOption>
+                <NativeSelectOption value="bottom">Bottom, above navigation</NativeSelectOption>
+              </NativeSelect>
             </label>
           </div>
         </>}
-        {category === 'events' && <ToggleGroup label="Sounds and alerts for live events">{toggles(EVENT_TOGGLES)}</ToggleGroup>}
+        {category === 'events' && <ToggleSection label="Sounds and alerts for live events">{toggles(EVENT_TOGGLES)}</ToggleSection>}
         {category === 'chat' && <>
-          <ToggleGroup label="Chat alerts">
+          <ToggleSection label="Chat alerts">
             {toggles(ALERT_TOGGLES)}
-          </ToggleGroup>
+          </ToggleSection>
           <VoiceSettings settings={settings} set={set} />
         </>}
       </div>

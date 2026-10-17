@@ -3,6 +3,9 @@ import { kindLabel } from '../hooks/useFeed'
 import { tiktokProfileUrl } from '../lib/platforms'
 import { host } from '../lib/sidecar'
 import type { FeedItem } from '../types'
+import { Badge } from './ui/badge'
+import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
+import { Bubble, BubbleContent } from './ui/bubble'
 
 /**
  * One feed row.
@@ -43,6 +46,8 @@ interface Props {
   isLast: boolean
 }
 
+const bubbleContentClass = 'chat-bubble-content rounded-[3px_14px_14px_14px] border-[color-mix(in_srgb,var(--line)_55%,transparent)] px-3 py-1.5 text-[length:inherit] leading-[inherit] shadow-sm'
+
 /**
  * A viewer's name, linked to their profile when there is one to link to.
  *
@@ -74,6 +79,31 @@ function Nickname({ name, handle }: { name: string; handle: string }) {
   )
 }
 
+function ViewerAvatar({ avatar, name, handle }: { avatar: string; name: string; handle: string }) {
+  const image = (
+    <Avatar className="avatar [width:32px] [height:32px] [background:var(--panel-2)] [flex:0_0_auto]">
+      {avatar && <AvatarImage src={avatar} alt="" loading="lazy" referrerPolicy="no-referrer" />}
+      <AvatarFallback className="avatar-fallback [background:var(--panel-2)] [font-weight:600] [color:var(--muted)]" aria-hidden="true">
+        {(name.trim()[0] ?? '?').toUpperCase()}
+      </AvatarFallback>
+    </Avatar>
+  )
+  const url = tiktokProfileUrl(handle)
+  if (!url) return image
+
+  return (
+    <button
+      type="button"
+      className="profile-avatar-button [width:32px] [height:32px] [flex:0_0_auto] [padding:0] [border:0] [border-radius:50%] [background:transparent] [cursor:pointer] [&:focus-visible]:[outline:2px_solid_var(--accent)]"
+      title={`Open @${name} on TikTok`}
+      aria-label={`Open @${name} on TikTok`}
+      onClick={() => { void host.openStream(url).catch(() => {}) }}
+    >
+      {image}
+    </button>
+  )
+}
+
 function FeedRowImpl({ item, isLast }: Props) {
   const repeat = item.repeatCount ?? 1
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
@@ -90,13 +120,7 @@ function FeedRowImpl({ item, isLast }: Props) {
 
   return (
     <div className={`row row-${item.kind} [display:flex] [gap:var(--gap,_10px)] [padding:var(--pad-y,_7px)_var(--pad-x,_10px)] [border-radius:var(--radius)] [&:hover_.copy-message-btn]:[opacity:1]${isLast ? ' row-new' : ''}`}>
-      {item.avatar ? (
-        <img className="avatar [width:32px] [height:32px] [border-radius:50%] [object-fit:cover] [background:var(--panel-2)] [flex:0_0_auto]" src={item.avatar} alt="" loading="lazy" referrerPolicy="no-referrer" />
-      ) : (
-        <div className="avatar avatar-fallback [width:32px] [height:32px] [border-radius:50%] [object-fit:cover] [background:var(--panel-2)] [flex:0_0_auto] [display:grid] [place-items:center] [font-weight:600] [color:var(--muted)]" aria-hidden="true">
-          {(item.nickname.trim()[0] ?? '?').toUpperCase()}
-        </div>
-      )}
+      <ViewerAvatar avatar={item.avatar} name={item.nickname || 'Viewer'} handle={item.id || item.nickname || ''} />
 
       <div className="row-body [min-width:0] [flex:1] [position:relative]">
         <div className="row-head [&_.room-tag]:[min-width:20px] [&_.room-tag]:[padding:1px_4px] [&_.room-tag]:[font-size:9px] [display:flex] [align-items:baseline] [gap:8px]">
@@ -113,19 +137,19 @@ function FeedRowImpl({ item, isLast }: Props) {
               than a name that is plainly not a link. */}
           <Nickname name={item.nickname || 'Room'} handle={item.id || item.nickname || ''} />
           {item.isModerator && (
-            <span className="badge-mod [flex:0_0_auto] [padding:1px_5px] [border-radius:4px] [background:rgba(61,_220,_132,_0.18)] [color:var(--green)] [font-size:9px] [font-weight:700] [letter-spacing:0.04em]" title="Room moderator">
+            <Badge variant="secondary" className="badge-mod [flex:0_0_auto] [padding:1px_5px] [border-radius:4px] [background:rgba(61,_220,_132,_0.18)] [color:var(--green)] [font-size:9px] [font-weight:700] [letter-spacing:0.04em]" title="Room moderator">
               MOD
-            </span>
+            </Badge>
           )}
           {item.isFiltered && (
-            <span className="badge-filtered [flex:0_0_auto] [padding:1px_5px] [border-radius:4px] [background:var(--panel-2)] [color:var(--muted)] [font-size:9px]" title="Filtered by TikTok">
+            <Badge variant="outline" className="badge-filtered [flex:0_0_auto] [padding:1px_5px] [border-radius:4px] [background:var(--panel-2)] [color:var(--muted)] [font-size:9px]" title="Filtered by TikTok">
               filtered
-            </span>
+            </Badge>
           )}
 {item.isBot && (
-            <span className="badge-bot [flex:0_0_auto] [padding:1px_5px] [border-radius:4px] [background:rgba(120,_160,_255,_0.18)] [color:var(--accent,_#7aa0ff)] [font-size:9px] [font-weight:700] [letter-spacing:0.04em]" title="Automatic reply">
+            <Badge variant="secondary" className="badge-bot [flex:0_0_auto] [padding:1px_5px] [border-radius:4px] [background:rgba(120,_160,_255,_0.18)] [color:var(--accent,_#7aa0ff)] [font-size:9px] [font-weight:700] [letter-spacing:0.04em]" title="Automatic reply">
               auto
-            </span>
+            </Badge>
           )}
           <span className="time [font-size:inherit] [flex:0_0_auto] [color:var(--muted)] [font-size:11px] [font-variant-numeric:tabular-nums]">{formatTime(item.timestamp)}</span>
           {item.kind === 'chat' && (
@@ -142,42 +166,48 @@ function FeedRowImpl({ item, isLast }: Props) {
         </div>
 
         {item.kind === 'chat' ? (
-          <>
-            <p className="text [font-size:inherit] [margin:1px_0_0] [overflow-wrap:anywhere]">{item.text}</p>
-            {item.emotes && item.emotes.length > 0 && (
-              <div className="emotes [display:flex] [gap:4px] [margin-top:3px]">
-                {item.emotes.map((emote) => (
+          <Bubble variant="secondary" className="mt-1 max-w-[min(100%,48ch)]">
+            <BubbleContent className={bubbleContentClass}>
+              <p className="text chat-message-text m-0 w-full [font-size:inherit] [overflow-wrap:anywhere]">{item.text}</p>
+              {item.emotes && item.emotes.length > 0 && (
+                <div className="emotes [display:flex] [gap:4px]">
+                  {item.emotes.map((emote) => (
+                    <img
+                      key={emote.id || emote.url}
+                      className="emote [width:22px] [height:22px] [object-fit:contain]"
+                      src={emote.url}
+                      alt=""
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                    />
+                  ))}
+                </div>
+              )}
+            </BubbleContent>
+          </Bubble>
+        ) : (
+          <Bubble variant="secondary" className="mt-1 max-w-[min(100%,48ch)]">
+            <BubbleContent className={bubbleContentClass}>
+              <p className="event m-0 [font-size:inherit] [display:flex] [align-items:center] [gap:8px] [flex-wrap:wrap]">
+                {item.giftImage && (
                   <img
-                    key={emote.id || emote.url}
-                    className="emote [width:22px] [height:22px] [object-fit:contain]"
-                    src={emote.url}
+                    className="gift-image [flex:0_0_auto] [width:20px] [height:20px] [object-fit:contain] [vertical-align:middle] [border-radius:4px]"
+                    src={item.giftImage}
                     alt=""
                     loading="lazy"
                     referrerPolicy="no-referrer"
                   />
-                ))}
-              </div>
-            )}
-          </>
-        ) : (
-          <p className="event [font-size:inherit] [margin:1px_0_0] [display:flex] [align-items:center] [gap:8px] [flex-wrap:wrap]">
-            {item.giftImage && (
-              <img
-                className="gift-image [flex:0_0_auto] [width:20px] [height:20px] [object-fit:contain] [vertical-align:middle] [border-radius:4px]"
-                src={item.giftImage}
-                alt=""
-                loading="lazy"
-                referrerPolicy="no-referrer"
-              />
-            )}
-            <span className={`event-label ${item.kind === 'gift' ? 'text-app-gold' : item.kind === 'join' ? 'text-app-green' : item.kind === 'follow' ? 'text-app-follow' : item.kind === 'share' ? 'text-app-share' : item.kind === 'like' ? 'text-red-500' : 'text-app-muted'}`}>
-              {item.kind === 'like' && <span aria-hidden="true">👍 </span>}
-              {describe(item)}
-            </span>
-            {item.kind === 'gift' && (item.diamonds ?? 0) > 0 && (
-              <span className="diamonds [padding:1px_7px] [background:rgba(245,_196,_81,_0.14)] [border-radius:999px] [color:var(--gold)] [font-size:12px] [font-variant-numeric:tabular-nums]">{item.diamonds} diamonds</span>
-            )}
-          </p>
+                )}
+                <span className={`event-label ${item.kind === 'gift' ? 'text-app-gold' : item.kind === 'join' ? 'text-app-green' : item.kind === 'follow' ? 'text-app-follow' : item.kind === 'share' ? 'text-app-share' : item.kind === 'like' ? 'text-red-500' : 'text-app-muted'}`}>
+                  {item.kind === 'like' && <span aria-hidden="true">👍 </span>}
+                  {describe(item)}
+                </span>
+                {item.kind === 'gift' && (item.diamonds ?? 0) > 0 && (
+                  <Badge variant="secondary" className="diamonds [padding:1px_7px] [background:rgba(245,_196,_81,_0.14)] [border-radius:999px] [color:var(--gold)] [font-size:12px] [font-variant-numeric:tabular-nums]">{item.diamonds} diamonds</Badge>
+                )}
+              </p>
+            </BubbleContent>
+          </Bubble>
         )}
 
         {repeat > 1 && <span className="repeat [position:absolute] [right:8px] [top:6px] [padding:1px_7px] [background:var(--accent)] [border-radius:999px] [color:var(--bg)] [font-size:11px] [font-weight:600]">x{repeat}</span>}

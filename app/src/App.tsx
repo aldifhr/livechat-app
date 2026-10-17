@@ -5,6 +5,7 @@ import { AnimatedListItem } from './components/ui/animated-list'
 import { LogPanel } from './components/LogPanel'
 import { SettingsPage } from './components/SettingsPage'
 import { SimulatorDialog } from './components/SimulatorDialog'
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from './components/ui/empty'
 import { StatsPanel } from './components/StatsPanel'
 import { Toolbar } from './components/Toolbar'
 import { Dock, DockIcon } from './components/ui/dock'
@@ -275,16 +276,18 @@ export default function App() {
           }}
         >
           {visible.length === 0 ? (
-            <div className="empty [display:grid] [place-content:center] [gap:6px] [height:100%] [text-align:center]">
-              <p className="empty-title [margin:0] [font-size:16px] [font-weight:600]">
+            <Empty className="empty h-full gap-1.5 border-0 p-0">
+              <EmptyHeader className="empty-header gap-1.5">
+              <EmptyTitle className="empty-title m-0 text-base font-semibold">
                 {room.status === 'connected' ? 'Waiting for chat…' : 'No messages yet'}
-              </p>
-              <p className="empty-hint [max-width:42ch] [margin:0] [color:var(--muted)]">
+              </EmptyTitle>
+              <EmptyDescription className="empty-hint m-0 max-w-[42ch] text-app-muted">
                 {items.length > 0
                   ? 'No messages match the current filter.'
                   : 'Enter a username above and press Connect. The streamer has to be live.'}
-              </p>
-            </div>
+              </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           ) : (
             visible.map((item, index) => {
               const row = (

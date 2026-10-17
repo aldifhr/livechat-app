@@ -1,4 +1,12 @@
 import { emitLocal, type SidecarEvent } from '../lib/sidecar'
+import { Button } from './ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog'
 
 interface Props {
   open: boolean
@@ -44,12 +52,16 @@ export function SimulatorDialog({ open, onClose, inline = false }: Props) {
 
   const actions = (
     <div className="simulator-actions [display:flex] [flex-wrap:wrap] [gap:8px]">
-      <button className="btn [padding:9px_14px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [cursor:pointer] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)] [&:disabled]:[opacity:0.45] [&:disabled]:[cursor:not-allowed]" onClick={() => sample('chat')}>Chat</button>
-      <button className="btn [padding:9px_14px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [cursor:pointer] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)] [&:disabled]:[opacity:0.45] [&:disabled]:[cursor:not-allowed]" onClick={() => sample('gift')}>Gift</button>
-      <button className="btn [padding:9px_14px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [cursor:pointer] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)] [&:disabled]:[opacity:0.45] [&:disabled]:[cursor:not-allowed]" onClick={() => sample('like')}>Like</button>
-      <button className="btn [padding:9px_14px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [cursor:pointer] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)] [&:disabled]:[opacity:0.45] [&:disabled]:[cursor:not-allowed]" onClick={() => sample('follow')}>Follow</button>
-      <button className="btn [padding:9px_14px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [cursor:pointer] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)] [&:disabled]:[opacity:0.45] [&:disabled]:[cursor:not-allowed]" onClick={() => sample('share')}>Share</button>
-      <button className="btn [padding:9px_14px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [cursor:pointer] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)] [&:disabled]:[opacity:0.45] [&:disabled]:[cursor:not-allowed]" onClick={() => sample('join')}>Join</button>
+      {(['chat', 'gift', 'like', 'follow', 'share', 'join'] as const).map((type) => (
+        <Button
+          key={type}
+          variant="secondary"
+          onClick={() => sample(type)}
+          className="btn [padding:9px_14px] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)]"
+        >
+          {type[0].toUpperCase() + type.slice(1)}
+        </Button>
+      ))}
     </div>
   )
 
@@ -66,24 +78,22 @@ export function SimulatorDialog({ open, onClose, inline = false }: Props) {
   }
 
   return (
-    <div className="modal-scrim [position:fixed] [inset:0] [z-index:10] [display:grid] [place-items:center] [padding:20px] [background:rgba(0,_0,_0,_0.6)]" onClick={onClose} role="presentation">
-      <div
-        className="modal simulator-modal [width:min(440px,_100%)] [max-height:90vh] [overflow-y:auto] [scrollbar-width:thin] [display:flex] [flex-direction:column] [gap:12px] [padding:18px_20px] [background:var(--panel)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [box-shadow:0_12px_40px_rgba(0,_0,_0,_0.5)] [width:min(460px,_100%)]"
-        role="dialog"
-        aria-modal="true"
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose() }}>
+      <DialogContent
+        showCloseButton={false}
         aria-label="Event simulator"
-        onClick={(event) => event.stopPropagation()}
+        className="modal simulator-modal flex w-[min(460px,calc(100vw-40px))] max-w-[min(460px,calc(100vw-40px))] sm:max-w-[min(460px,calc(100vw-40px))] max-h-[90vh] flex-col gap-3 overflow-y-auto [scrollbar-width:thin] border border-[var(--line)] bg-[var(--panel)] p-[18px_20px] rounded-[var(--radius)] shadow-[0_12px_40px_rgba(0,0,0,0.5)]"
       >
-        <div className="modal-head [display:flex] [align-items:center] [gap:10px]">
+        <DialogHeader className="modal-head flex-row items-center gap-[10px]">
           <div>
-            <h2 className="modal-title [margin:0] [font-size:16px] [font-weight:600]">Event simulator</h2>
-            <p className="muted simulator-hint [margin:4px_0_0] [font-size:12px]">Sample events appear in the feed. Nothing is sent to TikTok.</p>
+            <DialogTitle className="modal-title [margin:0] [font-size:16px] [font-weight:600]">Event simulator</DialogTitle>
+            <DialogDescription className="muted simulator-hint [margin:4px_0_0] [font-size:12px]">Sample events appear in the feed. Nothing is sent to TikTok.</DialogDescription>
           </div>
-          <button className="modal-close [margin-left:auto] [padding:2px_8px] [background:none] [border:0] [color:var(--muted)] [font:inherit] [font-size:13px] [cursor:pointer] [&:hover]:[color:var(--text)]" onClick={onClose} aria-label="Close">×</button>
-        </div>
+          <Button variant="ghost" size="icon-xs" className="modal-close [ml-auto] [padding:2px_8px] [text-muted-foreground] [&:hover]:[color:var(--text)]" onClick={onClose} aria-label="Close">×</Button>
+        </DialogHeader>
 
         {actions}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

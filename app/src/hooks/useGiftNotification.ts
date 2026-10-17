@@ -50,11 +50,11 @@ export function useGiftNotification({ notice, giftVoice, followVoice, shareVoice
     if (!notice && !giftVoice && !followVoice && !shareVoice) return
 
     if (event.type === 'follow') {
-      if (followVoice) say(`${event.nickname.trim() || 'Someone'} followed the stream`, speech)
+      if (followVoice) say(`${event.nickname.trim() || 'Someone'} followed the stream`, speech, 'event')
       return
     }
     if (event.type === 'share') {
-      if (shareVoice) say(`${event.nickname.trim() || 'Someone'} shared the stream`, speech)
+      if (shareVoice) say(`${event.nickname.trim() || 'Someone'} shared the stream`, speech, 'event')
       return
     }
 
@@ -72,11 +72,9 @@ export function useGiftNotification({ notice, giftVoice, followVoice, shareVoice
     }
 
     if (giftVoice) {
-      // Ordinary: waits behind whatever chat sentence is still being read, and is
-      // dropped by `voice.ts`'s own gap if one just finished. A gift announcement
-      // that cuts off the reader mid-sentence is worse than one that arrives a
-      // beat later — the chat is what the voice is primarily for.
-      say(giftAnnouncement(event.nickname, event.giftName, count), speech)
+      // Wait in the shared FIFO behind chat, so the announcement never cuts a
+      // sentence short and never drops a line that arrived while chat was speaking.
+      say(giftAnnouncement(event.nickname, event.giftName, count), speech, 'event')
     }
   }, [notice, giftVoice, followVoice, shareVoice, speech.pace, speech.language, speech.volume])
 
@@ -88,6 +86,6 @@ export function useGiftNotification({ notice, giftVoice, followVoice, shareVoice
     if (!notice) lastToastAt.current = null
   }, [notice])
   useEffect(() => {
-    if (!giftVoice && !followVoice && !shareVoice) hush()
+    if (!giftVoice && !followVoice && !shareVoice) hush('event')
   }, [giftVoice, followVoice, shareVoice])
 }

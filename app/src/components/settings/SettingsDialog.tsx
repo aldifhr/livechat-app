@@ -2,6 +2,13 @@ import type { UseSettingsResult } from '../../hooks/useSettings'
 import { LookSection } from './LookSection'
 import { FeedSection } from './FeedSection'
 import { SoundsSection } from './SoundsSection'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog'
+import { Button } from '../ui/button'
 
 /**
  * Everything about how the app looks and what it shows, behind one gear.
@@ -39,31 +46,27 @@ interface Props {
 }
 
 export function SettingsDialog({ open, settings, onClose }: Props) {
-  if (!open) return null
-
   // The sections below, in the order they read. The order is load-bearing: the UI
   // tests find a field by what comes first in the document.
 
   return (
-    <div className="modal-scrim [position:fixed] [inset:0] [z-index:10] [display:grid] [place-items:center] [padding:20px] [background:rgba(0,_0,_0,_0.6)]" onClick={onClose} role="presentation">
-      <div
-        className="modal modal-settings [width:min(440px,_100%)] [max-height:90vh] [overflow-y:auto] [scrollbar-width:thin] [display:flex] [flex-direction:column] [gap:12px] [padding:18px_20px] [background:var(--panel)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [box-shadow:0_12px_40px_rgba(0,_0,_0,_0.5)] [width:min(520px,_100%)]"
-        role="dialog"
-        aria-modal="true"
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose() }}>
+      <DialogContent
+        showCloseButton={false}
         aria-label="Settings"
-        onClick={(e) => e.stopPropagation()}
+        className="modal modal-settings flex w-[min(520px,calc(100vw-40px))] max-w-[min(520px,calc(100vw-40px))] sm:max-w-[min(520px,calc(100vw-40px))] max-h-[90vh] flex-col gap-3 overflow-y-auto [scrollbar-width:thin] border border-[var(--line)] bg-[var(--panel)] p-[18px_20px] rounded-[var(--radius)] shadow-[0_12px_40px_rgba(0,0,0,0.5)]"
       >
-        <div className="modal-head [display:flex] [align-items:center] [gap:10px]">
-          <h2 className="modal-title [margin:0] [font-size:16px] [font-weight:600]">Settings</h2>
-          <button className="modal-close [margin-left:auto] [padding:2px_8px] [background:none] [border:0] [color:var(--muted)] [font:inherit] [font-size:13px] [cursor:pointer] [&:hover]:[color:var(--text)]" onClick={onClose} aria-label="Close">
+        <DialogHeader className="modal-head flex-row items-center gap-[10px]">
+          <DialogTitle className="modal-title [margin:0] [font-size:16px] [font-weight:600]">Settings</DialogTitle>
+          <Button variant="ghost" size="icon-xs" className="modal-close [ml-auto] [padding:2px_8px] [text-muted-foreground] [&:hover]:[color:var(--text)]" onClick={onClose} aria-label="Close">
             ✕
-          </button>
-        </div>
+          </Button>
+        </DialogHeader>
 
         <LookSection settings={settings} set={settings.set} />
         <FeedSection settings={settings} set={settings.set} />
         <SoundsSection settings={settings} set={settings.set} />
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

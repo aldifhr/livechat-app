@@ -7,6 +7,11 @@ import type { FeedFilters, KindFilter } from '../hooks/useVisibleItems'
 import type { Health } from '../hooks/useHealth'
 import type { UseSettingsResult } from '../hooks/useSettings'
 import type { RoomState } from '../types'
+import { Button } from './ui/button'
+import { Input } from './ui/input'
+import { Badge } from './ui/badge'
+import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group'
+import { Label } from './ui/label'
 
 interface Props {
   room: RoomState
@@ -192,10 +197,11 @@ export function Toolbar({
   return (
     <div className="toolbar [flex:0_0_auto] [display:flex] [flex-direction:column] [gap:10px] [padding:14px_20px] [background:var(--panel)] [border-bottom:1px_solid_var(--line)] [max-height:min(40vh,_440px)] [overflow-y:auto] [scrollbar-width:thin]">
       <div className="room-row [display:flex] [align-items:center] [gap:8px] [flex-wrap:wrap] [&_.input]:[flex:1_1_260px] [&_.handle-input]:[flex:0_1_240px]">
-        <input
+        <Label htmlFor="stream-handle" className="sr-only">Streamer's TikTok handle</Label>
+        <Input
+          id="stream-handle"
           className="input handle-input [flex:1] [min-width:0] [padding:9px_12px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [outline:none] [&:focus]:[border-color:var(--accent)] [&::placeholder]:[color:var(--muted)]"
           placeholder="Streamer's handle"
-          aria-label="Streamer's TikTok handle"
           value={handle}
           disabled={isConnected || isWaiting}
           onChange={(e) => setHandle(e.target.value)}
@@ -204,16 +210,17 @@ export function Toolbar({
           }}
         />
         {isConnected || isWaiting ? (
-          <button className="btn btn-danger [padding:9px_14px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [cursor:pointer] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)] [&:disabled]:[opacity:0.45] [&:disabled]:[cursor:not-allowed] [background:transparent] [border-color:var(--accent)] [color:var(--accent)]" onClick={disconnect}>
+          <Button variant="outline" className="btn btn-danger [padding:9px_14px] [background:transparent] [border-color:var(--accent)] [color:var(--accent)] [font:inherit] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)]" onClick={disconnect}>
             Stop
-          </button>
+          </Button>
         ) : (
-          <button className="btn btn-primary [padding:9px_14px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [cursor:pointer] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)] [&:disabled]:[opacity:0.45] [&:disabled]:[cursor:not-allowed] [background:var(--accent)] [border-color:var(--accent)] [color:var(--bg)] [font-weight:600]" onClick={connect} disabled={!canConnect}>
+          <Button className="btn btn-primary [padding:9px_14px] [background:var(--accent)] [border-color:var(--accent)] [color:var(--bg)] [font:inherit] [font-weight:600] [white-space:nowrap]" onClick={connect} disabled={!canConnect}>
             {isConnecting ? 'Connecting…' : 'Connect'}
-          </button>
+          </Button>
         )}
         {isConnected && room.target && (
-          <button
+          <Button
+            variant="secondary"
             className="btn btn-small watch-btn [padding:9px_14px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [cursor:pointer] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)] [&:disabled]:[opacity:0.45] [&:disabled]:[cursor:not-allowed] [align-self:center] [padding:4px_10px] [font-size:12px]"
             title={`Open tiktok.com/@${room.target}/live in your browser`}
             onClick={() =>
@@ -223,7 +230,7 @@ export function Toolbar({
             }
           >
             Watch
-          </button>
+          </Button>
         )}
         <div className={`status status-${room.status} room-status [display:flex] [align-items:center] [gap:8px] [font-size:13px] [color:var(--muted)] [&_.dot]:[width:8px] [&_.dot]:[height:8px] [&_.dot]:[border-radius:50%] [&_.dot]:[background:var(--muted)] [&_.dot]:[flex:0_0_auto] [&.status-connected]:[color:var(--text)] [&.status-connected_.dot]:[background:var(--green)] [&.status-connecting_.dot]:[background:var(--gold)] [&.status-waiting_.dot]:[background:var(--gold)] [&.status-error]:[color:var(--accent)] [&.status-error_.dot]:[background:var(--accent)] [&.status-ended]:[color:var(--muted)]`}>
           <span className="dot" />
@@ -253,25 +260,34 @@ export function Toolbar({
           suggests there is content to look through when there is not. */}
       {(room.status === 'connected' || items > 0) && (
         <div className="toolbar-bottom [display:flex] [align-items:center] [gap:12px] [flex-wrap:wrap]">
-          <div className="filters [display:flex] [gap:5px] [flex-wrap:wrap] [&_.chip]:[gap:4px] [&_.chip-count]:[padding:0_4px] [&_.chip-count]:[font-size:10px]">
+          <ToggleGroup
+            type="single"
+            value={kind}
+            onValueChange={(value) => { if (value) onFiltersChange({ kind: value as KindFilter }) }}
+            aria-label="Filter feed by event type"
+            className="filters [display:flex] [gap:5px] [flex-wrap:wrap] [&_.chip]:[gap:4px] [&_.chip-count]:[padding:0_4px] [&_.chip-count]:[font-size:10px]"
+          >
             {spec.kinds.map((option) => (
-              <button
+              <ToggleGroupItem
                 key={option.value}
-                className={`chip chip-small [display:inline-flex] [align-items:center] [gap:6px] [padding:6px_11px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:999px] [color:var(--muted)] [font:inherit] [font-size:13px] [cursor:pointer] [&:hover]:[color:var(--text)] [padding:3px_8px] [font-size:11px]${kind === option.value ? ' chip-active' : ''}`}
-                onClick={() => onFiltersChange({ kind: option.value })}
+                value={option.value}
+                className="chip chip-small [display:inline-flex] [align-items:center] [gap:4px] [padding:3px_8px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:999px] [color:var(--muted)] [font:inherit] [font-size:11px] [&:hover]:[color:var(--text)] data-[state=on]:[background:var(--accent-soft)] data-[state=on]:[border-color:var(--accent)] data-[state=on]:[color:var(--text)]"
               >
                 {option.label}
                 {option.value !== 'all' && counts[option.value] > 0 && (
-                  <span className="chip-count [padding:0_5px] [background:rgba(255,_255,_255,_0.08)] [border-radius:999px] [font-size:11px] [font-variant-numeric:tabular-nums]">{counts[option.value]}</span>
+                  <Badge variant="secondary" className="chip-count border-0 bg-white/10 px-1 py-0 text-[10px] font-normal tabular-nums text-app-muted">{counts[option.value]}</Badge>
                 )}
-              </button>
+              </ToggleGroupItem>
             ))}
-          </div>
+          </ToggleGroup>
 
-          <input
+          <Label htmlFor="feed-search" className="sr-only">Filter by name or text</Label>
+          <Input
+            id="feed-search"
             className="input input-search [flex:1] [min-width:0] [padding:9px_12px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [outline:none] [&:focus]:[border-color:var(--accent)] [&::placeholder]:[color:var(--muted)] [flex:0_1_240px]"
             placeholder="Filter by name or text"
             value={search}
+            aria-label="Filter by name or text"
             onChange={(e) => onFiltersChange({ search: e.target.value })}
           />
         </div>
@@ -295,14 +311,15 @@ export function Toolbar({
         </span>
 
         <span className="view-actions [display:flex] [align-items:center] [gap:8px] [margin-left:auto]">
-          <button
-            className="btn btn-small [padding:9px_14px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [cursor:pointer] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)] [&:disabled]:[opacity:0.45] [&:disabled]:[cursor:not-allowed] [padding:4px_10px] [font-size:12px]"
+          <Button
+            variant="secondary"
+            className="btn btn-small [padding:4px_10px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)] [&:disabled]:[opacity:0.45] [&:disabled]:[cursor:not-allowed] [font-size:12px]"
             onClick={onClearChat}
             disabled={items === 0}
             title="Clear every row from the feed"
           >
             Clear
-          </button>
+          </Button>
 
           <span className="font-hint [color:var(--muted)] [font-size:11px] [font-variant-numeric:tabular-nums]" title="Ctrl + scroll anywhere in the window">
             {Math.round(settings.fontScale * 100)}%

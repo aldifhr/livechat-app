@@ -9,12 +9,9 @@ import type { VoiceOptions } from '../lib/voices'
 /**
  * What a new chat message does besides appear in the feed: a blip, and speech.
  *
- * Both are gapped the same way the gift sound is — a minimum gap between sounds,
- * because chat arrives several a second in an active room and one blip per
- * message is a buzz rather than a signal. Speech gets the longer gap, and it has
- * to for a second reason here: the voice is synthesised over the network, so the
- * gap has to cover the round trip as well as the sentence, or the next request
- * goes out while the previous one is still being spoken.
+ * The blip has a minimum gap because chat arrives several times a second. Speech
+ * uses the shared FIFO voice queue, so network synthesis and active playback never
+ * cause a chat line to be silently discarded.
  *
  * The blip is a template or a custom file, played through the shared player. The
  * voice is a neural one, synthesised by the host and returned as audio — the
@@ -56,16 +53,16 @@ export function useChatAlerts({ chatSound, chatTts, voice, templateId, customPat
       }
     }
 
-    if (chatTts) say(ttsText(event.text), voice)
+    if (chatTts) say(ttsText(event.text), voice, 'chat')
   }, [chatSound, chatTts, voice.pace, voice.language, voice.volume, templateId, customPath, soundVolume, soundGapMs])
 
   // Turned off: forget when the last blip was, so turning it back on does not wait
-  // out a gap that started while it was off. The voice is shared, so stopping it
-  // here would also silence a gift announcement — that is left to its own hook.
+  // out a gap that started while it was off. The shared voice queue is tagged by
+  // source so turning chat speech off leaves gift announcements alone.
   useEffect(() => {
     if (!chatSound) lastBlipAt.current = null
   }, [chatSound])
   useEffect(() => {
-    if (!chatTts) hush()
+    if (!chatTts) hush('chat')
   }, [chatTts])
 }

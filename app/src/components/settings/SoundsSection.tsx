@@ -5,6 +5,7 @@ import { TEMPLATES } from '../../lib/templates'
 import { invalidateCustomSound, playSound, resolveAudio, releaseAudio } from '../../lib/player'
 import { message, useStillMounted, type SetSetting, type Status } from './shared'
 import { Section } from './Section'
+import { NativeSelect, NativeSelectOption } from '../ui/native-select'
 
 interface Props {
   settings: ViewSettings
@@ -121,18 +122,19 @@ export function SoundsSection({ settings, set }: Props) {
             <div className="field [display:flex] [flex-direction:column] [gap:5px]" key={event.key}>
               <span className="field-label [color:var(--muted)] [font-size:11px] [text-transform:uppercase] [letter-spacing:0.06em]">{event.label}</span>
               <span className="field-row [display:flex] [align-items:center] [gap:8px] [&_.input]:[min-width:0] [&_.btn]:[flex:0_0_auto]">
-                <select
-                  className="input [flex:1] [min-width:0] [padding:9px_12px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [outline:none] [&:focus]:[border-color:var(--accent)] [&::placeholder]:[color:var(--muted)] appearance-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 [&_option]:bg-app-panel-2 [&_option]:text-app-text"
+                <NativeSelect
+                  wrapperClassName="[flex:0_1_180px] min-w-0"
+                  className="input w-full min-w-0 [background:var(--panel-2)] [color:var(--text)]"
                   aria-label={`${event.label} template`}
                   value={settings[event.templateKey]}
                   onChange={(e) => set(event.templateKey, e.target.value)}
                 >
                   {TEMPLATES.map((t) => (
-                    <option key={t.id} value={t.id} title={t.hint}>
+                    <NativeSelectOption key={t.id} value={t.id} title={t.hint}>
                       {t.label}
-                    </option>
+                    </NativeSelectOption>
                   ))}
-                </select>
+                </NativeSelect>
                 <button
                   className="btn btn-small [padding:9px_14px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [cursor:pointer] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)] [&:disabled]:[opacity:0.45] [&:disabled]:[cursor:not-allowed] [padding:4px_10px] [font-size:12px]"
                   onClick={() => preview(settings[event.templateKey], customPath, volume)}

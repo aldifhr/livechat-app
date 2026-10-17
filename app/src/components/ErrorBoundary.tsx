@@ -1,4 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { Alert, AlertDescription, AlertTitle } from './ui/alert'
+import { Button } from './ui/button'
 
 /**
  * Catches a render that threw, so one bad frame cannot take the whole app down.
@@ -44,19 +46,21 @@ export class ErrorBoundary extends Component<Props, State> {
 
     return (
       <div className="crash [display:flex] [flex-direction:column] [align-items:center] [justify-content:center] [gap:12px] [height:100vh] [padding:32px] [text-align:center] [color:var(--text)]">
-        <h1 className="crash-title [margin:0] [font-size:18px]">Something went wrong.</h1>
-        <p className="crash-body [margin:0] [max-width:42ch] [color:var(--muted)]">
-          A message from the stream could not be shown. The app kept running, so
-          reconnecting usually clears it.
-        </p>
+        <Alert variant="destructive" className="crash-alert max-w-xl text-left">
+          <AlertTitle className="crash-title text-base">Something went wrong.</AlertTitle>
+          <AlertDescription className="crash-body max-w-[42ch] text-left">
+            A message from the stream could not be shown. The app kept running, so
+            reconnecting usually clears it.
+          </AlertDescription>
+        </Alert>
         <pre className="crash-detail [margin:0] [max-width:100%] [max-height:30vh] [overflow:auto] [padding:10px_12px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [font-size:12px] [text-align:left] [white-space:pre-wrap] [word-break:break-word]">{error.message}</pre>
         <div className="crash-actions [display:flex] [gap:8px]">
-          <button className="btn [padding:9px_14px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [cursor:pointer] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)] [&:disabled]:[opacity:0.45] [&:disabled]:[cursor:not-allowed]" onClick={this.reset}>
+          <Button variant="secondary" className="btn [padding:9px_14px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)]" onClick={this.reset}>
             Try again
-          </button>
-          <button className="btn btn-small [padding:9px_14px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [cursor:pointer] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)] [&:disabled]:[opacity:0.45] [&:disabled]:[cursor:not-allowed] [padding:4px_10px] [font-size:12px]" onClick={() => window.location.reload()}>
+          </Button>
+          <Button variant="secondary" className="btn btn-small [padding:4px_10px] [background:var(--panel-2)] [border:1px_solid_var(--line)] [border-radius:var(--radius)] [color:var(--text)] [font:inherit] [white-space:nowrap] [&:hover:not(:disabled)]:[border-color:var(--muted)] [font-size:12px]" onClick={() => window.location.reload()}>
             Reload
-          </button>
+          </Button>
         </div>
       </div>
     )
