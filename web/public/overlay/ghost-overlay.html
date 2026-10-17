@@ -109,24 +109,34 @@ const OL='#2b1f2d',lerp=(a,b,t)=>a+(b-a)*t,rnd=(a,b)=>a+Math.random()*(b-a),pick
 // Each palette is a ramp, dark to light: `s` stripe, `lo` shadow, `d` far-side mid,
 // `b` body, `hi` highlight, then the two light materials.
 //
-// Measured off the reference: cream body, near-black ink, and — the detail the canvas
-// ghost was missing entirely — **pink cheeks with two dots on each**. The cheeks are what
-// make it read as a friendly cartoon ghost rather than a Halloween sheet, and no amount
-// of dome-and-hem tuning was going to get there.
+// The creature, transcribed from a design rather than invented.
 //
-//   body   #F0EFDA   the cream the reference is painted
-//   ink    #272B24   eyes, mouth, the notches between lobes
-//   cheek  #FFAA9E   <- not in the pixel-art reference at all
-//   dot    #DC8E83   the two dots sitting on each cheek
+// Ghost — Happy Halloween by Nathan Smedley, MIT licensed,
+// https://codepen.io/nsmed/pen/xyprgz. The proportions, the feature positions and
+// the 5-second bob are all his; the drawing is mine, because this is a canvas sheet
+// rather than a box of divs, and it has to survive being scaled to ten pixels a pixel.
 //
-// The four palettes keep one structure and differ only in hue, so the drawing code never
-// changes with the palette. `hijau`, `ungu` and `biru` carry their colour on the cheeks,
-// which is the only place a ghost of this shape is allowed to be a colour at all.
+// The single biggest thing the earlier drafts got wrong was that they outlined it. The
+// original has no stroke at all — a flat cream shape, with dark used only for the eyes,
+// the mouth and the notches. Outlining it made it read as a heavier, blunter thing than
+// the thing being copied.
+//
+//   body   #F0EFDA   flat, no gradient, no stroke
+//   rim    #D8D6C0   one pixel of the edge, only so the silhouette still reads when the
+//                    stream behind it is lighter than cream
+//   ink    #272B24   eyes, mouth, and the two notches cut into the hem
+//   cheek  #FFAA9E   with two dots each at #DC8E83
+//
+// 1 reference pixel is 0.2 canvas pixels, so the 150x180 body is 30x36 here. Every feature
+// position below is the reference's own percentage of that box.
+//
+// The four palettes differ only in hue. `hijau`, `ungu` and `biru` carry their colour on
+// the cheeks, which is the only place a ghost of this shape is allowed to be a colour.
 const PAL={
-  putih:{s:'#c9c7ac',lo:'#dad8c2',d:'#e6e4d2',b:'#f0efda',hi:'#fffef2',belly:'#f7f6e8',paw:'#e6e4d2',ear:'#ffaa9e',cheek:'#ffaa9e',dot:'#dc8e83',hole:'#272b24',line:'#272b24'},
-  hijau:{s:'#2e4a33',lo:'#5b8a63',d:'#8bb892',b:'#d8ecd4',hi:'#f2fff0',belly:'#e6f5e2',paw:'#8bb892',ear:'#8bb892',cheek:'#f0a48e',dot:'#d4785f',hole:'#141f16',line:'#141f16'},
-  ungu :{s:'#37284f',lo:'#61508a',d:'#8d7cb0',b:'#d6cbea',hi:'#f7f2ff',belly:'#e6ddf4',paw:'#8d7cb0',ear:'#a894cc',cheek:'#f0a0c0',dot:'#d4789e',hole:'#181028',line:'#181028'},
-  biru :{s:'#284056',lo:'#507790',d:'#81a2ba',b:'#d4e4ef',hi:'#f4fbff',belly:'#e4eff7',paw:'#81a2ba',ear:'#81a2ba',cheek:'#f0a8b4',dot:'#d4788a',hole:'#0e1a24',line:'#0e1a24'},
+  putih:{s:'#c9c7ac',lo:'#d8d6c0',d:'#e6e4d2',b:'#f0efda',hi:'#fffef2',belly:'#f7f6e8',paw:'#e6e4d2',ear:'#ffaa9e',cheek:'#ffaa9e',dot:'#dc8e83',hole:'#272b24',line:'#272b24'},
+  hijau:{s:'#2e4a33',lo:'#a8cfae',d:'#c2e0c6',b:'#e6f4e2',hi:'#f7fff5',belly:'#eef8ec',paw:'#c2e0c6',ear:'#8bb892',cheek:'#f0a48e',dot:'#d4785f',hole:'#1b2a1d',line:'#1b2a1d'},
+  ungu :{s:'#37284f',lo:'#bdaedd',d:'#d0c5e6',b:'#e8e2f4',hi:'#faf7ff',belly:'#f2eefa',paw:'#d0c5e6',ear:'#a894cc',cheek:'#f0a0c0',dot:'#d4789e',hole:'#231a33',line:'#231a33'},
+  biru :{s:'#284056',lo:'#b2cbdc',d:'#c8dce8',b:'#e4eff6',hi:'#f8fdff',belly:'#eff7fb',paw:'#c8dce8',ear:'#81a2ba',cheek:'#f0a8b4',dot:'#d4788a',hole:'#1a2b38',line:'#1a2b38'},
 }
 // 4x4 ordered dither, indexed y*4+x. Not the pattern that matters — where it is applied,
 // and how narrowly, that does.
@@ -362,39 +372,33 @@ function hemBot(x,hw,mid,depth,ph,amp){
 //
 // The eye is a proper circle, not a rounded rectangle. A rectangle with clipped corners
 // reads as a cut-out box, which on a white sheet is a box and not a socket.
-// The face, transcribed from the reference: two round eyes at 40% of the height, a mouth
-// at 50% that is square on top and fully rounded underneath, and the cheeks — pink ellipses
-// at 56%, each carrying two dots. The cheeks are the single detail that makes this a
-// friendly ghost instead of a spooky sheet, and the canvas ghost had none of them.
-//
-// Positions come off the reference's percentages rather than off taste: eyes at 20% and
-// 60% of the width, cheeks at 17% and 60%, mouth centred and 20% of the width wide.
-function face(cx,cy,p,st,blink,mouth){
-  const H=p.hole,M=p.line
+// The face, at the original's own positions: eyes 20% and 60% of the body width at 40% of
+// its height, cheeks at 17% and 60% at 56%, and a mouth centred at 50% and 20% of the
+// width — square across the top, fully rounded underneath, which is what makes it a smile
+// rather than a slot. Each cheek carries two dots.
+function face(cx,cy,p,st,blink,mouth,g){
+  const H=p.hole,hw=g.hw,hh=g.hh,top=g.top
   const wide=st==='wide'||st==='boo'
-  const ex=Math.round(cy*0+6),ey=cy-Math.round(p.mouth*0+3)
-  const ew=wide?6:5,eh=wide?8:7
+  const ex=Math.round(hw*.40),ey=top+Math.round(hh*.42)
+  const er=wide?3:2
   for(const s of[-1,1]){
     const x=cx+s*ex
-    if(blink||st==='sleep'){R(x-3,ey+3,6,2,H);continue}
-    for(let j=0;j<eh;j++){
-      const t=(j+0.5)/eh*2-1
-      const ww=Math.round((ew/2)*Math.sqrt(Math.max(0,1-t*t)))
-      R(x-ww,ey+j,ww*2+1,1,H)
-    }
+    if(blink||st==='sleep'){R(x-2,ey+1,5,1,H);continue}
+    E(x,ey,er,er,H,0)
+    // The original's eyes carry a catchlight, and without one a black dot on cream reads
+    // as a hole rather than as an eye.
+    if(er>1)R(x-1,ey-1,1,1,p.b)
   }
-  // Mouth: square shoulders, rounded chin. Closed is three pixels, open is a wail.
-  const open=mouth>.05?Math.round(mouth*5):0
-  if(st==='sleep')R(cx-1,cy+5,3,1,M)
-  else if(open){R(cx-4,cy+4,9,1,M);R(cx-3,cy+5,7,1,M);R(cx-2,cy+6,5,open,M)}
-  else{R(cx-1,cy+5,3,1,M)}
-  // Cheeks: pink, with two dots each, and they ride under the eyes rather than beside
-  // them — the reference has them at 56% against eyes at 40%, which is what stops the
-  // face reading as two dots and a line.
-  const chY=cy+4,cx0=cx-6,cx1=cx+3
-  E(cx0,chY,2,1,p.cheek);E(cx1,chY,2,1,p.cheek)
-  R(cx0-1,chY,1,1,p.dot);R(cx0+1,chY-1,1,1,p.dot)
-  R(cx1-1,chY,1,1,p.dot);R(cx1+1,chY-1,1,1,p.dot)
+  const my=top+Math.round(hh*.58)
+  const open=mouth>.05?Math.round(mouth*4):0
+  if(st==='sleep')R(cx-1,my,3,1,H)
+  else if(open){R(cx-3,my,7,1,H);R(cx-2,my+1,5,1,H);R(cx-1,my+2,3,Math.max(1,open),H)}
+  else{R(cx-3,my,7,1,H);R(cx-2,my+1,5,1,H);R(cx-1,my+2,3,1,H)}
+  const chY=top+Math.round(hh*.74),k=Math.round(hw*.46)
+  for(const s of[-1,1]){
+    E(cx+s*k,chY,3,1,p.cheek,0)
+    R(cx+s*k-2,chY,1,1,p.dot);R(cx+s*k+1,chY-1,1,1,p.dot)
+  }
 }
 function sprite(){const c=C,P=c.P,p=PAL[pal],m=c.mode;X=b;b.setTransform(1,0,0,1,0,0);b.clearRect(0,0,96,96);b.setTransform(1,0,0,1,0,24)
 // Hover. Two frequencies so the bob never settles into a visible loop: the slow one is
@@ -412,72 +416,44 @@ const cx=48
 // 21 tall including the hem, a ratio of 0.67. Three drafts came out at 1.65, 1.19 and 0.84
 // — the last was close enough to look right and still read squat, because 0.67 of a
 // 34-pixel sheet is 23 pixels wide, not 27.
-let hw=Math.round(12*(1+.13*sq)+P.boo*3-P.dorm*1)
-let hh=Math.round(17*(1-.16*sq)-P.dorm*4)
-hw=Math.round(lerp(hw,13,P.curl));hh=Math.round(lerp(hh,17,P.curl))
+let hw=Math.round(15*(1+.10*sq)+P.boo*3-P.dorm*1)
+let hh=Math.round(18*(1-.13*sq)-P.dorm*4)
+hw=Math.round(lerp(hw,16,P.curl));hh=Math.round(lerp(hh,18,P.curl))
 const depth=Math.round(lerp(7,5,P.dorm))
-const top=Math.round(52-hh+bob),mid=top+hh
+const top=Math.round(56-hh+bob),mid=top+hh
 const waveAmp=.6+P.bob*.7+P.boo*.4+P.peek*.8
-// Body, column by column: outline first, body inset by one, then the lit edge, then the
-// shadow edge.
-//
-// The shading band is narrow on purpose. The reference's entire shading vocabulary is one
-// cool grey step sitting on the outer edge of the dark side and inside the hem scallops.
-// The first draft ran it across the outer third with a dithered boundary, and on a white
-// sheet that produced a vertical checkerboard stripe straight down the middle — which
-// reads as a printed stripe, not as form.
+// Body, column by column, in flat cream with a single pixel of rim. `domeTop` is a
+// half-ellipse and `hemBot` is three lobes, so each column owns its own top and bottom and
+// the silhouette falls out of that — row-stacking cannot draw a scalloped hem, because the
+// width at a row is not a function of that row alone.
 for(let x=-hw;x<=hw;x++){
   const ty=domeTop(x,hw,hh,top)
-  // At the outermost column the dome reaches the flank bottom and the hem has returned to
-  // the body line, so the raw difference is zero or negative and the corner came out empty.
-  // Two rows minimum fills it and keeps the sides straight.
   const by=Math.max(hemBot(x,hw,mid,depth,c.ph,waveAmp),ty+2)
   const hgt=by-ty
   if(hgt<=0)continue
-  R(cx+x,ty,1,hgt,p.line)
-  const ih=hgt-2
-  if(ih<=0)continue
-  const y0=ty+1
-  R(cx+x,y0,1,ih,p.b)
-  const s=x/hw
-  // Lit edge: two columns down the left, the reference's highlight.
-  if(s<-.86)R(cx+x,y0,1,ih,p.hi)
-  // Shadow edge: the outer three columns on the right, dithered inward.
-  const e=(s-.62)/.38
-  if(e>0){
-    const n=(BAYER[((y0&3)<<2)|((cx+x)&3)]+.5)/16
-    const step=cl(e*.75+n*.5,0,.999)
-if(step>.66)R(cx+x,y0,1,ih,p.lo)
-    if(step>.33)R(cx+x,y0,1,ih,p.d)
-  }
+  R(cx+x,ty,1,hgt,p.lo)
+  if(hgt>2)R(cx+x,ty+1,1,hgt-2,p.b)
 }
-// The two notches between the lobes. Dark, drawn after the body, sitting over the hem —
-// the reference's own trick (`z-index: 2` over the tails).
-//
-// They are much smaller than the first attempt: at a quarter of the half-width and 60% of
-// the hem depth they were 8px across on a 7px hem, so the two of them ate the whole
-// underside and the ghost ended in a black skirt. The reference's spacers are 38px on a
-// 150px body — a quarter of the width, sitting 19px below the body's edge, which on a
-// 28px-wide sheet is a 7px cut into a 7px hem.
+// The two notches between the three lobes, in ink, cut through the whole hem. The original
+// gets these by stacking a dark ellipse over the tails (`z-index: 2`); doing the same here
+// is what turns three bumps into a scalloped edge instead of a fringe.
 for(let i=0;i<NLOBE-1;i++){
-  const nx=cx-hw+Math.round((2*hw)*(i+1)/NLOBE)
-  E(nx,mid+Math.round(depth*.62),Math.max(1,Math.round(hw*.13)),Math.max(1,Math.round(depth*.30)),p.hole,0)
+  const nx=cx+Math.round((2*hw)*(i+1)/NLOBE-hw)
+  E(nx,mid+Math.round(depth*.5),Math.round(hw*.20),Math.round(depth*.42),p.hole,0)
 }
-// Arms: ellipses thrown out and up, not bumps. The reference reaches 35px past the body
-// edge on a 150px body — 23% of its width on each side — with the arm box itself 40% of
-// the body width. The first draft reached 85% of a half-width and came out 75px across on a
-// 29px body; the arm is now 40% of the body and reaches 46% of the half-width, which is
-// the reference's own ratio and puts the whole silhouette at about 41 pixels.
-const armY=Math.round(lerp(top+hh*.52,top+hh*.60,P.dorm))
+// Arms: the original's are 60x35 ellipses rotated 45 degrees, reaching 35px past the body
+// edge on a 150px body — so 12x7 here, offset up and out. Drawn in flat cream with a rim,
+// like the body: the original strokes nothing, and an ink outline on the arms made the
+// earlier draft read as a heavier thing than the thing being copied.
+const armY=top+Math.round(hh*.86)
 for(const s of[-1,1]){
-  const reach=Math.round(hw*.46+Math.sin(c.ph*1.6-s*.9)*.9*am)
-  const arx=Math.round(hw*.40),ary=Math.max(1,Math.round(hw*.24))
-  const ax=cx+s*(hw+reach-arx),ay=armY-Math.round(reach*.42)
-  E(ax,ay,arx+1,ary+1,p.line,0)
+  const reach=Math.round(hw*.45+Math.sin(c.ph*1.6-s*.9)*.8*am)
+  const arx=Math.round(hw*.40),ary=Math.max(2,Math.round(hw*.24))
+  const ax=cx+s*(hw+reach-arx),ay=armY-Math.round(reach*.45)
+  E(ax,ay,arx+1,ary+1,p.lo,0)
   E(ax,ay,arx,ary,p.b,0)
-  if(ary>2)E(ax,ay-1,arx-1,ary-2,p.hi,0)
 }
-face(cx,Math.round(lerp(top+hh*.40,top+hh*.46,P.dorm)),p,c.boop>0?'boo':P.dorm>.5?'sleep':P.wide>.4?'wide':'open',c.bt>0,P.mouth+(m==='yawn'?Math.sin(Math.PI*c.t/c.tm):0))
+face(cx,Math.round(lerp(top+hh*.52,top+hh*.58,P.dorm)),p,c.boop>0?'boo':P.dorm>.5?'sleep':P.wide>.4?'wide':'open',c.bt>0,P.mouth+(m==='yawn'?Math.sin(Math.PI*c.t/c.tm):0),{hw,hh,top})
 // ONE rotation, applied here, to the sprite pixels. It used to also run as a
 // g.rotate(-qa) in the render transform, and two rotations of the same angle compose
 // to twice the angle: every authored eighth-turn (22.5°) went out at 45°, which both
