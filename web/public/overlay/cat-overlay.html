@@ -115,28 +115,55 @@ const OL='#2b1f2d',lerp=(a,b,t)=>a+(b-a)*t,rnd=(a,b)=>a+Math.random()*(b-a),pick
 // highlights go warm toward yellow. The hue column below is monotonic in every palette,
 // and saturation rises into the highlight instead of collapsing, which is what makes
 // the same three tones read as a machine with a fixed palette rather than a gradient.
+// The ramps are dark to light: `s` stripe, `lo` shadow, `d` far-side mid, `b` body,
+// `hi` highlight, `belly`, then `ear`. Every shade went up a step from the first draft:
+// `lo` at value 22% against an outline at 17% left the body's lower half as one
+// undifferentiated black mass, and the belly used as the paw pads was value 75% sitting
+// on a value 46% leg, so the front paws read as two bright blocks dropped next to the cat
+// rather than as feet.
 const PAL={
-  oren :{s:'#7a3410',lo:'#a34d15',d:'#c4631f',b:'#e8813a',hi:'#ffc169',belly:'#fadfae',ear:'#f4737f'},
-  abu  :{s:'#333d4d',lo:'#4a5468',d:'#66718a',b:'#8490a8',hi:'#c9d6e8',belly:'#e9eef6',ear:'#f2909f'},
-  hitam:{s:'#191622',lo:'#262438',d:'#393352',b:'#544a75',hi:'#a394d4',belly:'#a49bbf',ear:'#e46a8c'},
-  putih:{s:'#d99a5c',lo:'#d8c3a4',d:'#e8d9c0',b:'#f6eddc',hi:'#ffffe0',belly:'#ffffff',ear:'#f7a3ae'},
+  oren :{s:'#7a3410',lo:'#b8571a',d:'#cd6a22',b:'#e8813a',hi:'#ffc169',belly:'#fadfae',ear:'#f4737f',paw:'#f0c98d'},
+  abu  :{s:'#333d4d',lo:'#59647a',d:'#6f7b93',b:'#8490a8',hi:'#c9d6e8',belly:'#e9eef6',ear:'#f2909f',paw:'#c6d1e0'},
+  // An actual black cat. The previous "hitam" had a body at value 46% — a mid grey with a
+  // violet cast, which is why it never read as black however the shading was tuned. Value
+  // is nearly useless on a black cat; there is none of it to spend. So the form comes from
+  // hue. The shadow sits at hue 264 (violet) and the rim light at hue 233 (blue), 31
+  // degrees apart, with saturation rising into the highlight — moonlight on black fur,
+  // which is the reason a black cat reads as a black cat and not as a hole in the frame.
+  // The outline stays the darkest thing in it so the silhouette holds.
+  hitam:{s:'#171225',lo:'#241a33',d:'#2f2745',b:'#3d3358',hi:'#5f6ddb',belly:'#574d7d',paw:'#463c68',ear:'#d1567f'},
+  putih:{s:'#d99a5c',lo:'#d0b894',d:'#e2d2b6',b:'#f6eddc',hi:'#ffffe0',belly:'#ffffff',ear:'#f7a3ae',paw:'#ecdfc6'},
 }
-// 4x4 ordered dither, indexed y*4+x. Not the pattern that matters — where it is applied
-// that does. Quantise into thirds and let the threshold decide which side of a boundary a
-// pixel falls on, so the checkerboard appears only in the two thin bands straddling each
-// edge and the middle of each region stays solid.
+// 4x4 ordered dither, indexed y*4+x. Not the pattern that matters — where it is applied,
+// and how narrowly, that does.
 //
-// The first attempt added the threshold to the lighting value as a perturbation, with
-// hard edges at 0.34 and 0.70. The threshold spans 0..1 and the lighting value spans
-// 0..1, so it was not a perturbation at all — it dominated the input, and the result was
-// 6% highlight, 19% mid, 76% shadow: a dark speckled mass where a lit body should be.
-// Quantising rather than perturbing gives 33/33/33 and dithers only the edges.
+// The first version dithered the whole of every band, because the threshold was added
+// to the lighting value as a perturbation and the threshold spans the same 0..1 the
+// lighting value does. It was not a perturbation at all: it dominated the input, gave
+// 6% highlight / 19% mid / 76% shadow, and on a 30x24 head turned each boundary into
+// about four rows of checkerboard straight across the eyes.
+//
+// Quantising instead of perturbing fixes the balance. But quantising to thirds and
+// scattering the whole band still dithers the entire band, which on a shape this small
+// is noise rather than texture. So the dither is a narrow window at each boundary and
+// the rest of each band is solid. `DITHER` is that window as a fraction of a band:
+// 1 is the old behaviour, 0.3 leaves a one-to-two pixel transition on the head and keeps
+// the body reading as three flat tones, which is where the retro look actually comes
+// from — the ramp and the hue shift, not the checkerboard.
 const BAYER=[0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5]
+const DITHER=.3
 const R=(x,y,a,c2,col)=>{if(a<=0||c2<=0)return;X.fillStyle=col;X.fillRect(Math.round(x),Math.round(y),Math.round(a),Math.round(c2))}
-// `sh` is a palette: with one, the ellipse is lit from the upper left and quantised into
-// that palette's highlight / body / shadow. Without one it stays a flat fill, which
-// is what the small shapes — muzzle, cheek, bubble — still want.
-function E(cx,cy,rx,ry,col,o,sh){
+// `sh` is a palette: with one, the ellipse is lit and quantised into that palette's
+// highlight / body / shadow. Without one it stays a flat fill, which is what the small
+// shapes — muzzle, cheek, bubble — still want.
+//
+// `rim` shapes the lit share of the whole ellipse, because a third is right for a body and
+// wrong for a head. Each ellipse lights itself, so at `rim` of 1 a 30x24 head is a third
+// highlight — mostly lit, and a black cat with a mostly-lit head is a bright blue blob.
+// Below 1 the curve compresses the dark end and the highlight collapses to a rim along the
+// upper-left edge, which is how fur catches light. The body passes nothing and keeps the
+// even thirds.
+function E(cx,cy,rx,ry,col,o,sh,rim){
   cx=Math.round(cx);cy=Math.round(cy)
   if(o)E(cx,cy,rx+1,ry+1,OL)
   for(let y=-ry;y<=ry;y++){
@@ -144,10 +171,13 @@ function E(cx,cy,rx,ry,col,o,sh){
     if(!sh){R(cx-hw,cy+y,hw*2+1,1,col);continue}
     for(let x=-hw;x<=hw;x++){
       // 0 at the lit upper-left edge, 1 at the shaded lower-right one.
-      const d=cl((x/Math.max(rx,.5)+y/Math.max(ry,.5))*.5+.5,0,1)
-      // Centred so the middle tone owns the middle of the ellipse, and the threshold only
-      // moves a pixel across the boundary it is already sitting on.
-      const q=d*3-.5,i=Math.floor(q),up=(BAYER[(((cy+y)&3)<<2)|((cx+x)&3)]+.5)/16<q-i?1:0
+      let d=cl((x/Math.max(rx,.5)+y/Math.max(ry,.5))*.5+.5,0,1)
+      if(rim)d=Math.pow(d,rim)
+      // Thirds, shifted so the dither window sits on the boundary and the solid part of
+      // each band dominates. The +DITHER/2 is the bias that window would otherwise add.
+      const q=d*3-.5+DITHER/2,i=Math.floor(q),f=q-i
+      const z=(f-(1-DITHER))/DITHER
+      const up=(BAYER[(((cy+y)&3)<<2)|((cx+x)&3)]+.5)/16<z?1:0
       R(cx+x,cy+y,1,1,[sh.hi,sh.b,sh.lo][cl(i+up,0,2)])
     }
   }
@@ -336,7 +366,7 @@ function headS(x,y,st,open,sq,sleepy,ef){const p=PAL[pal],P=C.P,hs=(chonk?1.1:1)
 const lx=cl(Math.round((mx/PS-C.x)*C.dir/30),-2,2),fk=C.ef>0?Math.sin(C.ef*40)*1.2:0,eh=Math.round((8-ef*3)*lerp(1,.5,P.ball)),xo=Math.round(rx*.55)
 for(const s of[-1,1]){const sl=s*(1+ef*3)+(C.ef>0&&C.es===s?fk:0),ex=x+s*xo;tri(ex,y-ry+3,eh,Math.round(9*hs),sl,OL,1);tri(ex,y-ry+3,eh,Math.round(9*hs),sl,p.b,0);tri(ex,y-ry+3,Math.max(2,eh-3),Math.round(5*hs),sl*.7,p.ear,0)}
 R(x-rx-3,y+2,4,4,OL);R(x-rx-2,y+3,3,2,p.b);R(x+rx,y+2,4,4,OL);R(x+rx,y+3,3,2,p.b)
-E(x,y,rx,ry,p.b,1,p);R(x-8,y-ry+2,5,1,lt);R(x-10,y-ry+3,3,1,lt);R(x-11,y-ry+4,2,1,lt)
+E(x,y,rx,ry,p.b,1,p,.58);R(x-8,y-ry+2,5,1,lt);R(x-10,y-ry+3,3,1,lt);R(x-11,y-ry+4,2,1,lt)
 for(const d of[-4,0,4])R(x+d,y-ry+1,1,d?3:4,p.s)
 E(x+lx,y+4,5,3,p.belly);R(x-12,y+3,3,2,'#ff9ab5');R(x+9,y+3,3,2,'#ff9ab5')
 const sty=C.bt>0&&!SHUT[st]?'blink':st;eye(x+lx-7,y,sty,p);eye(x+lx+7,y,sty,p)
