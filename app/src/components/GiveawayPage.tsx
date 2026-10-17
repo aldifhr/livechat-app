@@ -1,18 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import SpinWheel, { type Sector, type SpinWheelHandle } from 'ts-spin-wheel'
 
-/** Cryptographically secure random integer in [0, max) using rejection sampling.
- *  Avoids modulo bias that Math.random() % max would introduce. */
-function secureRandomInt(max: number): number {
-  if (max <= 0) return 0
-  const range = Math.floor(0x100000000 / max) * max
-  const buf = new Uint32Array(1)
-  do {
-    crypto.getRandomValues(buf)
-  } while (buf[0] >= range)
-  return buf[0] % max
-}
-
 /** SHA-256 hash of a string, hex-encoded. */
 async function sha256(text: string): Promise<string> {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
