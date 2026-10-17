@@ -229,7 +229,7 @@ function BoardCustomizer({ roomId, style, onChange }: {
   style: BoardStyle
   onChange: (change: Partial<BoardStyle>) => void
 }) {
-  const boardUrl = useMemo(() => (roomId ? api.catOverlay(roomId) : ''), [roomId])
+  const boardUrl = useMemo(() => (roomId ? api.topChatterOverlay(roomId) : ''), [roomId])
 
   return (
     <>
