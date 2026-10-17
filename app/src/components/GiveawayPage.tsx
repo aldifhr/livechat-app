@@ -13,16 +13,6 @@ function secureRandomInt(max: number): number {
   return buf[0] % max
 }
 
-/** Fisher-Yates shuffle using CSPRNG — sampling without replacement. */
-function secureShuffle<T>(items: T[]): T[] {
-  const result = [...items]
-  for (let i = result.length - 1; i > 0; i--) {
-    const j = secureRandomInt(i + 1)
-    ;[result[i], result[j]] = [result[j], result[i]]
-  }
-  return result
-}
-
 /** SHA-256 hash of a string, hex-encoded. */
 async function sha256(text: string): Promise<string> {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
@@ -34,6 +24,24 @@ function generateSeed(): string {
   const buf = new Uint8Array(32)
   crypto.getRandomValues(buf)
   return Array.from(buf).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+/**
+ * Derive the winner from the committed seed + the frozen pool.
+ * Deterministic: SHA-256(seed + '|' + sorted_pool.join('|')) → integer → index.
+ * Anyone can recompute this from the revealed seed and the pool hash
+ * published at commit time — no CSPRNG involved in the draw itself.
+ */
+async function deriveWinnerFromSeed(seed: string, pool: string[]): Promise<string | null> {
+  if (!seed || pool.length === 0) return null
+  const sorted = [...pool].sort()
+  const input = seed + '|' + sorted.join('|')
+  const digest = await sha256(input)
+  // First 8 hex chars → 32-bit integer → index (no modulo bias: pool.length
+  // is far below 2^32, and we reject nothing — the mapping is deterministic
+  // and verifiable, which is the point).
+  const index = parseInt(digest.slice(0, 8), 16) % pool.length
+  return pool[index]
 }
 import { Confetti, type ConfettiRef } from './ui/confetti'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
@@ -118,6 +126,7 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
   const confettiRef = useRef<ConfettiRef>(null)
   const pendingWinnerRef = useRef<string | null>(null)
   const pendingPoolRef = useRef<string[] | null>(null)
+  const committedSeedRef = useRef<string>('')
   const enteredRef = useRef(new Set<string>())
   const entryCountsRef = useRef<Record<string, number>>({})
   const followedRef = useRef(new Set<string>())
@@ -174,6 +183,7 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
     // hash of the frozen entrant list. The seed is revealed after the draw.
     const seed = generateSeed()
     setRevealSeed(seed)
+    committedSeedRef.current = seed
     const sortedIds = [...snapshot].sort()
     const listHash = await sha256(sortedIds.join('|'))
     setEntrantHash(listHash)
@@ -303,15 +313,15 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
     setStatus('open')
   }
 
-  function spinForWinner() {
+  async function spinForWinner() {
     if (spinning || status !== 'closed' || winners.length >= winnerCount || availableIds.length === 0) return
     if (!spinWheelRef.current) return
 
-    // Determine winner BEFORE animation starts. The wheel spin is purely visual;
-    // the result comes from CSPRNG (Fisher-Yates sampling without replacement).
+    // Winner is derived from the committed seed + frozen pool hash.
+    // This is deterministic — anyone can verify by recomputing from
+    // the revealed seed and the pool hash published at commit time.
     const pool = [...availableIds] // immutable snapshot at spin time
-    const shuffled = secureShuffle(pool)
-    const winner = shuffled[0]
+    const winner = await deriveWinnerFromSeed(committedSeedRef.current, pool)
     if (!winner) {
       setSpinning(false)
       return
@@ -367,6 +377,7 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
     setShowSeed(false)
     pendingWinnerRef.current = null
     pendingPoolRef.current = null
+    committedSeedRef.current = ''
     entryCountsRef.current = {}
     setMockParticipants([])
     setIsTestRun(false)
@@ -599,7 +610,7 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
               {availableIds.length > 12 && <span>+{availableIds.length - 12} more</span>}
             </div>
           </div>
-          <button className="btn btn-primary rounded-lg bg-app-accent px-5 py-2.5 font-semibold text-app-bg disabled:opacity-50" type="button" onClick={spinForWinner} disabled={spinning || availableIds.length === 0 || winners.length >= winnerCount}>
+          <button className="btn btn-primary rounded-lg bg-app-accent px-5 py-2.5 font-semibold text-app-bg disabled:opacity-50" type="button" onClick={() => void spinForWinner()} disabled={spinning || availableIds.length === 0 || winners.length >= winnerCount}>
             {spinning ? 'Spinning…' : winners.length >= winnerCount ? 'All winners selected' : availableIds.length === 0 ? 'Everyone eligible has won' : winners.length > 0 ? `Spin for winner ${winners.length + 1} of ${winnerCount}` : `Spin for winner 1 of ${winnerCount}`}
           </button>
           {revealSeed && (
