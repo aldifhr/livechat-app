@@ -28,9 +28,18 @@ root.classList.add('clean')
 // ---- chat overlay (WebSocket) ----
 const roomId=q.get('room')||''
 let chatSocket=null
+let lastEvent=Date.now()
+const IDLE_SLEEP_MS=180000 // 3 minutes without events → cat gets sleepy
+
+/** Wake the cat if sleeping, then react. */
+function wake(){
+  if(C.mode==='sleep')setMode('walk')
+  lastEvent=Date.now()
+}
 
 /** React to a gift / like / follow: hearts + animation, no bubble text. */
 function react(frame){
+  wake()
   const kind=frame.type
   boop()
   C.boop=1.2
@@ -51,6 +60,7 @@ function connectChat(){
       const frame=JSON.parse(event.data)
       if(frame.type==='comment'&&frame.text){
         // Comments do not show a bubble — they just make the cat react (hearts).
+        wake()
         C.boop=1.2
         for(let i=0;i<6;i++)em('heart',C.x+rnd(-10,10),GY-44,rnd(-8,8),rnd(-30,-18),1.2)
       } else if(frame.type==='gift'||frame.type==='like'||frame.type==='follow'){
@@ -106,6 +116,8 @@ let r=Math.random()*WT.reduce((a,b)=>a+b[1],0);for(const[k,v]of WT){r-=v;if(r<=0
 function em(t,x,y,vx,vy,l,sz){pts.push({t,x,y,vx,vy,l,L:l,sz})}
 function boop(){C.boop=1.2;for(let i=0;i<6;i++)em('heart',C.x+rnd(-10,10),GY-44,rnd(-8,8),rnd(-30,-18),1.2);say(pick(['meong!','mrrp~','aduh geli','>w<','ih apaan sih']));if(C.mode==='sleep')setMode('sit');if(C.jy<=0&&C.mode!=='roll')C.jv=70}
 function upd(dt){const c=C,m=M[c.mode],P=c.P;c.t+=dt;TT+=dt
+// Idle → sleepy: after IDLE_SLEEP_MS with no events, put the cat to sleep.
+if(auto&&c.mode!=='sleep'&&Date.now()-lastEvent>IDLE_SLEEP_MS){setMode('sleep')}
 const T=Object.assign({amp:0,sit:0,loaf:0,ball:0,tuck:0,gl:0,fl:0,wash:0,knead:0},m.T)
 for(const k in T)P[k]+=(T[k]-P[k])*Math.min(1,dt*(k==='gl'?4:7))
 if(c.mode==='jump'&&!c.jd&&c.t>.28){c.jd=1;c.jv=115}
