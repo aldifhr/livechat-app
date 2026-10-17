@@ -15,13 +15,9 @@ button:hover,button.on{background:var(--acc);color:#2b1f2d}
 .clean #ui,.hide #ui,.clean #tip{display:none}
 #tip{width:100%;text-align:center;opacity:.7;font-weight:600;font-size:12px}
 
-#chat{position:fixed;left:0;right:0;bottom:0;pointer-events:none;z-index:10}
-#chat .msg{max-width:60vw;margin:4px auto;padding:6px 14px;background:rgba(0,0,0,.75);color:#fff;border-radius:999px;font:600 14px/1.3 "Segoe UI",system-ui,sans-serif;text-align:center;opacity:0;transform:translateY(8px);transition:opacity .3s,transform .3s}
-#chat .msg.show{opacity:1;transform:translateY(0)}
-#chat .msg.fade{opacity:0;transform:translateY(-4px)}
+
 </style></head><body>
 <canvas id="c"></canvas><div id="bub"></div><div id="ui"></div>
-<div id="chat"></div>
 <script>
 // ---- config from URL ----
 const q=new URLSearchParams(location.search)
@@ -30,53 +26,18 @@ const root=document.documentElement
 root.classList.add('clean')
 
 // ---- chat overlay (WebSocket) ----
-const chatDiv=document.getElementById('chat')
 const roomId=q.get('room')||''
 let chatSocket=null
-let chatQueue=[]
-let chatShowing=false
-const CHAT_MAX=5
-const CHAT_DURATION=4000
 
-function showChatMessage(user,text){
-  const el=document.createElement('div')
-  el.className='msg'
-  el.textContent=(user?user+': ':'')+text
-  chatDiv.appendChild(el)
-  // trim old messages
-  while(chatDiv.children.length>CHAT_MAX) chatDiv.removeChild(chatDiv.firstChild)
-  requestAnimationFrame(()=>el.classList.add('show'))
-  setTimeout(()=>{
-    el.classList.remove('show')
-    el.classList.add('fade')
-    setTimeout(()=>el.remove(),300)
-  },CHAT_DURATION)
-}
-
-function processChatQueue(){
-  if(chatShowing||chatQueue.length===0)return
-  chatShowing=true
-  const{user,text}=chatQueue.shift()
-  showChatMessage(user,text)
-  setTimeout(()=>{chatShowing=false;processChatQueue()},500)
-}
-
-/** Show a reaction bubble (gift / like / follow) and make the cat react. */
+/** React to a gift / like / follow: hearts + animation, no bubble text. */
 function react(frame){
-  const user=frame.user||'someone'
   const kind=frame.type
-  const label=kind==='gift'?(frame.giftName||'gift'):kind==='like'?'liked':'followed'
-  // Bubble text — same channel as chat, so the bubble style stays consistent.
-  const text=(kind==='gift'&&frame.giftName)?`${user} sent ${frame.giftName}`:`${user} ${label}`
-  showChatMessage('',text)
-  // Excited reaction: jump + hearts + happy face.
   boop()
   C.boop=1.2
   for(let i=0;i<8;i++)em('heart',C.x+rnd(-12,12),GY-50+rnd(-6,6),rnd(-10,10),rnd(-36,-20),1.4)
-  // Zoomies for gifts, jump for likes/follows.
-  if(kind==='gift'){setMode('zoom');say(pick(['WADUH!!','GASKEUN','HADIAH NYA APA','MAKASIH BANG']))}
-  else if(kind==='like'){setMode('jump');say(pick(['wkwk','suka ya?','thanks!','>w<']))}
-  else{setMode('vibe');say(pick([' follower baru!','gas keun','makasih!']))}
+  if(kind==='gift'){setMode('zoom')}
+  else if(kind==='like'){setMode('jump')}
+  else{setMode('vibe')}
 }
 
 function connectChat(){
