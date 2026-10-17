@@ -159,13 +159,15 @@ export default function OverlayStage({
   // for a backdrop is the only thing that reaches it: an iframe element's own
   // background is ignored, verified rather than assumed, so there is nothing to
   // set from out here.
-  const staged = new URL(url)
-  staged.searchParams.set('backdrop', 'dark')
-  // Bust the browser cache so a freshly deployed overlay.html is always loaded.
-  // Without this the iframe serves the old file — a stale `showPreviewSample`
-  // keeps injecting the sample row after the code is gone.
-  staged.searchParams.set('cb', Date.now().toString())
-  const framed = staged.toString()
+  // Memoized so the cache-busting param is computed once per URL change, not
+  // on every render. A `Date.now()` here made the iframe reload constantly —
+  // the preview blinked as React re-rendered on hover and state updates.
+  const framed = useMemo(() => {
+    const staged = new URL(url)
+    staged.searchParams.set('backdrop', 'dark')
+    staged.searchParams.set('cb', Date.now().toString())
+    return staged.toString()
+  }, [url])
 
   if (variant === 'canvas') {
     // The canvas at its real pixel size, scaled into the box. The overlay page
