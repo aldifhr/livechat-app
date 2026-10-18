@@ -98,7 +98,7 @@ export default function Dashboard() {
     }
   }, [])
 
-  usePoll(() => void poll(), POLL_MS)
+  usePoll(poll, POLL_MS)
 
   const totals = useMemo(() => {
     const live = rows.filter((row) => row.status?.connected)

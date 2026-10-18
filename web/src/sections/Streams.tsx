@@ -114,7 +114,7 @@ export default function Streams() {
     }
   }, [])
 
-  usePoll(() => void load(), POLL_MS)
+  usePoll(load, POLL_MS)
 
   // Status is asked per room rather than derived from the list, because the list
   // endpoint does not carry it — a room that was created by a test is not

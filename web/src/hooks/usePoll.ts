@@ -9,11 +9,16 @@ import { useEffect } from 'react'
  * Four pages had the same three lines — call it, set an interval, clear it on
  * teardown — and each restated the same `void` dance. The callback owns its own
  * state and error handling; this only owns the clock.
+ *
+ * `callback` must be stable — a `useCallback`, not an inline arrow. It is a
+ * dependency of the effect below, so a fresh identity every render re-runs the
+ * effect on every render, which fetches on every render. That is a runaway poll,
+ * not a poll.
  */
-export function usePoll(callback: () => void, intervalMs: number): void {
+export function usePoll(callback: () => void | Promise<void>, intervalMs: number): void {
   useEffect(() => {
-    callback()
-    const timer = window.setInterval(callback, intervalMs)
+    void callback()
+    const timer = window.setInterval(() => void callback(), intervalMs)
     return () => window.clearInterval(timer)
   }, [callback, intervalMs])
 }

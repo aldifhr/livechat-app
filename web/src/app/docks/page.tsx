@@ -150,7 +150,7 @@ export default function DocksPage() {
     }
   }, [roomId])
 
-  usePoll(() => void load(), POLL_MS)
+  usePoll(load, POLL_MS)
 
   // WebSocket for live chat with automatic reconnection
   useEffect(() => {

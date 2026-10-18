@@ -96,7 +96,7 @@ export default function StreamProfile({ handle }: { handle: string }) {
     }
   }, [wanted])
 
-  usePoll(() => void load(), POLL_MS)
+  usePoll(load, POLL_MS)
 
   const links = room ? streamLinks(room.id) : null
 
