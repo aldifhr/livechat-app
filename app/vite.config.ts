@@ -33,6 +33,14 @@ export default defineConfig({
         changeOrigin: true,
         headers: { origin: 'https://tauri.localhost' },
       },
+      // The commitment endpoints, same treatment as the snapshot upload: the app
+      // has no session, so it reaches them cross-origin in a build and through
+      // this proxy in dev, and the web route allows the tauri origin.
+      '/api/giveaways/commit': {
+        target: 'https://streamtools.aldifhr.my.id',
+        changeOrigin: true,
+        headers: { origin: 'https://tauri.localhost' },
+      },
     },
     // target/ is cargo's, not the frontend's. Watching it meant watching tens of
     // thousands of build artifacts, and watching the .exe specifically meant

@@ -53,6 +53,11 @@ function isOpen(pathname: string): boolean {
     // bounded and validated by its route handler; private dashboard APIs remain gated.
     /^\/giveaway\/[A-Za-z0-9_-]{16}$/.test(pathname) ||
     pathname === '/api/giveaways/snapshots' ||
+    // Giveaway commitments. Open at the proxy for the same reason as the
+    // snapshots above — the desktop app has no session — and gated inside the
+    // route by origin: the dashboard same-origin, or the app's webview.
+    pathname === '/api/giveaways/commit' ||
+    pathname.startsWith('/api/giveaways/commit/') ||
     pathname === '/api/tts' ||
     // OBS docks: public browser source for OBS, mirrors desktop home.
     // No session — OBS cannot type a password, same reason as overlays.

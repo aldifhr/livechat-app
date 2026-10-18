@@ -1,36 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import SpinWheel, { type Sector, type SpinWheelHandle } from 'ts-spin-wheel'
 
-/** SHA-256 hash of a string, hex-encoded. */
-async function sha256(text: string): Promise<string> {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
-}
-
-/** Generate a cryptographically secure random seed. */
-function generateSeed(): string {
-  const buf = new Uint8Array(32)
-  crypto.getRandomValues(buf)
-  return Array.from(buf).map(b => b.toString(16).padStart(2, '0')).join('')
-}
-
-/**
- * Derive the winner from the committed seed + the frozen pool.
- * Deterministic: SHA-256(seed + '|' + sorted_pool.join('|')) → integer → index.
- * Anyone can recompute this from the revealed seed and the pool hash
- * published at commit time — no CSPRNG involved in the draw itself.
- */
-async function deriveWinnerFromSeed(seed: string, pool: string[]): Promise<string | null> {
-  if (!seed || pool.length === 0) return null
-  const sorted = [...pool].sort()
-  const input = seed + '|' + sorted.join('|')
-  const digest = await sha256(input)
-  // First 8 hex chars → 32-bit integer → index (no modulo bias: pool.length
-  // is far below 2^32, and we reject nothing — the mapping is deterministic
-  // and verifiable, which is the point).
-  const index = parseInt(digest.slice(0, 8), 16) % pool.length
-  return pool[index]
-}
+import { sha256, deriveWinnerFromSeed, type GiveawayEntrant, type GiveawayDraw, type GiveawayReport } from '@shared/giveaway'
 import { Confetti, type ConfettiRef } from './ui/confetti'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
 import type { StatsRecorder } from '../hooks/useStats'
@@ -40,9 +11,11 @@ import type { SidecarEvent } from '../lib/sidecar'
 import type { FeedItem } from '../types'
 
 type GiveawayStatus = 'idle' | 'open' | 'review' | 'closed'
-type GiveawayEntrant = { id: string; nickname: string; followed: boolean; eligible: boolean; keywordMessages: number; reason?: string }
-type GiveawayDraw = { drawnAt: string; pool: string[]; winner: string }
 const GIVEAWAY_WEB_ORIGIN = 'https://streamtools.aldifhr.my.id'
+/** Where the commitment endpoints live: proxied same-origin in dev, absolute in a build. */
+function commitBase(): string {
+  return import.meta.env.DEV ? '' : GIVEAWAY_WEB_ORIGIN
+}
 const WHEEL_COLORS = ['#f59e0b', '#fb7185', '#38bdf8', '#a78bfa', '#34d399', '#f97316', '#e879f9', '#2dd4bf']
 
 function formatTime(milliseconds: number): string {
@@ -107,6 +80,9 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
   const [mockParticipants, setMockParticipants] = useState<Chatter[]>([])
   const [spinning, setSpinning] = useState(false)
   const [commitHash, setCommitHash] = useState('')
+  const [commitId, setCommitId] = useState('')
+  const [committedAt, setCommittedAt] = useState('')
+  const [commitError, setCommitError] = useState('')
   const [revealSeed, setRevealSeed] = useState('')
   const [entrantHash, setEntrantHash] = useState('')
   const [showSeed, setShowSeed] = useState(false)
@@ -118,6 +94,8 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
   const enteredRef = useRef(new Set<string>())
   const entryCountsRef = useRef<Record<string, number>>({})
   const followedRef = useRef(new Set<string>())
+  const eligibleRef = useRef<string[]>([])
+  eligibleRef.current = eligibleSnapshot
   const entryKeyword = keyword.trim().toLowerCase()
 
   const eligibleIds = useMemo(() => {
@@ -166,24 +144,46 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
     setReviewEndsAt(Date.now() + 15_000)
     setRemainingMs(15_000)
     setStatus('review')
-
-    // Commit-reveal: generate a seed and publish its SHA-256 hash plus the
-    // hash of the frozen entrant list. The seed is revealed after the draw.
-    const seed = generateSeed()
-    setRevealSeed(seed)
-    committedSeedRef.current = seed
-    const sortedIds = [...snapshot].sort()
-    const listHash = await sha256(sortedIds.join('|'))
-    setEntrantHash(listHash)
-    const commit = await sha256(seed)
-    setCommitHash(commit)
   }, [status, stats])
+
+  /**
+   * Fix a seed for the frozen pool, on the web server.
+   *
+   * The same commitment the dashboard uses: the server generates and holds the
+   * seed, returns only its hash, and reveals it at the first draw. The app used to
+   * make its own seed here, which is no proof at all — whoever runs the app knows
+   * the pool and could grind seeds to a winner they like.
+   *
+   * Run when the entries are final (after the review), so the sealed list is the
+   * one actually drawn from.
+   */
+  const anchorCommit = useCallback(async (poolIds: string[]) => {
+    const poolHash = await sha256([...poolIds].sort().join('|'))
+    setEntrantHash(poolHash)
+    try {
+      const response = await fetch(`${commitBase()}/api/giveaways/commit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ poolHash }),
+      })
+      const result = (await response.json().catch(() => ({}))) as { id?: string; commitHash?: string; committedAt?: string; detail?: string }
+      if (!response.ok || !result.id || !result.commitHash) throw new Error(result.detail || 'commit failed')
+      committedSeedRef.current = ''
+      setCommitId(result.id)
+      setCommitHash(result.commitHash)
+      setCommittedAt(result.committedAt ?? '')
+      setCommitError('')
+    } catch {
+      setCommitError('Could not commit the draw to the server. Try again.')
+    }
+  }, [])
 
   const lockEntries = useCallback(() => {
     setReviewEndsAt(null)
     setRemainingMs(0)
     setStatus('closed')
-  }, [])
+    void anchorCommit(eligibleRef.current)
+  }, [anchorCommit])
 
   useEffect(() => {
     if (status !== 'open' || endsAt === null) return
@@ -247,6 +247,13 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
     setSnapshotUrl('')
     setSnapshotMessage('')
     setReviewEndsAt(null)
+    committedSeedRef.current = ''
+    setCommitId('')
+    setCommittedAt('')
+    setCommitHash('')
+    setEntrantHash('')
+    setRevealSeed('')
+    setCommitError('')
     if (testMode) {
       const fakeEntrants: GiveawayEntrant[] = Array.from({ length: 8 }, (_, index) => ({
         id: `test_viewer_${String(index + 1).padStart(2, '0')}`,
@@ -282,18 +289,7 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
       setEndsAt(null)
       setRemainingMs(0)
       setStatus('closed')
-
-      // Commit-reveal: same path as closeGiveaway. Test mode skips the
-      // countdown, so without this the seed would never be set and the
-      // spin button would stay disabled.
-      const seed = generateSeed()
-      setRevealSeed(seed)
-      committedSeedRef.current = seed
-      const sortedIds = [...fakeIds].sort()
-      const listHash = await sha256(sortedIds.join('|'))
-      setEntrantHash(listHash)
-      const commit = await sha256(seed)
-      setCommitHash(commit)
+      void anchorCommit(fakeIds)
       return
     }
     setMockParticipants([])
@@ -317,9 +313,24 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
     if (spinning || status !== 'closed' || winners.length >= winnerCount || availableIds.length === 0) return
     if (!spinWheelRef.current) return
 
-    // Winner is derived from the committed seed + frozen pool hash.
-    // This is deterministic — anyone can verify by recomputing from
-    // the revealed seed and the pool hash published at commit time.
+    // The seed is the server's, revealed once at the first draw. Until then the
+    // winner cannot be known — not by this app, and not by whoever runs it.
+    if (!committedSeedRef.current) {
+      if (!commitId) return
+      try {
+        const response = await fetch(`${commitBase()}/api/giveaways/commit/${commitId}`, { method: 'POST' })
+        const result = (await response.json().catch(() => ({}))) as { seed?: string; detail?: string }
+        if (!response.ok || !result.seed) throw new Error(result.detail || 'reveal failed')
+        committedSeedRef.current = result.seed
+      } catch {
+        setCommitError('Could not reveal the committed seed, so no winner can be drawn.')
+        return
+      }
+    }
+
+    // Winner is derived from the committed seed + frozen pool hash. This is
+    // deterministic — anyone can verify by recomputing from the revealed seed and
+    // the pool the report publishes.
     const pool = [...availableIds] // immutable snapshot at spin time
     const winner = await deriveWinnerFromSeed(committedSeedRef.current, pool)
     if (!winner) {
@@ -376,6 +387,9 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
     setSnapshotUrl('')
     setSnapshotMessage('')
     setCommitHash('')
+    setCommitId('')
+    setCommittedAt('')
+    setCommitError('')
     setRevealSeed('')
     setEntrantHash('')
     setShowSeed(false)
@@ -389,7 +403,7 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
     followedRef.current = new Set()
   }
 
-  function buildAuditReport() {
+  function buildAuditReport(): GiveawayReport {
     return {
       format: 'livechat-giveaway-audit-v1',
       streamer,
@@ -407,6 +421,8 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
       commitHash,
       poolHash: entrantHash,
       revealSeed,
+      commitId: commitId || undefined,
+      committedAt: committedAt || undefined,
       note: 'This report records the frozen entries and draw pools; it is not a cryptographic proof that the application itself was not modified.',
     }
   }
@@ -542,10 +558,12 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
               <div className="text-sm font-semibold text-app-text">{eligibleIds.length}</div>
             </div>
           )}
+          {commitError && <div className="w-full text-[10px] text-rose-400">{commitError}</div>}
           {commitHash && (
             <div className="w-full text-[10px] text-app-muted">
               <span className="font-semibold">Commit:</span> {commitHash.slice(0, 16)}…
               {entrantHash && <><span className="ml-2 font-semibold">Pool hash:</span> {entrantHash.slice(0, 16)}…</>}
+              {committedAt && <><span className="ml-2 font-semibold">Committed:</span> {new Date(committedAt).toLocaleString()}</>}
             </div>
           )}
           <div className="flex flex-wrap gap-2">
