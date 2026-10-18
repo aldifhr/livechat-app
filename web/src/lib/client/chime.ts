@@ -3,6 +3,8 @@
  * Completely zero-asset, requires no external sound files.
  */
 
+'use client'
+
 export type ChimeType = 'gift' | 'follow' | 'comment'
 
 export function playChime(type: ChimeType) {

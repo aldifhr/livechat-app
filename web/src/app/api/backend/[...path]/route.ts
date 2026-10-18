@@ -11,7 +11,7 @@
  */
 
 import { NextRequest } from 'next/server'
-import { backendFetch, BackendError } from '@/lib/backend'
+import { backendFetch, BackendError } from '@/lib/server/backend'
 
 /**
  * Everything the dashboard can ask for, as paths below this route.

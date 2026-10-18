@@ -14,7 +14,7 @@
  */
 
 import PasswordPanel from '@/components/PasswordPanel'
-import { useOrigin } from '@/lib/browser'
+import { useOrigin } from '@/hooks/useBrowser'
 
 export default function About({ backend }: { backend?: string }) {
   // After mount rather than during render: the server has no window, and a

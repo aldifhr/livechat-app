@@ -18,10 +18,10 @@
 import 'server-only'
 
 import { NextRequest, NextResponse } from 'next/server'
-import { passwordHashCached, verifyPassword } from '@/lib/htpasswd'
-import { dashboardUser, passwordFile, sessionSecret } from '@/lib/config'
-import { sessionCookie, sessionKey, signSession } from '@/lib/session'
-import { isSameOrigin } from '@/lib/auth'
+import { passwordHashCached, verifyPassword } from '@/lib/server/htpasswd'
+import { dashboardUser, passwordFile, sessionSecret } from '@/lib/server/config'
+import { sessionCookie, sessionKey, signSession } from '@/lib/server/session'
+import { isSameOrigin } from '@/lib/server/auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'

@@ -1,4 +1,4 @@
-import { BACKEND } from '@/lib/backend'
+import { BACKEND } from '@/lib/server/backend'
 import About from '@/sections/About'
 
 /**

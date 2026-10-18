@@ -14,7 +14,7 @@
 
 'use client'
 
-import type { AnalyticsSummary, GiveawaySnapshot, LogPage, Room, RoomSession, RoomStatus } from './types'
+import type { AnalyticsSummary, GiveawaySnapshot, LogPage, Room, RoomSession, RoomStatus } from '../types'
 
 export class ApiError extends Error {
   constructor(

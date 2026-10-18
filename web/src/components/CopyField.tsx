@@ -26,7 +26,7 @@
  * not open. There is exactly one way to copy one, and it copies the real one.
  */
 
-import { useCopy } from '@/lib/useCopy'
+import { useCopy } from '@/hooks/useCopy'
 
 interface Props {
   /** What this link is, named for anyone reading the page rather than the screen. */

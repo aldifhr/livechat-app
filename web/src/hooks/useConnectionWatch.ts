@@ -24,8 +24,8 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react'
-import { api } from './client'
-import type { RoomStatus } from './types'
+import { api } from '@/lib/client/api'
+import type { RoomStatus } from '@/lib/types'
 import { useToast } from '@/components/Toast'
 
 /** The beat, and how long to keep at it. */

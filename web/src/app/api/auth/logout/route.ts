@@ -14,7 +14,7 @@
 import 'server-only'
 
 import { NextResponse } from 'next/server'
-import { COOKIE_NAME } from '@/lib/session'
+import { COOKIE_NAME } from '@/lib/server/session'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'

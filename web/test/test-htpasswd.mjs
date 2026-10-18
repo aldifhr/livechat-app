@@ -16,7 +16,7 @@ import { execFileSync } from 'node:child_process'
 import { chmodSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { setPassword, verifyPassword, passwordHash, passwordHashCached } from '../src/lib/htpasswd.ts'
+import { setPassword, verifyPassword, passwordHash, passwordHashCached } from '../src/lib/server/htpasswd.ts'
 
 let failures = 0
 function check(name, ok) {

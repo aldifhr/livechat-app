@@ -26,12 +26,11 @@ manifest** — `npm install` at the root does nothing, and that is deliberate.
 │   ├── src/          React (Vite)
 │   ├── src-tauri/    Rust host: WebSocket client, frame mapper, tray, TTS
 │   ├── test/         13 `.mjs` suites (own runner, not Vitest/Jest)
-│   └── scripts/      Python diagnostics (WS frame dump, viewer probe)
-├── shared/overlay.ts The overlay styling contract. Single source, imported
-│                    by app (via the `@shared` alias) and web.
+│   └── scripts/      Diagnostics: Python WS probes + `probe-ui.mjs`
+├── shared/           Cross-app TypeScript contracts: overlay, events,
+│                    platforms. Imported via the `@shared` alias.
 ├── deploy/           systemd units + nginx config
-├── scripts/          deploy-web.sh, backup-rooms.sh
-└── docs/             Design specs
+└── scripts/          deploy-web.sh, backup-rooms.sh
 ```
 
 ## Backend (StreamKit)
@@ -42,23 +41,28 @@ pages are static files that live with the dashboard and are served by nginx.
 
 ```
 backend/
-├── main.py           app object, lifespan, middleware, /ws, connect/trigger/hooks
+├── main.py           app object, lifespan, middleware, /ws, route wiring
 ├── models.py         pydantic request models + styling keys
 ├── store.py          rooms.json — atomic + lock
+├── giveaway_store.py Public giveaway snapshots
 ├── hub.py            WebSocket hub
 ├── events.py         Event type, to_wire, emit_config
 ├── eventlog.py       Counters & leaderboard, per-room
+├── logbuffer.py      In-memory log ring for /admin/logs
 ├── protocols.py      Protocol registry
 ├── watchdog.py       Liveness watchdog
 ├── logging_setup.py  The one logger
 ├── routes/
 │   ├── auth.py       Token gate + exemptions
 │   ├── rooms.py      Room CRUD + config
-│   └── ops.py        /health, /metrics, /gifts
+│   ├── live.py       Connect / disconnect / status
+│   ├── ops.py        /health, /metrics, /gifts, trigger + webhook
+│   ├── giveaways.py  Public snapshot create/read
+│   └── common.py     Shared route guards + teardown
 ├── sources/          TikTokLive adapter
 ├── static/           gifts/ (the gallery served at /gifts)
 ├── config/           Runtime state (git-ignored)
-└── tests/            17 suites
+└── tests/            24 suites
 ```
 
 ### Running it
@@ -91,6 +95,7 @@ python app/scripts/dump_ws_frames.py
 python app/scripts/measure_broadcast.py
 python app/scripts/probe_live_viewers.py
 python app/scripts/validate_live_city.py
+node   app/scripts/probe-ui.mjs
 ```
 
 ### API
@@ -184,7 +189,7 @@ npm run build && npm start
 ### Testing
 
 ```bash
-cd web && npm test   # 4 suites: htpasswd, session, style-store, room-live
+cd web && npm test   # 5 suites: htpasswd, session, style-store, room-live, proxy-allowlist
 ```
 
 ### Pages
@@ -222,7 +227,6 @@ All server-side. There are no `NEXT_PUBLIC_*` variables.
 | Name | Meaning |
 |---|---|
 | `BACKEND_URL` | Backend origin the server proxies to. |
-| `OVERLAY_ORIGIN` | Where overlay pages are served from, if not this app's own host. Unset by default. |
 | `STREAMKIT_TOKEN` | Backend token, attached server-side. Empty shows a "no API token" banner. |
 | `STREAMKIT_HTPASSWD` | Path to the htpasswd file. |
 | `STREAMKIT_DASHBOARD_USER` | Account name inside that file. Default `admin`. |
@@ -244,7 +248,7 @@ npm run tauri:build    # installer
 
 ```bash
 cd app && npm test              # typecheck + 11 suite scripts (15 .mjs files)
-cd app/src-tauri && cargo test  # 48 tests: frame mapper, TTS, sound
+cd app/src-tauri && cargo test  # Rust unit tests: frame mapper, TTS, sound
 ```
 
 No test framework — plain `.mjs` with a `check()` helper, exiting non-zero on
@@ -351,6 +355,3 @@ have to be written — the password file and the room store. The env files are
 ## References
 
 - [CHANGELOG.md](CHANGELOG.md) — what changed and why.
-- [`docs/superpowers/specs/2026-10-14-streamkit-console-redesign-design.md`](docs/superpowers/specs/2026-10-14-streamkit-console-redesign-design.md)
-  — the console redesign spec: why styling moved into the room config, and those
-  four key vocabularies.

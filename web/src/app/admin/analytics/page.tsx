@@ -10,7 +10,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { api, isAuthFailure } from '@/lib/client'
+import { api, isAuthFailure } from '@/lib/client/api'
 import { formatDuration } from '@/lib/format'
 import type { AnalyticsSummary, SessionPerson } from '@/lib/types'
 

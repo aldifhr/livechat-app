@@ -7,7 +7,7 @@
  * the shape of that address changes.
  */
 
-import { api } from './client'
+import { api } from './api'
 
 /**
  * The address of a stream's profile.

@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { attach, detachHandler, type SidecarEvent } from './sidecar'
+import { attach, detachHandler, type SidecarEvent } from '../lib/sidecar'
 
 /**
  * The subscription boilerplate every alert hook repeats.

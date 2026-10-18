@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { backendFetch, BackendError } from '@/lib/backend'
+import { backendFetch, BackendError } from '@/lib/server/backend'
 
 export const dynamic = 'force-dynamic'
 

@@ -1,4 +1,4 @@
-import { backendFetch, BackendError } from '@/lib/backend'
+import { backendFetch, BackendError } from '@/lib/server/backend'
 
 const MAX_BYTES = 2 * 1024 * 1024
 const RATE_WINDOW_MS = 60 * 60 * 1000

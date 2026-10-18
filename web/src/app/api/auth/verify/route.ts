@@ -14,8 +14,8 @@
 import 'server-only'
 
 import { cookies } from 'next/headers'
-import { COOKIE_NAME } from '@/lib/session'
-import { isSessionValid } from '@/lib/auth'
+import { COOKIE_NAME } from '@/lib/server/session'
+import { isSessionValid } from '@/lib/server/auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'

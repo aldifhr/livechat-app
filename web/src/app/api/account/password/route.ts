@@ -17,9 +17,9 @@
 import 'server-only'
 
 import { NextRequest } from 'next/server'
-import { setPassword, verifyPassword } from '@/lib/htpasswd'
-import { dashboardUser, passwordFile } from '@/lib/config'
-import { isSameOrigin } from '@/lib/auth'
+import { setPassword, verifyPassword } from '@/lib/server/htpasswd'
+import { dashboardUser, passwordFile } from '@/lib/server/config'
+import { isSameOrigin } from '@/lib/server/auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'

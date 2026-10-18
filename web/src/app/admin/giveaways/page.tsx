@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { api } from '@/lib/client'
+import { api } from '@/lib/client/api'
 import type { GiveawaySnapshot } from '@/lib/types'
 
 const POLL_MS = 15_000

@@ -10,7 +10,7 @@
  * Run with: npm test  (from web/)
  */
 
-import { sessionCookie, sessionKey, signSession, verifySession, COOKIE_NAME } from '../src/lib/session.ts'
+import { sessionCookie, sessionKey, signSession, verifySession, COOKIE_NAME } from '../src/lib/server/session.ts'
 
 let failures = 0
 function check(name, ok) {

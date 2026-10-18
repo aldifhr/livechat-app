@@ -24,8 +24,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { COOKIE_NAME } from '@/lib/session'
-import { isSessionValid } from '@/lib/auth'
+import { COOKIE_NAME } from '@/lib/server/session'
+import { isSessionValid } from '@/lib/server/auth'
 
 function hasSession(request: NextRequest): Promise<boolean> {
   return isSessionValid(request.cookies.get(COOKIE_NAME)?.value)

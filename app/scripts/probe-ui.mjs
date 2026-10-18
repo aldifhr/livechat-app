@@ -1,5 +1,5 @@
 /** Scratch probe: debug the handle input → connect button path. */
-import { fakeTransport, flush, installDom, loadApp } from './test/dom.mjs'
+import { fakeTransport, flush, installDom, loadApp } from '../test/dom.mjs'
 
 process.env.NODE_ENV = 'development'
 const { entry } = await loadApp()

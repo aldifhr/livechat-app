@@ -35,12 +35,12 @@ import {
   type OverlayStyle,
   type OverlayPosition,
 } from '@shared/overlay'
-import { api } from '../lib/client'
+import { api } from '../lib/client/api'
 import type { Room, RoomStatus } from '../lib/types'
 import { labelOf, orderForPicker, pickDefaultRoom, type RoomChoice } from '../lib/roomLive'
 import CopyField from '../components/CopyField'
 import OverlayStage from '../components/OverlayStage'
-import { usePersistedStyle, type SaveState } from './usePersistedStyle'
+import { usePersistedStyle, type SaveState } from '@/hooks/usePersistedStyle'
 
 /** The room picker both customizers share — the room is what an overlay points at. */
 function RoomPicker({

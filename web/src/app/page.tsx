@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { productName, splitWordmark, tagline } from '@/lib/config'
+import { productName, splitWordmark, tagline } from '@/lib/server/config'
 import Reveal from '@/components/Reveal'
 
 export const dynamic = 'force-dynamic'

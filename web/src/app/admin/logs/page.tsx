@@ -14,7 +14,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api, isAuthFailure } from '@/lib/client'
+import { api, isAuthFailure } from '@/lib/client/api'
 import type { LogEntry, LogPage } from '@/lib/types'
 
 /** How often the log is re-read. Slower than the dashboard's poll: a log page is

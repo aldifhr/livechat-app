@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { emitLocal, type SidecarEvent } from '../lib/sidecar'
-import { useRoomEvents } from '../lib/reactive'
+import { useRoomEvents } from './useRoomEvents'
 import { greetingReply, isGreeting } from '../lib/autoreply'
 
 /**

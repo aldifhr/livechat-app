@@ -1,7 +1,7 @@
 /**
- * Shared API shape — imported by both the server-side client (`backend.ts`) and
- * the browser client (`client.ts`). These are pure type declarations, so there is
- * no runtime import here: neither module pulls the other across the React
+ * Shared API shape — imported by both the server-side client (`server/backend.ts`)
+ * and the browser client (`client/api.ts`). These are pure type declarations, so
+ * there is no runtime import here: neither module pulls the other across the React
  * server/client boundary, and the types never need to.
  */
 

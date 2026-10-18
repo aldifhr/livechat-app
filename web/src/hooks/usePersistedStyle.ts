@@ -27,8 +27,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api } from '../lib/client'
-import type { Room } from '../lib/types'
+import { api } from '@/lib/client/api'
+import type { Room } from '@/lib/types'
 
 /** What the operator is told about the save, so nothing here is a guess. */
 export type SaveState =

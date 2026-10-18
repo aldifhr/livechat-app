@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { SidecarEvent } from '../lib/sidecar'
-import { useRoomEvents } from '../lib/reactive'
-import { useAudioPlayer } from '../lib/gate'
+import { useRoomEvents } from './useRoomEvents'
+import { useAudioPlayer } from './useAudioPlayer'
 import { shouldPlaySound } from '../lib/sound'
 
 type SoundEvent = Extract<SidecarEvent, { type: 'gift' | 'join' | 'follow' | 'share' }>

@@ -1,4 +1,4 @@
-import { productName, splitWordmark, tagline } from '@/lib/config'
+import { productName, splitWordmark, tagline } from '@/lib/server/config'
 import LoginForm from '@/components/LoginForm'
 
 // Per request: the product name comes from the environment, and a prerendered

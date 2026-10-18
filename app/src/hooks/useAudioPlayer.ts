@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { playSound, releaseAudio, resolveAudio } from './player'
+import { playSound, releaseAudio, resolveAudio } from '../lib/player'
 
 /**
  * The audio-context machinery every sound hook rebuilds.

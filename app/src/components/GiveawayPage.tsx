@@ -35,7 +35,7 @@ import { Confetti, type ConfettiRef } from './ui/confetti'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
 import type { StatsRecorder } from '../hooks/useStats'
 import type { Chatter } from '../lib/stats'
-import { useRoomEvents } from '../lib/reactive'
+import { useRoomEvents } from '../hooks/useRoomEvents'
 import type { SidecarEvent } from '../lib/sidecar'
 import type { FeedItem } from '../types'
 

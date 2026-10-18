@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { tokenConfigured, productName, splitWordmark } from '@/lib/config'
+import { tokenConfigured, productName, splitWordmark } from '@/lib/server/config'
 import Sidebar from '@/components/Sidebar'
 import AccountMenu from '@/components/AccountMenu'
 import { ToastProvider } from '@/components/Toast'

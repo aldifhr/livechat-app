@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { host, type SidecarEvent } from '../lib/sidecar'
-import { useRoomEvents } from '../lib/reactive'
+import { useRoomEvents } from './useRoomEvents'
 import { noticeText, shouldShowGiftNotice } from '../lib/notice'
 import { giftAnnouncement } from '../lib/sound'
 import { say, hush } from '../lib/voice'

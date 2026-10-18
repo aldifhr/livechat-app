@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { NextRequest } from 'next/server'
-import { BACKEND } from '@/lib/backend'
+import { BACKEND } from '@/lib/server/backend'
 
 export const dynamic = 'force-dynamic'
 

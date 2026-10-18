@@ -49,7 +49,7 @@ function check(label, cond, detail = '') {
 }
 
 const routeSource = readFileSync(join(SRC, 'app', 'api', 'backend', '[...path]', 'route.ts'), 'utf8')
-const clientSource = readFileSync(join(SRC, 'lib', 'client.ts'), 'utf8')
+const clientSource = readFileSync(join(SRC, 'lib', 'client', 'api.ts'), 'utf8')
 
 // The patterns, as they are written. `/^\/api\/rooms$/` and friends are literals in
 // a plain array with no interpolation, so reading them out of the source is exact

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence } from 'motion/react'
-import { useRoomEvents } from '../lib/reactive'
+import { useRoomEvents } from '../hooks/useRoomEvents'
 import type { SidecarEvent } from '../lib/sidecar'
 import { AnimatedListItem } from './ui/animated-list'
 import { Confetti, type ConfettiRef } from './ui/confetti'

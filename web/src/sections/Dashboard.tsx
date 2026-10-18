@@ -18,7 +18,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { api } from '@/lib/client'
+import { api } from '@/lib/client/api'
 import type { Room, RoomStatus } from '@/lib/types'
 import NumberTicker from '@/components/magicui/NumberTicker'
 import RoomStateBadge from '@/components/RoomStateBadge'
