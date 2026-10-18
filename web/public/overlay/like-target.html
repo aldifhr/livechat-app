@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Likes target overlay</title>
+<!--
+  The likes target, on its own.
+
+  A goal bar for the room's likes: it reads every `like` frame the backend already
+  sends and draws the running total against a target the streamer sets. Its own
+  fields (`likeSize`, `likeBarColour`, ...) rather than the chat's, because a room's
+  styling is broadcast as one flat object and a key two overlays share is a key one
+  overwrites for the other.
+
+  Same shape as the other overlay pages: one inline file, its own socket to the
+  backend, styling from the room's `config` frame pushed over that socket.
+-->
+<style>
+  :root {
+    /* Replaced from the query string, then overridden by the room's pushed style. */
+    --like-size: 28px;
+    --like-bar: #ff4d6d;
+    --like-text: #ffffff;
+    --justify: flex-start;
+    --align: flex-start;
+  }
+
+  * { box-sizing: border-box; }
+
+  /* A backdrop, for when this page is being *shown* rather than composited. */
+  html.stage-backdrop { background: #141414; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+  }
+
+  body {
+    display: flex;
+    justify-content: var(--justify);
+    align-items: var(--align);
+    padding: 1em;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    font-size: var(--like-size);
+    line-height: 1.25;
+    color: var(--like-text);
+  }
+
+  #panel {
+    width: min(24em, 100%);
+    padding: 0.6em 0.8em;
+    border-radius: 0.5em;
+    background: rgba(8, 13, 18, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 0.22em 0.8em rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(9px);
+    -webkit-backdrop-filter: blur(9px);
+  }
+
+  #panel[hidden] { display: none; }
+
+  #caption {
+    margin: 0 0 0.4em;
+    font-size: 0.62em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--like-text);
+    opacity: 0.85;
+  }
+
+  #track {
+    height: 0.5em;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.16);
+    overflow: hidden;
+  }
+
+  #fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 999px;
+    background: var(--like-bar);
+    transition: width 240ms ease;
+  }
+
+  #numbers {
+    margin-top: 0.35em;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5em;
+    font-size: 0.72em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  #current { font-weight: 700; color: var(--like-bar); }
+  #of { opacity: 0.75; }
+
+  #unconfigured {
+    display: none;
+    color: #ffffff;
+    opacity: 0.6;
+    font-size: var(--like-size);
+  }
+  body.unconfigured #unconfigured { display: block; }
+</style>
+</head>
+<body>
+<div id="panel" hidden>
+  <div id="caption">Target Likes</div>
+  <div id="track"><div id="fill"></div></div>
+  <div id="numbers">
+    <span id="current">0</span>
+    <span id="of">of <span id="target">1000</span></span>
+  </div>
+</div>
+<div id="unconfigured">no handle in this link — add <code>?room=yourhandle</code></div>
+
+<script id="overlay-config" type="application/json">__OVERLAY_CONFIG__</script>
+
+<script>
+(function () {
+  'use strict'
+
+  var baked = (function () {
+    try { return JSON.parse(document.getElementById('overlay-config').textContent) || {} }
+    catch (e) { return {} }
+  })()
+
+  var query = new URLSearchParams(location.search)
+
+  function param(name, fallback) {
+    var found = query.get(name)
+    return found === null || found === '' ? fallback : found
+  }
+
+  function number(name, fallback, min, max) {
+    var given = param(name, '')
+    if (given === '') return fallback
+    var raw = Number(given)
+    if (!isFinite(raw)) return fallback
+    return Math.min(max, Math.max(min, raw))
+  }
+
+  var config = {
+    baseUrl: String(param('base', baked.baseUrl || location.origin)).replace(/\/+$/, ''),
+    username: String(param('room', baked.username || '')).replace(/^@/, '').trim(),
+    likeTarget: Math.round(number('target', typeof baked.likeTarget === 'number' ? baked.likeTarget : 1000, 1, 10000000)),
+    likeTitle: param('title', baked.likeTitle || 'Target Likes'),
+    likeSize: number('size', typeof baked.likeSize === 'number' ? baked.likeSize : 28, 8, 96),
+    likeBarColour: param('bar', baked.likeBarColour || '#ff4d6d'),
+    likeTextColour: param('color', baked.likeTextColour || '#ffffff'),
+    likePosition: param('position', baked.likePosition || 'top-left'),
+    debug: param('debug', '') !== ''
+  }
+
+  // This page's own defaults, with no URL and no pushed config. A pushed style is
+  // the room's *whole* style, so a key it omits means "back to default".
+  var STYLE_DEFAULTS = {
+    likeTarget: 1000,
+    likeTitle: 'Target Likes',
+    likeSize: 28,
+    likeBarColour: '#ff4d6d',
+    likeTextColour: '#ffffff',
+    likePosition: 'top-left'
+  }
+
+  var panel = document.getElementById('panel')
+  var fill = document.getElementById('fill')
+  var caption = document.getElementById('caption')
+  var currentEl = document.getElementById('current')
+  var targetEl = document.getElementById('target')
+
+  var current = 0
+
+  function applyConfig() {
+    var root = document.documentElement
+    root.style.setProperty('--like-size', config.likeSize + 'px')
+    root.style.setProperty('--like-bar', config.likeBarColour)
+    root.style.setProperty('--like-text', config.likeTextColour)
+    root.style.setProperty('--justify', config.likePosition.indexOf('-right') > 0 ? 'flex-end' : 'flex-start')
+    root.style.setProperty('--align', config.likePosition.indexOf('top-') === 0 ? 'flex-start' : 'flex-end')
+    caption.textContent = config.likeTitle
+  }
+
+  function draw() {
+    var target = Math.max(1, Math.round(config.likeTarget))
+    var ratio = Math.max(0, Math.min(1, current / target))
+    fill.style.width = (ratio * 100).toFixed(2) + '%'
+    currentEl.textContent = current.toLocaleString()
+    targetEl.textContent = target.toLocaleString()
+    panel.hidden = false
+    reportHeight()
+  }
+
+  applyConfig()
+  draw()
+
+  var previewOverride = null
+  function applyPreviewStyle(style) {
+    if (typeof style !== 'object') return
+    if (Number.isFinite(style.likeTarget)) config.likeTarget = Math.max(1, Math.min(10000000, Math.round(style.likeTarget)))
+    if (typeof style.likeTitle === 'string') config.likeTitle = style.likeTitle
+    if (Number.isFinite(style.likeSize)) config.likeSize = Math.max(8, Math.min(96, style.likeSize))
+    if (typeof style.likeBarColour === 'string') config.likeBarColour = style.likeBarColour
+    if (typeof style.likeTextColour === 'string') config.likeTextColour = style.likeTextColour
+    if (typeof style.likePosition === 'string') config.likePosition = style.likePosition
+    applyConfig()
+    draw()
+  }
+
+  window.addEventListener('message', function (event) {
+    var parentOrigin = ''
+    try { parentOrigin = new URL(document.referrer).origin } catch (_) {}
+    if (event.source !== window.parent || !parentOrigin || event.origin !== parentOrigin ||
+        !event.data || !event.data.streamkitPreviewStyle) return
+    previewOverride = event.data.streamkitPreviewStyle
+    applyPreviewStyle(previewOverride)
+    if (event.data.streamkitPreviewSample === true) {
+      current = Math.round(Math.max(1, config.likeTarget) * 0.42)
+      draw()
+    }
+  })
+
+  function debugLog() {
+    if (!config.debug || !window.console) return
+    var args = Array.prototype.slice.call(arguments)
+    args.unshift('[StreamKit likes]')
+    console.log.apply(console, args)
+  }
+
+  if (param('backdrop', '') === 'dark') document.documentElement.classList.add('stage-backdrop')
+
+  function reportHeight() {
+    try {
+      parent.postMessage({ streamkitHeight: (panel.hidden ? 0 : panel.scrollHeight) + 48 }, '*')
+    } catch (error) {}
+  }
+  new ResizeObserver(reportHeight).observe(panel)
+  window.addEventListener('load', reportHeight)
+
+  function socketFor(base, roomId) {
+    var url = base.replace(/^http/, 'ws') + '/ws/overlay/' + encodeURIComponent(roomId)
+    debugLog('opening websocket', url)
+    return new WebSocket(url)
+  }
+
+  function looksLikeRoomId(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+  }
+
+  function connect() {
+    if (config.username === '') {
+      document.body.classList.add('unconfigured')
+      return
+    }
+    document.body.classList.remove('unconfigured')
+    if (looksLikeRoomId(config.username)) { open(config.username); return }
+    fetch(config.baseUrl + '/api/room-connect-by-username', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: config.username })
+    })
+      .then(function (response) {
+        if (!response.ok) throw new Error('HTTP ' + response.status)
+        return response.json()
+      })
+      .then(function (room) {
+        if (!room || !room.room_id) throw new Error('no room id in the answer')
+        open(room.room_id)
+      })
+      .catch(function () { setTimeout(connect, 5000) })
+  }
+
+  function open(roomId) {
+    var socket
+    try { socket = socketFor(config.baseUrl, roomId) }
+    catch (error) { setTimeout(connect, 5000); return }
+
+    socket.onmessage = function (event) {
+      var frame
+      try { frame = JSON.parse(event.data) } catch (error) { return }
+      if (!frame) return
+
+      if (frame.type === 'config' && frame.config) {
+        if (Object.keys(frame.config).length === 0) return
+        Object.keys(STYLE_DEFAULTS).forEach(function (key) { config[key] = STYLE_DEFAULTS[key] })
+        Object.keys(frame.config).forEach(function (key) {
+          if (frame.config[key] === undefined || frame.config[key] === null) return
+          if (Object.prototype.hasOwnProperty.call(STYLE_DEFAULTS, key)) config[key] = frame.config[key]
+        })
+        if (previewOverride) applyPreviewStyle(previewOverride)
+        applyConfig()
+        draw()
+        return
+      }
+
+      // The running total, straight from the backend. `totalLikes` is TikTok's own
+      // session count; a frame without it falls back to adding this event's batch.
+      if (frame.type === 'like') {
+        if (typeof frame.totalLikes === 'number') current = frame.totalLikes
+        else current += typeof frame.count === 'number' ? frame.count : 1
+        draw()
+      }
+    }
+
+    socket.onclose = function () { setTimeout(connect, 3000) }
+    socket.onerror = function () { try { socket.close() } catch (error) {} }
+  }
+
+  connect()
+})()
+</script>
+</body>
+</html>

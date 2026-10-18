@@ -245,6 +245,9 @@ export default function StreamProfile({ handle }: { handle: string }) {
           <Link className="btn" href={customizerPath(room.username, room.id, 'cat')}>
             Style cat
           </Link>
+          <Link className="btn" href={customizerPath(room.username, room.id, 'like-target')}>
+            Style likes
+          </Link>
           <Link className="btn" href={giveawayPath(room.username, room.id)}>
             Giveaway
           </Link>

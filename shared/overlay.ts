@@ -379,6 +379,69 @@ export function resolveCatStyle(saved: Partial<CatStyle> | null | undefined): Ca
 }
 
 // --------------------------------------------------------------------------
+// the likes target
+// --------------------------------------------------------------------------
+
+/** The bound on the target, so a fat-fingered number does not make the bar unreadable. */
+export const LIKE_TARGET_MIN = 1
+export const LIKE_TARGET_MAX = 10_000_000
+
+/** The bound on the heading, same reason and same cap as the board's title. */
+export const LIKE_TITLE_MAX = 40
+
+/**
+ * The likes-target overlay's styling.
+ *
+ * Its own fields — `likeSize`, `likeBarColour` and the rest — rather than the chat's
+ * `size`/`textColour`, and that is not decoration: a room's styling is broadcast as
+ * one flat object, so a key two overlays share is a key one of them overwrites for
+ * the other. The likes bar and the chat column are sized independently, so they
+ * cannot share a `size`.
+ */
+export interface LikeTargetStyle {
+  /** The number of likes to fill the bar. */
+  likeTarget: number
+  /** The heading above the bar. */
+  likeTitle: string
+  /** Text size in px. */
+  likeSize: number
+  /** The filled part of the bar. */
+  likeBarColour: string
+  /** The heading, numbers and unfilled track. */
+  likeTextColour: string
+  /** Which corner of the OBS canvas the bar sits in. */
+  likePosition: OverlayPosition
+}
+
+export const LIKE_TARGET_DEFAULT_STYLE: LikeTargetStyle = {
+  likeTarget: 1000,
+  likeTitle: 'Target Likes',
+  likeSize: 28,
+  likeBarColour: '#ff4d6d',
+  likeTextColour: '#ffffff',
+  likePosition: 'top-left',
+}
+
+/** A title, or the likes default. */
+export function resolveLikeTitle(value: unknown): string {
+  if (typeof value !== 'string') return LIKE_TARGET_DEFAULT_STYLE.likeTitle
+  const text = value.trim()
+  return text === '' || text.length > LIKE_TITLE_MAX ? LIKE_TARGET_DEFAULT_STYLE.likeTitle : text
+}
+
+/** A likes-target style read out of storage, with anything unusable replaced. */
+export function resolveLikeTargetStyle(saved: Partial<LikeTargetStyle> | null | undefined): LikeTargetStyle {
+  return {
+    likeTarget: Math.round(clampNumber(saved?.likeTarget, LIKE_TARGET_MIN, LIKE_TARGET_MAX, LIKE_TARGET_DEFAULT_STYLE.likeTarget)),
+    likeTitle: resolveLikeTitle(saved?.likeTitle),
+    likeSize: clampNumber(saved?.likeSize, OVERLAY_SIZE.min, OVERLAY_SIZE.max, LIKE_TARGET_DEFAULT_STYLE.likeSize),
+    likeBarColour: resolveColour(saved?.likeBarColour, LIKE_TARGET_DEFAULT_STYLE.likeBarColour),
+    likeTextColour: resolveColour(saved?.likeTextColour, LIKE_TARGET_DEFAULT_STYLE.likeTextColour),
+    likePosition: resolveOverlayPosition(saved?.likePosition),
+  }
+}
+
+// --------------------------------------------------------------------------
 // the stored form
 // --------------------------------------------------------------------------
 
@@ -417,6 +480,12 @@ const STORED_TO_FIELD = {
   overlayTitle: 'title',
   catPalette: 'pal',
   catChonk: 'chonk',
+  likeTarget: 'likeTarget',
+  likeTitle: 'likeTitle',
+  likeSize: 'likeSize',
+  likeBarColour: 'likeBarColour',
+  likeTextColour: 'likeTextColour',
+  likePosition: 'likePosition',
 } as const
 
 /** A field name a stored config can carry. */
@@ -430,7 +499,10 @@ type StyleField = (typeof STORED_TO_FIELD)[keyof typeof STORED_TO_FIELD]
  * board style from the subset that means something to it. Neither is wrong about a
  * field the other owns.
  */
-export type StoredStyle = Partial<OverlayStyle> & Partial<Pick<BoardStyle, 'title'>> & Partial<CatStyle>
+export type StoredStyle = Partial<OverlayStyle> &
+  Partial<Pick<BoardStyle, 'title'>> &
+  Partial<CatStyle> &
+  Partial<LikeTargetStyle>
 
 /**
  * A room's stored config as style fields, ready for `resolveStyle`.
@@ -499,5 +571,17 @@ export function catStyleToStored(style: CatStyle): Record<string, unknown> {
   return {
     catPalette: style.pal,
     catChonk: style.chonk,
+  }
+}
+
+/** A likes-target style as the config to save it under — its own fields only. */
+export function likeTargetStyleToStored(style: LikeTargetStyle): Record<string, unknown> {
+  return {
+    likeTarget: style.likeTarget,
+    likeTitle: style.likeTitle,
+    likeSize: style.likeSize,
+    likeBarColour: style.likeBarColour,
+    likeTextColour: style.likeTextColour,
+    likePosition: style.likePosition,
   }
 }

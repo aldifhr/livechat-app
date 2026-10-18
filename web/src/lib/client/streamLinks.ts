@@ -28,7 +28,7 @@ export function profilePath(username: string, id: string): string {
 }
 
 /** The kind of overlay a customizer styles, as it appears in the address. */
-export type OverlayKind = 'chat' | 'top-chatter' | 'cat'
+export type OverlayKind = 'chat' | 'top-chatter' | 'cat' | 'like-target'
 
 /**
  * A stream's customizer for one overlay, under the stream's own address.
@@ -64,6 +64,7 @@ export function streamLinks(roomId: string) {
     studio: api.chatOverlay(roomId, 'studio'),
     cat: api.catOverlay(roomId),
     topChatters: api.topChatterOverlay(roomId),
+    likeTarget: api.likeTargetOverlay(roomId),
   }
 }
 
@@ -73,4 +74,5 @@ export const LINK_LABELS = {
   studio: 'Chat overlay · Studio',
   cat: 'Kucing Pixel Stream',
   topChatters: 'Top Chatters',
+  likeTarget: 'Target Likes',
 } as const

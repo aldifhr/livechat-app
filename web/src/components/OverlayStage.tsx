@@ -61,6 +61,13 @@ type PreviewStyle = {
   /** The cat's palette and chonk, which the text overlays have no place for. */
   pal?: string
   chonk?: boolean
+  /** The likes target's own fields, namespaced so they never clash with the above. */
+  likeTarget?: number
+  likeTitle?: string
+  likeSize?: number
+  likeBarColour?: string
+  likeTextColour?: string
+  likePosition?: string
 }
 
 interface Props {
@@ -135,6 +142,13 @@ export default function OverlayStage({
           // Only the cat carries these; the text overlays ignore them.
           pal: previewStyle.pal,
           chonk: previewStyle.chonk,
+          // Only the likes target carries these.
+          likeTarget: previewStyle.likeTarget,
+          likeTitle: previewStyle.likeTitle,
+          likeSize: previewStyle.likeSize,
+          likeBarColour: previewStyle.likeBarColour,
+          likeTextColour: previewStyle.likeTextColour,
+          likePosition: previewStyle.likePosition,
         },
         streamkitPreviewSample: true,
       },

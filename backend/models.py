@@ -111,6 +111,15 @@ OVERLAY_STYLE_KEYS = {
     # authenticated config route, so not in the unauthenticated whitelist above.
     "catPalette": "pal",
     "catChonk": "chonk",
+    # The likes target. Namespaced on both sides (`likeSize` and not `size`),
+    # because the frame is one flat object and a shared key is one overlay
+    # overwriting the other's styling.
+    "likeTarget": "likeTarget",
+    "likeTitle": "likeTitle",
+    "likeSize": "likeSize",
+    "likeBarColour": "likeBarColour",
+    "likeTextColour": "likeTextColour",
+    "likePosition": "likePosition",
 }
 
 

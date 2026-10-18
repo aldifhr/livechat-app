@@ -1,5 +1,6 @@
 /**
- * One customizer per overlay: the chat, the top-chatters board and the cat.
+ * One customizer per overlay: the chat, the top-chatters board, the cat and the
+ * likes target.
  *
  * Deliberately not one panel with a switch, and not one style object shared
  * between them: each overlay reads different parameters. The board ignores the
@@ -35,9 +36,16 @@ import {
   catStyleToStored,
   resolveCatStyle,
   CAT_DEFAULT_STYLE,
+  likeTargetStyleToStored,
+  resolveLikeTargetStyle,
+  LIKE_TARGET_DEFAULT_STYLE,
+  LIKE_TARGET_MIN,
+  LIKE_TARGET_MAX,
+  LIKE_TITLE_MAX,
   type BoardStyle,
   type CatPalette,
   type CatStyle,
+  type LikeTargetStyle,
   type OverlayStyle,
   type OverlayPosition,
 } from '@shared/overlay'
@@ -311,10 +319,91 @@ function CatCustomizer({ roomId, style, onChange }: {
   )
 }
 
+// ---- the likes target customizer ------------------------------------------
+
+function LikeTargetCustomizer({ roomId, style, onChange }: {
+  roomId: string
+  style: LikeTargetStyle
+  onChange: (change: Partial<LikeTargetStyle>) => void
+}) {
+  const likesUrl = useMemo(() => (roomId ? api.likeTargetOverlay(roomId) : ''), [roomId])
+
+  return (
+    <>
+      <div className="panel">
+        <h3>Style</h3>
+
+        <p className="style-group-title">Goal</p>
+
+        <div className="field">
+          <label htmlFor="likes-target">Target likes</label>
+          <input
+            id="likes-target"
+            type="number"
+            min={LIKE_TARGET_MIN}
+            max={LIKE_TARGET_MAX}
+            value={style.likeTarget}
+            onChange={(e) =>
+              onChange({
+                likeTarget: Math.max(LIKE_TARGET_MIN, Math.min(LIKE_TARGET_MAX, Math.round(Number(e.target.value) || LIKE_TARGET_MIN))),
+              })
+            }
+          />
+        </div>
+
+        <div className="field">
+          <label htmlFor="likes-title">Title</label>
+          <input
+            id="likes-title"
+            maxLength={LIKE_TITLE_MAX}
+            value={style.likeTitle}
+            placeholder="Target Likes"
+            onChange={(e) => onChange({ likeTitle: e.target.value })}
+          />
+        </div>
+
+        <p className="style-group-title">Appearance</p>
+
+        <div className="field">
+          <label htmlFor="likes-size">Text size <span className="value">{style.likeSize}px</span></label>
+          <input id="likes-size" type="range" min={OVERLAY_SIZE.min} max={OVERLAY_SIZE.max} value={style.likeSize} onChange={(e) => onChange({ likeSize: Number(e.target.value) })} />
+        </div>
+
+        <div className="field">
+          <label htmlFor="likes-position">Position</label>
+          <select id="likes-position" value={style.likePosition} onChange={(e) => onChange({ likePosition: e.target.value as OverlayPosition })}>
+            <option value="top-left">Top left</option>
+            <option value="top-right">Top right</option>
+            <option value="bottom-left">Bottom left</option>
+            <option value="bottom-right">Bottom right</option>
+          </select>
+        </div>
+
+        <div className="field-row">
+          <div className="field">
+            <label htmlFor="likes-bar-colour">Bar colour</label>
+            <input id="likes-bar-colour" type="color" value={style.likeBarColour} onChange={(e) => onChange({ likeBarColour: e.target.value })} />
+          </div>
+          <div className="field">
+            <label htmlFor="likes-text-colour">Text colour</label>
+            <input id="likes-text-colour" type="color" value={style.likeTextColour} onChange={(e) => onChange({ likeTextColour: e.target.value })} />
+          </div>
+        </div>
+
+        <button onClick={() => onChange(LIKE_TARGET_DEFAULT_STYLE)}>Reset to defaults</button>
+      </div>
+
+      <div>
+        <CopyField label="Likes target" url={likesUrl} hint="Add as a browser source in OBS, sized to your canvas." />
+      </div>
+    </>
+  )
+}
+
 // ---- the page -------------------------------------------------------------
 
 /** Which overlay this page styles. One route per kind. */
-export type BuilderKind = 'chat' | 'board' | 'cat'
+export type BuilderKind = 'chat' | 'board' | 'cat' | 'likes'
 
 /** What the operator is told about the save. Never a guess, never a silence. */
 function SaveBadge({ state }: { state: SaveState }) {
@@ -422,6 +511,11 @@ export default function OverlayBuilder({ handle, kind }: { handle: string; kind:
     [],
   )
 
+  const readLikeTarget = useCallback(
+    (config: Record<string, unknown>) => resolveLikeTargetStyle(styleFromStored(config)),
+    [],
+  )
+
   const chat = usePersistedStyle({
     room,
     fallback: OVERLAY_DEFAULT_STYLE,
@@ -443,10 +537,18 @@ export default function OverlayBuilder({ handle, kind }: { handle: string; kind:
     write: catStyleToStored,
   })
 
+  const likes = usePersistedStyle({
+    room,
+    fallback: LIKE_TARGET_DEFAULT_STYLE,
+    read: readLikeTarget,
+    write: likeTargetStyleToStored,
+  })
+
   // The customizer on screen, so the one Save button and its status belong to
   // the overlay this route styles.
-  const active = kind === 'chat' ? chat : kind === 'board' ? board : cat
-  const heading = kind === 'chat' ? 'Chat overlay' : kind === 'board' ? 'Top chatters' : 'Cat overlay'
+  const active = kind === 'chat' ? chat : kind === 'board' ? board : kind === 'cat' ? cat : likes
+  const heading =
+    kind === 'chat' ? 'Chat overlay' : kind === 'board' ? 'Top chatters' : kind === 'cat' ? 'Cat overlay' : 'Likes target'
 
   if (!loadedRooms) {
     return <div className="empty">Loading this stream…</div>
@@ -525,8 +627,10 @@ export default function OverlayBuilder({ handle, kind }: { handle: string; kind:
             />
           ) : kind === 'board' ? (
             <BoardCustomizer roomId={selected} style={board.current} onChange={board.patch} />
-          ) : (
+          ) : kind === 'cat' ? (
             <CatCustomizer roomId={selected} style={cat.current} onChange={cat.patch} />
+          ) : (
+            <LikeTargetCustomizer roomId={selected} style={likes.current} onChange={likes.patch} />
           )}
           <div className="flex items-center justify-between gap-3 mt-1">
             <SaveBadge state={active.state} />
@@ -572,12 +676,14 @@ export default function OverlayBuilder({ handle, kind }: { handle: string; kind:
                     ? api.chatOverlay(selected, chatDesign)
                     : kind === 'board'
                       ? api.topChatterOverlay(selected)
-                      : api.catOverlay(selected)
+                      : kind === 'cat'
+                        ? api.catOverlay(selected)
+                        : api.likeTargetOverlay(selected)
                 }
-                title={`${kind === 'chat' ? 'Chat' : kind === 'board' ? 'Top chatters' : 'Cat'} overlay preview`}
+                title={`${kind === 'chat' ? 'Chat' : kind === 'board' ? 'Top chatters' : kind === 'cat' ? 'Cat' : 'Likes target'} overlay preview`}
                 canvas={canvas}
                 previewStyle={
-                  kind === 'chat' ? chat.current : kind === 'board' ? board.current : cat.current
+                  kind === 'chat' ? chat.current : kind === 'board' ? board.current : kind === 'cat' ? cat.current : likes.current
                 }
               />
               <p className="faint tight-caption">

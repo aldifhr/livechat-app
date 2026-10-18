@@ -17,6 +17,7 @@ const KINDS: Record<string, BuilderKind> = {
   chat: 'chat',
   'top-chatter': 'board',
   cat: 'cat',
+  'like-target': 'likes',
 }
 
 export default async function StreamOverlayPage({
