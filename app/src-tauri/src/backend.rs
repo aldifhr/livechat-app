@@ -597,6 +597,13 @@ pub fn to_app_event(frame: &Value, now_ms: i64) -> Option<Value> {
         .map(|list| Value::Array(list.clone()))
         .unwrap_or_else(|| Value::Array(Vec::new()));
 
+    // Carried as sent and defaulted false, so a status frame from an older
+    // backend that knows nothing about live ends still maps cleanly.
+    let is_connected = frame
+        .get("connected")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+
     Some(match kind {
         "comment" => json!({
             "type": "chat", "platform": platform, "nickname": user(), "id": id(),
@@ -640,24 +647,19 @@ pub fn to_app_event(frame: &Value, now_ms: i64) -> Option<Value> {
             "type": "viewers", "platform": platform,
             "count": frame.get("count").and_then(Value::as_i64).unwrap_or(0),
         }),
-        "status" => {
-            let is_connected = frame.get("connected").and_then(Value::as_bool).unwrap_or(false);
-            json!({
-                "type": "status", "platform": platform,
-                "connected": is_connected,
-                "connecting": frame.get("connecting").and_then(Value::as_bool).unwrap_or(false),
-                // The streamer stopped, as distinct from our connection dropping.
-                // Carried as sent and defaulted false, so a status frame from an older
-                // backend that knows nothing about live ends still maps cleanly.
-                "liveEnded": frame.get("liveEnded").and_then(Value::as_bool).unwrap_or(false),
-                // The backend is polling for a streamer with no live right now, as
-                // distinct from a handshake in flight. Same rule: carried as sent, and
-                // an older backend that has never heard of it maps to false, which is
-                // what its own statuses meant anyway.
-                "waiting": frame.get("waiting").and_then(Value::as_bool).unwrap_or(false),
-                "message": frame.get("message").and_then(Value::as_str).unwrap_or_default(),
-            })
-        }
+        "status" => json!({
+            "type": "status", "platform": platform,
+            "connected": is_connected,
+            "connecting": frame.get("connecting").and_then(Value::as_bool).unwrap_or(false),
+            // The streamer stopped, as distinct from our connection dropping.
+            // The backend is polling for a streamer with no live right now, as
+            // distinct from a handshake in flight. Both are read as sent, and
+            // an older backend that has never heard of them maps to false,
+            // which is what its own statuses meant anyway.
+            "liveEnded": frame.get("liveEnded").and_then(Value::as_bool).unwrap_or(false),
+            "waiting": frame.get("waiting").and_then(Value::as_bool).unwrap_or(false),
+            "message": frame.get("message").and_then(Value::as_str).unwrap_or_default(),
+        }),
         "error" => json!({
             "type": "error", "platform": platform,
             "message": frame.get("message").and_then(Value::as_str).unwrap_or_default(),

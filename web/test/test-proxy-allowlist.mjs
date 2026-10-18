@@ -92,9 +92,19 @@ check('the client calls were found', calls.length >= 12, `got ${calls.length}`)
 
 // A representative room id, substituted for every `${...}` in a template path. The
 // patterns are written against `[0-9a-f-]{36}` because that is what `store` mints,
-// so a real id has to match or the pattern is wrong.
+// so a real id has to match or the pattern is wrong. Giveaway snapshots carry a
+// different id — `secrets.token_urlsafe(12)` in the backend's giveaway store, i.e.
+// 16 url-safe characters — so substituting a UUID there made the snapshot GET fail
+// its pattern no matter how correctly the pattern was written. The substitute is
+// therefore chosen per position: a snapshot id where the hole sits in a snapshot
+// path, a UUID everywhere else.
 const UUID = '61ea70c9-6d36-4a6a-bf94-b648532447bb'
-const fullPath = (path) => `/api${path.replace(/\$\{[^}]*\}/g, UUID)}`
+const SNAPSHOT_ID = 'a1B2c3D4e5F6g7H8'
+const fullPath = (path) =>
+  `/api${path.replace(
+    /(?<=\/giveaways\/snapshots\/)\$\{[^}]*\}/g,
+    SNAPSHOT_ID,
+  ).replace(/\$\{[^}]*\}/g, UUID)}`
 
 const missing = calls.filter(({ path }) => !patterns.some((p) => p.test(fullPath(path))))
 

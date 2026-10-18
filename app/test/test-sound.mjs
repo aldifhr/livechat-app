@@ -196,9 +196,12 @@ console.log('an emoji at the cut is not sliced in half')
   check('a run of emoji is cut cleanly too', !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(allEmoji), JSON.stringify(allEmoji.slice(-6)))
 }
 
-// Speech needs a longer gap than the blip: overlapping taps are busy, but
-// overlapping sentences are unintelligible.
-check('speech waits longer than a blip does', CHAT_TTS_GAP_MS > CHAT_SOUND_GAP_MS, String(CHAT_TTS_GAP_MS))
+// Spoken playback is serialized, so the gap is only a pause for phrasing, not a
+// cooldown that measures against the blip's — the two no longer race, and the old
+// "speech waits longer than a blip" ordering claim stopped describing anything
+// when TTS moved to a serialized queue. What still matters is that the pause
+// exists: back-to-back utterances with no gap at all read as one run-on line.
+check('spoken messages still get a phrasing pause', CHAT_TTS_GAP_MS > 0, String(CHAT_TTS_GAP_MS))
 
 console.log('what a gift sounds like when spoken')
 check('a gift is announced with its sender and quantity', giftAnnouncement('ana', 'Rose', 1) === 'ana mengirim 1 Rose', giftAnnouncement('ana', 'Rose', 1))

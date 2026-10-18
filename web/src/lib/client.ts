@@ -206,14 +206,4 @@ export const api = {
   /** What this room's current session has accumulated — peaks, diamonds, leaders. */
   session: (id: string) => request<RoomSession>('GET', `/rooms/${id}/session`),
   publicRooms: () => request<{ rooms: Array<{ id: string; username: string; name: string; connected: boolean }> }>('GET', '/rooms/public'),
-
-  /**
-   * Send one test alert.
-   *
-   * `configured: false` means no webhook is set on the backend, which is a fact
-   * about the deployment rather than a failure — the caller shows it differently
-   * from `sent: false`.
-   */
-  testAlert: () =>
-    request<{ configured: boolean; sent: boolean; detail?: string }>('POST', '/alerts/test'),
 }
