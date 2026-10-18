@@ -99,6 +99,24 @@ pub fn write_config(app: &tauri::AppHandle, config: &SoundConfig) -> Result<(), 
     std::fs::write(&path, body).map_err(|e| format!("could not write {}: {e}", path.display()))
 }
 
+/// Remembers a path the user just picked, and grants it for this run.
+///
+/// Appended to and deduped, never written over: the page picks a different file
+/// per event, so a record of one path would revoke the grant on every other
+/// event's file the moment this one was chosen, and the newest pick is moved to
+/// the end. The file is granted straight away as well, because the asset scope is
+/// rebuilt empty on every launch and the page cannot grant itself anything.
+pub fn remember(app: &tauri::AppHandle, path: &Path) -> Result<(), String> {
+    use tauri::Manager as _;
+    let picked = path.to_string_lossy().into_owned();
+    let mut config = read_config(app);
+    config.paths.retain(|existing| existing != &picked);
+    config.paths.push(picked);
+    write_config(app, &config)?;
+    let _ = app.asset_protocol_scope().allow_file(path);
+    Ok(())
+}
+
 /// Whether a remembered path is one this app is willing to grant.
 ///
 /// The recorded path is host-written, so it is not attacker-controlled in

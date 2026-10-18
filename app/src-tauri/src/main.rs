@@ -18,7 +18,6 @@ use std::sync::Arc;
 
 use tauri::{Emitter as _, Manager, State};
 use tauri_plugin_notification::NotificationExt;
-use serde_json::json;
 
 pub struct AppState {
     /// Which backend reader loop is current, so a new Connect cancels the old one.
@@ -114,21 +113,12 @@ async fn pick_sound_file(app: tauri::AppHandle) -> Result<String, String> {
     // then handed back as a path: the page converts it with `convertFileSrc` at
     // play time. Doing the conversion here instead would put a URL where the
     // setting stores a file, and the setting has to survive a restart.
-    let path = chosen.as_path().ok_or_else(|| "not a local file".to_string())?;
-    // Remembered host-side, because the asset scope is rebuilt empty on every
-    // launch and the page's own storage cannot grant itself anything. Without
-    // this the chosen sound works until the next restart and then silently stops.
     //
-    // Appended to the list, not written over it: the page has a picker per event,
-    // so replacing the record would revoke the grant on every other event's file
-    // the moment this one was chosen. Deduped, so re-picking the same file does
-    // not grow the record, and the newest pick is moved to the end.
-    let mut config = sound::read_config(&app);
-    let picked = path.to_string_lossy().into_owned();
-    config.paths.retain(|existing| existing != &picked);
-    config.paths.push(picked);
-    sound::write_config(&app, &config)?;
-    let _ = app.asset_protocol_scope().allow_file(path);
+    // Both the record of which files were chosen and the grant that makes them
+    // reachable belong to `sound`, which owns both; this command is only the one
+    // place a new path can enter.
+    let path = chosen.as_path().ok_or_else(|| "not a local file".to_string())?;
+    sound::remember(&app, path)?;
     Ok(chosen.to_string())
 }
 
@@ -214,7 +204,7 @@ fn backend_disconnect(state: State<'_, AppState>, app: tauri::AppHandle) {
     state.backend.stop();
     let _ = app.emit(
         backend::EVENT,
-        json!({ "type": "status", "platform": "bridge", "connected": false, "message": "Disconnected" }),
+        backend::status_frame("bridge", false, "Disconnected"),
     );
 }
 

@@ -28,6 +28,22 @@ use tauri_plugin_notification::NotificationExt as _;
 /// else would be a log line nothing listens to.
 pub const EVENT: &str = "sidecar-event";
 
+/// A status frame in the shape the frontend's `SidecarEvent` reads.
+///
+/// The host builds these in more than one place — a disconnect from the command
+/// layer, a failure from the pump — and the shape has to be spelled the same way
+/// each time or the toolbar reads one and ignores the other. `platform` is
+/// explicit because a bridge frame is about the reader itself while a room frame
+/// is about the stream being read, which the app treats differently.
+pub fn status_frame(platform: &str, connected: bool, message: &str) -> Value {
+    json!({
+        "type": "status",
+        "platform": platform,
+        "connected": connected,
+        "message": message,
+    })
+}
+
 /// Client type used in the socket path.
 ///
 /// The backend's own word for this, not one invented here. Its hub registers any
@@ -711,10 +727,7 @@ fn report(app: &tauri::AppHandle, message: String, session: u64) {
     );
     let _ = app.emit(
         EVENT,
-        with_session(
-            json!({ "type": "status", "platform": "tiktok", "connected": false, "message": message }),
-            session,
-        ),
+        with_session(status_frame("tiktok", false, &message), session),
     );
     let _ = app
         .notification()
