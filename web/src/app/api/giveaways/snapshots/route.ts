@@ -28,6 +28,22 @@ function clientKey(request: Request): string {
   return request.headers.get('x-real-ip')?.trim() || forwarded || 'unknown'
 }
 
+/**
+ * The dashboard's own origin publishing a snapshot.
+ *
+ * The desktop app is in `ALLOWED_ORIGINS` by name because it is a foreign origin.
+ * The dashboard's giveaway page is same-origin with this route, and a same-origin
+ * POST carries its own `Origin` — so it is allowed here by comparing the Origin's
+ * host to the host the request arrived on, never by trusting the header alone.
+ */
+function isSameOrigin(origin: string, request: Request): boolean {
+  try {
+    return new URL(origin).host === request.headers.get('host')
+  } catch {
+    return false
+  }
+}
+
 function allowedByRate(request: Request): boolean {
   const now = Date.now()
   const key = clientKey(request)
@@ -83,7 +99,7 @@ export async function OPTIONS(request: Request): Promise<Response> {
 export async function POST(request: Request): Promise<Response> {
   const origin = request.headers.get('origin')
   const headers = cors(origin)
-  if (!origin || !ALLOWED_ORIGINS.has(origin)) {
+  if (!origin || (!ALLOWED_ORIGINS.has(origin) && !isSameOrigin(origin, request))) {
     return Response.json({ detail: 'This app origin cannot publish giveaway reports.' }, { status: 403, headers })
   }
   if (!allowedByRate(request)) {

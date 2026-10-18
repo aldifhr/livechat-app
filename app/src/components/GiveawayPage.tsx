@@ -345,6 +345,10 @@ export function GiveawayPage({ stats, items, active = true, connected = false, s
     setWinners((current) => [...current, winner])
     setAnnouncedWinnerId(winner)
     setSpinning(false)
+    // Put the seed back. `spinForWinner` hid it so the wheel would not give the
+    // result away, and nothing restored it — so the audit report carried an empty
+    // `revealSeed` and the snapshot could not be verified at all.
+    setRevealSeed(committedSeedRef.current)
     void confettiRef.current?.fire({
       particleCount: 140,
       spread: 90,

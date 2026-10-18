@@ -86,8 +86,11 @@ def list_snapshots() -> list[dict[str, Any]]:
                 "createdAt": value.get("createdAt", ""),
                 "report": {
                     "format": (value.get("report") or {}).get("format", ""),
-                    "streamHandle": (value.get("report") or {}).get("streamHandle", ""),
-                    "isTestRun": (value.get("report") or {}).get("isTestRun", False),
+                    # The report spells these `streamer` and `testMode`. Reading the old
+                    # names here left the list's Stream column empty and its Test column
+                    # always false, so a test run was indistinguishable from a real one.
+                    "streamHandle": (value.get("report") or {}).get("streamer", ""),
+                    "isTestRun": (value.get("report") or {}).get("testMode", False),
                     "entrantCount": len((value.get("report") or {}).get("entrants") or []),
                     "winnerCount": len((value.get("report") or {}).get("draws") or []),
                 },

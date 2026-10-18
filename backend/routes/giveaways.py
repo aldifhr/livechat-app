@@ -58,3 +58,20 @@ async def read_giveaway_snapshot(snapshot_id: str):
     if snapshot is None:
         raise HTTPException(status_code=404, detail="Giveaway report not found")
     return snapshot
+
+
+@router.delete("/api/giveaways/snapshots/{snapshot_id}")
+async def delete_giveaway_snapshot(snapshot_id: str) -> dict[str, Any]:
+    """Remove a published snapshot, so its public link stops resolving.
+
+    Only for the operator: unlike the create and read routes, this is not exempt
+    from the token gate (the exemption is an exact-path match on the collection,
+    not on `/{id}`), so an unauthenticated caller cannot delete by id. Deletes are
+    irreversible — the report is not kept anywhere else — hence the confirmation
+    the dashboard puts in front of it.
+    """
+    if not SNAPSHOT_ID.fullmatch(snapshot_id):
+        raise HTTPException(status_code=404, detail="Giveaway report not found")
+    if not giveaway_store.delete_snapshot(snapshot_id):
+        raise HTTPException(status_code=404, detail="Giveaway report not found")
+    return {"status": "deleted"}

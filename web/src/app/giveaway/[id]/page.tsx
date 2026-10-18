@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { backendFetch, BackendError } from '@/lib/server/backend'
+import { readCommit } from '@/lib/server/giveawayCommit'
+import GiveawayVerifier from '@/components/GiveawayVerifier'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,13 +33,18 @@ type GiveawayReport = {
   poolHash?: string
   revealSeed?: string
   randomness?: string
+  /** The server-side commitment, and when the server fixed the seed. */
+  commitId?: string
+  committedAt?: string
 }
 type Snapshot = { id: string; createdAt: string; report: GiveawayReport }
 
 function formatDate(value: string | null): string {
   if (!value) return '—'
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '—' : `${date.toLocaleString('en-US', { timeZone: 'UTC' })} UTC`
+  return Number.isNaN(date.getTime())
+    ? '—'
+    : `${date.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })} WIB`
 }
 
 export default async function GiveawaySnapshotPage({ params }: { params: Promise<{ id: string }> }) {
@@ -56,6 +63,25 @@ export default async function GiveawaySnapshotPage({ params }: { params: Promise
   if (report.format !== 'livechat-giveaway-audit-v1' || !Array.isArray(report.entrants) || !Array.isArray(report.draws)) notFound()
   const people = new Map(report.entrants.map((entrant) => [entrant.id, entrant]))
   const winners = new Set(report.draws.map((draw) => draw.winner))
+
+  // The commitment lives on this server; the report carries its id. Reading it back
+  // is what lets the page show a server timestamp for "committed before the draw",
+  // rather than the operator's word for it.
+  const commit = report.commitId ? await readCommit(report.commitId) : null
+  const committedAt = commit?.committedAt ?? report.committedAt
+
+  // Narrowed once here so the verifier gets the three hashes as strings rather than
+  // as three optionals it would have to re-check.
+  const verifiable =
+    report.commitHash && report.poolHash
+      ? {
+          entrants: report.entrants,
+          draws: report.draws,
+          commitHash: report.commitHash,
+          poolHash: report.poolHash,
+          revealSeed: report.revealSeed,
+        }
+      : null
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-4xl px-5 py-10 text-zinc-100 sm:px-8">
@@ -128,15 +154,27 @@ export default async function GiveawaySnapshotPage({ params }: { params: Promise
                 <dd className="mb-0 mt-1 font-mono text-xs">{report.poolHash}</dd>
               </div>
             )}
-            {report.revealSeed && (
-              <div className="break-all sm:col-span-2">
-                <dt className="text-zinc-500">Revealed seed</dt>
-                <dd className="mb-0 mt-1 font-mono text-xs">{report.revealSeed}</dd>
-                <dd className="mb-0 mt-2 text-xs text-zinc-500">Verify: SHA-256(revealed_seed) === commitHash</dd>
-              </div>
-            )}
+            <div className="break-all sm:col-span-2">
+              <dt className="text-zinc-500">Revealed seed</dt>
+              {report.revealSeed ? (
+                <>
+                  <dd className="mb-0 mt-1 font-mono text-xs">{report.revealSeed}</dd>
+                  <dd className="mb-0 mt-2 text-xs text-zinc-500">Verify: SHA-256(revealed_seed) === commitHash</dd>
+                </>
+              ) : (
+                <dd className="mb-0 mt-1 text-xs text-amber-400">
+                  This snapshot does not include the revealed seed, so its draws cannot be independently verified.
+                </dd>
+              )}
+            </div>
           </dl>
         </section>
+      )}
+
+      {verifiable && (
+        <div className="mt-6">
+          <GiveawayVerifier report={verifiable} committedAt={committedAt} />
+        </div>
       )}
     </main>
   )

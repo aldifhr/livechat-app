@@ -185,6 +185,9 @@ export const api = {
   catOverlay: (id: string) => overlayUrl('/overlay/cat-overlay', id),
   topChatterOverlay: (id: string) => overlayUrl('/overlay/top-chatter', id),
   giveawaySnapshots: () => request<{ snapshots: GiveawaySnapshot[] }>('GET', '/giveaways/snapshots'),
+  /** Unpublish a snapshot, so its public link stops resolving. Irreversible. */
+  deleteGiveawaySnapshot: (id: string) =>
+    request<{ status: string }>('DELETE', `/giveaways/snapshots/${id}`),
 
 
   /**
