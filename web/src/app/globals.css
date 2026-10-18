@@ -61,8 +61,7 @@
 
   /* Greyscale, deliberately: the product shows overlays whose colours the
      operator chooses, and a chrome in colour competes with the art it is
-     styling. White is the accent — emphasis is carried by weight, border and
-     position rather than by a hue. */
+     styling. Accent here is the cool mint defined below. */
   --bg: #080d12;
   --bg-raised: #111a22;
   --bg-sunken: #070b10;
@@ -75,7 +74,7 @@
 
   /* Cool mint gives the operator's controls a clear focal point without
      competing with the colors inside a custom stream overlay. */
-  --accent: oklch(0.97 0 0);
+  --accent: #63e6c1;
   --accent-dim: #43cba7;
   --accent-ink: #062018;
 
@@ -2169,7 +2168,6 @@
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
   --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);

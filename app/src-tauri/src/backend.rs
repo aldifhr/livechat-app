@@ -223,9 +223,10 @@ pub struct BackendState {
     /// the generation is unchanged and nothing is reading. A reloaded page asking
     /// "is anything connected?" needs the second answer.
     running: std::sync::atomic::AtomicBool,
-    /// Whether the stream itself is actually connected. Set only on a real
-    /// handshake, cleared on stop/give_up — distinct from `running`, which is
-    /// true for the whole life of the pump including retries.
+    /// Whether the stream itself is actually connected. Set by the handshake's
+    /// status frame and cleared when the stream reports it is no longer connected
+    /// (a live ending, or a drop being retried), or on stop/give_up — distinct from
+    /// `running`, which is true for the whole life of the pump including retries.
     connected: std::sync::atomic::AtomicBool,
     /// The session details, written by the reader as it learns them.
     ///
@@ -457,6 +458,35 @@ pub async fn resolve_and_start(
         .ok_or_else(|| format!("{url} did not say which room it connected: {body}"))
 }
 
+/// The most of a reply body the app will hold in memory.
+///
+/// The connect reply is a small JSON object. A wrong URL, though, can answer with
+/// anything — a whole HTML error page, or a body built to exhaust memory — and
+/// `shorten` only trims the message *after* it has all been read. Capping the read
+/// keeps a bad address from costing more than a bad address should.
+const MAX_REPLY_BYTES: usize = 256 * 1024;
+
+/// Reads a response body, stopping at [`MAX_REPLY_BYTES`].
+///
+/// Read in chunks rather than with `text()` so the cap is enforced as the body
+/// arrives, not after it is already in memory.
+async fn read_capped(mut response: reqwest::Response) -> Result<String, String> {
+    let mut body: Vec<u8> = Vec::new();
+    while body.len() < MAX_REPLY_BYTES {
+        match response.chunk().await {
+            Ok(Some(chunk)) => {
+                let room = MAX_REPLY_BYTES - body.len();
+                body.extend_from_slice(&chunk[..chunk.len().min(room)]);
+            }
+            Ok(None) => break,
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+    // Lossy on purpose: a body that is not valid UTF-8 still deserves to be shown,
+    // and this text already goes through `shorten` before anyone reads it.
+    Ok(String::from_utf8_lossy(&body).into_owned())
+}
+
 /// POSTs the connect request and returns the body, following one same-host
 /// redirect with the method intact.
 ///
@@ -520,7 +550,7 @@ async fn post_connect(
 
         if !response.status().is_success() {
             let status = response.status().to_string();
-            let why = response.text().await.unwrap_or_default();
+            let why = read_capped(response).await.unwrap_or_default();
             // 405 here is almost never the backend refusing this username. It is a GET
             // arriving where a POST was meant, and saying so beats passing "Method Not
             // Allowed" to someone who cannot act on it.
@@ -532,8 +562,7 @@ async fn post_connect(
             return Err(shorten(&why, &status));
         }
 
-        return response
-            .text()
+        return read_capped(response)
             .await
             .map_err(|e| format!("could not read {url}: {e}"));
     }
@@ -946,22 +975,11 @@ async fn run_once(
                     // reason to drop the connection and reconnect-storm.
                     continue;
                 };
-                // The headcount is remembered as it passes, so a page that reloads
-                // gets the last figure rather than zero. Read from the raw frame
-                // because the mapped one is consumed below, and taken only when it
-                // is actually a number — an absent or malformed count must not
-                // overwrite a good one with zero.
-                if frame.get("type").and_then(Value::as_str) == Some("viewers") {
-                    if let Some(count) = frame.get("count").and_then(Value::as_i64) {
-                        state.set_viewers(count);
-                    }
-                }
-                if frame.get("type").and_then(Value::as_str) == Some("status")
-                    && frame.get("connected").and_then(Value::as_bool) == Some(true)
-                {
-                    // This state belongs to the reader, not the pure frame mapper.
-                    state.connected.store(true, Ordering::SeqCst);
-                }
+                // The parts of a frame that outlive it — the headcount and the
+                // stream's connected flag — belong to the reader rather than to the
+                // pure frame mapper, and are folded into the shared state here. Read
+                // from the raw frame because the mapped one is consumed just below.
+                observe_frame(state, &frame);
                 if let Some(event) = to_app_event(&frame, now_ms()) {
                     // Stamped so the app can drop it if a Stop lands before this
                     // reaches the webview. The generation check above is not
@@ -978,6 +996,30 @@ async fn run_once(
             Err(e) => return Err(e.to_string()),
             // Ping, pong and binary are the socket talking to itself.
             _ => {}
+        }
+    }
+}
+
+/// Folds the reader-state parts of a frame into the shared state.
+///
+/// The headcount and the stream's connected flag are remembered here rather than in
+/// the pure frame mapper, so a page that reloads gets the last figures instead of
+/// zero and a connection the stream has since dropped. Both are read from the raw
+/// frame, before it is mapped and consumed.
+fn observe_frame(state: &BackendState, frame: &Value) {
+    // Taken only when it is actually a number: an absent or malformed count must
+    // not overwrite a good one with zero.
+    if frame.get("type").and_then(Value::as_str) == Some("viewers") {
+        if let Some(count) = frame.get("count").and_then(Value::as_i64) {
+            state.set_viewers(count);
+        }
+    }
+    // The flag follows the frame in both directions. Set only on `true`, a stream
+    // that ended its live — or that dropped and is being retried — kept reporting
+    // itself connected until the next Stop, which is what a reloaded page then saw.
+    if frame.get("type").and_then(Value::as_str) == Some("status") {
+        if let Some(connected) = frame.get("connected").and_then(Value::as_bool) {
+            state.connected.store(connected, Ordering::SeqCst);
         }
     }
 }
@@ -1223,6 +1265,40 @@ mod tests {
         // previous connection must not be reported as the current one.
         assert_eq!(snap["running"].as_bool(), Some(true));
         assert_eq!(snap["connected"].as_bool(), Some(false));
+    }
+
+    #[test]
+    fn a_status_frame_moves_the_connected_flag_both_ways() {
+        // The bug: only `connected: true` was read from a status frame, so a stream
+        // that ended its live — or dropped and was being retried — kept reporting
+        // itself connected until the next Stop. A reloaded page was then shown a
+        // live connection the reader had already lost.
+        let state = BackendState::default();
+
+        observe_frame(&state, &json!({ "type": "status", "connected": true }));
+        assert_eq!(state.is_connected(), true);
+
+        observe_frame(&state, &json!({ "type": "status", "connected": false }));
+        assert_eq!(state.is_connected(), false);
+
+        // A status frame without the field says nothing about the connection, so it
+        // must not be read as a disconnect.
+        observe_frame(&state, &json!({ "type": "status", "connected": true }));
+        observe_frame(&state, &json!({ "type": "status", "message": "still here" }));
+        assert_eq!(state.is_connected(), true);
+    }
+
+    #[test]
+    fn a_viewers_frame_keeps_the_last_good_count() {
+        let state = BackendState::default();
+
+        observe_frame(&state, &json!({ "type": "viewers", "count": 42 }));
+        assert_eq!(state.snapshot()["viewers"].as_i64(), Some(42));
+
+        // A malformed or absent count must not overwrite a good one with zero.
+        observe_frame(&state, &json!({ "type": "viewers" }));
+        observe_frame(&state, &json!({ "type": "viewers", "count": "many" }));
+        assert_eq!(state.snapshot()["viewers"].as_i64(), Some(42));
     }
 
     #[test]
