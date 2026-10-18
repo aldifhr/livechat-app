@@ -18,13 +18,6 @@ export async function sha256(text: string): Promise<string> {
   return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
-/** A fresh 32-byte seed, hex-encoded. Only used where no server commitment exists. */
-export function generateSeed(): string {
-  const buf = new Uint8Array(32)
-  crypto.getRandomValues(buf)
-  return Array.from(buf).map((b) => b.toString(16).padStart(2, '0')).join('')
-}
-
 /**
  * Derive the winner from the committed seed and the frozen pool.
  *
