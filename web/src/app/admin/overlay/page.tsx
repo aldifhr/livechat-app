@@ -1,16 +1,12 @@
-import OverlayBuilder from '@/sections/OverlayBuilder'
+import { redirect } from 'next/navigation'
 
 /**
- * The overlay builder.
+ * The old overlay builder address.
  *
- * The room being styled lives in the query string rather than in component state,
- * which is what makes the URL shareable: the address bar on this page is the whole
- * style, and it is the same string the builder hands you for OBS. Opening it on
- * somebody else's screen shows what they are seeing rather than the defaults.
- *
- * The builder reads ?room= itself on mount rather than taking it as a prop, so
- * pasting a room id into this address works the same as clicking through to it.
+ * The customizers moved under each stream — /admin/streams/@handle/overlay/chat —
+ * because styling belongs to a stream, so there is no builder page here any more.
+ * This redirect keeps links and bookmarks made before the move working.
  */
-export default function OverlayBuilderPage() {
-  return <OverlayBuilder />
+export default function OverlayRedirect() {
+  redirect('/admin/streams')
 }

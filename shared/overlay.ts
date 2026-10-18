@@ -333,6 +333,52 @@ export function resolveBoardStyle(saved: Partial<BoardStyle> | null | undefined)
 }
 
 // --------------------------------------------------------------------------
+// the pixel cat
+// --------------------------------------------------------------------------
+
+/** The four fur palettes the cat is drawn in. */
+export type CatPalette = 'oren' | 'abu' | 'hitam' | 'putih'
+
+/**
+ * The cat overlay's styling.
+ *
+ * Two knobs, because those are the two the page offers that are a decision about
+ * the stream rather than a toy for whoever is watching the page: which palette the
+ * fur is drawn from, and whether the cat is drawn chunky. The rest of the page's
+ * own toolbar — walking it around, hiding the panel, the animation speed — is the
+ * viewer's, not something a room's saved styling should force.
+ */
+export interface CatStyle {
+  /** Which of the four palettes the fur is drawn from. */
+  pal: CatPalette
+  /** Whether the cat is drawn at its chunky scale. */
+  chonk: boolean
+}
+
+export const CAT_DEFAULT_STYLE: CatStyle = {
+  // Black, the same default the page opens on.
+  pal: 'hitam',
+  chonk: false,
+}
+
+const CAT_PALETTES: readonly CatPalette[] = ['oren', 'abu', 'hitam', 'putih']
+
+/** One of the four palettes, or the default. */
+export function resolveCatPalette(value: unknown): CatPalette {
+  return typeof value === 'string' && CAT_PALETTES.includes(value as CatPalette)
+    ? (value as CatPalette)
+    : CAT_DEFAULT_STYLE.pal
+}
+
+/** A cat style read out of storage, with anything unusable replaced. */
+export function resolveCatStyle(saved: Partial<CatStyle> | null | undefined): CatStyle {
+  return {
+    pal: resolveCatPalette(saved?.pal),
+    chonk: typeof saved?.chonk === 'boolean' ? saved.chonk : CAT_DEFAULT_STYLE.chonk,
+  }
+}
+
+// --------------------------------------------------------------------------
 // the stored form
 // --------------------------------------------------------------------------
 
@@ -369,6 +415,8 @@ const STORED_TO_FIELD = {
   overlayBubbleOpacity: 'bubbleOpacity',
   overlayGiftColour: 'giftColour',
   overlayTitle: 'title',
+  catPalette: 'pal',
+  catChonk: 'chonk',
 } as const
 
 /** A field name a stored config can carry. */
@@ -382,7 +430,7 @@ type StyleField = (typeof STORED_TO_FIELD)[keyof typeof STORED_TO_FIELD]
  * board style from the subset that means something to it. Neither is wrong about a
  * field the other owns.
  */
-export type StoredStyle = Partial<OverlayStyle> & Partial<Pick<BoardStyle, 'title'>>
+export type StoredStyle = Partial<OverlayStyle> & Partial<Pick<BoardStyle, 'title'>> & Partial<CatStyle>
 
 /**
  * A room's stored config as style fields, ready for `resolveStyle`.
@@ -437,5 +485,19 @@ export function boardStyleToStored(style: BoardStyle): Record<string, unknown> {
     overlayTextColour: style.textColour,
     overlayFont: style.font,
     overlayTitle: style.title,
+  }
+}
+
+/**
+ * A cat style as the config to save it under.
+ *
+ * Carries only its own two fields, like the board: the store replaces a room's
+ * record wholesale, so everything it does not mention has to be preserved by the
+ * caller spreading the room's existing config under it.
+ */
+export function catStyleToStored(style: CatStyle): Record<string, unknown> {
+  return {
+    catPalette: style.pal,
+    catChonk: style.chonk,
   }
 }

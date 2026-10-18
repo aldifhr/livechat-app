@@ -25,7 +25,7 @@ import { api, ApiError, isAuthFailure } from '@/lib/client/api'
 import { useOrigin } from '@/hooks/useBrowser'
 import { usePoll } from '@/hooks/usePoll'
 import { useConnectionWatch } from '@/hooks/useConnectionWatch'
-import { streamLinks, LINK_LABELS } from '@/lib/client/streamLinks'
+import { streamLinks, LINK_LABELS, customizerPath } from '@/lib/client/streamLinks'
 import type { Room, RoomSession, RoomStatus } from '@/lib/types'
 import LinkLine from '@/components/LinkLine'
 import ConfirmDialog from '@/components/ConfirmDialog'
@@ -236,8 +236,14 @@ export default function StreamProfile({ handle }: { handle: string }) {
               {running ? 'Stop' : 'Connect'}
             </button>
           )}
-          <Link className="btn" href={`/admin/overlay?room=${encodeURIComponent(room.id)}`}>
-            Style overlay
+          <Link className="btn" href={customizerPath(room.username, room.id, 'chat')}>
+            Style chat
+          </Link>
+          <Link className="btn" href={customizerPath(room.username, room.id, 'top-chatter')}>
+            Style board
+          </Link>
+          <Link className="btn" href={customizerPath(room.username, room.id, 'cat')}>
+            Style cat
           </Link>
           <button className="danger" onClick={() => setPendingDelete(true)} disabled={busy}>
             Delete

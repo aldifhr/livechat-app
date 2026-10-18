@@ -27,6 +27,21 @@ export function profilePath(username: string, id: string): string {
   return username ? `/admin/streams/@${encodeURIComponent(username)}` : `/admin/streams/${id}`
 }
 
+/** The kind of overlay a customizer styles, as it appears in the address. */
+export type OverlayKind = 'chat' | 'top-chatter' | 'cat'
+
+/**
+ * A stream's customizer for one overlay, under the stream's own address.
+ *
+ * Styling belongs to a stream, so the customizer sits under the stream rather than
+ * under a builder that would have to name the room some other way. The kind is a
+ * path segment so each overlay is its own page — a link to "restyle my chat" is a
+ * link to somewhere.
+ */
+export function customizerPath(username: string, id: string, kind: OverlayKind): string {
+  return `${profilePath(username, id)}/overlay/${kind}`
+}
+
 /**
  * The overlay links for one stream, in full.
  *

@@ -107,6 +107,10 @@ OVERLAY_STYLE_KEYS = {
     # something the dashboard could do — see `page_config` for why this key is
     # absent from `OVERLAY_STORE_KEYS` above, which guards a different path.
     "overlayTitle": "title",
+    # The cat's two knobs. Same path as `overlayTitle`: saved through the
+    # authenticated config route, so not in the unauthenticated whitelist above.
+    "catPalette": "pal",
+    "catChonk": "chonk",
 }
 
 

@@ -83,7 +83,10 @@ function connectChat(){
   chatSocket.onmessage=(event)=>{
     try{
       const frame=JSON.parse(event.data)
-      if(frame.type==='comment'&&frame.text){
+      if(frame.type==='config'&&frame.config){
+        applyCatStyle(frame.config)
+        if(catPreview)applyCatStyle(catPreview)
+      } else if(frame.type==='comment'&&frame.text){
         // Comments do not show a bubble — they just make the cat react (hearts).
         wake()
         C.boop=1.2
@@ -138,6 +141,26 @@ const PAL={
   hitam:{s:'#0f0d16',lo:'#191527',d:'#221d33',b:'#2c2542',hi:'#6e7ba8',belly:'#3a3255',paw:'#332c4b',ear:'#c04a72'},
   putih:{s:'#d99a5c',lo:'#d0b894',d:'#e2d2b6',b:'#f6eddc',hi:'#ffffe0',belly:'#ffffff',ear:'#f7a3ae',paw:'#ecdfc6'},
 }
+// A palette name only counts once `PAL` exists to check it against, and only when it
+// is an own key: `PAL['__proto__']` is truthy because it is inherited, and a palette
+// of `Object.prototype` has no `hi`, so the first frame would crash on it.
+function safePal(v){return typeof v==='string'&&Object.hasOwn(PAL,v)?v:null}
+const qPal=safePal(q.get('pal'));if(qPal)pal=qPal
+if(q.get('chonk')==='1'||q.get('chonk')==='true')chonk=true
+// Styling pushed by the dashboard — a saved room config, or an unsaved edit in the
+// builder preview. Only the two fields this page reads are taken.
+let catPreview=null
+function applyCatStyle(style){
+  if(!style||typeof style!=='object')return
+  const p=safePal(style.pal);if(p)pal=p
+  if(typeof style.chonk==='boolean')chonk=style.chonk
+}
+addEventListener('message',e=>{
+  const s=e.data&&e.data.streamkitPreviewStyle
+  if(!s)return
+  catPreview=s
+  applyCatStyle(s)
+})
 // 4x4 ordered dither, indexed y*4+x. Not the pattern that matters — where it is applied,
 // and how narrowly, that does.
 //

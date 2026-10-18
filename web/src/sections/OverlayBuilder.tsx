@@ -1,20 +1,21 @@
 /**
- * Two customizers, one per overlay.
+ * One customizer per overlay: the chat, the top-chatters board and the cat.
  *
  * Deliberately not one panel with a switch, and not one style object shared
- * between both: the chat overlay and the top-chatters board read different
- * parameters. The board ignores the message gap entirely and carries a title the
- * chat overlay has no place for; the chat overlay has no board to name. One shared
- * style meant a delay slider that did nothing on the board and a link for the chat
- * overlay that quietly carried the board's row count.
+ * between them: each overlay reads different parameters. The board ignores the
+ * message gap entirely and carries a title the chat overlay has no place for; the
+ * cat has neither a chat nor a board to name. One shared style meant a delay slider
+ * that did nothing on the board and a link for the chat overlay that quietly
+ * carried the board's row count.
  *
- * Each side reads and writes its own query string through shared/, so the bounds
- * the customizer enforces are the same ones the page enforces. What is copied into
- * OBS is exactly what the controls describe.
+ * Each side reads and writes its own fields through shared/, so the bounds the
+ * customizer enforces are the same ones the page enforces. What is copied into OBS
+ * is exactly what the controls describe.
  */
 
 'use client'
 
+import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   chatStyleFromQuery,
@@ -31,59 +32,28 @@ import {
   OVERLAY_MAX_WIDTH,
   OVERLAY_SIZE,
   OVERLAY_TITLE_MAX,
+  catStyleToStored,
+  resolveCatStyle,
+  CAT_DEFAULT_STYLE,
   type BoardStyle,
+  type CatPalette,
+  type CatStyle,
   type OverlayStyle,
   type OverlayPosition,
 } from '@shared/overlay'
 import { api } from '../lib/client/api'
-import type { Room, RoomStatus } from '../lib/types'
-import { labelOf, orderForPicker, pickDefaultRoom, type RoomChoice } from '../lib/roomLive'
+import { profilePath } from '../lib/client/streamLinks'
+import type { Room } from '../lib/types'
 import CopyField from '../components/CopyField'
 import OverlayStage from '../components/OverlayStage'
 import { usePersistedStyle, type SaveState } from '@/hooks/usePersistedStyle'
 
-/** The room picker both customizers share — the room is what an overlay points at. */
-function RoomPicker({
-  choices,
-  selected,
-  onChange,
-}: {
-  choices: RoomChoice[]
-  selected: string
-  onChange: (id: string) => void
-}) {
-  // Live first, then waiting, then offline — see `orderForPicker`. Each entry says
-  // which it is, because a name alone gave no way to tell a room that can produce
-  // chat from one that cannot, and the picker defaulted to whichever happened to
-  // be created first.
-  const liveCount = choices.filter((choice) => choice.live === 'live').length
-  return (
-    <div className="field">
-      <label htmlFor="room">Room</label>
-      <select id="room" value={selected} onChange={(event) => onChange(event.target.value)}>
-        <option value="">Choose a room…</option>
-        {choices.map(({ room, live }) => (
-          <option key={room.id} value={room.id}>
-            {room.name} — {labelOf(live)}
-          </option>
-        ))}
-      </select>
-      <p className="hint">
-        {liveCount === 0
-          ? 'No room is live right now. An offline room still has styling to edit — the overlay appears when the stream starts.'
-          : `${liveCount} room${liveCount === 1 ? '' : 's'} live now, listed first.`}
-      </p>
-    </div>
-  )
-}
-
 // ---- the chat customizer --------------------------------------------------
 
-function ChatCustomizer({ roomId, style, design, saveState, onChange }: {
+function ChatCustomizer({ roomId, style, design, onChange }: {
   roomId: string
   style: OverlayStyle
   design: 'original' | 'studio'
-  saveState: SaveState
   onChange: (change: Partial<OverlayStyle>) => void
 }) {
   const chatUrl = useMemo(() => (roomId ? api.chatOverlay(roomId, design) : ''), [roomId, design])
@@ -119,7 +89,7 @@ function ChatCustomizer({ roomId, style, design, saveState, onChange }: {
             <option value="bottom-left">Bottom left</option>
             <option value="bottom-right">Bottom right</option>
           </select>
-          <div className="flex items-center justify-between gap-3 mt-2">
+          <div className="mt-2">
             <button
               type="button"
               className="btn btn-small"
@@ -128,7 +98,6 @@ function ChatCustomizer({ roomId, style, design, saveState, onChange }: {
             >
               Reset position
             </button>
-            <SaveBadge state={saveState} />
           </div>
         </div>
 
@@ -290,20 +259,75 @@ function BoardCustomizer({ roomId, style, onChange }: {
   )
 }
 
+// ---- the cat customizer ---------------------------------------------------
+
+function CatCustomizer({ roomId, style, onChange }: {
+  roomId: string
+  style: CatStyle
+  onChange: (change: Partial<CatStyle>) => void
+}) {
+  const catUrl = useMemo(() => (roomId ? api.catOverlay(roomId) : ''), [roomId])
+
+  return (
+    <>
+      <div className="panel">
+        <h3>Style</h3>
+
+        <p className="style-group-title">Appearance</p>
+
+        <div className="field">
+          <label htmlFor="cat-palette">Fur colour</label>
+          <select
+            id="cat-palette"
+            value={style.pal}
+            onChange={(e) => onChange({ pal: e.target.value as CatPalette })}
+          >
+            <option value="oren">Orange</option>
+            <option value="abu">Grey</option>
+            <option value="hitam">Black</option>
+            <option value="putih">White</option>
+          </select>
+        </div>
+
+        <div className="field">
+          <label htmlFor="cat-chonk">Chonk</label>
+          <select
+            id="cat-chonk"
+            value={style.chonk ? 'on' : 'off'}
+            onChange={(e) => onChange({ chonk: e.target.value === 'on' })}
+          >
+            <option value="off">Off</option>
+            <option value="on">On</option>
+          </select>
+        </div>
+
+        <button onClick={() => onChange(CAT_DEFAULT_STYLE)}>Reset to defaults</button>
+      </div>
+
+      <div>
+        <CopyField label="Cat overlay" url={catUrl} hint="Add as a browser source in OBS, sized to your canvas." />
+      </div>
+    </>
+  )
+}
+
 // ---- the page -------------------------------------------------------------
 
-type Which = 'chat' | 'board'
+/** Which overlay this page styles. One route per kind. */
+export type BuilderKind = 'chat' | 'board' | 'cat'
 
 /** What the operator is told about the save. Never a guess, never a silence. */
 function SaveBadge({ state }: { state: SaveState }) {
   const text =
-    state === 'pending'
-      ? 'Saving…'
-      : state === 'saved'
-        ? 'Saved'
-        : state === 'failed'
-          ? 'Save failed'
-          : ''
+    state === 'dirty'
+      ? 'Unsaved changes'
+      : state === 'saving'
+        ? 'Saving…'
+        : state === 'saved'
+          ? 'Saved'
+          : state === 'failed'
+            ? 'Save failed'
+            : ''
   return (
     <span className={state === 'failed' ? 'save-state failed' : 'save-state'} role="status">
       {text}
@@ -321,11 +345,12 @@ const CANVASES = [
   { label: '720×1280', width: 720, height: 1280 },
 ]
 
-export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }) {
+export default function OverlayBuilder({ handle, kind }: { handle: string; kind: BuilderKind }) {
+  // The handle is the part a person types; a room with no handle is reachable by its
+  // id, the same two forms the profile resolves. The leading `@` is optional.
+  const wanted = decodeURIComponent(handle).trim().replace(/^@/, '')
   const [rooms, setRooms] = useState<Room[]>([])
-  const [statuses, setStatuses] = useState<Record<string, RoomStatus | undefined>>({})
-  const [roomId, setRoomId] = useState(initialRoom ?? '')
-  const [which, setWhich] = useState<Which>('chat')
+  const [loadedRooms, setLoadedRooms] = useState(false)
   const [chatDesign, setChatDesign] = useState<'original' | 'studio'>('original')
   const [canvas, setCanvas] = useState(CANVASES[0])
 
@@ -336,60 +361,32 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
   useEffect(() => {
     search.current = window.location.search
     if (new URLSearchParams(search.current).get('design') === 'studio') setChatDesign('studio')
-    if (!initialRoom) {
-      const fromQuery = new URLSearchParams(search.current).get('room')
-      if (fromQuery) setRoomId(fromQuery)
-    }
-  }, [initialRoom])
+  }, [])
 
+  // The room list is the only way to reach a room's saved styling. The list is behind
+  // the session, so a handle that names nothing is discovered here, after the read,
+  // rather than at request time — and a room that was just renamed still resolves.
   useEffect(() => {
     let cancelled = false
     api
       .rooms()
-      .then(async ({ rooms: found }) => {
-        setRooms(found)
-        // Read every room's state so the picker can order by it and say which is
-        // which. A status that cannot be read is left undefined and reads as
-        // offline, which is the honest answer for a room nothing can be said
-        // about — the alternative is a badge that guesses.
-        const read: Record<string, RoomStatus | undefined> = {}
-        await Promise.all(
-          found.map(async (room) => {
-            try {
-              read[room.id] = await api.status(room.id)
-            } catch {
-              read[room.id] = undefined
-            }
-          }),
-        )
-        if (cancelled) return
-        setStatuses(read)
-        // Live first, and the default is the first live room rather than whichever
-        // was created first — the bug this exists for: every visit opened on an
-        // offline room while a live one sat further down the list.
-        const choices = orderForPicker(found, read)
-        setRoomId((current) => current || pickDefaultRoom(choices))
+      .then(({ rooms: found }) => {
+        if (!cancelled) setRooms(found)
       })
       .catch(() => {
-        // The builder is reachable before a token is set and the room list may
-        // still be empty at that point; an empty select is a fair answer here and
-        // the rest of the section stays usable.
+        // A list that cannot be read is an empty list here; the page then says the
+        // stream was not found rather than pretending to style one it cannot see.
+      })
+      .finally(() => {
+        if (!cancelled) setLoadedRooms(true)
       })
     return () => {
       cancelled = true
     }
   }, [])
 
-  // Ordered once here rather than in the render: the picker reads this, and a
-  // fresh sort per render would reshuffle it as statuses poll.
-  const choices = useMemo(() => orderForPicker(rooms, statuses), [rooms, statuses])
-
-  // A room named by the query string only counts once it has been confirmed to
-  // exist, so a stale id produces a fallback rather than a link pointing at a
-  // room nobody is watching.
-  const known = rooms.some((room) => room.id === roomId)
-  const selected = known ? roomId : (rooms[0]?.id ?? '')
-  const room = rooms.find((r) => r.id === selected)
+  const room = rooms.find((candidate) => candidate.username === wanted || candidate.id === wanted)
+  const selected = room?.id ?? ''
 
   /**
    * Read a room's saved styling, falling back to whatever the link carried.
@@ -420,6 +417,11 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
     [],
   )
 
+  const readCat = useCallback(
+    (config: Record<string, unknown>) => resolveCatStyle(styleFromStored(config)),
+    [],
+  )
+
   const chat = usePersistedStyle({
     room,
     fallback: OVERLAY_DEFAULT_STYLE,
@@ -434,38 +436,69 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
     write: boardStyleToStored,
   })
 
+  const cat = usePersistedStyle({
+    room,
+    fallback: CAT_DEFAULT_STYLE,
+    read: readCat,
+    write: catStyleToStored,
+  })
+
+  // The customizer on screen, so the one Save button and its status belong to
+  // the overlay this route styles.
+  const active = kind === 'chat' ? chat : kind === 'board' ? board : cat
+  const heading = kind === 'chat' ? 'Chat overlay' : kind === 'board' ? 'Top chatters' : 'Cat overlay'
+
+  if (!loadedRooms) {
+    return <div className="empty">Loading this stream…</div>
+  }
+
+  if (!room) {
+    return (
+      <>
+        <div className="page-head">
+          <div>
+            <h2>No such stream</h2>
+            <p className="muted">
+              Nothing here is called <strong>@{wanted}</strong>. It may have been deleted, or the
+              address may have a typo in it.
+            </p>
+          </div>
+        </div>
+        <div className="panel">
+          <Link className="btn" href="/admin/streams">
+            Back to streams
+          </Link>
+        </div>
+      </>
+    )
+  }
+
   return (
     <>
       <div className="page-head">
         <div>
-          <h2>Overlay builder</h2>
+          <p className="faint">
+            <Link className="quiet-link" href={profilePath(room.username, room.id)}>
+              ← {room.username ? `@${room.username}` : room.name}
+            </Link>
+          </p>
+          <h2>{heading}</h2>
           <p className="muted">
-            Style each overlay, then paste its link into OBS as a browser source.
+            Style this overlay, then paste its link into OBS as a browser source.
           </p>
         </div>
       </div>
 
-      <div className="panel">
-        <RoomPicker choices={choices} selected={selected} onChange={setRoomId} />
-        <div className="seg stack-top" aria-label="Overlay to style">
-          <button aria-pressed={which === 'chat'} className={which === 'chat' ? 'on' : ''} onClick={() => setWhich('chat')}>
-            Chat overlay
+      {kind === 'chat' && (
+        <div className="seg mb-4" aria-label="Chat overlay design">
+          <button aria-pressed={chatDesign === 'original'} className={chatDesign === 'original' ? 'on' : ''} onClick={() => setChatDesign('original')}>
+            Original
           </button>
-          <button aria-pressed={which === 'board'} className={which === 'board' ? 'on' : ''} onClick={() => setWhich('board')}>
-            Top chatters
+          <button aria-pressed={chatDesign === 'studio'} className={chatDesign === 'studio' ? 'on' : ''} onClick={() => setChatDesign('studio')}>
+            Studio
           </button>
         </div>
-        {which === 'chat' && (
-          <div className="seg stack-top" aria-label="Chat overlay design">
-            <button aria-pressed={chatDesign === 'original'} className={chatDesign === 'original' ? 'on' : ''} onClick={() => setChatDesign('original')}>
-              Original
-            </button>
-            <button aria-pressed={chatDesign === 'studio'} className={chatDesign === 'studio' ? 'on' : ''} onClick={() => setChatDesign('studio')}>
-              Studio
-            </button>
-          </div>
-        )}
-      </div>
+      )}
 
       {/*
         Controls on the left, the overlay itself on the right.
@@ -483,18 +516,28 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
       */}
       <div className="builder">
         <div className="builder-controls">
-          {which === 'chat' ? (
+          {kind === 'chat' ? (
             <ChatCustomizer
               roomId={selected}
               style={chat.current}
               design={chatDesign}
-              saveState={chat.state}
               onChange={chat.patch}
             />
-          ) : (
+          ) : kind === 'board' ? (
             <BoardCustomizer roomId={selected} style={board.current} onChange={board.patch} />
+          ) : (
+            <CatCustomizer roomId={selected} style={cat.current} onChange={cat.patch} />
           )}
-          {which === 'board' && <SaveBadge state={board.state} />}
+          <div className="flex items-center justify-between gap-3 mt-1">
+            <SaveBadge state={active.state} />
+            <button
+              className="primary"
+              onClick={active.save}
+              disabled={!active.dirty || !active.enabled}
+            >
+              Save
+            </button>
+          </div>
         </div>
 
         <div className="builder-stage">
@@ -524,10 +567,18 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
                   a small box that swells as the room warms up. */}
               <OverlayStage
                 variant="canvas"
-                url={which === 'chat' ? api.chatOverlay(selected, chatDesign) : api.topChatterOverlay(selected)}
-                title={`${which === 'chat' ? 'Chat' : 'Top chatters'} overlay preview`}
+                url={
+                  kind === 'chat'
+                    ? api.chatOverlay(selected, chatDesign)
+                    : kind === 'board'
+                      ? api.topChatterOverlay(selected)
+                      : api.catOverlay(selected)
+                }
+                title={`${kind === 'chat' ? 'Chat' : kind === 'board' ? 'Top chatters' : 'Cat'} overlay preview`}
                 canvas={canvas}
-                previewStyle={which === 'chat' ? chat.current : board.current}
+                previewStyle={
+                  kind === 'chat' ? chat.current : kind === 'board' ? board.current : cat.current
+                }
               />
               <p className="faint tight-caption">
                 The overlay on a {canvas.width}×{canvas.height} canvas — what OBS shows. It changes as

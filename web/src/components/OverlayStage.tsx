@@ -46,18 +46,21 @@ import { useEffect, useMemo, useRef, useState } from 'react'
  * from the message.
  */
 type PreviewStyle = {
-  size: number
-  nameColour: string
-  textColour: string
-  bg: number
-  max: number
-  font: string
+  size?: number
+  nameColour?: string
+  textColour?: string
+  bg?: number
+  max?: number
+  font?: string
   delay?: number
   position?: string
   maxWidth?: number
   bubbleOpacity?: number
   giftColour?: string
   title?: string
+  /** The cat's palette and chonk, which the text overlays have no place for. */
+  pal?: string
+  chonk?: boolean
 }
 
 interface Props {
@@ -129,6 +132,9 @@ export default function OverlayStage({
           giftColour: previewStyle.giftColour,
           // Only the board carries one; the chat page has no place for it.
           title: previewStyle.title,
+          // Only the cat carries these; the text overlays ignore them.
+          pal: previewStyle.pal,
+          chonk: previewStyle.chonk,
         },
         streamkitPreviewSample: true,
       },

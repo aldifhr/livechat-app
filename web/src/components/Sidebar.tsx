@@ -22,7 +22,6 @@ import { usePathname } from 'next/navigation'
 const ITEMS = [
   { href: '/admin/dashboard', label: 'Overview', icon: '◫', hint: 'Live status and viewers across streams' },
   { href: '/admin/streams', label: 'Streams', icon: '◉', hint: 'Links and styling for each stream' },
-  { href: '/admin/overlay', label: 'Overlay builder', icon: '✦', hint: 'Restyle one stream in detail' },
   { href: '/admin/logs', label: 'Logs', icon: '≡', hint: 'What the backend has been saying' },
   { href: '/admin/analytics', label: 'Analytics', icon: '▥', hint: 'Session totals across every stream' },
   { href: '/admin/giveaways', label: 'Giveaways', icon: '◈', hint: 'Published giveaway snapshots' },

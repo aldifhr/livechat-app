@@ -1,29 +1,33 @@
 'use client'
 
 /**
- * A style that survives being closed.
+ * A style that survives being closed, and is only written when asked.
  *
  * The editor used to hold its style in React state and nothing else, which meant a
  * refresh threw away everything the operator had set. The backend has had a route
  * for saving a room's styling the whole time — it even broadcasts to the overlays
- * watching that room — but nothing called it.
+ * watching that room — and this is the caller.
  *
- * This is the caller. Three things it has to get right, and each one has a way of
- * failing quietly:
+ * Saving is explicit: `patch` edits the working copy and marks it dirty, and
+ * `save` is what writes it. There is no debounce, because a save that happens on
+ * its own is a save the operator did not ask for and cannot see the moment of —
+ * the status is shown next to a button they pressed, or it is not shown at all.
+ *
+ * Three things it has to get right, and each one has a way of failing quietly:
  *
  *   - **Loading.** A room's saved styling comes from `room.config`, read through
  *     `styleFromStored` and clamped by the shared resolver. Falling back to the
  *     query string only happens for a room that has never been styled, because
  *     that is where a link pasted before this existed carries its own styling.
  *
- *   - **Not saving on load.** The load effect sets the style, which would trip a
- *     plain change effect and write the defaults straight back over the saved
- *     styling. Saving is therefore driven by edits, not by state changing.
- *
  *   - **Not erasing the other overlay.** Both overlays save into one room record
  *     and the store replaces that record wholesale, so a save sends the config the
  *     room already had with its own fields spread over it. Sending only the fields
  *     being changed would be a shorter way to lose the other overlay's styling.
+ *
+ *   - **Not losing a concurrent save.** Two customizers share one room record. A
+ *     save merges into `base` rather than replacing it, so a save from the other
+ *     panel that landed first is not undone by this one.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -34,23 +38,26 @@ import type { Room } from '@/lib/types'
 export type SaveState =
   /** Untouched since it loaded. */
   | 'idle'
-  /** An edit is waiting for the quiet period to pass. */
-  | 'pending'
+  /** Edited, not yet written. */
+  | 'dirty'
+  /** A write is in flight. */
+  | 'saving'
   /** Written. */
   | 'saved'
   /** Refused. The styling is still on screen; it just is not stored. */
   | 'failed'
 
-/** How long after the last edit before the styling is written. */
-const SAVE_DEBOUNCE_MS = 400
-
 interface PersistedStyle<S> {
   /** The style as it stands. Change it through `patch`. */
   current: S
-  /** Applies a change and schedules a save. */
+  /** Applies an edit to the working copy. Does not write. */
   patch: (change: Partial<S>) => void
   /** Where the save has got to. */
   state: SaveState
+  /** Whether there is an unwritten edit (including one that failed to write). */
+  dirty: boolean
+  /** Writes the working copy to the room. No-op when there is nowhere to save. */
+  save: () => void
   /** Whether there is anywhere to save to. */
   enabled: boolean
 }
@@ -64,7 +71,7 @@ interface Options<S> {
   read: (stored: Record<string, unknown>) => S
   /** Writes a style into the stored form. */
   write: (style: S) => Record<string, unknown>
-  /** Whether this style is already the room's saved one, so no save is pending. */
+  /** Whether this style is already the room's saved one. */
   isSameAsStored?: (style: S, stored: Record<string, unknown>) => boolean
 }
 
@@ -84,7 +91,6 @@ export function usePersistedStyle<S extends object>({
   // Read-modify-write is the only way to save one overlay's fields without the
   // store treating the write as the room's entire configuration.
   const base = useRef<Record<string, unknown>>({})
-  const timer = useRef<number | null>(null)
   const latest = useRef<S>(current)
   const disposed = useRef(false)
 
@@ -96,7 +102,6 @@ export function usePersistedStyle<S extends object>({
     disposed.current = false
     return () => {
       disposed.current = true
-      if (timer.current !== null) window.clearTimeout(timer.current)
     }
   }, [])
 
@@ -107,14 +112,11 @@ export function usePersistedStyle<S extends object>({
   useEffect(() => {
     const config = saved ?? {}
     base.current = { ...config }
-    setCurrent(read(structuredClone(config)))
+    latest.current = read(structuredClone(config))
+    setCurrent(latest.current)
     setState('idle')
-    if (timer.current !== null) {
-      window.clearTimeout(timer.current)
-      timer.current = null
-    }
-    // `read` and `fallback` are closures rebuilt every render; depending on them
-    // would reload on every keystroke and undo the edit being made.
+    // `read` is a closure rebuilt every render; depending on it would reload on
+    // every keystroke and undo the edit being made.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, saved])
 
@@ -125,41 +127,45 @@ export function usePersistedStyle<S extends object>({
       setCurrent(next)
       if (!roomId) return
 
-      // Nothing to write if this is what the room already had — which is what a
-      // control set back to the value it started on amounts to.
+      // Back to what the room already had — a control set to the value it started
+      // on is not an edit, so the button goes quiet again.
       if (isSameAsStored?.(next, base.current)) {
-        if (timer.current !== null) {
-          window.clearTimeout(timer.current)
-          timer.current = null
-        }
         setState('idle')
         return
       }
-
-      setState('pending')
-      if (timer.current !== null) window.clearTimeout(timer.current)
-      timer.current = window.setTimeout(() => {
-        timer.current = null
-        const fields = write(next)
-        const before = base.current
-        api
-          .saveStyle(roomId, before, fields)
-          .then(() => {
-            if (disposed.current) return
-            // Always advance base to what we just wrote. A concurrent save
-            // from the other customizer may have already moved base.current
-            // past `before` — overwriting it here would lose that save.
-            base.current = { ...before, ...fields }
-            setState('saved')
-          })
-          .catch(() => {
-            if (disposed.current) return
-            setState('failed')
-          })
-      }, SAVE_DEBOUNCE_MS)
+      setState('dirty')
     },
-    [roomId, write, isSameAsStored],
+    [roomId, isSameAsStored],
   )
 
-  return { current, patch, state, enabled: roomId !== '' }
+  const save = useCallback(() => {
+    if (!roomId) return
+    const fields = write(latest.current)
+    const before = base.current
+    setState('saving')
+    api
+      .saveStyle(roomId, before, fields)
+      .then(() => {
+        if (disposed.current) return
+        // Merge, not replace: a concurrent save from the other customizer may have
+        // already moved base.current past `before`, and overwriting it here would
+        // lose that save.
+        base.current = { ...before, ...fields }
+        setState('saved')
+      })
+      .catch(() => {
+        if (disposed.current) return
+        setState('failed')
+      })
+  }, [roomId, write])
+
+  return {
+    current,
+    patch,
+    state,
+    // A failed write stays dirty so the button is still there to try again.
+    dirty: state === 'dirty' || state === 'failed',
+    save,
+    enabled: roomId !== '',
+  }
 }
