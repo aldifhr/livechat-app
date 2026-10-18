@@ -29,7 +29,6 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  --color-*: initial;
   --color-bg: var(--bg);
   --color-raised: var(--bg-raised);
   --color-sunken: var(--bg-sunken);
