@@ -54,6 +54,9 @@ function isOpen(pathname: string): boolean {
     /^\/giveaway\/[A-Za-z0-9_-]{16}$/.test(pathname) ||
     pathname === '/api/giveaways/snapshots' ||
     pathname === '/api/tts' ||
+    // OBS docks: public browser source for OBS, mirrors desktop home.
+    // No session — OBS cannot type a password, same reason as overlays.
+    pathname === '/docks' ||
     // Next's own static assets, which carry no data.
     pathname.startsWith('/_next/') ||
     pathname === '/favicon.ico'
