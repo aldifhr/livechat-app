@@ -42,9 +42,20 @@ export async function loadApp() {
     'export const listen = async () => () => {}\n',
   )
 
+  // ApexCharts is SVG.js underneath, and SVG.js needs DOM APIs jsdom does not
+  // implement, so mounting a real chart here dies on `SVG2 is not a function`.
+  // The stats assertions read the numbers and tiles around the chart, never the
+  // chart itself, so a placeholder keeps the panel real and the chart out of the
+  // way.
+  writeFileSync(
+    join(stubs, 'react-apexcharts.js'),
+    "import { createElement } from 'react'\nexport default function Chart() { return createElement('div', { className: 'apexcharts-stub' }) }\n",
+  )
+
   const alias = {
     '@tauri-apps/api/core': join(stubs, 'api-core.js'),
     '@tauri-apps/api/event': join(stubs, 'api-event.js'),
+    'react-apexcharts': join(stubs, 'react-apexcharts.js'),
   }
 
   const { build } = await import('vite')

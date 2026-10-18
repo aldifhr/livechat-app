@@ -95,6 +95,39 @@ export function StatsPanel({ stats }: Props) {
                 values={snapshot.viewerSeries}
               />
 
+              <div className="stat-board">
+                <div className="stat-board-head">
+                  <span>Top {snapshot.topChatters.length || ''} chatters</span>
+                  <span className="stat-board-sub">
+                    by messages · {snapshot.totalFollows.toLocaleString()} follows ·{' '}
+                    {snapshot.totalShares.toLocaleString()} shares
+                  </span>
+                </div>
+                {snapshot.topChatters.length === 0 ? (
+                  <p className="stats-empty">No one has talked yet.</p>
+                ) : (
+                  <ol className="chatter-list">
+                    {snapshot.topChatters.map((chatter, index) => (
+                      <li key={chatter.id} className="chatter">
+                        <span className="chatter-rank">{index + 1}</span>
+                        {chatter.avatar ? (
+                          <img className="chatter-avatar" src={chatter.avatar} alt="" loading="lazy" referrerPolicy="no-referrer" />
+                        ) : (
+                          <span className="chatter-avatar chatter-fallback" aria-hidden="true">
+                            {(chatter.nickname.trim()[0] ?? '?').toUpperCase()}
+                          </span>
+                        )}
+                        <span className="chatter-name">{chatter.nickname || 'Room'}</span>
+                        {chatter.diamonds > 0 && (
+                          <span className="chatter-diamonds">{chatter.diamonds.toLocaleString()} ◆</span>
+                        )}
+                        <span className="chatter-count">{chatter.messages.toLocaleString()}</span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+
             </>
           )}
       </div>

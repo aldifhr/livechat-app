@@ -16,9 +16,11 @@ import { fakeTransport, flush, installDom, loadApp } from './dom.mjs'
 // late, which is a confusing failure to chase.
 process.env.NODE_ENV = 'development'
 
-const { entry } = await loadApp()
-const { App, setTransport, DEFAULT_BASE_URL: DEFAULT_BACKEND, MAX_ITEMS } = await import(entry)
-
+// The window has to be installed before the bundle is imported, because the bundle
+// pulls in react-dom. React decides at load time whether it can use the DOM and only
+// then registers its change/input event plugin: with no `window` yet, controlled
+// inputs never call their `onChange`, and every typing test fails for a reason that
+// has nothing to do with the component under test.
 const harness = installDom()
 // jsdom has no media playback; sound tests care that events keep flowing.
 const media = harness.dom.window.HTMLMediaElement.prototype
@@ -32,6 +34,10 @@ globalThis.IntersectionObserver ??= class {
   unobserve() {}
   disconnect() {}
 }
+
+const { entry } = await loadApp()
+const { App, setTransport, DEFAULT_BASE_URL: DEFAULT_BACKEND, MAX_ITEMS } = await import(entry)
+
 const React = (await import('react')).default
 const { createRoot } = await import('react-dom/client')
 const { act } = React
@@ -90,7 +96,23 @@ async function click(selector) {
   await flush()
 }
 
-const openSettings = () => click('[aria-label="Settings page"]')
+// Every feature page is gated behind an active connection, and the fake host never
+// confirms a connect on its own, so reaching one means sending the status frame a
+// real host sends. Without it the page renders the ConnectGate instead.
+const goLive = async () => {
+  await act(async () => {
+    fake.emit({ platform: 'tiktok', type: 'status', connected: true, message: 'Connected to @x' })
+  })
+  await flush()
+}
+const openLog = async () => {
+  await goLive()
+  await click('[aria-label="Log page"]')
+}
+const openSettings = async () => {
+  await goLive()
+  await click('[aria-label="Settings page"]')
+}
 const goHome = () => click('[aria-label="Home"]')
 const selectFeedCategory = (label) => click($$('.feed-category-tab').find((tab) => tab.textContent.trim() === label))
 
@@ -288,13 +310,15 @@ console.log('the auto-reply answers a greeting, once per person')
 // Counted on the bot badge, which only an auto-reply row carries — the backlog of
 // real messages above has none, so the count is exactly what this test produces.
 // Off by default: it makes the app talk, which has to be asked for. Turn it on
-// through the settings dialog, the same door a user opens it with.
+// through the settings dialog, the same door a user opens it with. Settings is a
+// gated page, so the room has to be live for the door to open at all.
 await openSettings()
 await selectFeedCategory('Event alerts')
-const autoReplyToggle = $$('.settings-page .toggle').find((t) =>
-  t.textContent.trim().startsWith('Auto-reply'),
-)?.querySelector('input')
-await click(autoReplyToggle)
+const autoReplyToggle = () =>
+  $$('.settings-page .toggle-row')
+    .find((row) => row.querySelector('span')?.textContent.trim().startsWith('Auto-reply'))
+    ?.querySelector('.toggle')
+await click(autoReplyToggle())
 await goHome()
 // A greeting from a viewer, and one that is not.
 await act(async () => {
@@ -439,7 +463,7 @@ await click('.room-row .btn-danger')
 await act(async () => {
   fake.emit({ platform: 'bridge', type: 'status', connected: false, message: 'Disconnected' })
 })
-await click('[aria-label="Log page"]')
+await openLog()
 check(
   'the disconnect is in the log',
   $$('.log-line').some((l) => /Disconnected/.test(l.textContent ?? '')),
@@ -622,7 +646,7 @@ console.log('failures are shown, not swallowed')
 await act(async () => {
   fake.emit({ platform: 'tiktok', type: 'error', message: 'Streamer is not live right now.' })
 })
-await click('[aria-label="Log page"]')
+await openLog()
 check('the error reached the log', /not live/.test(doc.body.textContent ?? ''))
 check('the error badge appeared', !!$('.log-badge'), $('.log-badge')?.textContent ?? 'none')
 await goHome()
@@ -655,8 +679,13 @@ const feed = sections().find((s) => s.getAttribute('data-section') === 'feed')
 check('the feed group starts closed', feed?.open === false, String(feed?.open))
 await click(feed.querySelector('.settings-heading'))
 check('clicking its title opens it', feed.open === true, String(feed.open))
+  // A toggle is a button now, labelled by the sibling span and reporting its state
+  // through `data-state`, so a label lookup resolves the row and then the button.
   const dialogToggle = (label) =>
-    $$('.settings-page .toggle').find((t) => t.textContent.trim().startsWith(label))?.querySelector('input')
+    $$('.settings-page .toggle-row')
+      .find((row) => row.querySelector('span')?.textContent.trim().startsWith(label))
+      ?.querySelector('.toggle')
+  const toggleOn = (label) => dialogToggle(label)?.getAttribute('data-state') === 'on'
   // A settings field found by its caption rather than by its position in the DOM.
   // The voice block holds three controls in one grid, so "the first select in the
   // feed section" silently became the language the moment a field was added above
@@ -715,14 +744,14 @@ await openSettings()
 await selectFeedCategory('Event alerts')
 const soundToggle = dialogToggle('Gift sound')
 check('the gift sound is offered', Boolean(soundToggle))
-check('it is on to begin with', soundToggle?.checked === true)
+check('it is on to begin with', toggleOn('Gift sound'))
 check('and the toolbar no longer carries it', !$('.view-toggles .toggle'))
 
 // jsdom has no Web Audio, so this is the only place the missing-audio path is
 // exercised — and it matters more than it looks: a throw from the gift handler
 // would take down the feed, which is the app's whole job.
 await click(soundToggle)
-check('it can be turned off', dialogToggle('Gift sound')?.checked === false)
+check('it can be turned off', toggleOn('Gift sound') === false)
 await goHome()
 await act(async () => {
   fake.emit({ platform: 'tiktok', type: 'gift', ...viewer({ id: 'silent' }), giftName: 'Mute', count: 1, diamonds: 5, timestamp: 1700000006700 })
@@ -732,7 +761,7 @@ check('a gift with the sound off leaves the feed intact', $$('.row-gift').some((
 await openSettings()
 await selectFeedCategory('Event alerts')
 await click(dialogToggle('Gift sound'))
-check('and back on', dialogToggle('Gift sound')?.checked === true)
+check('and back on', toggleOn('Gift sound'))
 await goHome()
 await act(async () => {
   fake.emit({ platform: 'tiktok', type: 'gift', ...viewer({ id: 'loud' }), giftName: 'Chime', count: 1, diamonds: 9999, timestamp: 1700000006800 })
@@ -746,7 +775,7 @@ await selectFeedCategory('Display')
 // it silently reset on every launch — which is the thing this now asserts against.
 await selectFeedCategory('Display')
 check('collapse spam is offered here', Boolean(dialogToggle('Collapse spam')))
-check('and it starts on', dialogToggle('Collapse spam')?.checked === true)
+check('and it starts on', toggleOn('Collapse spam'))
 await selectFeedCategory('Event alerts')
 check('the notice toggle came with it', Boolean(dialogToggle('Gift notice')))
 await goHome()
@@ -885,7 +914,10 @@ check(
 // Scoped to the viewer count's own number — the glance bar holds two of them.
 const viewerRoll = () => doc.querySelector('.stats-glance .roll-number')
 const rollStrips = () => [...viewerRoll().querySelectorAll('.roll-digit .roll-strip')]
-const rollTransforms = () => rollStrips().map((s) => s.style.transform)
+// The strip's position rides on a Tailwind arbitrary class (`[transform:translateY(-5em)]`)
+// rather than an inline style, so read the class. Comparing the classes still says
+// which digit moved without depending on how the position is spelled.
+const rollTransforms = () => rollStrips().map((s) => s.className.match(/\[transform:translateY\([^)]*\)\]/)?.[0] ?? '')
 const rollBefore = rollTransforms()
 // 1234 → 1235: only the last digit changes, so only its strip should move.
 await act(async () => {
@@ -906,7 +938,7 @@ check(
     rollAfter[3] !== rollBefore[3],
   `${rollBefore} -> ${rollAfter}`,
 )
-check('the last strip rolled from 4 to 5', rollAfter[3] === 'translateY(-5em)', rollAfter[3])
+check('the last strip rolled from 4 to 5', rollAfter[3] === '[transform:translateY(-5em)]', rollAfter[3])
 
 check('stats content stays available', Boolean($('.stats-body')))
 const tile = (label) =>
@@ -1000,7 +1032,7 @@ check('everyone who took part is on the board', board.length === 4, board.join('
 check('the gift value is shown beside its sender', $$('.chatter-diamonds').length === 1, $$('.chatter').map((r) => r.textContent).join(' | '))
 
 console.log('the log panel')
-await click('[aria-label="Log page"]')
+await openLog()
 check('the log is open', !!$('.log-list'))
 const lines = $$('.log-line')
 check('the log has entries', lines.length > 0, String(lines.length))
@@ -1018,7 +1050,9 @@ check('the clear button is offered', Boolean(clearButton))
 check('and is enabled while there is something to clear', clearButton?.disabled === false)
 await click(clearButton)
 check('the feed is emptied', $$('.row').length === 0, String($$('.row').length))
-check('the empty state explains itself', /No messages yet/.test($('.empty-title')?.textContent ?? ''), $('.empty-title')?.textContent)
+// The room is still connected here, so the empty state says it is waiting for chat
+// rather than that there are no messages: clearing the feed did not end the read.
+check('the empty state explains itself', /Waiting for chat/.test($('.empty-title')?.textContent ?? ''), $('.empty-title')?.textContent)
 check('the clear button goes quiet when there is nothing to clear', $$('.view-toggles .btn').find((b) => b.textContent.trim() === 'Clear')?.disabled === true)
 
 // New chat still arrives after a clear: clearing is a view reset, not a stop.
@@ -1031,13 +1065,13 @@ await act(async () => {
   fake.emit({ platform: 'tiktok', type: 'follow', ...viewer({ id: 'popup-follow', nickname: 'Popup viewer' }), timestamp: 1700000020000 })
 })
 await flush()
-check('a follow shows its event popup on Home', Boolean($('.event-popup-follow')))
-check('the popup names the follower', /Popup viewer/.test($('.event-popup-follow')?.textContent ?? ''))
+check('a follow shows its event popup on Home', Boolean($('.gift-popup-card[data-event-type="follow"]')))
+check('the popup names the follower', /Popup viewer/.test($('.gift-popup-card[data-event-type="follow"]')?.textContent ?? ''))
 
 console.log('dock pages navigate independently')
 await click('[aria-label="Stats page"]')
 check('stats opens from the dock', Boolean($('.stats-page')))
-await click('[aria-label="Log page"]')
+await openLog()
 check('log opens from the dock', Boolean($('.log-page')))
 await goHome()
 await openSettings()
@@ -1045,8 +1079,8 @@ await selectFeedCategory('Chat & voice')
 console.log('chat alerts')
 // Off by default: a blip per message and a voice reading the room are both
 // things that have to be asked for, not assumed.
-check('the chat blip is offered off', dialogToggle('Chat blip')?.checked === false)
-check('and speech is off too', dialogToggle('Read chat aloud')?.checked === false)
+check('the chat blip is offered off', toggleOn('Chat blip') === false)
+check('and speech is off too', toggleOn('Read chat aloud') === false)
 // The voice settings are reachable with nothing speaking. They used to hide
 // themselves until one of the three toggles above was on — which put the Tester,
 // the one control that exists to help you decide whether you want the voice,
@@ -1062,17 +1096,17 @@ check('and so is the tester', Boolean(testerButton()))
 // framing to configure.
 check('the name toggle does not exist', !dialogToggle('Say the name'))
 await click(dialogToggle('Chat blip'))
-check('the blip turns on', dialogToggle('Chat blip')?.checked === true)
+check('the blip turns on', toggleOn('Chat blip'))
 await click(dialogToggle('Read chat aloud'))
-check('speech turns on', dialogToggle('Read chat aloud')?.checked === true)
+check('speech turns on', toggleOn('Read chat aloud'))
 check('and turning it on adds no name toggle', !dialogToggle('Say the name'))
 
 // A gift can be announced with the same voice. Off by default, like every other
 // sound that speaks: it sends text to be spoken, and that has to be asked for.
 await selectFeedCategory('Event alerts')
-check('gift announcements are offered off', dialogToggle('Say gifts')?.checked === false)
+check('gift announcements are offered off', toggleOn('Say gifts') === false)
 await click(dialogToggle('Say gifts'))
-check('and turn on', dialogToggle('Say gifts')?.checked === true)
+check('and turn on', toggleOn('Say gifts'))
 
 console.log('the voice settings')
 await selectFeedCategory('Chat & voice')
@@ -1189,9 +1223,9 @@ check('a join has its own sound', soundSelects()[2]?.value === 'pop', soundSelec
 // Arrivals are the most repetitive event the app has, so this one is off until
 // asked for rather than on until someone regrets it.
 await selectFeedCategory('Event alerts')
-check('the join sound is offered off', dialogToggle('Join sound')?.checked === false)
+check('the join sound is offered off', toggleOn('Join sound') === false)
 await click(dialogToggle('Join sound'))
-check('and turns on', dialogToggle('Join sound')?.checked === true)
+check('and turns on', toggleOn('Join sound'))
 // Choosing a different template writes it straight to settings, which persists
 // it — the picker holds no state of its own.
 await act(async () => {
@@ -1205,22 +1239,23 @@ check('picking a template takes effect', soundSelects()[0]?.value === 'coin', so
 check('the chat blip is its own choice', soundSelects()[1]?.value !== undefined)
 
 /**
- * The note under a named field in the Sounds section.
+ * The custom-file note under a named field in the Sounds section.
  *
- * Scoped by label rather than by position: `.field-note` matches whichever note
- * comes first in the section, and that is whichever field was added last, so a
- * positional lookup reads a different field's note the moment a third sound
- * exists.
+ * Scoped by label rather than by position: the section holds several notes, and a
+ * positional lookup reads whichever field was added last the moment a third sound
+ * exists. The note is only rendered once a file is picked, so "no file" is the
+ * absence of `.sound-file-note` rather than a word in one; with none set the
+ * field's first `.field-note` is the Volume caption.
  */
-const soundNote = (label) =>
-  $$('[data-section="sounds"] .field').find((f) => f.querySelector('.field-label')?.textContent === label)?.querySelector(
-    '.field-note',
-  )
+const soundFileNote = (label) =>
+  $$('[data-section="sounds"] .field')
+    .find((f) => f.querySelector('.field-label')?.textContent === label)
+    ?.querySelector('.sound-file-note')
 
 // A custom file overrides that event's template, one file per event. Picking one
 // asks the host for a path, and an empty path — a cancelled picker — must leave
 // the previous pick alone rather than clear it.
-check('no custom file by default', /No file/.test(soundNote('Gift sound')?.textContent ?? ''), soundNote('Gift sound')?.textContent)
+check('no custom file by default', !soundFileNote('Gift sound'), soundFileNote('Gift sound')?.textContent)
 // One picker per event, so a gift file and a chat file are independent choices.
 const chooseBtns = $$('[data-section="sounds"] .btn').filter((b) => b.textContent.trim().startsWith('Choose file'))
 check('a file picker per event', chooseBtns.length === 5, String(chooseBtns.length))
@@ -1235,7 +1270,7 @@ await click(chooseBtns[0])
 check('the host was asked for a file', Boolean(fake.lastCommand('pick_sound_file')), JSON.stringify(fake.commands.at(-1)))
 // Cancelled (empty path): nothing changes, and no error is raised — backing out
 // of a picker is not a failure the user has to act on.
-check('a cancelled pick leaves the settings alone', /No file/.test(soundNote('Gift sound')?.textContent ?? ''))
+check('a cancelled pick leaves the settings alone', !soundFileNote('Gift sound'))
 // A real pick lands on the event whose picker was used, and only that one.
 fake.transport.invoke = async (command, args) => {
   fake.commands.push({ command, args })
@@ -1243,8 +1278,8 @@ fake.transport.invoke = async (command, args) => {
   return undefined
 }
 await click(chooseBtns[0])
-check('the picked file is shown for its event', /gift\.mp3/.test(soundNote('Gift sound')?.textContent ?? ''), soundNote('Gift sound')?.textContent)
-check('and the other events are untouched', /No file/.test(soundNote('Chat blip')?.textContent ?? ''), soundNote('Chat blip')?.textContent)
+check('the picked file is shown for its event', /gift\.mp3/.test(soundFileNote('Gift sound')?.textContent ?? ''), soundFileNote('Gift sound')?.textContent)
+check('and the other events are untouched', !soundFileNote('Chat blip'), soundFileNote('Chat blip')?.textContent)
 
 console.log('teardown')
 await act(async () => {

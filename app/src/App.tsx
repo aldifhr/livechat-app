@@ -258,6 +258,14 @@ export default function App() {
     if (node) node.scrollTop = node.scrollHeight
   }, [settings.autoScrollMode])
 
+  // Compact drops the avatar and the clock from every row so a busy room fits more
+  // messages on screen. It rides on the body rather than on each row because the
+  // rows are memoised: a shared class flips all of them at once without giving any
+  // of them a new prop to compare.
+  useEffect(() => {
+    document.body.classList.toggle('compact', settings.compact)
+  }, [settings.compact])
+
   return (
     <div
       className={`app flex h-full flex-col bg-app-bg text-sm leading-[1.5] text-app-text ${settings.font === 'mono' ? 'font-mono' : 'font-sans'} ${settings.theme === 'brutalism' ? `${BRUTALISM_CLASSES} [--bg:#f4f1e8] [--panel:#fff] [--panel-2:#ffe600] [--line:#000] [--text:#000] [--muted:#555] [--accent:#ff2e00] [--accent-soft:rgba(255,46,0,0.16)] [--gold:#000] [--green:#00c] [--destructive:#c00] [--radius:0px] [color-scheme:light]` : `${BASE_THEME_CLASSES} [color-scheme:dark]`} ${settings.density === 'compact' ? '[--gap:4px] [--pad-x:8px] [--pad-y:2px]' : settings.density === 'roomy' ? '[--gap:14px] [--pad-x:22px] [--pad-y:14px]' : '[--gap:8px] [--pad-x:14px] [--pad-y:8px]'}`}
