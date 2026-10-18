@@ -14,17 +14,8 @@
  * wrong and no way to tell it is.
  */
 
+import { formatDuration } from '@/lib/format'
 import type { RoomSession } from '@/lib/types'
-
-/** Seconds as something readable, or an em dash when there is no session. */
-function duration(seconds: number | null): string {
-  if (!seconds) return '—'
-  const whole = Math.floor(seconds)
-  if (whole < 60) return `${whole}s`
-  const minutes = Math.floor(whole / 60)
-  if (minutes < 60) return `${minutes}m`
-  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`
-}
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -73,7 +64,7 @@ export default function SessionPanel({ session }: { session: RoomSession }) {
     <div className="session">
       <p className="copy-label">This session</p>
       <dl className="session-grid">
-        <Stat label="Live for" value={duration(session.live_seconds)} />
+        <Stat label="Live for" value={formatDuration(session.live_seconds)} />
         <Stat
           label="Peak viewers"
           value={session.peak_viewers ? session.peak_viewers.toLocaleString() : '—'}

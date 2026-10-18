@@ -351,5 +351,3 @@ export function useChat({ collapseWindowMs, collapseThreshold }: UseChatOptions)
     [room, items, totalReceived, clear, post, health, log, tallies, stats],
   )
 }
-
-export { host }

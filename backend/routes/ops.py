@@ -10,7 +10,6 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
 
 
 import eventlog
@@ -18,6 +17,8 @@ import events
 import logbuffer
 import store
 from models import HookRequest, TriggerRequest
+from routes.auth import TOKEN_REJECTED_DETAIL
+from routes.common import require_room
 
 router = APIRouter()
 
@@ -38,6 +39,30 @@ def bind_state(sources, hub, token_is_valid, default_room_config) -> None:
     _state["default_room_config"] = default_room_config
 
 
+def _health_body(request: Request, *, include_rooms: bool) -> dict[str, Any]:
+    """The liveness body, with or without the per-room map.
+
+    `/health` withholds the map from an unauthenticated caller because each entry
+    names the streamer's handle; `/health/desktop` always includes it for the
+    desktop app, which cannot send a token. Everything else is identical, so it
+    is built once.
+    """
+    app = request.app
+    uptime_s = int(time.time() - getattr(app.state, "started_at", time.time()))
+    body: dict[str, Any] = {
+        "status": "ok",
+        "uptimeSeconds": uptime_s,
+        "activeRooms": len(_state["sources"]),
+        "totalConnections": len(_state["hub"].active),
+    }
+    if include_rooms:
+        body["rooms"] = {
+            room_id: source.status_payload()
+            for room_id, source in _state["sources"].items()
+        }
+    return body
+
+
 @router.get("/health")
 async def health(request: Request) -> dict[str, Any]:
     """Aggregate liveness probe for the backend.
@@ -48,22 +73,7 @@ async def health(request: Request) -> dict[str, Any]:
     withheld from them because each entry names the streamer's handle, and this
     endpoint is open. The counts are what a probe acts on and they stay.
     """
-    app = request.app
-    uptime_s = int(time.time() - getattr(app.state, "started_at", time.time()))
-    body: dict[str, Any] = {
-        "status": "ok",
-        "uptimeSeconds": uptime_s,
-        "activeRooms": len(_state["sources"]),
-        "totalConnections": len(_state["hub"].active),
-    }
-    # Only the holder of the write token sees the per-room map. Each entry names
-    # a streamer's handle — an open leak would expose every configured room.
-    if _state["token_is_valid"](request):
-        body["rooms"] = {
-            room_id: source.status_payload()
-            for room_id, source in _state["sources"].items()
-        }
-    return JSONResponse(body)
+    return _health_body(request, include_rooms=_state["token_is_valid"](request))
 
 
 @router.get("/health/desktop")
@@ -76,18 +86,7 @@ async def health_desktop(request: Request) -> dict[str, Any]:
     `/health` — the same reasoning applies: the room map is already visible on
     the stream itself, and an orchestrator probing it needs the same data.
     """
-    app = request.app
-    uptime_s = int(time.time() - getattr(app.state, "started_at", time.time()))
-    return {
-        "status": "ok",
-        "uptimeSeconds": uptime_s,
-        "activeRooms": len(_state["sources"]),
-        "totalConnections": len(_state["hub"].active),
-        "rooms": {
-            room_id: source.status_payload()
-            for room_id, source in _state["sources"].items()
-        },
-    }
+    return _health_body(request, include_rooms=True)
 
 
 @router.get("/metrics")
@@ -112,7 +111,7 @@ async def trigger(room_id: str, req: TriggerRequest):
     whose shape matches the dashboard button, while external integrators use the
     flatter `/api/hooks/{room_id}` shape without touching the same surface.
     """
-    await _require_room(room_id)
+    await require_room(room_id)
     await events.emit(
         room_id,
         events.Event(
@@ -141,7 +140,7 @@ async def webhook(room_id: str, req: HookRequest):
     readable, and so this path can grow its own auth later without changing
     what the dashboard's own button posts.
     """
-    await _require_room(room_id)
+    await require_room(room_id)
 
     value = req.text
     if req.amount is not None and not value:
@@ -207,7 +206,7 @@ async def analytics(request: Request) -> dict[str, Any]:
     convenience, and the page says so where it draws them.
     """
     if not _state["token_is_valid"](request):
-        raise HTTPException(status_code=401, detail="Invalid or missing STREAMKIT_TOKEN")
+        raise HTTPException(status_code=401, detail=TOKEN_REJECTED_DETAIL)
     rooms = await store.all_rooms_async()
     out: dict[str, Any] = {
         "total_rooms": len(rooms),
@@ -293,22 +292,10 @@ async def logs(request: Request, limit: int = 200, level: str = "info", q: str =
     treats both as "the credential was refused".
     """
     if not _state["token_is_valid"](request):
-        raise HTTPException(status_code=401, detail="Invalid or missing STREAMKIT_TOKEN")
+        raise HTTPException(status_code=401, detail=TOKEN_REJECTED_DETAIL)
     # `limit` is clamped inside `read` rather than rejected, so a page asking for
     # more than exists gets what there is instead of an error.
     return logbuffer.read(limit=limit, min_level=level, search=q)
-
-
-async def _require_room(room_id: str) -> None:
-    """Raise 404 by name if the room does not exist.
-
-    Shared by the ``trigger`` and ``webhook`` endpoints so the existence check
-    reads one way and cannot drift between them — the bug this guards is a 404
-    that reads "something else" in one handler and "room missing" in the other.
-    """
-    record = await store.get_room_async(room_id)
-    if record is None:
-        raise HTTPException(status_code=404, detail="Room not found")
 
 
 def mount_gifts(app: Any, static_dir: str) -> None:

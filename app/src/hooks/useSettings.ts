@@ -17,10 +17,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { host } from '../lib/sidecar'
 import { clampFontScale, parseSettings, type ViewSettings } from '../lib/settings-schema'
 
-// Re-exported rather than moved silently: four components and the shared settings
-// helper type have always imported these from the hook, and a settings type is not
-// worth changing the import path over.
-export { DEFAULT_SETTINGS } from '../lib/settings-schema'
+// Re-exported rather than moved silently: the settings sections and the shared
+// settings helper type import it from the hook, and a settings type is not worth
+// changing the import path over.
 export type { ViewSettings } from '../lib/settings-schema'
 
 export interface UseSettingsResult extends ViewSettings {

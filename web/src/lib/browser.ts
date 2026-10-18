@@ -44,17 +44,12 @@ export function useOrigin(): string {
 }
 
 /**
- * The window's width, and `fallback` for the server.
+ * The window's height, and `fallback` for the server.
  *
  * A number for `fallback` rather than nothing, because a caller that compares it
- * to decide a layout needs a value to compare. Pass the width the design assumes
- * so the first paint is the wide layout on a phone and the wrong one for a frame.
+ * to decide a layout needs a value to compare. Pass the height the design assumes
+ * so the first paint is the expected layout and the wrong one for a frame.
  */
-export function useViewportWidth(fallback: number): number {
-  return useSyncExternalStore(onResize, () => window.innerWidth, () => fallback)
-}
-
-/** The window's height, and `fallback` for the server. `useViewportWidth` for why. */
 export function useViewportHeight(fallback: number): number {
   return useSyncExternalStore(onResize, () => window.innerHeight, () => fallback)
 }

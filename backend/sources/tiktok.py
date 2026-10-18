@@ -216,16 +216,7 @@ def avatar_url(user: Any) -> str:
     """The user's avatar URL, or "" when TikTok did not send one."""
     if user is None:
         return ""
-    thumb = getattr(user, "avatar_thumb", None)
-    if thumb is None:
-        return ""
-    urls = getattr(thumb, "url_list", None)
-    if not isinstance(urls, (list, tuple)):
-        return ""
-    for entry in urls:
-        if isinstance(entry, str) and entry.strip():
-            return entry.strip()
-    return ""
+    return first_url(getattr(user, "avatar_thumb", None))
 
 
 def first_url(image: Any) -> str:
@@ -465,7 +456,7 @@ class TikTokAdapter(EventAdapter):
         # A client attaching after the live already ended gets the same honest
         # answer as one that was there when it happened, rather than a bare
         # "Offline" that is indistinguishable from never-connected.
-        return {"type": "status", "connected": False, "message": "Offline"}
+        return events.offline_status()
 
     def is_running(self) -> bool:
         """Whether a connection has been attempted and not yet given up.
@@ -1217,15 +1208,6 @@ class TikTokAdapter(EventAdapter):
         finally:
             self._awaiting_live = False
 
-    async def start(self) -> None:
-        """Alias for connect()."""
-        await self.connect()
-
     async def stop(self) -> None:
         """Alias for disconnect()."""
         await self.disconnect()
-
-
-# Register adapter with provider registry
-from protocols import registry as _registry
-_registry.register("tiktok", TikTokAdapter)

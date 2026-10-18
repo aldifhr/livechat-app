@@ -7,7 +7,7 @@ once at startup from `main` via `bind_state`, so this module never imports
 """
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 import eventlog
 import events
@@ -18,6 +18,7 @@ from models import (
     UpdateRoomRequest,
     summary,
 )
+from routes.common import require_room, room_not_found, teardown_source
 
 router = APIRouter()
 
@@ -50,18 +51,22 @@ async def list_rooms():
 @router.get("/api/rooms/public")
 async def list_rooms_public():
     """Room list for public browser sources (OBS docks).
-    
+
     Returns id, username, connected, and name — no config, no styling,
     no session data. Same shape as list_rooms minus everything sensitive.
     """
     rooms = await store.all_rooms_async()
+    live = _state["sources"]
     return {
         "rooms": [
             {
                 "id": oid,
                 "username": rec.get("username", ""),
                 "name": rec.get("name", ""),
-                "connected": rec.get("connected", False),
+                # Whether the room has a source and its handshake completed. The
+                # stored record has no `connected` key, so reading it there
+                # reported every room offline forever.
+                "connected": oid in live and live[oid].is_connected(),
             }
             for oid, rec in rooms.items()
         ]
@@ -92,7 +97,7 @@ async def update_room(room_id: str, req: UpdateRoomRequest):
         ),
     )
     if record is None:
-        raise HTTPException(status_code=404, detail="Room not found")
+        raise room_not_found()
 
     # A different username means the running source is pointed at the wrong
     # room, so drop it; the room page re-requests the connection on reload.
@@ -102,10 +107,7 @@ async def update_room(room_id: str, req: UpdateRoomRequest):
     # dead entry that `/health` still counted as an active room, and the next
     # connect had to displace an object whose teardown had already run.
     if username_changed:
-        async with _state["sources_lock"]:
-            source = _state["sources"].pop(room_id, None)
-        if source is not None:
-            await source.stop()
+        had_source = await teardown_source(_state, room_id)
         # The room's counters belong to the handle that just left. `stop()` does
         # not emit a status frame — it is a teardown, not a disconnect the wire
         # hears about — so `eventlog` still believes this room is connected, and
@@ -121,7 +123,7 @@ async def update_room(room_id: str, req: UpdateRoomRequest):
         # against the room that is on its way out, and only when there was a
         # source to stop: renaming a room nobody is reading changed nothing, and
         # a client attaching to a source-less room is told "Offline" at attach.
-        if source is not None:
+        if had_source:
             await events.emit_status(
                 room_id,
                 connected=False,
@@ -133,10 +135,7 @@ async def update_room(room_id: str, req: UpdateRoomRequest):
 
 @router.get("/api/rooms/{room_id}")
 async def get_room(room_id: str):
-    record = await store.get_room_async(room_id)
-    if record is None:
-        raise HTTPException(status_code=404, detail="Room not found")
-    return record
+    return await require_room(room_id)
 
 
 @router.get("/api/rooms/{room_id}/session")
@@ -161,11 +160,8 @@ async def room_session(room_id: str):
 @router.delete("/api/rooms/{room_id}")
 async def delete_room(room_id: str):
     if not await store.delete_room_async(room_id):
-        raise HTTPException(status_code=404, detail="Room not found")
-    async with _state["sources_lock"]:
-        source = _state["sources"].pop(room_id, None)
-    if source is not None:
-        await source.stop()
+        raise room_not_found()
+    had_source = await teardown_source(_state, room_id)
     # Its counters go with it. Left behind, a deleted room would still answer a
     # leaderboard request with the viewers it used to have, which is a room
     # answering for a room that no longer exists.
@@ -176,7 +172,7 @@ async def delete_room(room_id: str):
     # forever. Emitted after `forget`, deliberately — `is_connected` then reads
     # False and `emit_status` skips its own bookkeeping, so the frame cannot
     # bring back the counters that were just dropped.
-    if source is not None:
+    if had_source:
         await events.emit_status(room_id, connected=False, message="Room deleted")
     return {"status": "ok"}
 
@@ -184,6 +180,6 @@ async def delete_room(room_id: str):
 @router.post("/api/rooms/{room_id}/config")
 async def update_room_config(room_id: str, req: ConfigUpdateRequest):
     if not await store.set_config_async(room_id, req.config):
-        raise HTTPException(status_code=404, detail="Room not found")
+        raise room_not_found()
     await events.emit_config(room_id, req.config)
     return {"status": "ok"}

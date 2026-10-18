@@ -9,7 +9,7 @@ import type { FeedItem, FeedKind } from '../types'
  * than reused indexes: React keys must stay stable as the window slides.
  */
 
-import { MAX_ITEMS, collapseDecides } from './collapse'
+import { MAX_ITEMS, collapseDecides, type CollapseOptions } from './collapse'
 
 export interface UseFeedResult {
   items: FeedItem[]
@@ -32,11 +32,6 @@ export interface UseFeedResult {
 
 /** What a producer hands over. `key` is assigned here, not by the caller. */
 export type FeedInput = Omit<FeedItem, 'key' | 'repeatCount'>
-
-export interface CollapseOptions {
-  windowMs: number
-  threshold: number
-}
 
 export function useFeed(collapse: CollapseOptions): UseFeedResult {
   const [items, setItems] = useState<FeedItem[]>([])

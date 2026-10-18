@@ -19,27 +19,6 @@ import 'server-only'
 export const BACKEND =
   process.env.BACKEND_URL?.replace(/\/+$/, '') ?? 'https://kit-backend.aldifhr.my.id'
 
-/** The overlay pages, which the dashboard hands to OBS.
- *
- *  These are served by nginx off this app's own host, out of `web/public/overlay/`.
- *  There is no backend fallback any more: the backend used to keep a second copy of
- *  each page and serve those, and defaulting here to `BACKEND` sent every link to
- *  that copy. Set the variable only for a deployment that deliberately splits them.
- */
-export const OVERLAY_ORIGIN =
-  process.env.OVERLAY_ORIGIN?.replace(/\/+$/, '') ?? ''
-
-/**
- * Whether a token is configured.
- *
- * Read by the server on each request rather than at module load, so a token added
- * to the environment does not need a restart to take effect — which is the reason
- * it lives in a file rather than baked into a build.
- */
-export function hasToken(): boolean {
-  return (process.env.STREAMKIT_TOKEN ?? '').trim() !== ''
-}
-
 /**
  * One request to the backend, with the token attached.
  *

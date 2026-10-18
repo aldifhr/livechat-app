@@ -122,10 +122,3 @@ export interface VoiceOptions {
   /** How loud, 0..1. */
   volume: number
 }
-
-/** What the app reads until anything says otherwise. */
-export const DEFAULT_VOICE: VoiceOptions = {
-  pace: NORMAL_PACE,
-  language: DEFAULT_LANGUAGE,
-  volume: TTS_VOLUME_MAX,
-}

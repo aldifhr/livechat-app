@@ -24,21 +24,11 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { COOKIE_NAME, sessionKey, verifySession } from '@/lib/session'
-import { dashboardUser, passwordFile, sessionSecret } from '@/lib/config'
-import { passwordHashCached } from '@/lib/htpasswd'
+import { COOKIE_NAME } from '@/lib/session'
+import { isSessionValid } from '@/lib/auth'
 
-async function hasSession(request: NextRequest): Promise<boolean> {
-  const secret = sessionSecret()
-  if (!secret) return false
-
-  const token = request.cookies.get(COOKIE_NAME)?.value
-  if (!token) return false
-
-  const hash = await passwordHashCached(passwordFile, dashboardUser).catch(() => null)
-  if (!hash) return false
-
-  return verifySession(sessionKey(secret, hash), token) !== null
+function hasSession(request: NextRequest): Promise<boolean> {
+  return isSessionValid(request.cookies.get(COOKIE_NAME)?.value)
 }
 
 /** Paths that are reachable without signing in. */

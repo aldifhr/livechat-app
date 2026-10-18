@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { TTS_MAX_CHARS } from '@/lib/tts'
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
@@ -7,7 +8,7 @@ export async function GET(request: NextRequest) {
     return new NextResponse('Missing text', { status: 400 })
   }
 
-  const clean = q.slice(0, 180)
+  const clean = q.slice(0, TTS_MAX_CHARS)
   const googleUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(clean)}&tl=id&client=tw-ob`
 
   try {

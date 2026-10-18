@@ -18,6 +18,7 @@ import events
 import store
 from logging_setup import logger
 from models import ConnectByUsernameRequest, ConnectRequest, clean_overlay as _clean_overlay
+from routes.common import teardown_source
 
 router = APIRouter()
 
@@ -150,21 +151,18 @@ async def disconnect(req: ConnectRequest):
     # Under the same lock as the connect path (in `_connect_room`), so a Stop
     # cannot land in the middle of a replace and take the newly installed source
     # down with the old one.
-    async with _state["sources_lock"]:
-        source = _state["sources"].pop(room_id, None)
-    if source is not None:
-        await source.stop()
-        # Say so on the wire. `stop()` is a teardown and emits nothing — it is
-        # not the adapter's `disconnect()`, which is a lost socket the run loop
-        # means to retry — so every client already attached to this room kept the
-        # last status it was handed: "Connected", over a stream that has ended.
-        # An OBS overlay is the one that matters, because it is attached for the
-        # whole stream and has no way to ask again.
-        #
-        # Sent after the stop rather than before, so the frame cannot overtake the
-        # teardown and describe a connection that is still up. Guarded on there
-        # having been a source at all: with nothing to stop, nothing changed, and
-        # a client attaching to a source-less room is told "Offline" at attach.
+    # Say so on the wire. `stop()` is a teardown and emits nothing — it is
+    # not the adapter's `disconnect()`, which is a lost socket the run loop
+    # means to retry — so every client already attached to this room kept the
+    # last status it was handed: "Connected", over a stream that has ended.
+    # An OBS overlay is the one that matters, because it is attached for the
+    # whole stream and has no way to ask again.
+    #
+    # Sent after the stop rather than before, so the frame cannot overtake the
+    # teardown and describe a connection that is still up. Guarded on there
+    # having been a source at all: with nothing to stop, nothing changed, and
+    # a client attaching to a source-less room is told "Offline" at attach.
+    if await teardown_source(_state, room_id):
         await events.emit_status(room_id, connected=False, message="Disconnected")
     return {"status": "disconnected"}
 
@@ -172,8 +170,4 @@ async def disconnect(req: ConnectRequest):
 @router.get("/api/rooms/{room_id}/status")
 async def connection_status(room_id: str):
     source = _state["sources"].get(room_id)
-    return (
-        source.status_payload()
-        if source
-        else {"type": "status", "connected": False, "message": "Offline"}
-    )
+    return source.status_payload() if source else events.offline_status()

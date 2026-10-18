@@ -25,6 +25,12 @@ def api_token() -> str:
 #: instead of "no auth possible".
 AUTH_DISABLED_ENV = "STREAMKIT_AUTH_DISABLED"
 
+#: The one wording for a refused credential. The HTTP guard and the two
+#: self-gating routes (`/api/analytics`, `/api/logs`) all answer with it, so a
+#: client reads the same reason whichever layer refused it — the middleware
+#: returns it as JSON and the routes raise it, but the text is one constant.
+TOKEN_REJECTED_DETAIL = "Invalid or missing STREAMKIT_TOKEN"
+
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 
 

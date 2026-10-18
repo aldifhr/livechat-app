@@ -70,32 +70,3 @@ export default function Reveal({ children, delay = 0, rise = 12, inView = false,
     </motion.div>
   )
 }
-
-/**
- * The hairline between sections, drawn rather than faded in.
- *
- * Separate from `Reveal` because it is the one motion on the page that is about
- * layout rather than about an object arriving: a rule that fades in looks like a
- * rule that was always there, and one that draws left to right reads as the page
- * being divided as you read it. Origin is the left edge, because the page reads
- * left to right and the eye enters at the same end.
- *
- * Drawn on the wrapper rather than on a child, so the layout never shifts: a
- * transform does not move anything else on the page, and animating `width` would
- * push the sections it separates down as it grew.
- */
-export function Rule({ className, delay = 0 }: { className?: string; delay?: number }) {
-  const reduced = useReducedMotion()
-
-  return (
-    <motion.div
-      aria-hidden="true"
-      className={className}
-      initial={{ scaleX: reduced ? 1 : 0 }}
-      whileInView={{ scaleX: 1 }}
-      viewport={{ once: true, amount: 0.8 }}
-      transition={{ duration: reduced ? 0 : 0.7, delay: reduced ? 0 : delay, ease: EASE }}
-      style={{ transformOrigin: 'left' }}
-    />
-  )
-}

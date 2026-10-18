@@ -41,15 +41,18 @@ could allocate by guessing.
 
 import json
 import logging
-import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-#: Where the session history lives. Next to rooms.json so a deploy that moves
-#: the config dir moves this too. Bounded by prune_session_history().
-SESSIONS_FILE = Path(os.environ.get("STREAMKIT_CONFIG_DIR") or (Path(__file__).parent / "config")) / "sessions.json"
+import store
+
+#: Where the session history lives. Reuses `store.CONFIG_DIR` rather than
+#: re-deriving `STREAMKIT_CONFIG_DIR`, so a deploy that moves the config dir moves
+#: this too — and the two cannot disagree about where the config directory is.
+#: Pruned to `SESSIONS_KEEP` entries by `_append_session`.
+SESSIONS_FILE: Path = store.CONFIG_DIR / "sessions.json"
 
 #: How many finished sessions to keep. Seven days at a few sessions a day is
 #: well under this; it exists so a long-running install does not grow the file
@@ -279,11 +282,6 @@ def record(
     if meta and meta.get("count") and kind != "viewers":
         parts.append(f"x{meta['count']}")
     log.debug("[%s] %s", room_id, " · ".join(parts))
-
-
-def note(message: str) -> None:
-    """Something that happened but is not an event, such as a handler error."""
-    log.info("%s", message)
 
 
 def error(message: str) -> None:

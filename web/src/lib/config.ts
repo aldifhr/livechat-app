@@ -11,10 +11,6 @@ import 'server-only'
  * build.
  */
 
-/** Where the overlay pages live. Defaults to nothing, in which case the client
- *  falls back to its own origin, which is correct when this app serves them. */
-export const overlayOrigin = process.env.OVERLAY_ORIGIN?.replace(/\/+$/, '')
-
 /** Shown in the header and the page title. */
 export const productName = process.env.PRODUCT_NAME ?? 'StreamKit'
 

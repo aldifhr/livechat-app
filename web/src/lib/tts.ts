@@ -3,6 +3,11 @@
  * Ensures incoming chat messages are read completely one by one without cutting each other off.
  */
 
+/** How much of a message is spoken. Shared with the `/api/tts` route, which
+ *  clamps to the same length, so an over-long message is read the same amount
+ *  whether it is trimmed in the browser or at the proxy. */
+export const TTS_MAX_CHARS = 180
+
 const ttsQueue: string[] = []
 let isTtsPlaying = false
 let activeTtsAudio: HTMLAudioElement | null = null
@@ -30,7 +35,7 @@ function playNextTts() {
 
   isTtsPlaying = true
   const text = ttsQueue.shift()!
-  const clean = text.slice(0, 180)
+  const clean = text.slice(0, TTS_MAX_CHARS)
   const url = `/api/tts?q=${encodeURIComponent(clean)}`
   const audio = new Audio(url)
   activeTtsAudio = audio

@@ -14,33 +14,16 @@
 import 'server-only'
 
 import { cookies } from 'next/headers'
-import { passwordHashCached } from '@/lib/htpasswd'
-import { dashboardUser, passwordFile, sessionSecret } from '@/lib/config'
-import { COOKIE_NAME, sessionKey, verifySession } from '@/lib/session'
+import { COOKIE_NAME } from '@/lib/session'
+import { isSessionValid } from '@/lib/auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-function refused(): Response {
-  return new Response(null, { status: 401 })
-}
-
 async function verify(): Promise<Response> {
-  const secret = sessionSecret()
-  if (!secret) return refused()
-
   const store = await cookies()
-  const token = store.get(COOKIE_NAME)?.value
-  if (!token) return refused()
-
-  // The key is derived from the hash in force, so this also refuses a cookie
-  // that was valid until the password changed — which is the point of deriving
-  // it from the hash rather than storing a session.
-  const hash = await passwordHashCached(passwordFile, dashboardUser).catch(() => null)
-  if (!hash) return refused()
-
-  if (!verifySession(sessionKey(secret, hash), token)) return refused()
-  return new Response(null, { status: 204 })
+  const valid = await isSessionValid(store.get(COOKIE_NAME)?.value)
+  return new Response(null, { status: valid ? 204 : 401 })
 }
 
 // nginx's `auth_request` subrequest keeps the method of the request it is

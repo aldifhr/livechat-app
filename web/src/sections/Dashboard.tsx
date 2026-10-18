@@ -116,8 +116,10 @@ export default function Dashboard() {
 
   // The high-water mark of what is on screen, not of all time: the graph only
   // goes back as far as this page has been open, and saying "peak" without that
-  // would be claiming knowledge the browser does not have.
-  const peak = useMemo(() => history.reduce((max, point) => Math.max(max, point.total), 0), [history])
+  // would be claiming knowledge the browser does not have. The chart draws its
+  // own scale from the same reading, so both call `peakOf` rather than each
+  // reducing the series its own way.
+  const peak = peakOf(history)
 
   return (
     <>

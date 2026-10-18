@@ -16,8 +16,6 @@ import { useAutoReply } from './hooks/useAutoReply'
 import { useChat } from './hooks/useChat'
 import { useChatAlerts } from './hooks/useChatAlerts'
 import { useGiftNotification } from './hooks/useGiftNotification'
-import { useGiftSound } from './hooks/useGiftSound'
-import { useJoinSound } from './hooks/useJoinSound'
 import { useEventSound } from './hooks/useEventSound'
 
 import { useSettings } from './hooks/useSettings'
@@ -97,14 +95,16 @@ export default function App() {
     [settings.ttsPace, settings.ttsLanguage, settings.ttsVolume],
   )
 
-  useGiftSound({
+  useEventSound({
+    type: 'gift',
     enabled: settings.giftSound,
     templateId: settings.giftTemplate,
     customPath: settings.giftSoundPath,
     volume: settings.giftSoundVolume,
     gapMs: settings.giftSoundGapMs,
   })
-  useJoinSound({
+  useEventSound({
+    type: 'join',
     enabled: settings.joinSound,
     templateId: settings.joinTemplate,
     customPath: settings.joinSoundPath,

@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { api, isAuthFailure } from '@/lib/client'
+import { formatDuration } from '@/lib/format'
 import type { AnalyticsSummary, SessionPerson } from '@/lib/types'
 
 type RoomRow = AnalyticsSummary['rooms'][number]
@@ -32,20 +33,11 @@ const METRICS = [
   { key: 'peak_viewers', label: 'Peak', read: (r: RoomRow) => r.peak_viewers, show: (n: number) => n.toLocaleString() },
   { key: 'total_diamonds', label: 'Diamonds', read: (r: RoomRow) => r.total_diamonds, show: (n: number) => n.toLocaleString() },
   { key: 'events', label: 'Events', read: (r: RoomRow) => r.events, show: (n: number) => n.toLocaleString() },
-  { key: 'live_seconds', label: 'Uptime', read: (r: RoomRow) => r.live_seconds ?? 0, show: duration },
+  { key: 'live_seconds', label: 'Uptime', read: (r: RoomRow) => r.live_seconds ?? 0, show: formatDuration },
 ] as const
 
 type Metric = (typeof METRICS)[number]
 type MetricKey = Metric['key']
-
-function duration(seconds: number | null): string {
-  if (!seconds) return '—'
-  const whole = Math.floor(seconds)
-  if (whole < 60) return `${whole}s`
-  const minutes = Math.floor(whole / 60)
-  if (minutes < 60) return `${minutes}m`
-  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`
-}
 
 /**
  * One horizontal bar per stream, read against the selected metric.

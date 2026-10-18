@@ -38,12 +38,6 @@ FOLLOW = "follow"
 SHARE = "share"
 ALERT = "alert"
 
-#: Kinds a widget can subscribe to. The frontend mirrors this list in
-#: lib/widgets/registry.ts; a mismatch means a widget never fires.
-STREAM_KINDS = (COMMENT, LIKE, GIFT, JOIN)
-STATE_KINDS = (VIEWERS,)
-MANUAL_KINDS = (FOLLOW, SHARE, ALERT)
-
 
 @dataclass
 class Event:
@@ -255,6 +249,18 @@ async def emit_config(room_id: str, config: dict[str, Any]) -> None:
     cannot disagree about what a page is sent.
     """
     await hub.broadcast({"type": "config", "config": page_config(config)}, room_id=room_id)
+
+
+def offline_status() -> dict[str, Any]:
+    """The status frame for a room with no source running.
+
+    A fresh dict rather than a shared constant, because callers hand it to
+    `hub.broadcast` and to WebSocket sends where a later mutation of one shared
+    object would leak between rooms. The shape is the adapter's own terminal
+    status, so a client cannot tell — and does not need to — which side produced
+    it.
+    """
+    return {"type": "status", "connected": False, "message": "Offline"}
 
 
 # There used to be a `dispatch()`/`_gate()`/`MAX_INFLIGHT` trio here, bounding how

@@ -46,7 +46,7 @@ class ConnectByUsernameRequest(BaseModel):
     # only limit on what an unauthenticated caller sends is the server's.
     username: str = Field(default="", max_length=64)
     # Overlay styling to store on the room. The whitelist in clean_overlay
-    # below is the only defence: it discards any key outside the known eight,
+    # below is the only defence: it discards any key outside the known seven,
     # so an unauthenticated caller cannot smuggle arbitrary config in. Pydantic
     # still parses the full dict first (there is no depth/size limit on a
     # plain dict[str, Any]), but the parse result is thrown away.
@@ -76,12 +76,7 @@ def clean_overlay(raw: dict[str, Any] | None) -> dict[str, Any]:
         if key not in raw or raw[key] is None:
             continue
         value = raw[key]
-        if key in ("overlaySize", "overlayMax", "overlayDelay"):
-            if isinstance(value, bool):
-                continue
-            if isinstance(value, (int, float)):
-                out[key] = value
-        elif key == "overlayBg":
+        if key in ("overlaySize", "overlayMax", "overlayDelay", "overlayBg"):
             if isinstance(value, bool):
                 continue
             if isinstance(value, (int, float)):

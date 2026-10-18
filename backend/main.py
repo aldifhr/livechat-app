@@ -153,6 +153,7 @@ app = FastAPI(title="StreamKit", lifespan=lifespan)
 # Auth helpers live in `routes/auth` so main.py keeps its surface area as
 # routing only.
 from routes.auth import (
+    TOKEN_REJECTED_DETAIL,
     is_exempt_write_path,
     is_public_read_path,
     is_sensitive_read_path,
@@ -201,7 +202,7 @@ async def guard_mutations(request: Request, call_next):
         if not is_exempt_write_path(request.url.path) and not is_public_read_path(request.url.path) and not token_is_valid(request):
             return JSONResponse(
                 status_code=401,
-                content={"detail": "Invalid or missing STREAMKIT_TOKEN"},
+                content={"detail": TOKEN_REJECTED_DETAIL},
             )
     return await call_next(request)
 
@@ -399,7 +400,7 @@ async def websocket_endpoint(websocket: WebSocket, client_type: str, room_id: st
         # triggered, so a client opening the socket after the handshake
         # finished would otherwise sit on "connecting" forever.
         source = sources.get(room_id)
-        payload = source.status_payload() if source else {"type": "status", "connected": False, "message": "Offline"}
+        payload = source.status_payload() if source else events.offline_status()
         # Read through the adapter's own accessors, not its private flags. The
         # class forbids reaching past itself for exactly this: a caller that
         # reads _running directly can desynchronise the task it does not know

@@ -185,7 +185,6 @@ export const api = {
   catOverlay: (id: string) => overlayUrl('/overlay/cat-overlay', id),
   topChatterOverlay: (id: string) => overlayUrl('/overlay/top-chatter', id),
   giveawaySnapshots: () => request<{ snapshots: GiveawaySnapshot[] }>('GET', '/giveaways/snapshots'),
-  giveawaySnapshot: (id: string) => request<{ id: string; createdAt: string; report: Record<string, unknown> }>('GET', `/giveaways/snapshots/${id}`),
 
 
   /**

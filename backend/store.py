@@ -88,18 +88,6 @@ def _flush() -> None:
         raise
 
 
-def invalidate_cache() -> None:
-    """Drop the in-memory cache so the next read comes from disk.
-
-    Called after an external change to rooms.json — a manual edit, a restore
-    from backup, or a migration. Without this the process keeps serving the
-    stale copy until it restarts, and there is no warning that the file on
-    disk and the data in memory have diverged.
-    """
-    global _cache
-    _cache = None
-
-
 def _record(room_id: str) -> dict[str, Any] | None:
     return _data().get(room_id)
 

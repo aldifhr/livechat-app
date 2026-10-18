@@ -381,17 +381,21 @@ export default function DocksPage() {
           </select>
         )}
         <div className="flex items-center gap-2">
+          {/* `waiting` before `connecting`, the same precedence `RoomStateBadge`
+              uses and for the same reason: the backend sets `connecting` while it
+              polls for a streamer who is not live, so reading it first would say
+              "Connecting" for somebody who is simply offline. */}
           <span
             className={`inline-block h-2.5 w-2.5 rounded-full ${
               status?.connected
                 ? 'bg-[#34d399] shadow-[0_0_8px_#34d399]'
-                : status?.connecting
+                : status?.waiting || status?.connecting
                   ? 'bg-[#fbbf24]'
                   : 'bg-[#52525b]'
             }`}
           />
           <span className="text-xs font-medium text-zinc-300">
-            {status?.connected ? 'Live' : status?.connecting ? 'Connecting' : status?.waiting ? 'Waiting' : 'Offline'}
+            {status?.connected ? 'Live' : status?.waiting ? 'Waiting' : status?.connecting ? 'Connecting' : 'Offline'}
           </span>
         </div>
         {status?.connected && activeViewers != null && (
