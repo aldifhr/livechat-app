@@ -169,6 +169,33 @@ await act(async () => {
 })
 idle.container.remove()
 
+console.log('a reload while the reader runs but is not live comes back to Stop')
+// The reader is running while the stream is not live — a handshake in flight, or
+// the source waiting for the streamer's live to start. `connected` alone would
+// have the page offer Connect over a reader that still exists; the snapshot says
+// `running`, so the control offered is the Stop that matches.
+const waiting = await mountWith({
+  ...LIVE,
+  connected: false,
+  running: true,
+  username: '',
+  roomId: '',
+  title: '',
+  viewers: null,
+  session: 5,
+})
+check('the button offers Stop, not Connect', Boolean($('.room-row .btn-danger')), $('.room-row')?.textContent)
+check('no Connect button is offered', !$$('.room-row .btn').some((b) => b.textContent.trim() === 'Connect'))
+check(
+  'the status does not read as idle',
+  !/Not connected/.test($('.room-status')?.textContent ?? ''),
+  $('.room-status')?.textContent,
+)
+await act(async () => {
+  waiting.root.unmount()
+})
+waiting.container.remove()
+
 console.log('a host with no answer leaves the page idle')
 // An older host, or one whose command failed. Nothing to recover is the same as
 // nothing running — the page must not be left in a half-state.

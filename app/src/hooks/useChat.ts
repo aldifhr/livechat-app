@@ -128,6 +128,7 @@ export function useChat({ collapseWindowMs, collapseThreshold }: UseChatOptions)
           if ((event as { snapshot?: boolean }).snapshot === true) {
             const snap = event as unknown as {
               connected?: boolean
+              running?: boolean
               username?: string
               roomId?: string
               title?: string
@@ -135,8 +136,16 @@ export function useChat({ collapseWindowMs, collapseThreshold }: UseChatOptions)
               message?: string
             }
             setRoom({
-              status: snap.connected ? 'connected' : 'idle',
-              message: snap.connected ? `Connected to @${snap.username ?? ''}` : '',
+              // The reader may be running without the stream being live — mid
+              // handshake, or retrying a streamer's live. That is `waiting`, not
+              // idle: the page must offer Stop over a reader that still exists
+              // rather than a Connect button over one that does not.
+              status: snap.connected ? 'connected' : snap.running ? 'waiting' : 'idle',
+              message: snap.connected
+                ? `Connected to @${snap.username ?? ''}`
+                : snap.running
+                  ? 'Waiting for the stream…'
+                  : '',
               target: snap.username ?? '',
               id: snap.roomId ?? '',
               title: snap.title ?? '',

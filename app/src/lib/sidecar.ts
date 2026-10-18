@@ -69,6 +69,14 @@ type Snapshotted = {
   roomId?: string
   title?: string
   viewers?: number | null
+  /**
+   * Whether a reader is running at all, which is a different question from
+   * whether the stream is live. A page reloaded mid-handshake — or while the
+   * source retries a streamer's live — is told the reader is still there, so it
+   * offers Stop rather than inventing an idle room. Absent on a snapshot from an
+   * older host, which reads as "nothing running" and lands on idle.
+   */
+  running?: boolean
 }
 
 export type SidecarEvent = Tagged &

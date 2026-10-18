@@ -257,6 +257,11 @@ impl BackendState {
     pub fn renew(&self) -> u64 {
         self.set_session(SessionInfo::default());
         self.running.store(true, Ordering::SeqCst);
+        // A new session is not connected until its own handshake lands. Without
+        // this, a Connect pressed over a live room would keep reporting the
+        // previous connection as current until the new one resolved — a snapshot
+        // naming a stream that has already been superseded.
+        self.connected.store(false, Ordering::SeqCst);
         self.generation.fetch_add(1, Ordering::SeqCst) + 1
     }
 
@@ -327,9 +332,21 @@ impl BackendState {
         self.connected.load(Ordering::SeqCst)
     }
 
+    /// Whether a reader loop is running, including while it retries.
+    ///
+    /// The answer a reloaded page needs when the handshake has not landed yet —
+    /// the stream may be between attempts, or waiting for a streamer's live to
+    /// start. `connected` alone would have the page show "Not connected" and a
+    /// Connect button over a reader that is still working, which is the bug the
+    /// snapshot exists to prevent.
+    pub fn is_running(&self) -> bool {
+        self.running.load(Ordering::SeqCst)
+    }
+
     pub fn snapshot(&self) -> Value {
         let info = self.session();
         let connected = self.is_connected();
+        let running = self.is_running();
         let session = self.current();
         json!({
             "type": "status",
@@ -337,6 +354,11 @@ impl BackendState {
             // and the app treats a bridge status as "the reader itself changed".
             "platform": "tiktok",
             "connected": connected,
+            // Whether a reader is running at all, which is a different question
+            // from whether the stream is live. A page reloaded mid-handshake — or
+            // while the source retries a streamer's live — is told the reader is
+            // there, so it can offer Stop rather than invent an idle room.
+            "running": running,
             "username": info.username,
             "roomId": info.room_id,
             "title": info.title,
@@ -1122,7 +1144,12 @@ mod tests {
         let snap = state.snapshot();
         assert_eq!(snap["type"].as_str(), Some("status"));
         assert_eq!(snap["platform"].as_str(), Some("tiktok"));
-        assert_eq!(snap["connected"].as_bool(), Some(true));
+        // The reader is running — that is what the reloaded page needs, whether
+        // the handshake has landed yet or the loop is between attempts.
+        assert_eq!(snap["running"].as_bool(), Some(true));
+        // The stream itself is not reported live until the backend says so; a
+        // Connect that has only just been pressed must not claim a connection.
+        assert_eq!(snap["connected"].as_bool(), Some(false));
         assert_eq!(snap["username"].as_str(), Some("someone"));
         assert_eq!(snap["roomId"].as_str(), Some("room-1"));
         assert_eq!(snap["title"].as_str(), Some("A title"));
@@ -1133,6 +1160,10 @@ mod tests {
         // Marked so the app applies it whole rather than logging it as an event
         // that never happened.
         assert_eq!(snap["snapshot"].as_bool(), Some(true));
+        // Once the handshake lands, the stream is reported connected too — the
+        // two fields answer different questions and both advance.
+        state.connected.store(true, Ordering::SeqCst);
+        assert_eq!(state.snapshot()["connected"].as_bool(), Some(true));
     }
 
     #[test]
@@ -1148,6 +1179,8 @@ mod tests {
         state.stop();
         let snap = state.snapshot();
         assert_eq!(snap["connected"].as_bool(), Some(false));
+        // Nothing is running either, so the page is told to offer Connect.
+        assert_eq!(snap["running"].as_bool(), Some(false));
         // The details are cleared too: naming the previous handle beside a Connect
         // button reads as a connection that never stopped.
         assert_eq!(snap["username"].as_str(), Some(""));
@@ -1166,6 +1199,8 @@ mod tests {
 
         let snap = state.snapshot();
         assert_eq!(snap["connected"].as_bool(), Some(false));
+        // A give-up ends the reader, so nothing is running under the old session.
+        assert_eq!(snap["running"].as_bool(), Some(false));
         assert_eq!(snap["session"].as_u64(), Some(generation));
     }
 
@@ -1177,12 +1212,17 @@ mod tests {
         state.renew();
         state.set_username("first");
         state.set_viewers(10);
+        // The first session had completed its handshake before the second Connect.
+        state.connected.store(true, Ordering::SeqCst);
 
         state.renew();
         let snap = state.snapshot();
         assert_eq!(snap["username"].as_str(), Some(""));
         assert_eq!(snap["viewers"].is_null(), true);
-        assert_eq!(snap["connected"].as_bool(), Some(true));
+        // The new session is running, but its own handshake has not landed, so the
+        // previous connection must not be reported as the current one.
+        assert_eq!(snap["running"].as_bool(), Some(true));
+        assert_eq!(snap["connected"].as_bool(), Some(false));
     }
 
     #[test]
