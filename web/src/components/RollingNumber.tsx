@@ -92,12 +92,12 @@ export function RollingNumber({
     <span
       className="inline-flex items-baseline tabular-nums"
       aria-label={value.toLocaleString()}
-      role="text"
+      role="img"
     >
       {digits.map((d, i) => (
         <span
           className="inline-flex items-baseline"
-          key={digits.length - i}
+          key={digits.length - 1 - i}
         >
           <Digit value={d} changed={changedDigits[i] ?? false} />
           {withCommas && commas[i] && <span className="inline-block">,</span>}

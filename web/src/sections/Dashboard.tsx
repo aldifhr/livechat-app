@@ -17,8 +17,9 @@
  * claiming "1,204 comments" would be counting this browser's own minutes.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { api } from '@/lib/client/api'
+import { usePoll } from '@/hooks/usePoll'
 import type { Room, RoomStatus } from '@/lib/types'
 import NumberTicker from '@/components/magicui/NumberTicker'
 import RoomStateBadge from '@/components/RoomStateBadge'
@@ -97,11 +98,7 @@ export default function Dashboard() {
     }
   }, [])
 
-  useEffect(() => {
-    void poll()
-    const timer = window.setInterval(() => void poll(), POLL_MS)
-    return () => window.clearInterval(timer)
-  }, [poll])
+  usePoll(() => void poll(), POLL_MS)
 
   const totals = useMemo(() => {
     const live = rows.filter((row) => row.status?.connected)

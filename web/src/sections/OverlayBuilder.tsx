@@ -96,13 +96,13 @@ function ChatCustomizer({ roomId, style, design, saveState, onChange }: {
         <p className="style-group-title">Content</p>
 
         <div className="field">
-          <label>Text size <span className="value">{style.size}px</span></label>
-          <input type="range" min={OVERLAY_SIZE.min} max={OVERLAY_SIZE.max} value={style.size} onChange={(e) => onChange({ size: Number(e.target.value) })} />
+          <label htmlFor="chat-size">Text size <span className="value">{style.size}px</span></label>
+          <input id="chat-size" type="range" min={OVERLAY_SIZE.min} max={OVERLAY_SIZE.max} value={style.size} onChange={(e) => onChange({ size: Number(e.target.value) })} />
         </div>
 
         <div className="field">
-          <label>Messages on screen <span className="value">{style.max}</span></label>
-          <input type="range" min={OVERLAY_MAX_ROWS.min} max={OVERLAY_MAX_ROWS.max} value={style.max} onChange={(e) => onChange({ max: Number(e.target.value) })} />
+          <label htmlFor="chat-max">Messages on screen <span className="value">{style.max}</span></label>
+          <input id="chat-max" type="range" min={OVERLAY_MAX_ROWS.min} max={OVERLAY_MAX_ROWS.max} value={style.max} onChange={(e) => onChange({ max: Number(e.target.value) })} />
         </div>
 
         <p className="style-group-title">Position and width</p>
@@ -133,8 +133,9 @@ function ChatCustomizer({ roomId, style, design, saveState, onChange }: {
         </div>
 
         <div className="field">
-          <label>Maximum chat width <span className="value">{style.maxWidth}em</span></label>
+          <label htmlFor="chat-max-width">Maximum chat width <span className="value">{style.maxWidth}em</span></label>
           <input
+            id="chat-max-width"
             type="range"
             min={OVERLAY_MAX_WIDTH.min}
             max={OVERLAY_MAX_WIDTH.max}
@@ -162,21 +163,22 @@ function ChatCustomizer({ roomId, style, design, saveState, onChange }: {
         </div>
 
         <div className="field">
-          <label>Custom message interval <span className="value">{style.delay}ms</span></label>
-          <input type="range" min={OVERLAY_DELAY.min} max={OVERLAY_DELAY.max} step={20} value={style.delay} onChange={(e) => onChange({ delay: Number(e.target.value) })} />
+          <label htmlFor="chat-delay">Custom message interval <span className="value">{style.delay}ms</span></label>
+          <input id="chat-delay" type="range" min={OVERLAY_DELAY.min} max={OVERLAY_DELAY.max} step={20} value={style.delay} onChange={(e) => onChange({ delay: Number(e.target.value) })} />
         </div>
 
         <p className="style-group-title">Background and color</p>
 
         <div className="field">
-          <label>Row background opacity <span className="value">{Math.round(style.bg * 100)}%</span></label>
-          <input type="range" min={0} max={1} step={0.05} value={style.bg} onChange={(e) => onChange({ bg: Number(e.target.value) })} />
+          <label htmlFor="chat-bg">Row background opacity <span className="value">{Math.round(style.bg * 100)}%</span></label>
+          <input id="chat-bg" type="range" min={0} max={1} step={0.05} value={style.bg} onChange={(e) => onChange({ bg: Number(e.target.value) })} />
         </div>
 
         {design === 'studio' && (
           <div className="field">
-            <label>Studio bubble opacity <span className="value">{Math.round(style.bubbleOpacity * 100)}%</span></label>
+            <label htmlFor="chat-bubble-opacity">Studio bubble opacity <span className="value">{Math.round(style.bubbleOpacity * 100)}%</span></label>
             <input
+              id="chat-bubble-opacity"
               type="range"
               min={0}
               max={1}
@@ -189,18 +191,18 @@ function ChatCustomizer({ roomId, style, design, saveState, onChange }: {
 
         <div className="field-row">
           <div className="field">
-            <label>Name colour</label>
-            <input type="color" value={style.nameColour} onChange={(e) => onChange({ nameColour: e.target.value })} />
+            <label htmlFor="chat-name-colour">Name colour</label>
+            <input id="chat-name-colour" type="color" value={style.nameColour} onChange={(e) => onChange({ nameColour: e.target.value })} />
           </div>
           <div className="field">
-            <label>Text colour</label>
-            <input type="color" value={style.textColour} onChange={(e) => onChange({ textColour: e.target.value })} />
+            <label htmlFor="chat-text-colour">Text colour</label>
+            <input id="chat-text-colour" type="color" value={style.textColour} onChange={(e) => onChange({ textColour: e.target.value })} />
           </div>
         </div>
 
         <div className="field">
-          <label>Gift colour</label>
-          <input type="color" value={style.giftColour} onChange={(e) => onChange({ giftColour: e.target.value })} />
+          <label htmlFor="chat-gift-colour">Gift colour</label>
+          <input id="chat-gift-colour" type="color" value={style.giftColour} onChange={(e) => onChange({ giftColour: e.target.value })} />
         </div>
 
         <div className="field">
@@ -248,28 +250,28 @@ function BoardCustomizer({ roomId, style, onChange }: {
         </div>
 
         <div className="field">
-          <label>Text size <span className="value">{style.size}px</span></label>
-          <input type="range" min={OVERLAY_SIZE.min} max={OVERLAY_SIZE.max} value={style.size} onChange={(e) => onChange({ size: Number(e.target.value) })} />
+          <label htmlFor="board-size">Text size <span className="value">{style.size}px</span></label>
+          <input id="board-size" type="range" min={OVERLAY_SIZE.min} max={OVERLAY_SIZE.max} value={style.size} onChange={(e) => onChange({ size: Number(e.target.value) })} />
         </div>
 
         <div className="field">
-          <label>Chatters listed <span className="value">{style.max}</span></label>
-          <input type="range" min={OVERLAY_MAX_ROWS.min} max={OVERLAY_MAX_ROWS.max} value={style.max} onChange={(e) => onChange({ max: Number(e.target.value) })} />
+          <label htmlFor="board-max">Chatters listed <span className="value">{style.max}</span></label>
+          <input id="board-max" type="range" min={OVERLAY_MAX_ROWS.min} max={OVERLAY_MAX_ROWS.max} value={style.max} onChange={(e) => onChange({ max: Number(e.target.value) })} />
         </div>
 
         <div className="field">
-          <label>Panel background <span className="value">{Math.round(style.bg * 100)}%</span></label>
-          <input type="range" min={0} max={1} step={0.05} value={style.bg} onChange={(e) => onChange({ bg: Number(e.target.value) })} />
+          <label htmlFor="board-bg">Panel background <span className="value">{Math.round(style.bg * 100)}%</span></label>
+          <input id="board-bg" type="range" min={0} max={1} step={0.05} value={style.bg} onChange={(e) => onChange({ bg: Number(e.target.value) })} />
         </div>
 
         <div className="field-row">
           <div className="field">
-            <label>Accent colour</label>
-            <input type="color" value={style.nameColour} onChange={(e) => onChange({ nameColour: e.target.value })} />
+            <label htmlFor="board-name-colour">Accent colour</label>
+            <input id="board-name-colour" type="color" value={style.nameColour} onChange={(e) => onChange({ nameColour: e.target.value })} />
           </div>
           <div className="field">
-            <label>Text colour</label>
-            <input type="color" value={style.textColour} onChange={(e) => onChange({ textColour: e.target.value })} />
+            <label htmlFor="board-text-colour">Text colour</label>
+            <input id="board-text-colour" type="color" value={style.textColour} onChange={(e) => onChange({ textColour: e.target.value })} />
           </div>
         </div>
 
@@ -445,20 +447,20 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
 
       <div className="panel">
         <RoomPicker choices={choices} selected={selected} onChange={setRoomId} />
-        <div className="seg stack-top">
-          <button className={which === 'chat' ? 'on' : ''} onClick={() => setWhich('chat')}>
+        <div className="seg stack-top" aria-label="Overlay to style">
+          <button aria-pressed={which === 'chat'} className={which === 'chat' ? 'on' : ''} onClick={() => setWhich('chat')}>
             Chat overlay
           </button>
-          <button className={which === 'board' ? 'on' : ''} onClick={() => setWhich('board')}>
+          <button aria-pressed={which === 'board'} className={which === 'board' ? 'on' : ''} onClick={() => setWhich('board')}>
             Top chatters
           </button>
         </div>
         {which === 'chat' && (
           <div className="seg stack-top" aria-label="Chat overlay design">
-            <button className={chatDesign === 'original' ? 'on' : ''} onClick={() => setChatDesign('original')}>
+            <button aria-pressed={chatDesign === 'original'} className={chatDesign === 'original' ? 'on' : ''} onClick={() => setChatDesign('original')}>
               Original
             </button>
-            <button className={chatDesign === 'studio' ? 'on' : ''} onClick={() => setChatDesign('studio')}>
+            <button aria-pressed={chatDesign === 'studio'} className={chatDesign === 'studio' ? 'on' : ''} onClick={() => setChatDesign('studio')}>
               Studio
             </button>
           </div>

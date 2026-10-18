@@ -10,6 +10,7 @@ import { UserAvatar } from '@/components/UserAvatar'
 import { playChime } from '@/lib/client/chime'
 import { speakText, clearTtsQueue } from '@/lib/client/tts'
 import { useDragScroll } from '@/hooks/useDragScroll'
+import { usePoll } from '@/hooks/usePoll'
 import { tiktokProfileUrl } from '@shared/platforms'
 import type { OverlayEventFrame } from '@shared/events'
 import type { RoomSession, RoomStatus } from '@/lib/types'
@@ -60,11 +61,13 @@ export default function DocksPage() {
   const soundRef = useRef(false)
   const ttsRef = useRef(false)
   const isPausedRef = useRef(false)
+  const roomIdRef = useRef(roomId)
 
   // Sync refs so callbacks have fresh values
   soundRef.current = soundEnabled
   ttsRef.current = ttsEnabled
   isPausedRef.current = isPaused
+  roomIdRef.current = roomId
 
   // Load sound & tts setting
   useEffect(() => {
@@ -107,11 +110,21 @@ export default function DocksPage() {
     setRoomId(id)
   }, [])
 
-  // Fetch public room list for the switcher
+  // Fetch public room list for the switcher. If exactly one room is available and
+  // the URL named none, select it — done here rather than during render, which is
+  // where it used to happen and where a state update is not allowed.
   useEffect(() => {
     api.publicRooms()
       .then(({ rooms }) => {
-        setRooms(rooms.filter((room) => room.username || room.name))
+        const usable = rooms.filter((room) => room.username || room.name)
+        setRooms(usable)
+        const only = usable.length === 1 ? usable[0] : undefined
+        if (!roomIdRef.current && only) {
+          setRoomId(only.id)
+          const url = new URL(window.location.href)
+          url.searchParams.set('room', only.id)
+          window.history.replaceState({}, '', url.toString())
+        }
       })
       .catch(() => {})
   }, [])
@@ -126,7 +139,7 @@ export default function DocksPage() {
       ])
       if (read) {
         setStatus(read)
-        if (read.viewers != null) setViewers((curr) => curr ?? (read.viewers as number))
+        if (read.viewers != null) setViewers(read.viewers)
       }
       if (counted) setSession(counted)
       setError('')
@@ -137,11 +150,7 @@ export default function DocksPage() {
     }
   }, [roomId])
 
-  useEffect(() => {
-    void load()
-    const timer = window.setInterval(() => void load(), POLL_MS)
-    return () => window.clearInterval(timer)
-  }, [load])
+  usePoll(() => void load(), POLL_MS)
 
   // WebSocket for live chat with automatic reconnection
   useEffect(() => {
@@ -160,20 +169,10 @@ export default function DocksPage() {
 
     function connectWs() {
       if (disposed) return
-      console.log('[docks] Connecting WebSocket:', url)
       const ws = new WebSocket(url)
       wsRef.current = ws
 
-      ws.onopen = () => {
-        console.log('[docks] WebSocket connected to', url)
-      }
-
-      ws.onerror = (err) => {
-        console.warn('[docks] WebSocket connection error:', err)
-      }
-
       ws.onmessage = (event) => {
-        console.log('[docks] WS frame received:', event.data)
         try {
           const frame = JSON.parse(event.data) as OverlayEventFrame
           const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -228,13 +227,13 @@ export default function DocksPage() {
           if (added && isPausedRef.current) {
             setNewCount((c) => c + 1)
           }
-        } catch (err) {
-          console.error('[docks] Failed to parse frame:', err)
+        } catch {
+          // A frame that is not the JSON we expect is dropped, not surfaced: the
+          // socket is a stream and one bad frame must not stop the next good one.
         }
       }
 
-      ws.onclose = (ev) => {
-        console.warn('[docks] WebSocket closed:', ev.code, ev.reason, '- will retry in 4s')
+      ws.onclose = () => {
         if (wsRef.current === ws) wsRef.current = null
         if (!disposed) {
           reconnectTimer = window.setTimeout(connectWs, 4000)
@@ -279,18 +278,6 @@ export default function DocksPage() {
     setNewCount(0)
   }
 
-  // No room in URL: auto-select the first room if there's exactly one,
-  // otherwise show the room list so the user can pick.
-  if (!roomId && rooms.length === 1) {
-    const only = rooms[0]
-    if (only) {
-      setRoomId(only.id)
-      const url = new URL(window.location.href)
-      url.searchParams.set('room', only.id)
-      window.history.replaceState({}, '', url.toString())
-    }
-  }
-
   // No room selected and multiple (or zero) rooms: show a picker so the
   // operator can choose one without editing the URL.
   if (!roomId && rooms.length !== 1) {
@@ -311,7 +298,7 @@ export default function DocksPage() {
                 url.searchParams.set('room', next)
                 window.history.replaceState({}, '', url.toString())
               }}
-              className="max-w-64 rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-200 outline-none focus:border-zinc-500"
+              className="max-w-64 rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-200 focus:border-zinc-500"
             >
               <option value="">Choose…</option>
               {rooms.map((room) => (
@@ -370,7 +357,7 @@ export default function DocksPage() {
               else url.searchParams.delete('room')
               window.history.replaceState({}, '', url.toString())
             }}
-            className="max-w-32 rounded border border-zinc-700 bg-zinc-900 px-1.5 py-1 text-xs text-zinc-200 outline-none focus:border-zinc-500"
+            className="max-w-32 rounded border border-zinc-700 bg-zinc-900 px-1.5 py-1 text-xs text-zinc-200 focus:border-zinc-500"
           >
             {!roomId && <option value="">Select room</option>}
             {rooms.map((room) => (
@@ -499,7 +486,8 @@ export default function DocksPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search username or text..."
-            className="w-full rounded bg-zinc-900 border border-zinc-800 pl-6 pr-6 py-1 text-xs text-zinc-200 placeholder:text-zinc-500 outline-none focus:border-zinc-600 focus:bg-zinc-900/90 transition-colors"
+            aria-label="Search chat"
+            className="w-full rounded bg-zinc-900 border border-zinc-800 pl-6 pr-6 py-1 text-xs text-zinc-200 placeholder:text-zinc-500 focus:border-zinc-600 focus:bg-zinc-900/90 transition-colors"
           />
           {search && (
             <button
@@ -507,6 +495,7 @@ export default function DocksPage() {
               onClick={() => setSearch('')}
               className="absolute right-2 text-xs text-zinc-500 hover:text-zinc-300"
               title="Clear search"
+              aria-label="Clear search"
             >
               ✕
             </button>
@@ -519,6 +508,9 @@ export default function DocksPage() {
         <div
           ref={feedContainerRef}
           onScroll={handleScroll}
+          role="log"
+          aria-live="polite"
+          aria-label="Live chat feed"
           className="h-full overflow-y-auto px-3 py-3 [scrollbar-width:thin]"
         >
           {filteredChat.length === 0 ? (

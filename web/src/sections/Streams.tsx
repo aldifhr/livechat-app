@@ -22,6 +22,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError, isAuthFailure } from '../lib/client/api'
 import { useOrigin } from '@/hooks/useBrowser'
+import { usePoll } from '@/hooks/usePoll'
 import { useConnectionWatch } from '@/hooks/useConnectionWatch'
 import { profilePath } from '../lib/client/streamLinks'
 import type { Room, RoomStatus } from '../lib/types'
@@ -113,11 +114,7 @@ export default function Streams() {
     }
   }, [])
 
-  useEffect(() => {
-    void load()
-    const timer = window.setInterval(() => void load(), POLL_MS)
-    return () => window.clearInterval(timer)
-  }, [load])
+  usePoll(() => void load(), POLL_MS)
 
   // Status is asked per room rather than derived from the list, because the list
   // endpoint does not carry it — a room that was created by a test is not

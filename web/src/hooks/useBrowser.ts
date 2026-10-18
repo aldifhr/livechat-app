@@ -42,19 +42,3 @@ function subscribeToNothing() {
 export function useOrigin(): string {
   return useSyncExternalStore(subscribeToNothing, () => window.location.origin, () => '')
 }
-
-/**
- * The window's height, and `fallback` for the server.
- *
- * A number for `fallback` rather than nothing, because a caller that compares it
- * to decide a layout needs a value to compare. Pass the height the design assumes
- * so the first paint is the expected layout and the wrong one for a frame.
- */
-export function useViewportHeight(fallback: number): number {
-  return useSyncExternalStore(onResize, () => window.innerHeight, () => fallback)
-}
-
-function onResize(changed: () => void) {
-  window.addEventListener('resize', changed)
-  return () => window.removeEventListener('resize', changed)
-}

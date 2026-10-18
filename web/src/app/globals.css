@@ -1988,11 +1988,11 @@
     @apply rounded-xl border-line bg-sunken/80;
   }
 
-  input:focus,
-  select:focus,
-  textarea:focus {
-    border-color: rgb(99 230 193 / 65%);
-    box-shadow: 0 0 0 3px rgb(99 230 193 / 10%);
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    border-color: rgb(99 230 193 / 85%);
+    box-shadow: 0 0 0 3px rgb(99 230 193 / 35%);
     outline: none;
   }
 

@@ -20,9 +20,10 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { api, ApiError, isAuthFailure } from '@/lib/client/api'
 import { useOrigin } from '@/hooks/useBrowser'
+import { usePoll } from '@/hooks/usePoll'
 import { useConnectionWatch } from '@/hooks/useConnectionWatch'
 import { streamLinks, LINK_LABELS } from '@/lib/client/streamLinks'
 import type { Room, RoomSession, RoomStatus } from '@/lib/types'
@@ -95,11 +96,7 @@ export default function StreamProfile({ handle }: { handle: string }) {
     }
   }, [wanted])
 
-  useEffect(() => {
-    void load()
-    const timer = window.setInterval(() => void load(), POLL_MS)
-    return () => window.clearInterval(timer)
-  }, [load])
+  usePoll(() => void load(), POLL_MS)
 
   const links = room ? streamLinks(room.id) : null
 

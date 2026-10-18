@@ -15,11 +15,18 @@ import 'server-only'
 
 import { NextResponse } from 'next/server'
 import { COOKIE_NAME } from '@/lib/server/session'
+import { isSameOrigin } from '@/lib/server/auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export async function POST(): Promise<NextResponse> {
+export async function POST(request: Request): Promise<NextResponse> {
+  // Same-origin only, like sign-in. A cross-site form POST could otherwise clear
+  // the cookie and sign the visitor out without them asking.
+  if (!isSameOrigin(request)) {
+    return NextResponse.json({ detail: 'Cross-site requests are not accepted.' }, { status: 403 })
+  }
+
   // A relative Location, deliberately. `NextResponse.redirect` needs an absolute
   // URL and builds it from the server's own address, which behind nginx is
   // `localhost:5184` — so the browser was being sent to a host that does not
