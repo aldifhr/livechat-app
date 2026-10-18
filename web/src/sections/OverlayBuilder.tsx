@@ -525,7 +525,7 @@ export default function OverlayBuilder({ initialRoom }: { initialRoom?: string }
                 url={which === 'chat' ? api.chatOverlay(selected, chatDesign) : api.topChatterOverlay(selected)}
                 title={`${which === 'chat' ? 'Chat' : 'Top chatters'} overlay preview`}
                 canvas={canvas}
-                previewStyle={which === 'chat' ? chat.current : undefined}
+                previewStyle={which === 'chat' ? chat.current : board.current}
               />
               <p className="faint tight-caption">
                 The overlay on a {canvas.width}×{canvas.height} canvas — what OBS shows. It changes as

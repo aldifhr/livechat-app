@@ -1,260 +1,481 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Top Chatters Overlay</title>
+<title>Top chatters overlay</title>
+<!--
+  The board, on its own.
+
+  A second OBS source for the leaderboard and nothing else, so a stream can show
+  the ranking beside the chat or on its own. It reads the same `topChatters` frame
+  the chat overlay already knows and the same `config` frame the chat overlay
+  already styles itself from.
+
+  It is a copy of the chat page's *shape*, not of its markup: one inline file,
+  because OBS fetches it once and a page that is still arriving shows nothing on
+  someone's stream; it resolves the handle itself and opens its own socket to the
+  StreamKit backend, because it has to work whether or not the desktop app is
+  running; and it reads its styling from the room's `config` frame, so the board
+  in OBS is what the builder's sliders say it is.
+
+  This file is the only copy. The desktop host embeds it with `include_str!` and
+  nginx serves it from disk; the backend bakes nothing into it any more. Do not add
+  a second copy — that is what let the versions drift apart once already, with the
+  board rendering at 28px while the slider beside it said 36.
+-->
 <style>
-* { margin:0; padding:0; box-sizing:border-box; }
-body {
-  font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
-  background: transparent;
-  color: #fff;
-  overflow: hidden;
-  width: 100%;
-  height: 100%;
-}
-#board {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  padding: 24px;
-  gap: 12px;
-}
-#board h2 {
-  font-size: 14px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: rgba(255,255,255,0.85);
-  margin-bottom: 4px;
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
-#board h2 .sub {
-  font-size: 11px;
-  font-weight: 400;
-  text-transform: none;
-  letter-spacing: 0;
-  color: rgba(255,255,255,0.5);
-  margin-left: auto;
-}
-#list {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  flex: 1;
-}
-#list li {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  background: rgba(0,0,0,0.45);
-  border-radius: 10px;
-  min-height: 40px;
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255,255,255,0.08);
-}
-.rank {
-  flex: 0 0 22px;
-  width: 22px;
-  height: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  font-weight: 700;
-  color: rgba(255,255,255,0.6);
-  font-variant-numeric: tabular-nums;
-}
-.avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  object-fit: cover;
-  background: rgba(255,255,255,0.1);
-  flex: 0 0 auto;
-}
-.name {
-  font-weight: 600;
-  font-size: 13px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: rgba(255,255,255,0.9);
-  min-width: 0;
-  flex: 1;
-}
-#count {
-  margin-left: auto;
-  flex: 0 0 auto;
-  padding: 2px 8px;
-  background: rgba(255,255,255,0.12);
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  color: rgba(255,255,255,0.8);
-}
-#count.hidden { display: none; }
-#empty {
-  color: rgba(255,255,255,0.4);
-  font-size: 13px;
-  text-align: center;
-  margin-top: auto;
-  margin-bottom: auto;
-}
+  :root {
+    /* Replaced from the query string, then overridden by the room's pushed style.
+       Every one has a default here as well, so a bare URL renders something. */
+    --size: 36px;
+    --name-colour: #ffd76a;
+    --text-colour: #ffffff;
+    --background: 0.9;
+    --font: "Segoe UI", system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  /* A backdrop, for when this page is being *shown* rather than composited. The
+     OBS browser source is asked for this page with no such parameter and must
+     stay transparent. */
+  html.stage-backdrop { background: #141414; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    /* OBS composites the source, so the page must not have an opaque body of its
+       own or the video behind it disappears. */
+    background: transparent;
+    overflow: hidden;
+  }
+
+  body {
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-start;
+    padding: 1em;
+    font-family: var(--font);
+    font-size: var(--size);
+    line-height: 1.25;
+    color: var(--text-colour);
+  }
+
+  #panel {
+    /* A column, not a field: the panel hugs its rows rather than running the whole
+       width of a 1920px canvas, which is the hardest shape there is to read. */
+    width: max-content;
+    max-width: 100%;
+    padding: 0.6em 0.8em;
+    border-radius: 0.5em;
+    /* The gray panel the streamer sizes with the background slider. */
+    background: rgba(8, 13, 18, var(--background));
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 0.22em 0.8em rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(9px);
+    -webkit-backdrop-filter: blur(9px);
+  }
+
+  #panel[hidden] { display: none; }
+
+  #caption {
+    margin: 0 0 0.4em;
+    font-size: 0.62em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--name-colour);
+  }
+
+  #board {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.22em;
+  }
+
+  #board li {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    padding: 0.18em 0.3em;
+    border-radius: 0.3em;
+  }
+
+  /* The rank and the message count wear the accent; the names wear the text
+     colour. One control each, so moving a colour changes one thing. */
+  .board-rank {
+    flex: 0 0 1.6em;
+    text-align: right;
+    color: var(--name-colour);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.85;
+  }
+
+  .board-name {
+    flex: 1 1 auto;
+    color: var(--text-colour);
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .board-count {
+    flex: 0 0 auto;
+    margin-left: auto;
+    padding: 0 0.45em;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--name-colour) 16%, transparent);
+    color: var(--name-colour);
+    font-size: 0.7em;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* A link with no handle is a wrong link, not a transient failure, and the only
+     way it reaches a stream is if somebody pasted it in without checking — which
+     is exactly when they need to see it. */
+  #unconfigured {
+    display: none;
+    color: #ffffff;
+    opacity: 0.6;
+    font-size: var(--size);
+  }
+  body.unconfigured #unconfigured { display: block; }
 </style>
 </head>
 <body>
-<div id="board">
-  <h2><span id="board-title">Top 10 Chatters</span></h2>
-  <ol id="list"></ol>
-  <div id="empty" style="display:none">No chat yet — waiting for messages…</div>
+<div id="panel" hidden>
+  <h2 id="caption">Top Yapping</h2>
+  <ol id="board"></ol>
 </div>
+<div id="unconfigured">no handle in this link — add <code>?room=yourhandle</code></div>
+
+<!-- Read by the board script below before it opens the backend socket. -->
+<script id="overlay-config" type="application/json">__OVERLAY_CONFIG__</script>
+
 <script>
-const q = new URLSearchParams(location.search)
-const roomId = q.get('room') || ''
-const clean = q.has('clean')
-const root = document.documentElement
-if (clean) root.classList.add('clean')
+(function () {
+  'use strict'
 
-// WebSocket for live config + events
-let socket = null
-let connected = false
-let topChatters = []
-let showCount = true
+  // ---- configuration -------------------------------------------------------
 
-function connect() {
-  if (!roomId) return
-  const base = location.origin.replace(/^http/, 'ws')
-  const url = base + '/ws/overlay/' + encodeURIComponent(roomId)
-  socket = new WebSocket(url)
+  // Baked in by the host at request time. Every key can be overridden by the
+  // query string, and the query string wins — that is what lets a link be edited
+  // by hand and what makes the URL an honest description of what is on screen.
+  var baked = (function () {
+    try { return JSON.parse(document.getElementById('overlay-config').textContent) || {} }
+    catch (e) { return {} }
+  })()
 
-  socket.onopen = () => {
-    connected = true
+  var query = new URLSearchParams(location.search)
+
+  function param(name, fallback) {
+    var found = query.get(name)
+    return found === null || found === '' ? fallback : found
   }
 
-  socket.onmessage = (event) => {
+  function number(name, fallback, min, max) {
+    var given = param(name, '')
+    // An absent parameter is not a number and must fall back, not clamp. The trap
+    // is `Number('') === 0`: 0 is finite, so an `isFinite` check alone passes it
+    // through and then clamps it up to `min`. An empty string is absent before it
+    // is ever a number.
+    if (given === '') return fallback
+    var raw = Number(given)
+    if (!isFinite(raw)) return fallback
+    return Math.min(max, Math.max(min, raw))
+  }
+
+  // Baked values, read once. The room's saved styling is pushed over the socket
+  // the moment this opens; these are only what a link carries.
+  var config = {
+    // Defaults to this page's own origin. The page and its websocket are served
+    // by the same vhost, so an overlay link names one host.
+    baseUrl: String(param('base', baked.baseUrl || location.origin)).replace(/\/+$/, ''),
+    username: String(param('room', baked.username || '')).replace(/^@/, '').trim(),
+    size: number('size', typeof baked.size === 'number' ? baked.size : 36, 8, 96),
+    max: Math.round(number('max', typeof baked.max === 'number' ? baked.max : 10, 1, 50)),
+    bg: number('bg', typeof baked.background === 'number' ? baked.background : 0.9, 0, 1),
+    nameColour: param('name', baked.nameColour || '#ffd76a'),
+    textColour: param('color', baked.textColour || '#ffffff'),
+    font: param('font', baked.font || '"Segoe UI", system-ui, sans-serif'),
+    title: param('title', baked.title || 'Top Yapping'),
+    debug: param('debug', '') !== ''
+  }
+
+  // This page's own styling defaults, with no URL and no pushed config involved.
+  //
+  // Needed because a pushed style is the room's *whole* style rather than a patch,
+  // so a key the push leaves out means "back to default" — not "keep whatever it
+  // was". These are the board's half of the numbers `shared/overlay.ts` holds, and
+  // `test-overlay-sync.mjs` holds them together.
+  var STYLE_DEFAULTS = {
+    size: 36,
+    max: 10,
+    background: 0.9,
+    nameColour: '#ffd76a',
+    textColour: '#ffffff',
+    font: '"Segoe UI", system-ui, sans-serif',
+    title: 'Top Yapping'
+  }
+
+  var panel = document.getElementById('panel')
+  var board = document.getElementById('board')
+  var caption = document.getElementById('caption')
+
+  // Push the current styling onto the page. A function rather than a few lines at
+  // the top because it runs again every time the backend pushes a new style.
+  function applyConfig() {
+    var root = document.documentElement
+    root.style.setProperty('--size', config.size + 'px')
+    root.style.setProperty('--name-colour', config.nameColour)
+    root.style.setProperty('--text-colour', config.textColour)
+    root.style.setProperty('--font', config.font)
+    // The background goes behind the panel and nowhere else. One setting, one
+    // thing it does.
+    root.style.setProperty('--background', String(config.bg))
+    caption.textContent = config.title
+  }
+
+  applyConfig()
+
+  // The builder applies unsaved edits to its own preview immediately. OBS still
+  // relies on the persisted room config pushed over the websocket.
+  var previewOverride = null
+  function applyPreviewStyle(style) {
+    if (typeof style !== 'object') return
+    if (Number.isFinite(style.size)) config.size = Math.max(8, Math.min(96, style.size))
+    if (Number.isFinite(style.background)) config.bg = Math.max(0, Math.min(1, style.background))
+    if (Number.isFinite(style.max)) config.max = Math.max(1, Math.min(50, Math.round(style.max)))
+    if (typeof style.nameColour === 'string') config.nameColour = style.nameColour
+    if (typeof style.textColour === 'string') config.textColour = style.textColour
+    if (typeof style.font === 'string') config.font = style.font
+    if (typeof style.title === 'string') config.title = style.title
+    applyConfig()
+  }
+
+  window.addEventListener('message', function (event) {
+    var parentOrigin = ''
+    try { parentOrigin = new URL(document.referrer).origin } catch (_) {}
+    if (event.source !== window.parent || !parentOrigin || event.origin !== parentOrigin ||
+        !event.data || !event.data.streamkitPreviewStyle) return
+    previewOverride = event.data.streamkitPreviewStyle
+    applyPreviewStyle(previewOverride)
+    if (event.data.streamkitPreviewSample === true) showPreviewSample()
+  })
+
+  function say(message) {
+    // Only ever visible under `?debug=1`. A red box on a stream is worse than no
+    // board at all.
+    debugLog('status', message)
+  }
+
+  function debugLog() {
+    if (!config.debug || !window.console) return
+    var args = Array.prototype.slice.call(arguments)
+    args.unshift('[StreamKit board]')
+    console.log.apply(console, args)
+  }
+
+  debugLog('loaded', { page: location.href, backend: config.baseUrl, room: config.username })
+
+  // ---- the board -----------------------------------------------------------
+
+  // A backdrop is asked for, not taken. See the `stage-backdrop` rule.
+  if (param('backdrop', '') === 'dark') document.documentElement.classList.add('stage-backdrop')
+
+  function reportHeight() {
     try {
-      const frame = JSON.parse(event.data)
-      if (frame.type === 'config' && frame.config) {
-        if (frame.config.title) {
-          document.getElementById('board-title').textContent = frame.config.title
-        }
-        if (frame.config.showCount !== undefined) {
-          showCount = !!frame.config.showCount
-          render()
-        }
-      }
-      if (frame.type === 'comment' && frame.user) {
-        addComment(frame.user, frame.avatar)
-      } else if (frame.type === 'follow' && frame.user) {
-        addFollow(frame.user, frame.avatar)
-      } else if (frame.type === 'share' && frame.user) {
-        addShare(frame.user, frame.avatar)
-      }
-    } catch (e) {}
+      parent.postMessage({ streamkitHeight: (panel.hidden ? 0 : panel.scrollHeight) + 48 }, '*')
+    } catch (error) {}
   }
 
-  socket.onclose = () => {
-    connected = false
-    setTimeout(connect, 3000)
-  }
+  new ResizeObserver(reportHeight).observe(panel)
+  window.addEventListener('load', reportHeight)
 
-  socket.onerror = () => { try { socket.close() } catch (e) {} }
-}
-
-function addComment(user, avatar) {
-  const existing = topChatters.find(c => c.nickname === user)
-  if (existing) {
-    existing.count++
-    if (avatar) existing.avatar = avatar
-  } else {
-    topChatters.push({ nickname: user, count: 1, avatar: avatar || '', follows: 0, shares: 0 })
-  }
-  topChatters.sort((a, b) => b.count - a.count)
-  topChatters = topChatters.slice(0, 10)
-  render()
-}
-
-function addFollow(user, avatar) {
-  const existing = topChatters.find(c => c.nickname === user)
-  if (existing) {
-    existing.follows++
-    if (avatar) existing.avatar = avatar
-  } else {
-    topChatters.push({ nickname: user, count: 0, avatar: avatar || '', follows: 1, shares: 0 })
-  }
-  render()
-}
-
-function addShare(user, avatar) {
-  const existing = topChatters.find(c => c.nickname === user)
-  if (existing) {
-    existing.shares++
-    if (avatar) existing.avatar = avatar
-  } else {
-    topChatters.push({ nickname: user, count: 0, avatar: avatar || '', follows: 0, shares: 1 })
-  }
-  render()
-}
-
-function render() {
-  const list = document.getElementById('list')
-  const empty = document.getElementById('empty')
-  const sub = document.getElementById('sub')
-
-  if (topChatters.length === 0) {
-    list.innerHTML = ''
-    empty.style.display = 'block'
-    sub.textContent = ''
-    return
-  }
-
-  empty.style.display = 'none'
-
-  const medals = ['🥇', '🥈', '🥉']
-  list.innerHTML = topChatters.map((c, i) => {
-    const rank = i < 3 ? medals[i] : (i + 1)
-    return `<li>
-      <span class="rank">${rank}</span>
-      ${c.avatar ? `<img class="avatar" src="${escapeHtml(c.avatar)}" alt="" loading="lazy">` : ''}
-      <span class="name">${escapeHtml(c.nickname)}</span>
-      <span id="count" class="${showCount ? '' : 'hidden'}">${c.count}</span>
-    </li>`
-  }).join('')
-}
-
-function escapeHtml(str) {
-  const div = document.createElement('div')
-  div.textContent = str
-  return div.innerHTML
-}
-
-// Also poll /api/analytics every 30s for cross-session data
-async function pollAnalytics() {
-  if (!roomId) return
-  try {
-    const res = await fetch('/api/backend/analytics?room=' + encodeURIComponent(roomId), {
-      headers: { 'Content-Type': 'application/json' }
-    })
-    if (res.ok) {
-      const data = await res.json()
-      // Merge topChatters from analytics if available
-      // This is a fallback for cross-session data
+  /**
+   * Draw the ranking.
+   *
+   * Kept whole rather than patched row by row: a ranking is a single frame that
+   * replaces the last one, so there is nothing to preserve between two of them.
+   * The rows are built with `textContent`, never `innerHTML` — a nickname is
+   * whatever a viewer typed, and it is not markup.
+   *
+   * An empty ranking hides the whole panel rather than leaving a stale one up,
+   * which is what a room that has gone quiet should look like.
+   */
+  function render(chatters) {
+    var items = Array.isArray(chatters) ? chatters : []
+    board.textContent = ''
+    if (items.length === 0) {
+      panel.hidden = true
+      reportHeight()
+      return
     }
-  } catch (e) {}
-}
+    var shown = items.slice(0, config.max)
+    for (var i = 0; i < shown.length; i++) {
+      var chatter = shown[i] || {}
+      var row = document.createElement('li')
 
-// Start
-if (roomId) connect()
-pollAnalytics()
-setInterval(pollAnalytics, 30000)
+      var rank = document.createElement('span')
+      rank.className = 'board-rank'
+      rank.textContent = String(i + 1)
+
+      var name = document.createElement('span')
+      name.className = 'board-name'
+      name.textContent = String(chatter.nickname || chatter.user || 'Someone')
+
+      var count = document.createElement('span')
+      count.className = 'board-count'
+      count.textContent = String(typeof chatter.messages === 'number' ? chatter.messages : (chatter.count || 0))
+
+      row.appendChild(rank)
+      row.appendChild(name)
+      row.appendChild(count)
+      board.appendChild(row)
+    }
+    panel.hidden = false
+    document.body.classList.add('ready')
+    reportHeight()
+  }
+
+  // A stand-in ranking for the dashboard's preview, so a quiet board is not a
+  // blank rectangle while the operator is sizing it.
+  function showPreviewSample() {
+    render([
+      { nickname: 'Viewer one', messages: 12 },
+      { nickname: 'Viewer two', messages: 8 },
+      { nickname: 'Viewer three', messages: 3 }
+    ])
+  }
+
+  // ---- the connection ------------------------------------------------------
+
+  // Two steps, because the app has to do the same two: name a handle, get a room
+  // id. The chat overlay does exactly this, and a board that skipped the resolve
+  // step would be a board for a room that does not exist.
+  function socketFor(base, roomId) {
+    var url = base.replace(/^http/, 'ws') + '/ws/overlay/' + encodeURIComponent(roomId)
+    debugLog('opening websocket', url)
+    return new WebSocket(url)
+  }
+
+  // A room id, as opposed to a handle. Passing one straight through skips the
+  // resolve step: a link that is just `?room=<id>` is one nothing has to look up.
+  function looksLikeRoomId(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+  }
+
+  function connect() {
+    if (config.username === '') {
+      document.body.classList.add('unconfigured')
+      say('no handle — add ?room=yourhandle to the URL')
+      return
+    }
+    document.body.classList.remove('unconfigured')
+
+    if (looksLikeRoomId(config.username)) {
+      open(config.username)
+      return
+    }
+
+    fetch(config.baseUrl + '/api/room-connect-by-username', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: config.username })
+    })
+      .then(function (response) {
+        if (!response.ok) throw new Error('HTTP ' + response.status)
+        return response.json()
+      })
+      .then(function (room) {
+        if (!room || !room.room_id) throw new Error('no room id in the answer')
+        open(room.room_id)
+      })
+      .catch(function (error) {
+        say('could not resolve ' + config.username + ': ' + error.message)
+        setTimeout(connect, 5000)
+      })
+  }
+
+  function open(roomId) {
+    var socket
+    try {
+      socket = socketFor(config.baseUrl, roomId)
+    } catch (error) {
+      say('bad backend URL: ' + error.message)
+      setTimeout(connect, 5000)
+      return
+    }
+
+    socket.onopen = function () {
+      debugLog('websocket open')
+      say('connected to ' + config.username)
+    }
+
+    socket.onmessage = function (event) {
+      var frame
+      try {
+        frame = JSON.parse(event.data)
+      } catch (error) {
+        debugLog('invalid websocket frame', error, event.data)
+        return
+      }
+      if (!frame) return
+
+      // A new style for this room, pushed the moment it is saved. Reset first,
+      // then apply: the frame is the room's whole style, so a key it does not
+      // carry reverts rather than persisting. An empty frame is the absence of a
+      // request, not a request to reset, and acting on it would strip the styling
+      // from any link that carried its own parameters.
+      if (frame.type === 'config' && frame.config) {
+        if (Object.keys(frame.config).length === 0) return
+        Object.keys(STYLE_DEFAULTS).forEach(function (key) {
+          config[key === 'background' ? 'bg' : key] = STYLE_DEFAULTS[key]
+        })
+        Object.keys(frame.config).forEach(function (key) {
+          if (frame.config[key] === undefined || frame.config[key] === null) return
+          if (key === 'background') config.bg = frame.config[key]
+          else if (Object.prototype.hasOwnProperty.call(STYLE_DEFAULTS, key)) config[key] = frame.config[key]
+        })
+        if (previewOverride) applyPreviewStyle(previewOverride)
+        applyConfig()
+        say('style updated')
+        return
+      }
+
+      // The ranking. Everything else on this wire — comments, gifts, likes,
+      // joins, viewer counts, status — is not the board, and a source that showed
+      // them would be a dashboard rather than a leaderboard.
+      if (frame.type === 'topChatters') {
+        render(frame.chatters)
+        return
+      }
+    }
+
+    socket.onclose = function () {
+      debugLog('websocket closed; retrying in 3 seconds')
+      say('socket closed, retrying')
+      setTimeout(connect, 3000)
+    }
+
+    socket.onerror = function () {
+      // `close` always follows `error`, and it is `close` that schedules the
+      // retry. Doing it here too would open two connections per failure.
+      debugLog('websocket error', { readyState: socket.readyState, url: socket.url })
+      say('socket error')
+    }
+  }
+
+  connect()
+})()
 </script>
 </body>
 </html>

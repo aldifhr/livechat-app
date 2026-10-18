@@ -36,7 +36,29 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { OverlayStyle } from '@shared/overlay'
+
+/**
+ * The styling fields the preview iframe reads.
+ *
+ * Structural rather than `OverlayStyle`: the board sends its own shape (a title,
+ * no message delay) and the chat sends the full style. Both have the handful of
+ * fields posted below, and the ones a shape does not carry are simply omitted
+ * from the message.
+ */
+type PreviewStyle = {
+  size: number
+  nameColour: string
+  textColour: string
+  bg: number
+  max: number
+  font: string
+  delay?: number
+  position?: string
+  maxWidth?: number
+  bubbleOpacity?: number
+  giftColour?: string
+  title?: string
+}
 
 interface Props {
   /** The overlay's address. Empty renders nothing rather than an empty frame. */
@@ -67,8 +89,8 @@ interface Props {
   maxHeight?: number
   /** The canvas a `canvas` frame represents, in CSS pixels. */
   canvas?: { width: number; height: number }
-  /** Unsaved chat style to apply immediately in the preview iframe. */
-  previewStyle?: OverlayStyle
+  /** Unsaved style to apply immediately in the preview iframe. */
+  previewStyle?: PreviewStyle
 }
 
 /** OBS's default stream canvas. */
@@ -105,6 +127,8 @@ export default function OverlayStage({
           maxWidth: previewStyle.maxWidth,
           bubbleOpacity: previewStyle.bubbleOpacity,
           giftColour: previewStyle.giftColour,
+          // Only the board carries one; the chat page has no place for it.
+          title: previewStyle.title,
         },
         streamkitPreviewSample: true,
       },
