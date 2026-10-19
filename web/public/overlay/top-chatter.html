@@ -8,9 +8,9 @@
   The board, on its own.
 
   A second OBS source for the leaderboard and nothing else, so a stream can show
-  the ranking beside the chat or on its own. It reads the same `topChatters` frame
-  the chat overlay already knows and the same `config` frame the chat overlay
-  already styles itself from.
+  the ranking beside the chat or on its own. It asks the backend for the ranking
+  on its own beat and styles itself from the same `config` frame the chat overlay
+  already reads.
 
   It is a copy of the chat page's *shape*, not of its markup: one inline file,
   because OBS fetches it once and a page that is still arriving shows nothing on
@@ -207,6 +207,10 @@
     textColour: param('color', baked.textColour || '#ffffff'),
     font: param('font', baked.font || '"Segoe UI", system-ui, sans-serif'),
     title: param('title', baked.title || 'Top Yapping'),
+    // How often the board asks for a fresh ranking, in seconds. Pushed as a
+    // parameter rather than a fixed beat so a quiet board can be cheap and a busy
+    // one can keep up; the backend answers the request to this socket only.
+    poll: Math.round(number('poll', 5, 2, 60)) * 1000,
     debug: param('debug', '') !== ''
   }
 
@@ -405,8 +409,26 @@
       })
   }
 
+  var socket = null
+  var pollTimer = null
+
+  /**
+   * Ask the backend for the current ranking.
+   *
+   * A request rather than a push: the backend recomputes on the beat this page
+   * chooses instead of broadcasting a fresh ten-row list on every comment. A
+   * socket mid-close throws on send; the close handler reconnects and the next
+   * open schedules the poll again.
+   */
+  function pollBoard() {
+    try {
+      socket.send(JSON.stringify({ type: 'topChatters' }))
+    } catch (error) {
+      debugLog('could not ask for the ranking', error)
+    }
+  }
+
   function open(roomId) {
-    var socket
     try {
       socket = socketFor(config.baseUrl, roomId)
     } catch (error) {
@@ -418,6 +440,8 @@
     socket.onopen = function () {
       debugLog('websocket open')
       say('connected to ' + config.username)
+      pollBoard()
+      pollTimer = setInterval(pollBoard, config.poll)
     }
 
     socket.onmessage = function (event) {
@@ -463,6 +487,8 @@
     socket.onclose = function () {
       debugLog('websocket closed; retrying in 3 seconds')
       say('socket closed, retrying')
+      clearInterval(pollTimer)
+      pollTimer = null
       setTimeout(connect, 3000)
     }
 

@@ -105,7 +105,11 @@ function load(search = '?room=ana&max=8', source = CHAT_PAGE, referrer = undefin
       window.WebSocket = class {
         constructor(url) {
           this.url = url
+          this.sent = []
           sockets.push(this)
+        }
+        send(data) {
+          this.sent.push(data)
         }
       }
     },
@@ -432,9 +436,9 @@ check(
 )
 
 console.log('the top-chatters board is its own page')
-// A separate source for OBS: the leaderboard and nothing else, reading the same
-// topChatters frame the chat overlay already knows. This is the second view of a
-// board the backend keeps, not a new feature on the wire.
+// A separate source for OBS: the leaderboard and nothing else, asking the backend
+// for the same `topChatters` ranking the desktop app shows. This is the second
+// view of a board the backend keeps, not a new feature on the wire.
 const boardPage = load('?room=ana', BOARD_PAGE)
 boardPage.openRoom('room-1')
 await settle()
@@ -476,6 +480,19 @@ console.log('the two pages resolve the room the same way')
 const chatSockets = boardPage.sockets.length
 check('the board page opens one overlay socket', chatSockets === 1, String(chatSockets))
 check('as an overlay client, sharing the room', boardPage.sockets[0]?.url.endsWith('/ws/overlay/room-1'), boardPage.sockets[0]?.url)
+
+// The ranking is pulled, not pushed: the backend keeps the counts but answers
+// only when asked. A page that opened its socket and waited would show the
+// dashboard's sample forever, which is exactly what the rebuilt page did.
+const boardSocket = boardPage.sockets[0]
+boardSocket.onopen?.()
+await settle()
+check(
+  'the board asks for the ranking when it connects',
+  boardSocket.sent.some((raw) => JSON.parse(raw).type === 'topChatters'),
+  boardSocket.sent.join(' | '),
+)
+boardSocket.onclose?.()
 
 console.log('a pushed style reaches the screen')
 // The live restyle path, which is the one nothing here covered until the config

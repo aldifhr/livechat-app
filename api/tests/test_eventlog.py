@@ -119,6 +119,8 @@ before = eventlog.snapshot(_ROOM)["totals"]["comment"]
 check("five counted", before == 5, str(before))
 eventlog.set_connected(_ROOM, True, "@other")
 check("reset on reconnect", eventlog.snapshot(_ROOM)["totals"].get("comment", 0) == 0)
+check("and cleared the board with it", eventlog.top_chatters(_ROOM) == [],
+      str(eventlog.top_chatters(_ROOM)))
 check("still connected", eventlog.is_connected(_ROOM) is True)
 eventlog.set_connected(_ROOM, False, "")
 check("a disconnect is recorded", eventlog.is_connected(_ROOM) is False)
@@ -145,6 +147,13 @@ for name, n in [("ana", 3), ("budi", 5), ("citra", 1)]:
         eventlog.record(_ROOM, "comment", user=name, text="hi", user_id=name)
 # A gift is not someone talking, so it must not climb the board.
 eventlog.record(_ROOM, "gift", user="ana", text="Rose", meta={"count": 1})
+board = eventlog.top_chatters(_ROOM)
+check("ranked by message count", [row["nickname"] for row in board] == ["budi", "ana", "citra"],
+      str(board))
+check("with the count each sent", [row["messages"] for row in board] == [5, 3, 1], str(board))
+check("a gift did not add a chatter", len(board) == 3, str(board))
+check("the board is capped", len(eventlog.top_chatters(_ROOM, limit=2)) == 2,
+      str(eventlog.top_chatters(_ROOM, limit=2)))
 print("a room nobody has heard from answers empty rather than raising")
 # The WebSocket is unauthenticated and the room id arrives in the URL, so a read
 # for a room that does not exist is a thing a stranger can ask for. It must not
@@ -185,6 +194,12 @@ check("B counted its own two", eventlog.snapshot(b)["totals"]["comment"] == 2,
       str(eventlog.snapshot(b)["totals"]))
 check("the shared handle is not a repeat across rooms",
       eventlog.snapshot(b)["repeats"].get("comment", 0) == 0, str(eventlog.snapshot(b)["repeats"]))
+check("A's board holds only A's chatter",
+      [row["nickname"] for row in eventlog.top_chatters(a)] == ["Ana"],
+      str(eventlog.top_chatters(a)))
+check("B's board holds only B's two",
+      sorted(row["nickname"] for row in eventlog.top_chatters(b)) == ["Ana", "Budi"],
+      str(eventlog.top_chatters(b)))
 
 print("one room dropping does not disturb the other")
 eventlog.set_connected(b, False, "B dropped")

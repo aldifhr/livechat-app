@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 
 
 import events
+import eventlog
 import logbuffer
 import store
 from watchdog import LivenessWatchdog
@@ -432,6 +433,16 @@ async def websocket_endpoint(websocket: WebSocket, client_type: str, room_id: st
                 continue
             if msg.get("type") == "ping":
                 await websocket.send_text(json.dumps({"type": "pong"}))
+            elif msg.get("type") == "topChatters":
+                # Asked for, answered to this socket only. The board polls on its
+                # own beat; broadcasting a new ranking on every comment would put
+                # a ten-row list on the same wire as the chat for every client.
+                await websocket.send_text(
+                    json.dumps(
+                        {"type": "topChatters", "chatters": eventlog.top_chatters(room_id)},
+                        ensure_ascii=False,
+                    )
+                )
     except WebSocketDisconnect:
         pass
     finally:

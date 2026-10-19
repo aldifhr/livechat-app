@@ -250,6 +250,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
     itu tidak pernah ada, jadi urutan startup itu tidak pernah berarti apa-apa.
 
 ### Fixed
+- **Top Chatters overlay tidak pernah menampilkan apa pun selain contoh dari
+  dashboard.** Halaman `top-chatter.html` didesain menarik ranking lewat frame
+  `topChatters`, tapi frame itu tidak pernah datang: backend-nya sudah dihapus
+  bersama socket protocol lama, lalu halamannya ditambahkan kembali tanpa
+  backend-nya. Hasilnya panel tetap tersembunyi selamanya di OBS.
+  - `eventlog` kembali menghitung komentar per orang per room (`chatters` /
+    `chatter_names`, dikunci pada `user_id` supaya ganti nama tidak memecah satu
+    orang jadi dua baris), di-reset saat reconnect, dan di-prune seperti
+    leaderboard gifter. Gift tidak ikut, karena board ini soal "siapa yang paling
+    banyak bicara".
+  - Backend menjawab permintaan `{"type":"topChatters"}` ke **socket yang
+    meminta saja**, bukan broadcast: ranking tidak perlu ikut di setiap komentar.
+  - Halaman mengirim permintaan itu saat connect dan setiap `poll` detik
+    (parameter URL, default 5, 2–60). Sebelumnya halaman hanya menunggu frame
+    yang tidak akan datang.
+  - 3 assertion baru di `test_api.py` (ranking per room lewat socket asli, room
+    sunyi menjawab kosong), 7 di `test_eventlog.py` (urutan, hanya komentar,
+    reset, isolasi room), dan 1 di `test-overlay-page.mjs` (halaman benar-benar
+    mengirim permintaan saat socket terbuka).
+
 - **Streamer yang tidak live dikenali sebagai "tidak ada yang bisa dibaca", bukan
   kegagalan jaringan.** `UserOfflineError` tidak dikenali di loop retry, jadi
   streamer offline diperlakukan seperti blip jaringan: **10 percobaan, ~2 menit

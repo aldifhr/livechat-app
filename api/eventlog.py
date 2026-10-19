@@ -118,6 +118,12 @@ class RoomLog:
     gifters: dict[str, int] = field(default_factory=dict)
     gifter_names: dict[str, str] = field(default_factory=dict)
 
+    #: Comments per user this session: user_id -> count, and the last display name
+    #: seen for each. The board overlay polls this. Keyed on the stable user id so
+    #: a display-name change does not split one person into two rows.
+    chatters: dict[str, int] = field(default_factory=dict)
+    chatter_names: dict[str, str] = field(default_factory=dict)
+
     def reset(self) -> None:
         """Forget this connection's events, keeping the connected flag's caller
         to set. A reconnect is a new session and its counters start again."""
@@ -134,6 +140,8 @@ class RoomLog:
         self.viewers_at = 0.0
         self.gifters.clear()
         self.gifter_names.clear()
+        self.chatters.clear()
+        self.chatter_names.clear()
 
 
 #: How many names the leaderboard ranks and shows.
@@ -270,6 +278,14 @@ def record(
         room.gifter_names[key] = user
         _prune_leaders(room.gifters, room.gifter_names, TOP_N * 10)
 
+    # Comments per person, for the board overlay. Only comments count: the board
+    # answers "who is talking most", and a gift has its own leaderboard.
+    if kind == "comment" and user:
+        key = user_id or user
+        room.chatters[key] = room.chatters.get(key, 0) + 1
+        room.chatter_names[key] = user
+        _prune_leaders(room.chatters, room.chatter_names, TOP_N * 10)
+
     # A greeting that is long enough to be a sentence and short enough to stay
     # on one line. Comment text is capped by the widget at 44 characters anyway,
     # so this is the same information a viewer would see.
@@ -286,6 +302,27 @@ def record(
 
 def error(message: str) -> None:
     log.error("%s", message)
+
+
+def top_chatters(room_id: str, limit: int = TOP_N) -> list[dict[str, Any]]:
+    """The chatters who have sent the most comments this session, most first.
+
+    Rebuilt on request rather than pushed, because a busy room produces comments
+    faster than anyone reads a ranking and the board polls on its own beat. Ties
+    break by name, so the order does not reshuffle between two reads of the same
+    counts.
+    """
+    room = _rooms.get(room_id)
+    if room is None or not room.chatters:
+        return []
+    ranked = sorted(
+        room.chatters.items(),
+        key=lambda kv: (-kv[1], room.chatter_names.get(kv[0], "")),
+    )
+    return [
+        {"id": key, "nickname": room.chatter_names.get(key, key), "messages": messages}
+        for key, messages in ranked[:limit]
+    ]
 
 
 def top_gifters(room_id: str, limit: int = TOP_N) -> list[dict[str, Any]]:

@@ -680,12 +680,25 @@ with TestClient(main.app) as boards:
         eventlog.set_connected("beta-board", True, "@beta")
         eventlog.record("beta-board", "comment", user="Citra", text="b1", user_id="citra")
 
-        # Verify each room's snapshot holds only its own event counts; the
-        # topChatters board has been removed from the socket protocol.
+        # Verify each room's snapshot holds only its own event counts.
         check("alpha's totals hold only alpha's comments",
               eventlog.snapshot("alpha-board")["totals"]["comment"] == 2)
         check("beta's totals hold only beta's comments",
               eventlog.snapshot("beta-board")["totals"]["comment"] == 1)
+
+        # The board is answered per connection from the room the socket is in.
+        # It is asked for, not pushed: this is a request the page polls on.
+        a_ws.send_json({"type": "topChatters"})
+        alpha_board = a_ws.receive_json()
+        check("alpha's board request is answered with alpha's ranking",
+              alpha_board.get("type") == "topChatters"
+              and alpha_board.get("chatters") == [{"id": "ana", "nickname": "Ana", "messages": 2}],
+              json.dumps(alpha_board))
+        b_ws.send_json({"type": "topChatters"})
+        beta_board = b_ws.receive_json()
+        check("and beta's with only beta's chatter",
+              [row["nickname"] for row in beta_board.get("chatters", [])] == ["Citra"],
+              json.dumps(beta_board))
 
         # A room that never produced anything answers empty rather than handing
         # back somebody else's ranking, which is what a shared board did.
@@ -693,6 +706,10 @@ with TestClient(main.app) as boards:
             q_ws.receive_json()
             q_ws.receive_json()
             check("a quiet room has no comments", "comment" not in eventlog.snapshot("quiet-board")["totals"])
+            q_ws.send_json({"type": "topChatters"})
+            quiet_board = q_ws.receive_json()
+            check("and its board is empty, not another room's",
+                  quiet_board.get("chatters") == [], json.dumps(quiet_board))
 eventlog.forget("alpha-board")
 eventlog.forget("beta-board")
 
