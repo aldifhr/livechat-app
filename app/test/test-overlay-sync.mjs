@@ -261,5 +261,27 @@ console.log('and every page is actually reachable')
   )
 }
 
+console.log('the cat resets every pose channel it blends')
+// `upd` blends each channel in the merged `T` object toward its target, and a mode that
+// does not name a channel gets the target 0 — the reset that ends a pose. A channel that
+// exists in `C.P` but not among `T`'s defaults is never visited by that loop, so it keeps
+// whatever the last mode left: the cat that started scratching went on scratching for
+// ever, because `scratch` was added to `P` and to the mode table but not to the defaults
+// it resets from. A channel in `T` but not in `P` would blend against `undefined` and go
+// NaN. The two lists have to be one list, so this compares them.
+{
+  const cat = readFileSync(`${overlayDir}/cat-overlay.html`, 'utf8')
+  const keys = (text) => new Set([...text.matchAll(/([a-zA-Z_]\w*)\s*:/g)].map(m => m[1]))
+  const pose = keys(/P:\{([^}]*)\}/.exec(cat)?.[1] ?? '')
+  const targets = keys(/Object\.assign\(\{([^}]*)\},m\.T\)/.exec(cat)?.[1] ?? '')
+  const missing = [...pose].filter(k => !targets.has(k)).sort()
+  const extra = [...targets].filter(k => !pose.has(k)).sort()
+  check(
+    'no pose channel is left out of the per-frame reset',
+    pose.size > 0 && targets.size > 0 && missing.length === 0 && extra.length === 0,
+    `in P but not reset=[${missing.join(', ')}] in reset but not P=[${extra.join(', ')}]`,
+  )
+}
+
 console.log(failed === 0 ? '\nall passed' : `\n${failed} failed`)
 process.exit(failed === 0 ? 0 : 1)

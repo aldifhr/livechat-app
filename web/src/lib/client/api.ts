@@ -182,7 +182,15 @@ export const api = {
     if (design === 'studio') url.searchParams.set('design', 'studio')
     return url.toString()
   },
-  catOverlay: (id: string) => overlayUrl('/overlay/cat-overlay', id),
+  catOverlay: (id: string) => {
+    const url = new URL(overlayUrl('/overlay/cat-overlay', id))
+    // The cat page is interactive by default — its toolbar is for a person at a
+    // keyboard, which is the only way to change the cat. OBS has no keyboard, so the
+    // link the dashboard hands out asks for the clean variant: no toolbar, transparent
+    // background. Same flag the page reads and its own link tip names.
+    url.searchParams.set('clean', '1')
+    return url.toString()
+  },
   topChatterOverlay: (id: string) => overlayUrl('/overlay/top-chatter', id),
   likeTargetOverlay: (id: string) => overlayUrl('/overlay/like-target', id),
   giveawaySnapshots: () => request<{ snapshots: GiveawaySnapshot[] }>('GET', '/giveaways/snapshots'),
