@@ -48,6 +48,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
   satu-satunya cara menemukannya adalah tahu path-nya. Sekarang ada barisnya di
   `/admin/about`, sebagai link karena itu halaman.
 
+- **Kucing di overlay tidur saat streamer offline.** Sebelumnya overlay hanya tahu
+  "tidak ada event selama tiga menit" — jadi setelah live berakhir kucing tetap
+  jalan-jalan dulu tiga menit, dan untuk status `waiting` (streamer belum live,
+  backend tetap polling sampai dua jam) kucing tidak pernah tidur sama sekali.
+  Frame `status` yang selama ini sudah dikirim backend — saat socket attach dan
+  setiap perubahan state — sekarang dibaca:
+  - `connected: false` biasa, `liveEnded`, dan `waiting` langsung menidurkan
+    kucing; `connecting` saja tidak, karena itu handshake sepersekon dan
+    menidurkannya berarti kucing tumbang setiap reconnect.
+  - Selama offline, `upd()` memaksa mode `sleep` sebelum timer idle sempat
+    berjalan, dan `wake()`/`boop()`/`react()` menolak membangunkan — event yang
+    telat datang tidak boleh menghidupkan kucing di room yang sudah mati.
+  - `connected: true` membangunkan kucing dan mengembalikan reaksi event.
+  - 11 assertion baru di `test-cat.mjs`, dijalankan lewat socket stub. Diverifikasi
+    menangkap regresi: tanpa perubahan halaman, assertion pertama gagal dan
+    `offline` tidak terdefinisi.
+
 ### Changed
 - **Folder di-rename supaya namanya sesuai perannya: `backend/` → `api/`, `app/` → `desktop/`.**
   `app/` ambigu — `web/` juga sebuah app, dan repo-nya sendiri bernama

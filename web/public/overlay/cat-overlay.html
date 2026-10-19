@@ -50,10 +50,14 @@ let rate=q.has('speed')&&rateFromUrl>0?Math.min(2,Math.max(.25,rateFromUrl)):(RE
 const roomId=q.get('room')||''
 let chatSocket=null
 let lastEvent=Date.now()
+let offline=false
 const IDLE_SLEEP_MS=180000 // 3 minutes without events → cat gets sleepy
 
 /** Wake the cat if sleeping, then react. */
 function wake(){
+  // Offline is the streamer's state, not the cat's mood: a stray frame or a boop
+  // must not wake a cat that is asleep because nothing is being streamed.
+  if(offline)return
   if(C.mode==='sleep')setMode('walk')
   lastEvent=Date.now()
 }
@@ -65,8 +69,36 @@ function backY(){return GY-(m_height(C.mode))}
  *  guessing one number that is only right when the cat is upright. */
 function m_height(m){return m==='sleep'||m==='loaf'?30:48}
 
+/**
+ * Whether a `status` frame means the streamer is not live.
+ *
+ * `connecting` on its own is a handshake in flight, which lasts a second and must
+ * not put the cat to sleep. `waiting` and `liveEnded` are the opposite: the backend
+ * is polling for a streamer who is not broadcasting, and that can last hours.
+ * `connected: false` without either is the plain offline case.
+ */
+function isOfflineStatus(frame){
+  return frame.connected!==true&&(frame.waiting===true||frame.liveEnded===true||frame.connecting!==true)
+}
+
+/** Put the cat to sleep for as long as the streamer is offline, or wake it. */
+function applyStatus(frame){
+  const now=isOfflineStatus(frame)
+  if(now){
+    offline=true
+    // Past any mode's duration, so the auto-mode timer cannot stand it back up.
+    if(C.mode!=='sleep')setMode('sleep')
+    C.tm=1e9
+  } else if(offline){
+    offline=false
+    lastEvent=Date.now()
+    if(C.mode==='sleep')setMode('walk')
+  }
+}
+
 /** React to a gift / like / follow: hearts + animation, no bubble text. */
 function react(frame){
+  if(offline)return
   wake()
   const kind=frame.type
   boop()
@@ -89,8 +121,13 @@ function connectChat(){
       if(frame.type==='config'&&frame.config){
         applyCatStyle(frame.config)
         if(catPreview)applyCatStyle(catPreview)
+      } else if(frame.type==='status'){
+        // Sent on attach and on every edge, so an overlay opened after the stream
+        // ended sleeps immediately rather than waiting out IDLE_SLEEP_MS.
+        applyStatus(frame)
       } else if(frame.type==='comment'&&frame.text){
         // Comments do not show a bubble — they just make the cat react (hearts).
+        if(offline)return
         wake()
         C.boop=1.2
         for(let i=0;i<6;i++)em('heart',C.x+rnd(-10,10),backY()-4,rnd(-8,8),rnd(-30,-18),1.2)
@@ -265,14 +302,17 @@ let r=Math.random()*WT.reduce((a,b)=>a+b[1],0);for(const[k,v]of WT){r-=v;if(r<=0
 // drag is what turns that into a rise that slows to a stop.
 const PG={heart:-9,note:-6,star:-3,z:-4,puff:120},PD={heart:1.9,note:1.5,star:1.2,z:1.2,puff:3},PF={heart:8,note:6,star:4,z:2,puff:0}
 function em(t,x,y,vx,vy,l,sz){pts.push({t,x,y,vx,vy,l,L:l,sz,g:PG[t]||0,dr:PD[t]||0,fl:PF[t]||0,ph:rnd(0,6.28)})}
-function boop(){wake();C.boop=1.2;for(let i=0;i<6;i++)em('heart',C.x+rnd(-10,10),backY()-4,rnd(-8,8),rnd(-30,-18),1.2);if(C.mode==='sleep')setMode('sit');if(C.jy<=0){C.jv=115;C.crunch=Math.max(C.crunch,.45)}}
+function boop(){if(offline)return;wake();C.boop=1.2;for(let i=0;i<6;i++)em('heart',C.x+rnd(-10,10),backY()-4,rnd(-8,8),rnd(-30,-18),1.2);if(C.mode==='sleep')setMode('sit');if(C.jy<=0){C.jv=115;C.crunch=Math.max(C.crunch,.45)}}
 function upd(dt){const c=C,m=M[c.mode],P=c.P;c.t+=dt;TT+=dt
 // Idle → sleepy: after IDLE_SLEEP_MS with no events, put the cat to sleep, and keep it
 // there. Setting the mode once was not enough — the sleep mode has a finite duration like
 // any other, so `nextMode()` woke the cat the moment it elapsed and the next frame put it
 // straight back, a visible flinch every few seconds. The timer is pushed past any mode's
 // reach while idle, so sleep lasts until something actually happens.
-if(auto&&Date.now()-lastEvent>IDLE_SLEEP_MS){if(c.mode!=='sleep')setMode('sleep');c.tm=1e9}
+// Offline beats every other reason to be awake, including the toolbar: a button
+// pressed on a stream that is not running still leaves the cat asleep.
+if(offline){if(c.mode!=='sleep')setMode('sleep');c.tm=1e9}
+else if(auto&&Date.now()-lastEvent>IDLE_SLEEP_MS){if(c.mode!=='sleep')setMode('sleep');c.tm=1e9}
 const T=Object.assign({amp:0,sit:0,loaf:0,ball:0,tuck:0,gl:0,fl:0,wash:0,knead:0,ext:0,trail:0,scratch:0,blep:0,sneeze:0},m.T)
 const jumping=c.mode==='jump'
 if(jumping){

@@ -44,7 +44,7 @@ function fakeCtx() {
 }
 
 const dom = new JSDOM(CAT_PAGE, {
-  url: 'http://127.0.0.1:4319/overlay/cat-overlay.html',
+  url: 'http://127.0.0.1:4319/overlay/cat-overlay.html?room=ana',
   runScripts: 'dangerously',
   pretendToBeVisual: true,
   beforeParse(window) {
@@ -52,6 +52,16 @@ const dom = new JSDOM(CAT_PAGE, {
     window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
     // The loop advances only when this file says so.
     window.requestAnimationFrame = () => 0
+    // jsdom has no WebSocket. The page only opens one because the URL names a room,
+    // and the status assertions below drive it through this stub.
+    window.WebSocket = class {
+      constructor(url) {
+        this.url = url
+        window.sockets.push(this)
+      }
+      close() {}
+    }
+    window.sockets = []
   },
 })
 
@@ -86,6 +96,63 @@ for (const mode of MODES) {
   }
   check(`${mode} runs a full mode without throwing`, threw === '', threw)
 }
+
+/**
+ * Pushes one frame down the page's socket, the way the backend would.
+ *
+ * The status assertions need this: `offline` is module-scope state the page only
+ * changes from a frame, and reading it from outside is the only way to tell a
+ * sleeping cat that is asleep for the right reason from one that merely happens to
+ * be in `sleep`.
+ */
+function frame(value) {
+  const socket = window.sockets[0]
+  if (!socket) throw new Error('the page did not open a socket')
+  socket.onmessage({ data: JSON.stringify(value) })
+}
+
+const mode = () => window.eval('C.mode')
+const isOffline = () => window.eval('offline')
+
+console.log('the cat sleeps while the streamer is offline')
+// The backend sends a status frame on attach and on every edge, so a page opened
+// after a stream ended has to sleep immediately rather than wait out the idle timer.
+// Before this the cat wandered around a dead room for three minutes, and a `waiting`
+// status (the streamer not live, the backend polling for them) meant that for hours.
+for (const [label, status] of [
+  ['plain offline', { type: 'status', connected: false, message: 'Offline' }],
+  ['live ended', { type: 'status', connected: false, message: 'no longer live', liveEnded: true }],
+  ['waiting for a streamer who is not live', { type: 'status', connected: false, connecting: true, waiting: true, message: 'not live — waiting' }],
+]) {
+  frame({ type: 'status', connected: true, message: 'Connected' })
+  frame({ type: 'comment', user: 'ana', text: 'hi' })
+  frame(status)
+  check(`${label} puts the cat to sleep at once`, mode() === 'sleep', mode())
+  check(`${label} is remembered as offline`, isOffline() === true)
+}
+
+// A handshake in flight is a second, not an outage. Sleeping on it would put the cat
+// down on every reconnect.
+frame({ type: 'status', connected: true, message: 'Connected' })
+frame({ type: 'status', connected: false, connecting: true, message: 'Connecting to @ana' })
+check('a handshake in flight is not offline', isOffline() === false && mode() !== 'sleep', mode())
+
+console.log('a sleeping cat stays asleep while offline')
+// The offline sleep is a state, not a mood: the idle timer and the auto-mode timer
+// must not stand the cat back up, and neither must an event that arrives anyway.
+frame({ type: 'status', connected: false, message: 'Offline' })
+frame({ type: 'gift', user: 'ana', giftName: 'Rose', count: 1, value: 5 })
+for (let i = 0; i < 600; i += 1) window.upd(1 / 60)
+check('a gift does not wake an offline cat', mode() === 'sleep' && isOffline() === true, mode())
+window.eval('boop()')
+check('a boop does not wake an offline cat', mode() === 'sleep', mode())
+
+console.log('the cat wakes when the stream comes back')
+frame({ type: 'status', connected: true, message: 'Connected to @ana' })
+check('a live status wakes the cat', mode() !== 'sleep' && isOffline() === false, mode())
+frame({ type: 'comment', user: 'ana', text: 'back' })
+for (let i = 0; i < 60; i += 1) window.upd(1 / 60)
+check('and events react again', mode() !== 'sleep', mode())
 
 dom.window.close()
 
