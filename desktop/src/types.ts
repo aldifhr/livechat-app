@@ -6,7 +6,17 @@
  * saying anything about any protocol.
  */
 
-export type FeedKind = 'chat' | 'gift' | 'like' | 'follow' | 'share' | 'join'
+export type FeedKind =
+  | 'chat'
+  | 'gift'
+  | 'like'
+  | 'follow'
+  | 'share'
+  | 'join'
+  | 'intro'
+  | 'notice'
+  | 'subscription'
+  | 'poll'
 
 /**
  * Which room a row came from.
@@ -66,6 +76,12 @@ export interface FeedItem extends Viewer {
   diamonds?: number
   /** How many identical events in a row this row stands for. */
   repeatCount?: number
+  /** The stream title, on an `intro` row. */
+  title?: string
+  /** Total months subscribed, on a `subscription` row. */
+  months?: number
+  /** Poll options, on a `poll` row. */
+  options?: string[]
 }
 
 /**

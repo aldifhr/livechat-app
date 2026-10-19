@@ -46,6 +46,41 @@ export interface FollowFrame extends BaseUserFrame {
   type: 'follow'
 }
 
+/** The stream's own title, sent once per session. */
+export interface IntroFrame extends BaseUserFrame {
+  type: 'intro'
+  title: string
+}
+
+/**
+ * A room-wide notice from TikTok rather than a viewer.
+ *
+ * `user` is present only when the notice came from a person, so a consumer must
+ * not assume a name here — an empty string is the ordinary case.
+ */
+export interface NoticeFrame {
+  type: 'notice'
+  text: string
+  user?: string
+  source?: string
+}
+
+export interface SubscriptionFrame extends BaseUserFrame {
+  type: 'subscription'
+  /** Total months subscribed, not the increment. */
+  months?: number
+  isSend?: boolean
+  isCustom?: boolean
+}
+
+export interface PollFrame {
+  type: 'poll'
+  pollId?: string
+  question: string
+  options?: string[]
+  state?: string
+}
+
 export interface ViewersFrame {
   type: 'viewers'
   count: number
@@ -65,5 +100,9 @@ export type OverlayEventFrame =
   | LikeFrame
   | JoinFrame
   | FollowFrame
+  | IntroFrame
+  | NoticeFrame
+  | SubscriptionFrame
+  | PollFrame
   | ViewersFrame
   | StatusFrame

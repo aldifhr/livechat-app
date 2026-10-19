@@ -297,6 +297,29 @@ export function useChat({ collapseWindowMs, collapseThreshold }: UseChatOptions)
           emit({ ...event, platform: 'tiktok', kind: 'share' })
           bump('share')
           break
+        // The four below are room events rather than viewer actions, so they go
+        // into the feed but not into the per-viewer counters: a stream title is
+        // not something a viewer did, and counting it would put a number in
+        // "Chatters" that no person earned.
+        case 'intro':
+          if (!inRoom) break
+          push({ ...event, platform: 'tiktok', kind: 'intro', title: event.title })
+          logPush('info', `tiktok: stream title "${event.title}"`)
+          break
+        case 'notice':
+          if (!inRoom) break
+          push({ ...event, platform: 'tiktok', kind: 'notice', text: event.text })
+          break
+        case 'subscription':
+          if (!inRoom) break
+          emit({ ...event, platform: 'tiktok', kind: 'subscription', months: event.months })
+          bump('subscription')
+          break
+        case 'poll':
+          if (!inRoom) break
+          push({ ...event, platform: 'tiktok', kind: 'poll', text: event.question, options: event.options })
+          logPush('info', `tiktok: poll "${event.question}" (${event.options.length} options)`)
+          break
         default:
           break
       }

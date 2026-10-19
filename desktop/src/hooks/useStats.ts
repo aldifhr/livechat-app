@@ -188,7 +188,19 @@ export function createStats(): StatsRecorder {
     // Likes are room-level pulses with nobody worth ranking behind them, and a
     // join is derived from a viewer's first chat message, so both would count
     // people the switch below already counted.
-    if (item.kind === 'like' || item.kind === 'join') return
+    //
+    // The room events — a stream title, a notice, a poll — describe the room
+    // rather than a viewer, so they are not a rate of anything either. Counted
+    // into the bucket, a poll arriving during a quiet minute would read as a
+    // message, and the panel's "events per minute" is meant to be people.
+    if (
+      item.kind === 'like' ||
+      item.kind === 'join' ||
+      item.kind === 'intro' ||
+      item.kind === 'notice' ||
+      item.kind === 'poll'
+    )
+      return
 
     const chatter = chatterFor(item)
 
@@ -225,6 +237,11 @@ export function createStats(): StatsRecorder {
       case 'share':
         shares += 1
         if (chatter) chatter.shares += 1
+        break
+      case 'subscription':
+        // Counted per person, not as a room total: a subscriber is a named viewer
+        // and the leaderboards are per viewer. No dedicated total on the panel —
+        // it is rare enough that the feed row is where it gets read.
         break
     }
 

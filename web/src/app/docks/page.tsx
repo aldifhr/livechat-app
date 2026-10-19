@@ -19,12 +19,14 @@ const POLL_MS = 15_000
 const MAX_CHAT_LINES = 50
 
 type ChatEvent = {
-  type: 'comment' | 'gift' | 'like' | 'follow' | 'join'
+  type: 'comment' | 'gift' | 'like' | 'follow' | 'join' | 'notice' | 'subscription' | 'poll' | 'intro'
   user: string
   userId?: string
   text?: string
   giftName?: string
   avatar?: string
+  months?: number
+  options?: string[]
   time: string
 }
 
@@ -220,6 +222,33 @@ export default function DocksPage() {
             setChat((current) => [
               ...current.slice(-MAX_CHAT_LINES + 1),
               { type: 'join', user: frame.user, userId: frame.userId, avatar: frame.avatar, time },
+            ])
+            added = true
+          } else if (frame.type === 'subscription' && frame.user) {
+            setChat((current) => [
+              ...current.slice(-MAX_CHAT_LINES + 1),
+              { type: 'subscription', user: frame.user, userId: frame.userId, avatar: frame.avatar, months: frame.months, time },
+            ])
+            added = true
+          } else if (frame.type === 'notice' && typeof frame.text === 'string') {
+            // A room notice has no viewer behind it — the backend sends a name
+            // only when the notice came from a person, so an empty one is the
+            // ordinary case rather than a missing field.
+            setChat((current) => [
+              ...current.slice(-MAX_CHAT_LINES + 1),
+              { type: 'notice', user: frame.user || '', text: frame.text, time },
+            ])
+            added = true
+          } else if (frame.type === 'poll' && typeof frame.question === 'string') {
+            setChat((current) => [
+              ...current.slice(-MAX_CHAT_LINES + 1),
+              { type: 'poll', user: '', text: frame.question, options: frame.options, time },
+            ])
+            added = true
+          } else if (frame.type === 'intro' && typeof frame.title === 'string') {
+            setChat((current) => [
+              ...current.slice(-MAX_CHAT_LINES + 1),
+              { type: 'intro', user: frame.user || '', text: frame.title, time },
             ])
             added = true
           }
@@ -547,11 +576,14 @@ export default function DocksPage() {
                   />
                 ) : (
                   <BubbleEvent
-                    type={event.type as 'gift' | 'like' | 'follow'}
+                    type={event.type as 'gift' | 'like' | 'follow' | 'subscription' | 'notice' | 'poll' | 'intro'}
                     user={event.user}
                     time={event.time}
                     giftName={event.giftName}
                     profileUrl={profileUrl}
+                    months={event.months}
+                    text={event.text}
+                    options={event.options}
                   />
                 )}
               </div>

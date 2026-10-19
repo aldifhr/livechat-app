@@ -35,6 +35,20 @@ function describe(item: FeedItem): string {
         : kindLabel(item.kind)
     case 'join':
       return 'joined the stream'
+    case 'intro':
+      // The title is the whole content of this row; `describe` is what the row
+      // says beside the name, and the name is the streamer.
+      return item.title ? `went live · ${item.title}` : 'went live'
+    case 'subscription':
+      // Total months, not the increment — `x1` and `x12` are the same row shape,
+      // and saying "renewed" for both would hide the difference.
+      return (item.months ?? 0) > 1
+        ? `subscribed · month ${item.months}`
+        : 'subscribed'
+    case 'poll':
+      return item.options?.length
+        ? `started a poll · ${item.options.length} options`
+        : 'started a poll'
     default:
       return kindLabel(item.kind)
   }

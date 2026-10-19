@@ -108,6 +108,15 @@ export function kindLabel(kind: FeedKind): string {
       return 'followed'
     case 'share':
       return 'shared the stream'
+    case 'notice':
+      // Room-wide, from TikTok rather than a viewer. The text carries the detail.
+      return 'room notice'
+    case 'intro':
+      return 'went live'
+    case 'subscription':
+      return 'subscribed'
+    case 'poll':
+      return 'started a poll'
     default:
       return ''
   }
