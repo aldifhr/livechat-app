@@ -96,17 +96,59 @@ function applyStatus(frame){
   }
 }
 
-/** React to a gift / like / follow: hearts + animation, no bubble text. */
+/**
+ * The gift tiers, by diamond value.
+ *
+ * A Rose and a thousand-diamond combo used to produce the same single hop, so the
+ * overlay said "somebody sent something" and nothing about how much. The tiers are
+ * the only signal the page has that the gift was large: the wire carries `value`,
+ * not a rank.
+ */
+const GIFT_TIERS=[
+  {min:1000,hearts:16,stars:10,boost:1.45},
+  {min:100,hearts:10,stars:4,boost:1.25},
+  {min:0,hearts:6,stars:0,boost:1},
+]
+function giftTier(value){for(const t of GIFT_TIERS)if(value>=t.min)return t;return GIFT_TIERS[GIFT_TIERS.length-1]}
+
+/** A burst of one particle type off the cat's back. */
+function burst(type,n,spread,life){
+  for(let i=0;i<n;i++)em(type,C.x+rnd(-spread,spread),backY()+rnd(-6,6),rnd(-12,12),rnd(-38,-20),life)
+}
+
+/**
+ * React to a gift / like / follow: hearts + animation, no bubble text.
+ *
+ * The three are deliberately different now. They used to share one path, which
+ * meant a single like — the cheapest, most frequent thing a viewer can do — threw
+ * the same jump as a gift, and a fast room left the cat permanently airborne.
+ */
 function react(frame){
   if(offline)return
   wake()
   const kind=frame.type
+  if(kind==='like'){
+    // Cheap and frequent: a small heart puff, and no jump. `wake()` is the whole
+    // reaction, so a stream of likes keeps the cat awake without interrupting it.
+    burst('heart',3,10,1.1)
+    return
+  }
+  if(kind==='follow'){
+    boop()
+    C.boop=1.2
+    burst('heart',6,12,1.4)
+    setMode('vibe')
+    return
+  }
+  const tier=giftTier(Number(frame.value)||0)
   boop()
   C.boop=1.2
-  for(let i=0;i<6;i++)em('heart',C.x+rnd(-12,12),backY()+rnd(-6,6),rnd(-10,10),rnd(-36,-20),1.4)
-  if(kind==='gift'){setMode('jump')}
-  else if(kind==='like'){setMode('jump')}
-  else{setMode('vibe')}
+  burst('heart',tier.hearts,12,1.4)
+  if(tier.stars)burst('star',tier.stars,16,1.6)
+  // Read by the jump timeline when it launches, so a large gift actually leaves the
+  // ground higher instead of only throwing more particles.
+  C.jumpBoost=tier.boost
+  setMode('jump')
 }
 
 function connectChat(){
@@ -290,10 +332,15 @@ const GRAV=320,JUMP_V=120,CRUNCH_T=.3,APEX=JUMP_V*JUMP_V/(2*GRAV)
 // Every pose channel, and the rate each one blends at. `ext` and `trail` exist because
 // a jump cannot be authored as static weights — see the jump timeline in upd().
 const CH={amp:7,sit:7,loaf:7,ball:7,tuck:16,gl:4,fl:7,wash:9,knead:7,ext:18,trail:14,scratch:9,blep:6,sneeze:8}
-const C={x:100,dir:1,mode:'idle',t:0,tm:2,vx:0,roll:0,jy:0,jv:0,ph:0,stridePx:8,boop:0,land:0,land0:0,landT:0,crunch:0,jph:0,turn:0,wall:1,lean:0,ef:0,earT:2,es:1,blink:3,bt:0,pt:0,P:{amp:0,sit:0,loaf:0,ball:0,tuck:0,gl:0,fl:0,wash:0,knead:0,ext:0,trail:0,scratch:0,blep:0,sneeze:0}},pts=[]
+const C={x:100,dir:1,mode:'idle',t:0,tm:2,vx:0,roll:0,jy:0,jv:0,ph:0,stridePx:8,boop:0,land:0,land0:0,landT:0,crunch:0,jph:0,turn:0,wall:1,lean:0,ef:0,earT:2,es:1,blink:3,bt:0,pt:0,jumpBoost:1,P:{amp:0,sit:0,loaf:0,ball:0,tuck:0,gl:0,fl:0,wash:0,knead:0,ext:0,trail:0,scratch:0,blep:0,sneeze:0}},pts=[]
 function setMode(n){const m=M[n];C.mode=n;C.t=0;C.tm=(!auto&&!m.once)?1e9:rnd(m.d[0],m.d[1])
 if(m.v)C.dir=C.x<w*.2?1:C.x>w*.8?-1:(Math.random()<.5?1:-1)
-if(n==='jump'){C.jph=0;C.crunch=0}else{C.crunch=0}}
+if(n==='jump'){
+  C.jph=0;C.crunch=0
+  // A boosted jump is in the air longer, and the mode has to outlast the flight or
+  // the cat is cut off mid-arc and the next mode blends it back to the ground.
+  C.tm=CRUNCH_T+2*JUMP_V*(C.jumpBoost||1)/GRAV+.15
+}else{C.crunch=0;C.jumpBoost=1}}
 function nextMode(){const m=C.mode;if(!auto)return setMode('idle')
 let r=Math.random()*WT.reduce((a,b)=>a+b[1],0);for(const[k,v]of WT){r-=v;if(r<=0&&k!==m)return setMode(k)}setMode('walk')}
 // Per-particle physics. Without it a heart keeps its initial velocity for its whole
@@ -323,7 +370,7 @@ if(jumping){
   if(c.jph===0){
     // Load: compress, gather the legs under the body.
     c.crunch=Math.min(1,c.t/CRUNCH_T)
-    if(c.t>=CRUNCH_T){c.jph=1;c.jv=JUMP_V}
+    if(c.t>=CRUNCH_T){c.jph=1;c.jv=JUMP_V*(c.jumpBoost||1)}
     T.tuck=c.crunch;T.ext=c.crunch*.25
   }else{
     // Flight, driven off the vertical velocity rather than off the clock: the hind

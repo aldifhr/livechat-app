@@ -154,6 +154,64 @@ frame({ type: 'comment', user: 'ana', text: 'back' })
 for (let i = 0; i < 60; i += 1) window.upd(1 / 60)
 check('and events react again', mode() !== 'sleep', mode())
 
+console.log('a gift, a like and a follow are not the same thing')
+// They used to share one reaction, so a single like threw the same jump as a gift and
+// a busy room left the cat permanently in the air. The wire carries `value` on a gift
+// and nothing comparable on a like, so the tiers can only be about gifts.
+const particles = (type) => window.eval(`pts.filter(p => p.t === '${type}').length`)
+const clearParticles = () => window.eval('pts.length = 0')
+const jumpBoost = () => window.eval('C.jumpBoost')
+
+frame({ type: 'status', connected: true, message: 'Connected' })
+window.eval("setMode('sit')")
+clearParticles()
+frame({ type: 'like', user: 'ana', count: 5 })
+check('a like does not launch the cat', mode() === 'sit', mode())
+check('a like still throws a few hearts', particles('heart') > 0 && particles('heart') <= 4, String(particles('heart')))
+check('a like adds no stars', particles('star') === 0)
+
+clearParticles()
+frame({ type: 'follow', user: 'ana' })
+check('a follow settles into vibe', mode() === 'vibe', mode())
+check('a follow throws hearts', particles('heart') > 0)
+check('a follow adds no stars', particles('star') === 0)
+
+for (const [label, value, minHearts] of [
+  ['a small gift', 5, 6],
+  ['a mid gift', 100, 10],
+  ['a large gift', 1000, 16],
+]) {
+  window.eval("setMode('sit')")
+  clearParticles()
+  frame({ type: 'gift', user: 'ana', giftName: 'Rose', count: 1, value })
+  check(`${label} jumps`, mode() === 'jump', mode())
+  check(`${label} throws at least ${minHearts} hearts`, particles('heart') >= minHearts, String(particles('heart')))
+}
+
+// The tiers are only cosmetic if the jump is the same height for all of them.
+window.eval("setMode('sit')")
+frame({ type: 'gift', user: 'ana', giftName: 'Rose', count: 1, value: 5 })
+const smallBoost = jumpBoost()
+window.eval("setMode('sit')")
+frame({ type: 'gift', user: 'ana', giftName: 'Lion', count: 1, value: 1000 })
+const largeBoost = jumpBoost()
+check('a large gift jumps higher than a small one', largeBoost > smallBoost, `${smallBoost} vs ${largeBoost}`)
+
+window.eval("setMode('sit')")
+clearParticles()
+frame({ type: 'gift', user: 'ana', giftName: 'Lion', count: 1, value: 1000 })
+check('a large gift adds stars', particles('star') > 0, String(particles('star')))
+
+// A gift with no `value` at all is the smallest tier, not a crash.
+window.eval("setMode('sit')")
+frame({ type: 'gift', user: 'ana', giftName: 'Rose', count: 1 })
+check('a gift with no value still jumps', mode() === 'jump', mode())
+
+// The boost belongs to the jump that asked for it. Left on the cat, every later
+// idle jump would inherit the height of the last big gift.
+window.eval("setMode('walk')")
+check('the boost is cleared by the next mode', jumpBoost() === 1, String(jumpBoost()))
+
 dom.window.close()
 
 if (failures) {

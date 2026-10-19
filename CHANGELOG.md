@@ -65,6 +65,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
     menangkap regresi: tanpa perubahan halaman, assertion pertama gagal dan
     `offline` tidak terdefinisi.
 
+- **Gift, like, dan follow di overlay kucing sekarang bereaksi berbeda.** Dulu
+  ketiganya lewat satu jalur, jadi satu like — interaksi termurah dan paling sering
+  — melempar loncatan yang sama dengan gift, dan room yang ramai membuat kucing
+  melayang terus-menerus. Sekarang:
+  - `like`: hanya puff tiga hati, tanpa loncat dan tanpa mengubah pose. Like
+    berdatangan puluhan per detik; satu pose per like berarti kucing tidak pernah
+    sempat berdiri.
+  - `follow`: tetap `vibe` dengan enam hati.
+  - `gift`: tiga tingkat berdasarkan `value` (diamond) — `<100` 6 hati, `≥100`
+    10 hati + 4 bintang, `≥1000` 16 hati + 10 bintang. Loncatan ikut tinggi
+    (`jumpBoost` 1 / 1.25 / 1.45), dan durasi mode `jump` dihitung ulang supaya
+    loncatan yang lebih tinggi tidak terpotong di tengah busur.
+  - `jumpBoost` direset oleh mode berikutnya, supaya gift besar tidak membuat
+    semua loncatan sesudahnya tinggi.
+  - 17 assertion baru. Diverifikasi menangkap regresi: dengan halaman lama,
+    6 assertion gagal (like meloncat, 12 hati untuk semua gift, tidak ada bintang,
+    `jumpBoost` tidak ada).
+
 ### Changed
 - **Folder di-rename supaya namanya sesuai perannya: `backend/` → `api/`, `app/` → `desktop/`.**
   `app/` ambigu — `web/` juga sebuah app, dan repo-nya sendiri bernama
