@@ -14,7 +14,7 @@
     "test:ui": "node test/test-ui.mjs",
     "test:reload": "node test/test-reload.mjs",
     "test:stats": "node test/test-stats.mjs",
-    "test:overlay": "node test/test-overlay.mjs && node test/test-overlay-page.mjs && node test/test-overlay-sync.mjs",
+    "test:overlay": "node test/test-overlay.mjs && node test/test-overlay-page.mjs && node test/test-overlay-sync.mjs && node test/test-cat.mjs",
     "test:backend": "node test/test-backend.mjs",
     "test:sound": "node test/test-sound.mjs",
     "test:templates": "node test/test-templates.mjs",

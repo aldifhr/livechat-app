@@ -482,8 +482,15 @@
   // preview override on top of later socket frames so a stale room snapshot cannot
   // make the editor jump back while a change is being saved.
   var previewOverride = null
-  function applyPreviewStyle(style) {
-    if (typeof style !== 'object') return
+  // Both untrusted sources of a style pass through here: an unsaved edit posted by the
+  // builder, and a `config` frame off the socket. A field is taken only when it is the
+  // type and range the thing it feeds can use — the same guards the URL path applies
+  // with `number`/`safePosition`/`safeGiftColour`. Applied raw off the socket, a frame
+  // carrying `position: 5` took `applyConfig` down on `.indexOf` (every message after it
+  // stopped rendering) and a `max: 'wide'` made `trim`'s arithmetic NaN, so nothing was
+  // ever retired and the list grew without bound.
+  function applyStyleFields(style) {
+    if (typeof style !== 'object' || style === null) return
     if (Number.isFinite(style.size)) config.size = Math.max(8, Math.min(96, style.size))
     if (typeof style.nameColour === 'string') config.nameColour = style.nameColour
     if (typeof style.textColour === 'string') config.textColour = style.textColour
@@ -504,7 +511,7 @@
     if (event.source !== window.parent || !parentOrigin || event.origin !== parentOrigin ||
         !event.data || !event.data.streamkitPreviewStyle) return
     previewOverride = event.data.streamkitPreviewStyle
-    applyPreviewStyle(previewOverride)
+    applyStyleFields(previewOverride)
     if (event.data.streamkitPreviewSample === true) showPreviewSample()
   })
 
@@ -550,6 +557,9 @@
     row.appendChild(document.createTextNode(': '))
     row.appendChild(message)
     list.appendChild(row)
+    // Counts like any other row, so it is trimmed like one. Without this the sample
+    // sat one row over `max` until the next real message happened to trim again.
+    trim()
     document.body.classList.add('ready')
   }
 
@@ -1069,13 +1079,8 @@
         Object.keys(STYLE_DEFAULTS).forEach(function (key) {
           config[key] = STYLE_DEFAULTS[key]
         })
-        Object.keys(frame.config).forEach(function (key) {
-          if (frame.config[key] !== undefined && frame.config[key] !== null) {
-            config[key] = frame.config[key]
-          }
-        })
-        if (previewOverride) applyPreviewStyle(previewOverride)
-        applyConfig()
+        applyStyleFields(frame.config)
+        if (previewOverride) applyStyleFields(previewOverride)
         say('style updated')
         return
       }

@@ -627,5 +627,28 @@ check('the list stays within its limit', sampledLive.length <= 3, String(sampled
 check('and the sample was retired like any other row', sampleRows().length === 0, String(sampleRows().length))
 check('leaving room for the real messages', sampledLive.length === 3, String(sampledLive.length))
 
+console.log('a config frame with the wrong types is ignored, not applied')
+// The frame is another reader's view of the room's style, and nothing promises it is
+// well-typed. Taken raw, `size: 'big'` wrote `--size: bigpx`, `position: 5` took
+// `applyConfig` down on `.indexOf`, and `max: 'wide'` made `trim`'s
+// `chatCount - (max - gifts)` NaN, so `over > 0` was never true and the list stopped
+// being capped. A field is taken only when it is the type the thing it feeds can use.
+const malformed = load('?room=ana&max=8&delay=120')
+await settle()
+malformed.openRoom()
+await settle()
+await settle()
+const malVar = (name) => malformed.window.document.documentElement.style.getPropertyValue(name)
+// `delay` is valid and travels with the bad fields, so the flood below is paced fast
+// enough to finish in the wait; it is `max` that this is testing.
+malformed.frame({ type: 'config', config: { size: 'big', max: 'wide', position: 5, delay: 120 } })
+await settle()
+check('a non-number size leaves the default', malVar('--size') === '22px', malVar('--size'))
+for (let n = 0; n < 12; n += 1) malformed.say(`v${n}`, `m${n}`)
+await new Promise((resolve) => setTimeout(resolve, 2200))
+const malLive = malformed.rows().filter((row) => row.dataset.leaving !== '1').length
+check('and a non-number max still caps the list', malLive <= 8, String(malLive))
+check('the page is still rendering afterwards', malformed.rows().length > 0, String(malformed.rows().length))
+
 console.log(failures === 0 ? '\nall passed' : `\n${failures} failed`)
 process.exit(failures === 0 ? 0 : 1)
