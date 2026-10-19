@@ -16,7 +16,20 @@ from typing import Any, AsyncGenerator
 from protocols import EventAdapter
 from sources.viewers_count import judge
 import events
-from events import COMMENT, FOLLOW, GIFT, JOIN, LIKE, SHARE, VIEWERS, Event
+from events import (
+    COMMENT,
+    FOLLOW,
+    GIFT,
+    INTRO,
+    JOIN,
+    LIKE,
+    NOTICE,
+    POLL,
+    SHARE,
+    SUBSCRIPTION,
+    VIEWERS,
+    Event,
+)
 
 # TikTok substitutes these when a viewer's profile is unavailable or deleted.
 # Broadcasting them puts literal "Not found" / "?" on the room, so they are
@@ -549,6 +562,10 @@ class TikTokAdapter(EventAdapter):
             FollowEvent,
             ShareEvent,
             LiveEndEvent,
+            LiveIntroEvent,
+            RoomNotifyEvent,
+            SubNotifyEvent,
+            PollEvent,
         )
 
         @client.on(ConnectEvent)
@@ -754,6 +771,90 @@ class TikTokAdapter(EventAdapter):
                 user_id=display_id(event.user),
                 avatar=avatar_url(event.user),
                 meta={"count": joined} if joined else {},
+            ))
+
+        @client.on(LiveIntroEvent)
+        async def on_intro(event):
+            # The stream's own title and the streamer behind it. Arrives once per
+            # session, so a client that attached after it is already gone gets it
+            # from the status snapshot rather than the socket — this is a bonus
+            # frame, not the source of truth for who is streaming.
+            name = display_name(event.user)
+            if not name:
+                return
+            await self._events.put(Event(
+                kind=INTRO,
+                user=name,
+                user_id=display_id(event.user),
+                avatar=avatar_url(event.user),
+                value=getattr(event, "content", "") or "",
+                meta={"title": getattr(event, "content", "") or ""},
+            ))
+
+        @client.on(SubNotifyEvent)
+        async def on_subscription(event):
+            name = display_name(event.user)
+            if not name:
+                return
+            await self._events.put(Event(
+                kind=SUBSCRIPTION,
+                user=name,
+                user_id=display_id(event.user),
+                avatar=avatar_url(event.user),
+                meta={
+                    # `sub_month` is TOTAL months subscribed, not the increment:
+                    # a 3-month sub renewing shows 4, and a new sub shows 1.
+                    # Rendered as given, because recomputing it from a delta we
+                    # do not reliably receive would drift.
+                    "months": int(getattr(event, "sub_month", 0) or 0),
+                    "isSend": bool(getattr(event, "is_send", False)),
+                    "isCustom": bool(getattr(event, "is_custom", False)),
+                },
+            ))
+
+        @client.on(RoomNotifyEvent)
+        async def on_notice(event):
+            # Room-wide notices: "Welcome to TikTok LIVE!", violations, campaign
+            # banners. `content` is the displayable sentence; an empty one is a
+            # frame with nothing to show and is dropped rather than posted blank,
+            # the same rule placeholder nicknames follow.
+            text = (getattr(event, "content", "") or "").strip()
+            if not text:
+                return
+            name = display_name(event.user) or ""
+            await self._events.put(Event(
+                kind=NOTICE,
+                user=name,
+                user_id=display_id(event.user),
+                avatar=avatar_url(event.user),
+                value=text,
+                meta={"source": getattr(event, "source", "") or ""},
+            ))
+
+        @client.on(PollEvent)
+        async def on_poll(event):
+            # Only the poll a creator actually launched is worth a frame. The
+            # message type distinguishes start/update/end, and every one of them
+            # carries the same poll id, so the overlay can key state off it.
+            content = getattr(event, "start_content", None) or getattr(event, "end_content", None)
+            if content is None:
+                return
+            question = getattr(content, "title", "") or ""
+            if not question:
+                return
+            options = [
+                getattr(opt, "display_content", "") or ""
+                for opt in (getattr(content, "option_list", None) or [])
+                if (getattr(opt, "display_content", "") or "").strip()
+            ]
+            await self._events.put(Event(
+                kind=POLL,
+                value=question,
+                meta={
+                    "pollId": str(getattr(event, "poll_id", "") or ""),
+                    "options": options,
+                    "state": str(getattr(event, "message_type", "") or ""),
+                },
             ))
 
     def _release_observer(self) -> None:

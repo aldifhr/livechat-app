@@ -112,6 +112,36 @@ export type SidecarEvent = Tagged &
         giftImage?: string
       }
     | { type: 'like'; nickname: string; id: string; avatar: string; count: number; timestamp: number }
+    /** The stream's own title, sent once per session. */
+    | {
+        type: 'intro'
+        nickname: string
+        id: string
+        avatar: string
+        title: string
+        timestamp: number
+      }
+    /** A room-wide notice from TikTok rather than from a viewer. */
+    | { type: 'notice'; text: string; nickname: string; timestamp: number }
+    | {
+        type: 'subscription'
+        nickname: string
+        id: string
+        avatar: string
+        /** Total months subscribed, not the increment. */
+        months: number
+        isSend: boolean
+        isCustom: boolean
+        timestamp: number
+      }
+    | {
+        type: 'poll'
+        pollId: string
+        question: string
+        options: string[]
+        state: string
+        timestamp: number
+      }
     | { type: 'follow'; nickname: string; id: string; avatar: string; timestamp: number }
     | { type: 'share'; nickname: string; id: string; avatar: string; count?: number; timestamp: number }
     /**

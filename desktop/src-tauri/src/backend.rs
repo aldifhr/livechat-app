@@ -714,6 +714,38 @@ pub fn to_app_event(frame: &Value, now_ms: i64) -> Option<Value> {
             "type": "viewers", "platform": platform,
             "count": frame.get("count").and_then(Value::as_i64).unwrap_or(0),
         }),
+        // The stream's own title, sent once per session.
+        "intro" => json!({
+            "type": "intro", "platform": platform, "nickname": user(), "id": id(),
+            "avatar": avatar, "title": frame.get("title").and_then(Value::as_str).unwrap_or_default(),
+            "timestamp": timestamp,
+        }),
+        // A room-wide notice from TikTok rather than a viewer. No nickname: the
+        // frame carries one only when the notice came from a person.
+        "notice" => json!({
+            "type": "notice", "platform": platform,
+            "nickname": user(),
+            "text": frame.get("text").and_then(Value::as_str).unwrap_or_default(),
+            "timestamp": timestamp,
+        }),
+        "subscription" => json!({
+            "type": "subscription", "platform": platform, "nickname": user(), "id": id(),
+            "avatar": avatar,
+            // Total months subscribed, not the increment — sent as the platform
+            // reports it, because a delta we do not reliably receive would drift.
+            "months": frame.get("months").and_then(Value::as_i64).unwrap_or(0),
+            "isSend": frame.get("isSend").and_then(Value::as_bool).unwrap_or(false),
+            "isCustom": frame.get("isCustom").and_then(Value::as_bool).unwrap_or(false),
+            "timestamp": timestamp,
+        }),
+        "poll" => json!({
+            "type": "poll", "platform": platform,
+            "pollId": frame.get("pollId").and_then(Value::as_str).unwrap_or_default(),
+            "question": frame.get("question").and_then(Value::as_str).unwrap_or_default(),
+            "options": frame.get("options").cloned().unwrap_or_else(|| Value::Array(Vec::new())),
+            "state": frame.get("state").and_then(Value::as_str).unwrap_or_default(),
+            "timestamp": timestamp,
+        }),
         "status" => json!({
             "type": "status", "platform": platform,
             "connected": is_connected,

@@ -37,6 +37,10 @@ VIEWERS = "viewers"
 FOLLOW = "follow"
 SHARE = "share"
 ALERT = "alert"
+INTRO = "intro"
+NOTICE = "notice"
+SUBSCRIPTION = "subscription"
+POLL = "poll"
 
 
 @dataclass
@@ -143,6 +147,45 @@ def _share(e: Event) -> dict[str, Any]:
     return {"type": SHARE, **_named(e), "count": e.meta.get("count", 1)}
 
 
+def _intro(e: Event) -> dict[str, Any]:
+    return {
+        "type": INTRO,
+        **_named(e),
+        "title": e.value,
+    }
+
+
+def _subscription(e: Event) -> dict[str, Any]:
+    return {
+        "type": SUBSCRIPTION,
+        **_named(e),
+        "months": e.meta.get("months", 0),
+        "isSend": e.meta.get("isSend", False),
+        "isCustom": e.meta.get("isCustom", False),
+    }
+
+
+def _notice(e: Event) -> dict[str, Any]:
+    payload: dict[str, Any] = {"type": NOTICE, "text": e.value}
+    # Carried only when TikTok sent one, the same rule as mentions/emotes: a
+    # plain system notice keeps the frame it had.
+    if e.user:
+        payload["user"] = e.user
+    if e.meta.get("source"):
+        payload["source"] = e.meta["source"]
+    return payload
+
+
+def _poll(e: Event) -> dict[str, Any]:
+    return {
+        "type": POLL,
+        "pollId": e.meta.get("pollId", ""),
+        "question": e.value,
+        "options": list(e.meta.get("options") or []),
+        "state": e.meta.get("state", ""),
+    }
+
+
 def _alert(e: Event) -> dict[str, Any]:
     return {
         "type": ALERT,
@@ -167,6 +210,10 @@ SERIALISERS: dict[str, Callable[[Event], dict[str, Any]]] = {
     FOLLOW: _follow,
     SHARE: _share,
     ALERT: _alert,
+    INTRO: _intro,
+    NOTICE: _notice,
+    SUBSCRIPTION: _subscription,
+    POLL: _poll,
 }
 
 
