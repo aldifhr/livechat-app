@@ -290,11 +290,12 @@ rather than during one.
 
 ## Overlay
 
-Three pages, one copy of each, all in `web/public/overlay/`:
+Four pages, one copy of each, all in `web/public/overlay/`:
 
 - `chat-overlay.html`
 - `top-chatter.html`
 - `cat-overlay.html`
+- `like-target.html`
 
 nginx serves them from disk (`/var/www/streamtools`), deliberately bypassing the
 app: OBS loads them as a browser source, where a framework runtime is dead
