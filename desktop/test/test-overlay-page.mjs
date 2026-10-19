@@ -19,7 +19,7 @@ import { JSDOM } from 'jsdom'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-// The repo root, one level above app/: the overlay pages are a sibling of the app,
+// The repo root, one level above desktop/: the overlay pages are a sibling of the app,
 // not a part of it.
 const pkgRoot = fileURLToPath(new URL('../..', import.meta.url))
 
@@ -32,7 +32,7 @@ function check(name, condition, detail = '') {
   }
 }
 
-// The one copy, in `web/public/overlay/`. It used to be read from `backend/static/`
+// The one copy, in `web/public/overlay/`. It used to be read from `api/static/`
 // as well, on the grounds that this should exercise "the page that actually ships"
 // — but that is what made the test worthless as a check on it. Two files, both
 // answering 200, both looking like an overlay: the chat pair drifted nineteen lines

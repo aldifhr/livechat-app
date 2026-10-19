@@ -44,11 +44,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
 - **Galeri sticker gift akhirnya ada yang menautkan.** `/gifts` sudah di-mount
   sejak sticker-nya diunduh — `StaticFiles` + `gifts.json` 82 KB + 795 `.webp`,
   plus halaman `index.html` yang self-contained dengan search dan sort — tapi
-  tidak ada satu pun referensi ke sana di `web/src` atau `app/src`, jadi
+  tidak ada satu pun referensi ke sana di `web/src` atau `desktop/src`, jadi
   satu-satunya cara menemukannya adalah tahu path-nya. Sekarang ada barisnya di
   `/admin/about`, sebagai link karena itu halaman.
 
 ### Changed
+- **Folder di-rename supaya namanya sesuai perannya: `backend/` → `api/`, `app/` → `desktop/`.**
+  `app/` ambigu — `web/` juga sebuah app, dan repo-nya sendiri bernama
+  `livechat-app`. `backend/` benar tapi tidak simetris dengan `web/`.
+  - Isi dan import internal tidak berubah; yang berubah hanya path: CI
+    `working-directory`, `.gitignore`, unit systemd, README, dan komentar yang
+    menyebut path lama.
+  - `desktop/test/test-voice.mjs` menulis stub ke `dir/app/src/lib` karena
+    `rootDir` mengikuti nama folder paket; sekarang `dir/desktop/src/lib`.
+  - Artefak `dist/` yang tertinggal di root (bukan output repo ini, dan sudah
+    di-ignore) dihapus supaya cerita "root tidak punya build output" tetap benar.
+
 - **`requirements.txt` di-pin, dan satu dependensi yang hilang didaftarkan.**
   Audit menemukan **nol kerentanan** di dependency runtime (12 CVE yang dilaporkan
   semuanya di `pip` sendiri — build tool, bukan yang jalan), jadi ini bukan soal

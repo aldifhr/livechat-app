@@ -21,7 +21,7 @@ rather than four defensive try/excepts.
 
 Run with the backend's interpreter:
 
-    python backend/tests/test_delete_survives_teardown.py
+    python api/tests/test_delete_survives_teardown.py
 """
 
 import asyncio

@@ -200,7 +200,7 @@ print("a config directory that does not exist yet is created whole")
 # /var/lib/myapp. `mkdir(exist_ok=True)` creates only the last component, so the
 # first write raised FileNotFoundError and the request that created the room
 # failed with a 500 that said nothing about a directory. The default
-# `backend/config` already exists, which is why a checkout never saw it.
+# `api/config` already exists, which is why a checkout never saw it.
 deep = _tmp / "var" / "lib" / "myapp" / "streamkit" / "config"
 store.CONFIG_DIR = deep
 store.ROOMS_FILE = deep / "rooms.json"

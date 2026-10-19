@@ -11,7 +11,7 @@ So this reads real traffic and judges every frame against what the frontend
 normalizer reads, field by field, using the same expectations the TypeScript
 side applies. It is a probe, not a test: it needs a live room.
 
-    backend/.venv/bin/python scripts/validate_live_city.py [room-id] [seconds]
+    api/.venv/bin/python desktop/scripts/validate_live_city.py [room-id] [seconds]
 """
 
 import asyncio

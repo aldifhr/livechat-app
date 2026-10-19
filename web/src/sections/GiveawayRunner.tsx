@@ -3,7 +3,7 @@
 /**
  * The giveaway picker, on the dashboard.
  *
- * A port of `app/src/components/GiveawayPage.tsx`. Same state machine, same
+ * A port of `desktop/src/components/GiveawayPage.tsx`. Same state machine, same
  * commit-reveal draw, same audit report — but the entries come off the backend's
  * room socket (`/ws/overlay/<room>`) instead of the desktop host, and it saves a
  * snapshot to this app instead of publishing through the desktop's sidecar.

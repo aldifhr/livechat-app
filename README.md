@@ -7,9 +7,9 @@ manifest** — `npm install` at the root does nothing, and that is deliberate.
 
 | Part | What it is | Stack |
 |---|---|---|
-| `backend/` | Live chat API | FastAPI + TikTokLive |
+| `api/` | Live chat API | FastAPI + TikTokLive |
 | `web/` | Dashboard: stream list, per-stream pages, overlay builder | Next.js 16 + React 19 |
-| `app/` | Desktop viewer for the operator | Tauri + React |
+| `desktop/` | Desktop viewer for the operator | Tauri + React |
 
 > **No TikTok process on the user's PC.** The desktop app reads the backend in
 > this repo over `WS /ws/room/{id}` and translates its frames into the shape the
@@ -20,9 +20,9 @@ manifest** — `npm install` at the root does nothing, and that is deliberate.
 
 ```
 .
-├── backend/          FastAPI. See "Backend" below.
+├── api/              FastAPI. See "Backend" below.
 ├── web/              Next.js dashboard.
-├── app/              Tauri desktop app.
+├── desktop/          Tauri desktop app.
 │   ├── src/          React (Vite)
 │   ├── src-tauri/    Rust host: WebSocket client, frame mapper, tray, TTS
 │   ├── test/         13 `.mjs` suites (own runner, not Vitest/Jest)
@@ -40,7 +40,7 @@ multi-room. It serves the API and the WebSocket, and nothing else — the overla
 pages are static files that live with the dashboard and are served by nginx.
 
 ```
-backend/
+api/
 ├── main.py           app object, lifespan, middleware, /ws, route wiring
 ├── models.py         pydantic request models + styling keys
 ├── store.py          rooms.json — atomic + lock
@@ -68,12 +68,12 @@ backend/
 ### Running it
 
 `main.py` does flat imports (`import store`, `from sources import …`), so it has
-to run with `backend/` as the working directory:
+to run with `api/` as the working directory:
 
 ```bash
-python3.12 -m venv backend/.venv
-backend/.venv/bin/pip install -r backend/requirements.txt
-cd backend && .venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+python3.12 -m venv api/.venv
+api/.venv/bin/pip install -r api/requirements.txt
+cd api && .venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ### Testing
@@ -82,7 +82,7 @@ No pytest. `run_all.py` runs each `test_*.py` as a subprocess with its own
 temporary config dir per suite.
 
 ```bash
-python backend/tests/run_all.py
+python api/tests/run_all.py
 ```
 
 ### Diagnostics
@@ -91,11 +91,11 @@ Not tests — utilities that deliberately live outside `tests/` so they are not
 counted as suites.
 
 ```bash
-python app/scripts/dump_ws_frames.py
-python app/scripts/measure_broadcast.py
-python app/scripts/probe_live_viewers.py
-python app/scripts/validate_live_city.py
-node   app/scripts/probe-ui.mjs
+python desktop/scripts/dump_ws_frames.py
+python desktop/scripts/measure_broadcast.py
+python desktop/scripts/probe_live_viewers.py
+python desktop/scripts/validate_live_city.py
+node   desktop/scripts/probe-ui.mjs
 ```
 
 ### API
@@ -169,7 +169,7 @@ name (`/api/room-connect-admin`) does not inherit the exemption.
 |---|---|
 | `STREAMKIT_TOKEN` | The write token. Empty = every write 401s. |
 | `STREAMKIT_AUTH_DISABLED` | `true` disables auth. Development only. |
-| `STREAMKIT_CONFIG_DIR` | Where `rooms.json` lives. Default `backend/config`. Created automatically. |
+| `STREAMKIT_CONFIG_DIR` | Where `rooms.json` lives. Default `api/config`. Created automatically. |
 | `STREAMKIT_LOG_LEVEL` | Root log level. Default `INFO`. |
 | `STREAMKIT_ALLOWED_ORIGINS` | CORS allow-list, comma-separated. Defaults to the dashboard origin only. |
 
@@ -238,7 +238,7 @@ All server-side. There are no `NEXT_PUBLIC_*` variables.
 ## Desktop app
 
 ```bash
-cd app
+cd desktop
 npm install
 npm run tauri:dev      # development
 npm run tauri:build    # installer
@@ -247,8 +247,8 @@ npm run tauri:build    # installer
 ### Tests
 
 ```bash
-cd app && npm test              # typecheck + 11 suite scripts (15 .mjs files)
-cd app/src-tauri && cargo test  # Rust unit tests: frame mapper, TTS, sound
+cd desktop && npm test              # typecheck + 11 suite scripts (15 .mjs files)
+cd desktop/src-tauri && cargo test  # Rust unit tests: frame mapper, TTS, sound
 ```
 
 No test framework — plain `.mjs` with a `check()` helper, exiting non-zero on
@@ -302,14 +302,14 @@ weight, and they have to keep working while the dashboard is restarting. On that
 path `__OVERLAY_CONFIG__` is **not** substituted, so all styling arrives over the
 socket the page already opens, as a `config` frame.
 
-There used to be a second copy of each page in `backend/static/`, kept by hand,
+There used to be a second copy of each page in `api/static/`, kept by hand,
 which the backend served with the room's styling baked into the HTML. It was
 not worth having: a browser source cannot depend on a server rendering a page
 for it, the styling it baked was already arriving over the socket, and the two
 copies drifted — the chat pair was nineteen lines apart before this was removed,
 with `test-overlay-page.mjs` reading the stale twin and failing on a feature that
-had already shipped. `backend/routes/overlay.py` went with it; `page_config()`
-lives in `backend/models.py` now, because the socket is the only thing left that
+had already shipped. `api/routes/overlay.py` went with it; `page_config()`
+lives in `api/models.py` now, because the socket is the only thing left that
 needs it.
 
 `shared/overlay.ts` is the single source for styling: defaults, numeric bounds,

@@ -7,9 +7,9 @@
 # than one queue behind a Tauri build.
 #
 # What is NOT here, and why:
-#   - `scripts/deploy-web.sh` and `backend/tests` touching a real store. The
+#   - `scripts/deploy-web.sh` and `api/tests` touching a real store. The
 #     backend suites point `STREAMKIT_CONFIG_DIR` at a temp dir each, so they
-#     cannot reach `backend/config/rooms.json`.
+#     cannot reach `api/config/rooms.json`.
 #   - Any secret. Nothing in any suite reads one; the token gates are exercised
 #     by setting `STREAMKIT_TOKEN` in the test's own env.
 #   - A build of the installer. `tauri build` needs a signing identity and a
@@ -30,19 +30,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  app:
+  desktop:
     name: desktop app (typescript)
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: app
+        working-directory: desktop
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: app/package-lock.json
+          cache-dependency-path: desktop/package-lock.json
       - run: npm ci
       # `npm test` is typecheck plus every suite, so a type error fails here
       # before any of them run rather than after.
@@ -53,13 +53,13 @@ jobs:
     runs-on: ubuntu-22.04
     defaults:
       run:
-        working-directory: app/src-tauri
+        working-directory: desktop/src-tauri
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: app/src-tauri
+          workspaces: desktop/src-tauri
       # Tauri's build script links against these through pkg-config, so the
       # crate will not compile without them even though no test touches a window.
       # `libwebkit2gtk-4.1` is the Tauri v2 split from the 4.0 that Ubuntu 20.04
@@ -95,12 +95,12 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
-  backend:
+  api:
     name: backend (python)
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: backend
+        working-directory: api
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -110,7 +110,7 @@ jobs:
           # reasons that have nothing to do with the change under test.
           python-version: '3.12'
           cache: pip
-          cache-dependency-path: backend/requirements.txt
+          cache-dependency-path: api/requirements.txt
       - run: pip install -r requirements.txt
       # The runner, not pytest: there is no pytest here. It starts each suite in
       # its own subprocess with its own `STREAMKIT_CONFIG_DIR`, and checks the

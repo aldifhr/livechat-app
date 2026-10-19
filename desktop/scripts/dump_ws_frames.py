@@ -6,7 +6,7 @@ answer that, only TikTok can.
 
 Run against a room that is genuinely live and speaking:
 
-    backend/.venv/bin/python scripts/dump_ws_frames.py mybasic.indonesia 45
+    api/.venv/bin/python desktop/scripts/dump_ws_frames.py mybasic.indonesia 45
 """
 
 import asyncio

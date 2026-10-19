@@ -16,7 +16,7 @@ reads whatever that host emits through the `SidecarEvent` union in
 `src/lib/sidecar.ts`, and `static/overlay.html` consumes this format directly
 without going through the host at all. So renaming a key here is not contained:
 the host will quietly emit `undefined` for the renamed field, and the overlay
-will read the old name and show nothing. `backend/tests/test_api.py` pins the
+will read the old name and show nothing. `api/tests/test_api.py` pins the
 Python side and `test/test-wire.mjs` pins the other two against each other —
 run both after changing a key.
 """

@@ -1,6 +1,6 @@
 /**
  * Shared WebSocket frame contract sent by the Python FastAPI backend
- * (/ws/overlay/{room_id}) and consumed by both app/ and web/ (docks, overlays).
+ * (/ws/overlay/{room_id}) and consumed by both desktop/ and web/ (docks, overlays).
  */
 
 export interface EmoteItem {

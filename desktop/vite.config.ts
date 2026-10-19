@@ -8,7 +8,7 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   // Tailwind v4 drives the app stylesheets and utility classes.
   plugins: [react(), tailwindcss()],
-  // shared/ is a sibling of app/, not a part of it, so it needs a name rather
+  // shared/ is a sibling of desktop/, not a part of it, so it needs a name rather
   // than a relative path that would climb out of the package on every import.
   resolve: {
     alias: {

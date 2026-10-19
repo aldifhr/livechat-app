@@ -19,7 +19,7 @@ ceiling five sockets at a time without ever approaching it.
 
 Run with the backend's interpreter:
 
-    python backend/tests/test_ws_client_types.py
+    python api/tests/test_ws_client_types.py
 """
 
 import asyncio

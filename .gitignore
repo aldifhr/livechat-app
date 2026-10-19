@@ -10,8 +10,8 @@ node_modules/
 dist/
 .next/
 out/
-app/src-tauri/target/
-app/src-tauri/gen/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
 
 # Credentials are typed into the app at runtime and read from Tauri's config
 # directory, never from here. Ignored anyway so a stray file cannot be committed
@@ -29,8 +29,8 @@ venv/
 *.pyc
 
 # Runtime state — local room records and usernames, not source.
-backend/config/rooms.json
-backend/config/overlays.json
+api/config/rooms.json
+api/config/overlays.json
 
 # The nginx basic-auth hash for the deployed dashboard. It lives only on the
 # server, at /etc/nginx/streamtools.htpasswd, and is never source. Committing a

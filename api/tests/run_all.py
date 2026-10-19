@@ -7,7 +7,7 @@ count is checked against the files on disk so the next stray test cannot hide.
 
 Each test also runs with `STREAMKIT_CONFIG_DIR` pointed at a throwaway directory,
 so a suite that forgets to isolate itself cannot write into the deployed
-`backend/config/rooms.json`. A test that wants its own store still overrides the
+`api/config/rooms.json`. A test that wants its own store still overrides the
 variable; this only closes the silent default.
 """
 

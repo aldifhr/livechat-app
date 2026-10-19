@@ -50,7 +50,7 @@ pub const DEFAULT_LANGUAGE: &str = "id";
 /// A whitelist rather than passing whatever arrives through: `tl` is a query value
 /// to a service with no contract, and a stale saved setting should settle for the
 /// default the same way an unknown pace does, not arrive as a `tl` nobody has ever
-/// sent. The codes here match `TTS_LANGUAGES` in `app/src/lib/voices.ts`; the two
+/// sent. The codes here match `TTS_LANGUAGES` in `desktop/src/lib/voices.ts`; the two
 /// lists are only ever changed together, and a test on each side pins its contents.
 pub const LANGUAGES: &[&str] = &["id", "en", "ms", "th", "vi", "zh-CN", "ja", "es"];
 

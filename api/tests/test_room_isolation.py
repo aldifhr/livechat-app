@@ -34,7 +34,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 # Point the store at a scratch file *before* main imports it. Without this the
-# suite wrote into the deployed `backend/config/rooms.json`: every run of this
+# suite wrote into the deployed `api/config/rooms.json`: every run of this
 # file left three rooms ("Room A/B/C") behind in the live store, which is how a
 # production room list came to hold dozens of them.
 os.environ["STREAMKIT_CONFIG_DIR"] = tempfile.mkdtemp()

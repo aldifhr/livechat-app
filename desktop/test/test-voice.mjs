@@ -47,7 +47,7 @@ function check(name, condition, detail = '') {
 // `host.speak` returns a data URL the page-side Audio can be handed, and a
 // `sound` re-export carrying the gap constant.
 const dir = mkdtempSync(join(tmpdir(), 'voice-test-'))
-mkdirSync(join(dir, 'app', 'src', 'lib'), { recursive: true })
+mkdirSync(join(dir, 'desktop', 'src', 'lib'), { recursive: true })
 
 // What every `say()` in this file is called with. Held in one place so a change to
 // `VoiceOptions` is one edit rather than thirty call sites that each fail loudly.
@@ -65,11 +65,11 @@ const SIDECAR_STUB = `export const host = {
 // written after the compile, into the same directory.
 writeFileSync(join(dir, 'package.json'), JSON.stringify({ type: 'module' }))
 writeFileSync(
-  join(dir, 'app', 'src', 'lib', 'sidecar.js'),
+  join(dir, 'desktop', 'src', 'lib', 'sidecar.js'),
   SIDECAR_STUB,
 )
 writeFileSync(
-  join(dir, 'app', 'src', 'lib', 'sound.js'),
+  join(dir, 'desktop', 'src', 'lib', 'sound.js'),
   `export const CHAT_TTS_GAP_MS = 1800\n`,
 )
 // The stub modules are written OUTSIDE `src`, and `rootDir` is `src`, so the
@@ -108,11 +108,11 @@ if (tsc.status !== 0) {
 // imports them, and the test needs the stub `host.speak` rather than the real
 // one, which reaches for a Tauri sidecar that does not exist under node.
 writeFileSync(
-  join(dir, 'app', 'src', 'lib', 'sidecar.js'),
+  join(dir, 'desktop', 'src', 'lib', 'sidecar.js'),
   SIDECAR_STUB,
 )
 writeFileSync(
-  join(dir, 'app', 'src', 'lib', 'sound.js'),
+  join(dir, 'desktop', 'src', 'lib', 'sound.js'),
   `export const CHAT_TTS_GAP_MS = 1800\n`,
 )
 
@@ -173,7 +173,7 @@ globalThis.__speakSpy = async (text, pace, language) => {
 // needs to change about the compiled output. `./voices` is compiled along with it
 // (the clamp lives there) and needs the same treatment.
 const { readFileSync } = await import('node:fs')
-const voiceJsPath = join(dir, 'app', 'src', 'lib', 'voice.js')
+const voiceJsPath = join(dir, 'desktop', 'src', 'lib', 'voice.js')
 const voiceJs = readFileSync(voiceJsPath, 'utf8')
   .replace(/from '\.\/sidecar'/g, "from './sidecar.js'")
   .replace(/from '\.\/sound'/g, "from './sound.js'")

@@ -19,7 +19,7 @@ declared `int`. One float is how a declared type quietly stops being true.
 
 Run with the backend's interpreter:
 
-    python backend/tests/test_gift_value_and_streak_bounds.py
+    python api/tests/test_gift_value_and_streak_bounds.py
 """
 
 import os

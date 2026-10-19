@@ -11,8 +11,8 @@ Type=simple
 # place: the room store under /var/lib/streamkit, which is chowned to it.
 User=streamkit
 Group=streamkit
-WorkingDirectory=/root/livechat-app/backend
-Environment=PYTHONPATH=/root/livechat-app/backend
+WorkingDirectory=/root/livechat-app/api
+Environment=PYTHONPATH=/root/livechat-app/api
 Environment=STREAMKIT_LOG_LEVEL=INFO
 # The room store lives outside the source tree. Inside it, a rebuild from a
 # clean checkout throws every room away, and the test suite could write into the
@@ -23,7 +23,7 @@ EnvironmentFile=/etc/streamkit/env
 # Loopback only. nginx (and the Next proxy behind it) reaches the API at
 # 127.0.0.1:8000; nothing else has a reason to. Binding 0.0.0.0 exposed the
 # process to the LAN and left the firewall as the only thing in front of it.
-ExecStart=/root/livechat-app/backend/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
+ExecStart=/root/livechat-app/api/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=5
 LimitNOFILE=65536

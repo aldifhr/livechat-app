@@ -1,7 +1,7 @@
 // The overlay pages, and the fact there is exactly one copy of each.
 //
 // This file used to guard a duplication: `web/public/overlay/*.html` for the host that
-// nginx serves to OBS, and a hand-kept twin in `backend/static/*.html` for the backend
+// nginx serves to OBS, and a hand-kept twin in `api/static/*.html` for the backend
 // to serve and to bake `?room=` styling into. Nothing copied one to the other, so they
 // drifted. They did drift — the chat pair was nineteen lines apart at the time this was
 // last touched, and the eight assertions in `test-overlay-page.mjs` were reading the
@@ -41,20 +41,20 @@ console.log('there is only one copy of each')
 // because the way it comes back is someone adding a route and copying the file next to
 // it "just to be safe" — which is how it started.
 {
-  const backendStatic = `${repoRoot}/backend/static`
+  const backendStatic = `${repoRoot}/api/static`
   if (existsSync(backendStatic)) {
     const strays = readdirSync(backendStatic).filter(f => f.endsWith('.html'))
     check(
-      'no overlay HTML left in backend/static',
+      'no overlay HTML left in api/static',
       strays.length === 0,
       strays.join(', ') + ' — the pages are served by nginx from web/public; a copy here is how they drifted before',
     )
   } else {
-    check('no overlay HTML left in backend/static', true)
+    check('no overlay HTML left in api/static', true)
   }
-  const router = `${repoRoot}/backend/routes/overlay.py`
+  const router = `${repoRoot}/api/routes/overlay.py`
   check(
-    'backend/routes/overlay.py is gone',
+    'api/routes/overlay.py is gone',
     !existsSync(router),
     existsSync(router) ? 'the backend serves overlay pages again, and a second copy of each will follow' : '',
   )

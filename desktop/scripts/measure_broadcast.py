@@ -22,7 +22,7 @@ So this file measures and changes nothing:
 
 Run with the backend's interpreter:
 
-    backend/.venv/bin/python scripts/measure_broadcast.py
+    api/.venv/bin/python desktop/scripts/measure_broadcast.py
 """
 
 import asyncio
@@ -32,9 +32,10 @@ import tempfile
 import time
 from pathlib import Path
 
-# The backend lives in ../backend, a sibling of this file rather than the
-# parent, which is what moving these out of apps/api/tests changed.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
+# The backend lives in ../../api: two levels up from this script, a sibling of
+# desktop/ rather than of the script itself, which is what moving these out of
+# apps/api/tests changed.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "api"))
 
 from hub import Hub  # noqa: E402
 from hub import ROOM  # noqa: E402

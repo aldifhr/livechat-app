@@ -12,7 +12,7 @@ draws the list rather than presenting a top-ten-of-top-twenties as a top ten.
 
 Run with the backend's interpreter:
 
-    python backend/tests/test_analytics_leaderboards.py
+    python api/tests/test_analytics_leaderboards.py
 """
 
 import os

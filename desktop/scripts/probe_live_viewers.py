@@ -10,7 +10,7 @@ Reporting every frame's keys, not just the ones we hoped for. If `total_user`
 is arriving under a different key than the one `FROM_WIRE.viewers` reads, that
 looks exactly like silence from the frontend, and the difference matters.
 
-    backend/.venv/bin/python scripts/probe_live_viewers.py <room-id> [seconds]
+    api/.venv/bin/python desktop/scripts/probe_live_viewers.py <room-id> [seconds]
 """
 
 import asyncio
@@ -72,7 +72,7 @@ async def main() -> None:
         print("no `viewers` frame arrived at all.")
         print("The frontend is now correct for this frame, so the break is before it:")
         print("either the source stopped sending it, or the hub is not routing it to")
-        print("this room. Check backend/sources/tiktok.py and the room_id on the")
+        print("this room. Check api/sources/tiktok.py and the room_id on the")
         print("broadcast, not the city.")
     else:
         print("`viewers` frames that arrived, verbatim:")
