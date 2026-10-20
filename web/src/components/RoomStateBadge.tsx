@@ -34,7 +34,13 @@ export default function RoomStateBadge({ status }: { status?: RoomStatus }) {
     // which is the one thing this must not say: nothing is connecting, and nothing
     // will until they go live. `liveEnded` is folded in here for the same reason —
     // a live that ended and is being polled for is a wait, not a dead end.
-    return <span className="badge off">Offline — waiting</span>
+    // `connecting` is carried alongside it on purpose, so a client that knows
+    // nothing about `waiting` still waits — but this is the state the operator is
+    // actually in, and it has a Stop on the stream page. Calling it "Offline" read
+    // as a dead connection with a Stop button beside it, which is not what is
+    // happening: nothing is connected, but something is watching and can be
+    // called off.
+    return <span className="badge off">Waiting</span>
   }
 
   if (status.connecting) {

@@ -1,7 +1,7 @@
-import ConnectStream from '@/components/ConnectStream'
+import PlatformDashboard from '@/components/PlatformDashboard'
 
 export const dynamic = 'force-dynamic'
 
-export default function YouTubeConnect() {
-  return <ConnectStream provider="youtube" />
+export default function YouTubeOverview() {
+  return <PlatformDashboard provider="youtube" />
 }

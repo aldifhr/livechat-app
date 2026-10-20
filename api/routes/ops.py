@@ -191,13 +191,18 @@ async def webhook(room_id: str, req: HookRequest):
 
 
 @router.get("/api/analytics")
-async def analytics(request: Request) -> dict[str, Any]:
+async def analytics(request: Request, provider: str = "") -> dict[str, Any]:
     """Aggregated session stats across all rooms.
 
     Answers the questions the dashboard cannot: which stream had the most
     viewers, who gifted the most across all sessions, which chatter was most
     active. Every number comes from `eventlog` — the same counters the session
     endpoint reads per room — so there is no second definition of anything.
+
+    `provider` narrows the aggregation to one platform when given. Filtering
+    here rather than on the browser keeps the totals and the gifter leaderboard
+    from disagreeing with the rows they summarise: the leaderboard is summed from
+    each room's top twenty, and only the backend has those per room.
 
     The leaderboards are summed across rooms on the stable user id, so one person
     who showed up on two streams is one row rather than two. **They are the top
@@ -206,9 +211,17 @@ async def analytics(request: Request) -> dict[str, Any]:
     is a ceiling on what can be reported, not an approximation added for
     convenience, and the page says so where it draws them.
     """
+    if provider and provider not in ("tiktok", "youtube"):
+        raise HTTPException(status_code=400, detail="provider must be 'tiktok' or 'youtube'")
     if not _state["token_is_valid"](request):
         raise HTTPException(status_code=401, detail=TOKEN_REJECTED_DETAIL)
     rooms = await store.all_rooms_async()
+    if provider:
+        rooms = {
+            room_id: record
+            for room_id, record in rooms.items()
+            if str(record.get("provider") or "tiktok") == provider
+        }
     out: dict[str, Any] = {
         "total_rooms": len(rooms),
         "total_viewers": 0,

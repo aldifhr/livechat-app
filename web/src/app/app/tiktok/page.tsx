@@ -1,7 +1,7 @@
-import ConnectStream from '@/components/ConnectStream'
+import PlatformDashboard from '@/components/PlatformDashboard'
 
 export const dynamic = 'force-dynamic'
 
-export default function TikTokConnect() {
-  return <ConnectStream provider="tiktok" />
+export default function TikTokOverview() {
+  return <PlatformDashboard provider="tiktok" />
 }

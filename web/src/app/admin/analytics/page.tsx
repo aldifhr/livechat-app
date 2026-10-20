@@ -12,11 +12,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, isAuthFailure } from '@/lib/client/api'
 import { formatDuration } from '@/lib/format'
-import type { AnalyticsSummary, SessionPerson } from '@/lib/types'
+import type { AnalyticsSummary, SessionPerson, StreamProvider } from '@/lib/types'
 
 type RoomRow = AnalyticsSummary['rooms'][number]
 
 const POLL_MS = 15_000
+
+const LABELS: Record<StreamProvider, string> = {
+  tiktok: 'TikTok',
+  youtube: 'YouTube',
+}
 
 /**
  * What the bar chart can be read against.
@@ -117,7 +122,56 @@ function Leaderboard({
   )
 }
 
-export default function Analytics() {
+/**
+ * The headline numbers for a subset of rooms.
+ *
+ * Computed rather than read from the summary, because the backend's totals are
+ * its own aggregation and a platform page has to show the same numbers over its
+ * subset. Taking the backend's totals with a filtered list would put figures over
+ * every stream beside rows for one platform — the numbers the page exists to
+ * disagree with are the ones it would be quoting.
+ */
+function totalsOf(rooms: AnalyticsSummary['rooms']) {
+  return {
+    total_rooms: rooms.length,
+    total_viewers: rooms.reduce((sum, room) => sum + room.viewers, 0),
+    total_peak_viewers: rooms.reduce((sum, room) => sum + room.peak_viewers, 0),
+    total_diamonds: rooms.reduce((sum, room) => sum + room.total_diamonds, 0),
+    total_events: rooms.reduce((sum, room) => sum + room.events, 0),
+  }
+}
+
+/**
+ * The gifter leaderboard for one platform's rooms.
+ *
+ * `/api/analytics` sums its gifters across every room, and it has no per-room
+ * breakdown to filter; the only per-room leaderboard the backend offers is the
+ * session. So a platform page asks each of its rooms for that and sums them the
+ * same way the backend does, on the stable user id. A room whose session cannot
+ * be read contributes nothing rather than failing the page.
+ */
+async function giftersFor(rooms: AnalyticsSummary['rooms']): Promise<SessionPerson[]> {
+  const sessions = await Promise.all(
+    rooms.map((room) => api.session(room.id).catch(() => null)),
+  )
+  const totals = new Map<string, SessionPerson>()
+  for (const session of sessions) {
+    for (const person of session?.topGifters ?? []) {
+      const existing = totals.get(person.id)
+      totals.set(person.id, {
+        id: person.id,
+        nickname: person.nickname,
+        diamonds: (existing?.diamonds ?? 0) + (person.diamonds ?? 0),
+      })
+    }
+  }
+  return [...totals.values()]
+    .sort((a, b) => (b.diamonds ?? 0) - (a.diamonds ?? 0) || a.nickname.localeCompare(b.nickname))
+    .slice(0, 10)
+}
+
+export default function Analytics({ provider }: { provider?: StreamProvider }) {
+  const label = provider ? LABELS[provider] : ''
   const [data, setData] = useState<AnalyticsSummary | null>(null)
   const [error, setError] = useState('')
   const [loaded, setLoaded] = useState(false)
@@ -127,7 +181,28 @@ export default function Analytics() {
   const [metric, setMetric] = useState<MetricKey>('viewers')
   const read = useCallback(async () => {
     try {
-      setData(await api.analytics())
+      const summary = await api.analytics(provider)
+      if (provider) {
+        // The analytics rows carry no platform, so the platform comes from the
+        // room list and the summary is filtered to it. The backend may already
+        // have narrowed the call; filtering here again keeps the page correct
+        // whatever the backend's version.
+        const { rooms: allRooms } = await api.rooms()
+        const platformIds = new Set(
+          allRooms
+            .filter((room) => (room.provider ?? 'tiktok') === provider)
+            .map((room) => room.id),
+        )
+        const scoped = summary.rooms.filter((room) => platformIds.has(room.id))
+        setData({
+          ...summary,
+          ...totalsOf(scoped),
+          rooms: scoped,
+          topGifters: await giftersFor(scoped),
+        })
+      } else {
+        setData(summary)
+      }
       setError('')
     } catch (cause) {
       setError(
@@ -140,7 +215,7 @@ export default function Analytics() {
     } finally {
       setLoaded(true)
     }
-  }, [])
+  }, [provider])
 
   useEffect(() => {
     void read()
@@ -152,9 +227,11 @@ export default function Analytics() {
     <>
       <div className="page-head">
         <div>
-          <h2>Analytics</h2>
+          <h2>{provider ? `${label} analytics` : 'Analytics'}</h2>
           <p className="muted">
-            Session totals across every stream — viewers, events, diamonds, and uptime.
+            {provider
+              ? `Session totals across ${label} streams — viewers, events, diamonds, and uptime.`
+              : 'Session totals across every stream — viewers, events, diamonds, and uptime.'}
           </p>
         </div>
       </div>
@@ -166,7 +243,10 @@ export default function Analytics() {
       ) : !data || data.total_rooms === 0 ? (
         <div className="panel">
           <h3>No streams yet</h3>
-          <p className="muted">Connect a TikTok username and this page will show what the session produced.</p>
+          <p className="muted">
+            Connect {provider ? `a ${label} video or username` : 'a TikTok username'} and this page will
+            show what the session produced.
+          </p>
         </div>
       ) : (
         <>
@@ -222,7 +302,7 @@ export default function Analytics() {
           </div>
           <BarChart data={data} metric={METRICS.find((option) => option.key === metric) ?? METRICS[0]} />
 
-          <h3 className="section-heading">Across every stream</h3>
+          <h3 className="section-heading">Across {provider ? `${label} ` : ''}every stream</h3>
           <div className="leaderboards">
             <Leaderboard
               title="Top gifters"
@@ -235,9 +315,9 @@ export default function Analytics() {
               tooltip on each. The ceiling is a property of the data and the reader
               is owed it before they draw a conclusion from the ranking. */}
           <p className="faint tight-caption leaderboard-note">
-            Summed across every stream on the same account. These are the top twenty of each
-            stream added together, so somebody ranked below that on every stream is not shown —
-            and nothing here survives a backend restart.
+            Summed across {provider ? `${label} streams` : 'every stream on the same account'}. These
+            are the top twenty of each stream added together, so somebody ranked below that on every
+            stream is not shown — and nothing here survives a backend restart.
           </p>
         </>
       )}

@@ -37,7 +37,7 @@ export default function Landing() {
         </Link>
         <nav className="landing-nav" aria-label="Main navigation">
           <a href="#features">Features</a>
-          <Link href="/admin/dashboard">Dashboard <span aria-hidden="true">↗</span></Link>
+          <Link href="/app">App <span aria-hidden="true">↗</span></Link>
         </nav>
       </header>
 

@@ -13,7 +13,7 @@ import { useDragScroll } from '@/hooks/useDragScroll'
 import { usePoll } from '@/hooks/usePoll'
 import { tiktokProfileUrl } from '@shared/platforms'
 import type { OverlayEventFrame } from '@shared/events'
-import type { RoomSession, RoomStatus } from '@/lib/types'
+import type { RoomSession, RoomStatus, StreamProvider } from '@/lib/types'
 
 const POLL_MS = 15_000
 const MAX_CHAT_LINES = 50

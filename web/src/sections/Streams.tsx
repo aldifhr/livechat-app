@@ -39,14 +39,12 @@ function StreamRow({ room, status }: { room: Room; status: RoomStatus | undefine
     <li>
       <Link className="stream-row" href={profilePath(room.username, room.id)}>
         <span className="stream-row-name">
-          {/* A YouTube room's `username` is a video id, and `@xgzRSS31nu4` reads
-              as a handle that does not exist. The platform is the part that makes
-              the row legible, so it goes in front of the value rather than
-              somewhere else on the page. Absent means TikTok: rooms created
-              before the field existed are all TikTok. */}
-          {(room.provider ?? 'tiktok') === 'youtube' ? (
-            <span className="faint">YouTube · </span>
-          ) : null}
+          {/* Every row carries its platform. A YouTube room's `username` is a
+              video id, and `@xgzRSS31nu4` reads as a handle that does not exist;
+              a TikTok row without a label is no better once YouTube rows in the
+              same list have one. Absent means TikTok: rooms created before the
+              field existed are all TikTok. */}
+          <span className="faint">{room.provider === 'youtube' ? 'YouTube' : 'TikTok'} · </span>
           @{room.username || 'no handle'}
           <RoomStateBadge status={status} />
         </span>
@@ -67,14 +65,17 @@ function StreamRow({ room, status }: { room: Room; status: RoomStatus | undefine
 }
 
 /** What the page shows before there is anything to show. */
-function GettingStarted() {
+function GettingStarted({ provider }: { provider: StreamProvider }) {
   return (
     <div className="panel getting-started">
       <h3>Nothing is connected yet</h3>
       <ol className="steps">
         <li>
-          <strong>Connect a TikTok username.</strong> StreamKit starts watching it straight away — a
-          stream that is not live yet is fine, it connects when it goes live.
+          <strong>
+            Connect a {provider === 'youtube' ? 'YouTube video id or link' : 'TikTok username'}.
+          </strong>{' '}
+          StreamKit starts watching it straight away — a stream that is not live yet is fine, it
+          connects when it goes live.
         </li>
         <li>
           <strong>Open the stream.</strong> Its page carries the browser source links for OBS and
@@ -89,12 +90,14 @@ function GettingStarted() {
   )
 }
 
-export default function Streams() {
+export default function Streams({ provider: scoped }: { provider?: StreamProvider }) {
   const [rooms, setRooms] = useState<Room[]>([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [newHandle, setNewHandle] = useState('')
-  const [provider, setProvider] = useState<StreamProvider>('tiktok')
+  // A platform-scoped Streams locks to that platform; the admin Streams offers the
+  // choice, because there it is the whole list.
+  const [provider, setProvider] = useState<StreamProvider>(scoped ?? 'tiktok')
   // The whole status, not `connected`. The backend distinguishes connecting,
   // waiting and live-ended from offline, and a row that kept only the boolean
   // rendered all four as "offline" — including the seconds straight after a
@@ -114,14 +117,16 @@ export default function Streams() {
   const load = useCallback(async () => {
     try {
       const { rooms: found } = await api.rooms()
-      setRooms(found)
+      setRooms(
+        scoped ? found.filter((room) => (room.provider ?? 'tiktok') === scoped) : found,
+      )
       setError('')
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'The stream list could not be loaded')
     } finally {
       setLoaded(true)
     }
-  }, [])
+  }, [scoped])
 
   usePoll(load, POLL_MS)
 
@@ -256,14 +261,16 @@ export default function Streams() {
             onKeyDown={(event) => event.key === 'Enter' && void connect()}
             aria-label={provider === 'youtube' ? 'YouTube video id or URL' : 'TikTok username'}
           />
-          <select
-            value={provider}
-            onChange={(event) => setProvider(event.target.value as StreamProvider)}
-            aria-label="Stream platform"
-          >
-            <option value="tiktok">TikTok</option>
-            <option value="youtube">YouTube</option>
-          </select>
+          {!scoped && (
+            <select
+              value={provider}
+              onChange={(event) => setProvider(event.target.value as StreamProvider)}
+              aria-label="Stream platform"
+            >
+              <option value="tiktok">TikTok</option>
+              <option value="youtube">YouTube</option>
+            </select>
+          )}
           <button
             className="primary"
             onClick={() => void connect()}
@@ -278,7 +285,7 @@ export default function Streams() {
       </div>
 
       {loaded && rooms.length === 0 ? (
-        <GettingStarted />
+        <GettingStarted provider={provider} />
       ) : (
         <ul className="stream-list">
           {rooms.map((room) => (

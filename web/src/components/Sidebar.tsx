@@ -19,16 +19,48 @@ import { usePathname } from 'next/navigation'
  * entry point, so the selected section is clear in the URL. A stream's own page
  * sits under it, and matching is on path segments so that page counts as Streams.
  */
-const ITEMS = [
-  { href: '/admin/dashboard', label: 'Overview', icon: '◫', hint: 'Live status and viewers across streams' },
-  { href: '/admin/streams', label: 'Streams', icon: '◉', hint: 'Links and styling for each stream' },
-  { href: '/admin/logs', label: 'Logs', icon: '≡', hint: 'What the backend has been saying' },
-  { href: '/admin/analytics', label: 'Analytics', icon: '▥', hint: 'Session totals across every stream' },
-  { href: '/admin/giveaways', label: 'Giveaways', icon: '◈', hint: 'Published giveaway snapshots' },
-]
+type Item = {
+  href: string
+  label: string
+  icon: string
+  hint: string
+}
+
+const SECTIONS = {
+  overview: { label: 'Overview', icon: '◫', hint: 'Live status and viewers across streams' },
+  streams: { label: 'Streams', icon: '◉', hint: 'Links and styling for each stream' },
+  logs: { label: 'Logs', icon: '≡', hint: 'What the backend has been saying' },
+  analytics: { label: 'Analytics', icon: '▥', hint: 'Session totals across every stream' },
+  giveaways: { label: 'Giveaways', icon: '◈', hint: 'Published giveaway snapshots' },
+} as const
+
+/** The platform a `/app/<platform>/...` address belongs to, if it is one. */
+const PLATFORMS = ['tiktok', 'youtube'] as const
 
 export default function Sidebar() {
   const pathname = usePathname()
+  const segments = pathname.split('/').filter(Boolean)
+  const platform =
+    segments[0] === 'app' && (PLATFORMS as readonly string[]).includes(segments[1] ?? '')
+      ? segments[1]
+      : null
+  // The platform pages live at `/app/<platform>`, so their Overview and Streams
+  // are addresses under it. Logs, analytics and giveaways are account-wide rather
+  // than per stream, so they stay at `/admin`.
+  const base = platform ? `/app/${platform}` : '/admin'
+
+  // A platform page shows its own Overview, Streams, Analytics and Giveaways.
+  // The admin console currently exposes only Logs; the rest of its sections are
+  // still being moved to the platform addresses, so a sidebar entry to a page
+  // that is not ready yet is worse than no entry.
+  const ITEMS: Item[] = platform
+    ? [
+        { href: base, ...SECTIONS.overview },
+        { href: `${base}/streams`, ...SECTIONS.streams },
+        { href: `${base}/analytics`, ...SECTIONS.analytics },
+        { href: `${base}/giveaways`, ...SECTIONS.giveaways },
+      ]
+    : [{ href: '/admin/logs', ...SECTIONS.logs }]
 
   return (
     <>

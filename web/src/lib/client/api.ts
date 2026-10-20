@@ -213,7 +213,8 @@ export const api = {
       level: opts.level,
       q: opts.q,
     }),
-  analytics: () => request<AnalyticsSummary>('GET', '/analytics'),
+  analytics: (provider?: StreamProvider) =>
+    request<AnalyticsSummary>('GET', '/analytics', undefined, provider ? { provider } : undefined),
 
   /** What this room's current session has accumulated — peaks, diamonds, leaders. */
   session: (id: string) => request<RoomSession>('GET', `/rooms/${id}/session`),

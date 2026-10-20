@@ -101,15 +101,15 @@ export default function StreamProfile({ handle }: { handle: string }) {
   const links = room ? streamLinks(room.id) : null
 
   /**
-   * Whether the backend is doing anything for this room.
+   * Whether the backend is actually connected to this room.
    *
-   * `waiting` counts, and that is the backend's own requirement rather than a
-   * nicety: it sets `connecting` alongside `waiting` while it polls for a streamer
-   * with no live, and a wait can run two hours. Reading `connecting` alone would
-   * leave a room in that state with no button that does anything — a state the user
-   * cannot leave is not a state, it is a trap.
+   * Only `connected` counts. A room that is still dialling, or one the backend is
+   * waiting on because the streamer is offline, is not connected, and the button
+   * says so: it offers Start, which re-points the room at its handle. The wait is
+   * still in progress behind that, and a Stop only makes sense for a connection
+   * that exists.
    */
-  const running = Boolean(status?.connected || status?.connecting || status?.waiting)
+  const running = Boolean(status?.connected)
 
   /**
    * Start watching, or stop.
@@ -233,7 +233,7 @@ export default function StreamProfile({ handle }: { handle: string }) {
               onClick={() => void toggleConnection()}
               disabled={busy || (!running && !room.username)}
             >
-              {running ? 'Stop' : 'Connect'}
+              {running ? 'Stop' : 'Start'}
             </button>
           )}
           <Link className="btn" href={customizerPath(room.username, room.id, 'chat')}>
