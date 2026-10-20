@@ -14,7 +14,7 @@
 
 'use client'
 
-import type { AnalyticsSummary, GiveawaySnapshot, LogPage, Room, RoomSession, RoomStatus } from '../types'
+import type { AnalyticsSummary, GiveawaySnapshot, LogPage, Room, RoomSession, RoomStatus, StreamProvider } from '../types'
 
 export class ApiError extends Error {
   constructor(
@@ -133,8 +133,8 @@ export interface DisconnectResult {
 export const api = {
   rooms: () => request<{ rooms: Room[] }>('GET', '/rooms'),
   status: (id: string) => request<RoomStatus>('GET', `/rooms/${id}/status`),
-  connectHandle: (username: string) =>
-    request<ConnectResult>('POST', '/room-connect-by-username', { username }),
+  connectHandle: (username: string, provider: StreamProvider = 'tiktok') =>
+    request<ConnectResult>('POST', '/room-connect-by-username', { username, provider }),
   /**
    * Point a room at the handle its own config already names.
    *

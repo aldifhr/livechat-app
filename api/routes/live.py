@@ -25,7 +25,18 @@ router = APIRouter()
 #: A TikTok handle. Narrow on purpose: letters, digits, dot, underscore, 2-24
 #: chars — what the platform actually issues. This is the only check between an
 #: unauthenticated caller and a connection attempt.
+#: TikTok handles. Applied only when the request names TikTok — a YouTube video
+#: id is 11 chars of `[A-Za-z0-9_-]` and would be rejected here (`-` and `_` are
+#: not in this class), so the two platforms cannot share one pattern.
 USERNAME_RE = re.compile(r"^[A-Za-z0-9._]{2,24}$")
+
+#: YouTube video ids, and the two URL shapes people paste instead of an id.
+#: `pytchat`'s own extractor handles the URL forms; this only has to reject
+#: what is obviously not one before it reaches the network.
+YOUTUBE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
+YOUTUBE_URL_RE = re.compile(
+    r"(?:youtube\.com/(?:watch\?.*v=|live_chat\?.*v=|live/)|youtu\.be/)([A-Za-z0-9_-]{11})"
+)
 
 #: How many rooms this endpoint may bring into existence. The route is exempt
 #: from the token gate, so without a ceiling anyone who found the URL could
@@ -110,7 +121,18 @@ async def room_connect_by_username(req: ConnectByUsernameRequest):
     from main import _connect_room  # lazy — avoids circular import
 
     username = normalise_username(req.username)
-    if not USERNAME_RE.fullmatch(username) or not handle_is_sane(username):
+    if req.provider == "youtube":
+        # Accept an id or a URL, and reduce both to the id — the room stores the
+        # id because that is what a reconnect needs, and a URL would go stale.
+        found = YOUTUBE_URL_RE.search(username)
+        if found:
+            username = found.group(1)
+        if not YOUTUBE_ID_RE.fullmatch(username):
+            raise HTTPException(
+                status_code=400,
+                detail="youtube: expected an 11-character video id or a youtube.com/youtu.be URL",
+            )
+    elif not USERNAME_RE.fullmatch(username) or not handle_is_sane(username):
         raise HTTPException(
             status_code=400,
             detail="username must be 2-24 characters of letters, digits, dot or underscore",
@@ -140,8 +162,13 @@ async def room_connect_by_username(req: ConnectByUsernameRequest):
     overlay = _clean_overlay(req.overlay) if req.overlay else {}
     if created:
         existing = record.get("config") or {}
-        patch = {**existing, **overlay, "provider": req.provider}
-        await store.set_config_async(room_id, patch)
+        await store.set_config_async(room_id, {**existing, **overlay})
+        # `provider` belongs on the record, not in `config`: it is what
+        # `summary()` reports and what the startup restore reads to rebuild the
+        # right adapter. Writing it into `config` left every YouTube room
+        # reporting `provider: tiktok` while connecting over YouTube, because
+        # nothing reads it back out of there.
+        await store.update_room_async(room_id, provider=req.provider)
 
     result = await _connect_room(room_id, username, provider=req.provider)
     return {"room_id": room_id, **result}

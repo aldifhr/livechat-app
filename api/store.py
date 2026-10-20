@@ -286,8 +286,11 @@ async def update_room_async(
     *,
     name: str | None = None,
     username: str | None = None,
+    provider: str | None = None,
 ) -> dict[str, Any] | None:
-    return await asyncio.to_thread(update_room, room_id, name=name, username=username)
+    return await asyncio.to_thread(
+        update_room, room_id, name=name, username=username, provider=provider
+    )
 
 
 async def delete_room_async(room_id: str) -> bool:

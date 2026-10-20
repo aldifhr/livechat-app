@@ -206,4 +206,8 @@ def summary(room_id: str, record: dict[str, Any]) -> dict[str, Any]:
         "username": record.get("username", ""),
         "config": config,
         "createdAt": record.get("createdAt", 0),
+        # Which platform this room reads. Defaulted rather than left absent so a
+        # client never has to know that rooms predating the field were all
+        # TikTok — the same rule `store.provider_of` applies server-side.
+        "provider": record.get("provider") or "tiktok",
     }

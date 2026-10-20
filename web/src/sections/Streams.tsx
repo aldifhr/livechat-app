@@ -25,7 +25,7 @@ import { useOrigin } from '@/hooks/useBrowser'
 import { usePoll } from '@/hooks/usePoll'
 import { useConnectionWatch } from '@/hooks/useConnectionWatch'
 import { profilePath } from '../lib/client/streamLinks'
-import type { Room, RoomStatus } from '../lib/types'
+import type { Room, RoomStatus, StreamProvider } from '../lib/types'
 import RoomStateBadge from '../components/RoomStateBadge'
 import { useToast } from '../components/Toast'
 
@@ -39,6 +39,14 @@ function StreamRow({ room, status }: { room: Room; status: RoomStatus | undefine
     <li>
       <Link className="stream-row" href={profilePath(room.username, room.id)}>
         <span className="stream-row-name">
+          {/* A YouTube room's `username` is a video id, and `@xgzRSS31nu4` reads
+              as a handle that does not exist. The platform is the part that makes
+              the row legible, so it goes in front of the value rather than
+              somewhere else on the page. Absent means TikTok: rooms created
+              before the field existed are all TikTok. */}
+          {(room.provider ?? 'tiktok') === 'youtube' ? (
+            <span className="faint">YouTube · </span>
+          ) : null}
           @{room.username || 'no handle'}
           <RoomStateBadge status={status} />
         </span>
@@ -86,6 +94,7 @@ export default function Streams() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [newHandle, setNewHandle] = useState('')
+  const [provider, setProvider] = useState<StreamProvider>('tiktok')
   // The whole status, not `connected`. The backend distinguishes connecting,
   // waiting and live-ended from offline, and a row that kept only the boolean
   // rendered all four as "offline" — including the seconds straight after a
@@ -171,7 +180,7 @@ export default function Streams() {
     if (handle === '') return
     setBusy(true)
     try {
-      const answer = await api.connectHandle(handle)
+      const answer = await api.connectHandle(handle, provider)
       setNewHandle('')
       setError('')
       // What the request actually said. `connecting` is the normal answer for a
@@ -214,7 +223,8 @@ export default function Streams() {
         <div>
           <h2>Streams</h2>
           <p className="muted">
-            Connect a TikTok username, style its overlay, then copy a browser source link into OBS.
+            Connect a TikTok username or a YouTube video, style its overlay, then copy a
+            browser source link into OBS.
           </p>
           {/* The origin is on every one of this page's links and is the same on all
               of them, so the field scrolls to the end of the URL where the part that
@@ -236,12 +246,24 @@ export default function Streams() {
         <div className="row">
           <input
             className="grow"
-            placeholder="TikTok username — with or without the @"
+            placeholder={
+              provider === 'youtube'
+                ? 'YouTube video id or URL — e.g. xgzRSS31nu4'
+                : 'TikTok username — with or without the @'
+            }
             value={newHandle}
             onChange={(event) => setNewHandle(event.target.value)}
             onKeyDown={(event) => event.key === 'Enter' && void connect()}
-            aria-label="TikTok username"
+            aria-label={provider === 'youtube' ? 'YouTube video id or URL' : 'TikTok username'}
           />
+          <select
+            value={provider}
+            onChange={(event) => setProvider(event.target.value as StreamProvider)}
+            aria-label="Stream platform"
+          >
+            <option value="tiktok">TikTok</option>
+            <option value="youtube">YouTube</option>
+          </select>
           <button
             className="primary"
             onClick={() => void connect()}
