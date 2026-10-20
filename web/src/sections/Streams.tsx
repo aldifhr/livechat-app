@@ -37,7 +37,13 @@ const POLL_MS = 15_000
 function StreamRow({ room, status }: { room: Room; status: RoomStatus | undefined }) {
   return (
     <li>
-      <Link className="stream-row" href={profilePath(room.username, room.id)}>
+      <Link
+        className="stream-row"
+        // The row already knows its platform, so the link is built from the
+        // room's own record rather than from the page's scope — a mixed list
+        // (which `/admin/streams` is) then links each row into its own tree.
+        href={profilePath(room.username, room.id, room.provider)}
+      >
         <span className="stream-row-name">
           {/* Every row carries its platform. A YouTube room's `username` is a
               video id, and `@xgzRSS31nu4` reads as a handle that does not exist;

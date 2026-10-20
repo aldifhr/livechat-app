@@ -140,13 +140,6 @@ export default function Dashboard({ provider }: { provider?: StreamProvider }) {
             {POLL_MS / 1000} seconds. Counts are since this page was opened — nothing is stored.
           </p>
         </div>
-        {provider && (
-          <div className="actions">
-            <Link className="btn primary" href={`/app/${provider}/connect`}>
-              Connect {label}
-            </Link>
-          </div>
-        )}
       </div>
 
       {error && <div className="notice error">{error}</div>}
@@ -186,10 +179,7 @@ export default function Dashboard({ provider }: { provider?: StreamProvider }) {
       {loaded && rows.length === 0 && !error && (
         <div className="empty">
           {provider ? (
-            <>
-              No {label} streams configured yet.{' '}
-              <Link href={`/app/${provider}/connect`}>Connect one</Link>.
-            </>
+            <>No {label} streams yet. Add one from <Link href={`/app/${provider}/streams`}>Streams</Link>.</>
           ) : (
             <>
               No streams configured yet. Add one from <a href="/admin/streams">Streams</a>.

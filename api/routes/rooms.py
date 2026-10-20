@@ -67,6 +67,10 @@ async def list_rooms_public():
                 # stored record has no `connected` key, so reading it there
                 # reported every room offline forever.
                 "connected": oid in live and live[oid].is_connected(),
+                # Which platform this room reads. Defaulted, like `summary`,
+                # so a client never has to know that rooms predating the field
+                # were all TikTok — the docks picker groups by it.
+                "provider": rec.get("provider") or "tiktok",
             }
             for oid, rec in rooms.items()
         ]

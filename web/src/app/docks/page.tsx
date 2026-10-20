@@ -55,7 +55,8 @@ export default function DocksPage() {
   const [newCount, setNewCount] = useState(0)
   const [error, setError] = useState('')
   const [loaded, setLoaded] = useState(false)
-  const [rooms, setRooms] = useState<Array<{ id: string; username: string; name: string; connected: boolean }>>([])
+  const [rooms, setRooms] = useState<Array<{ id: string; username: string; name: string; connected: boolean; provider?: StreamProvider }>>([])
+  const [platform, setPlatform] = useState<StreamProvider | null>(null)
 
   // Read room id from URL. This was here from the first docks commit and got
   // dropped in c472374 ("works without ?room=") — the replacement only handled
@@ -317,40 +318,90 @@ export default function DocksPage() {
     setNewCount(0)
   }
 
-  // No room in the URL and nothing to auto-select. This is an OBS browser
-  // source, so there is no one here to fill a form in: it says what is missing
-  // and stops. Connecting happens on the web app, which is where a person is.
+  // No room in the URL: pick a platform, then a streamer on it.
+  //
+  // Two steps rather than one list because that is how a streamer thinks about
+  // their streams — "my TikTok ones, my YouTube ones" — and because a single
+  // flat list of every room gets unreadable fast. The platform is held in state
+  // rather than in the URL: it is a step in choosing, not an address, and the
+  // address that matters is the one that ends in `?room=`.
+  //
+  // Auto-select is kept for the one-room case: a streamer with a single room
+  // should not have to click through a picker every time they open their scene.
   if (!roomId && rooms.length !== 1) {
+    const platformRooms = platform
+      ? rooms.filter((room) => (room.provider ?? 'tiktok') === platform)
+      : []
+
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 bg-zinc-900 p-4 text-zinc-400">
-        <p className="text-center text-sm">
-          No stream selected. Add <code className="text-zinc-300">?room=&lt;id&gt;</code> to this
-          URL, or connect one at{' '}
-          <a href="/app" className="text-zinc-200 underline">
-            /app
-          </a>
-          .
-        </p>
-        {rooms.length > 0 && (
-          <select
-            aria-label="Select room"
-            onChange={(e) => {
-              const next = e.target.value
-              if (!next) return
-              setRoomId(next)
-              const url = new URL(window.location.href)
-              url.searchParams.set('room', next)
-              window.history.replaceState({}, '', url.toString())
-            }}
-            className="max-w-64 rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-200 focus:border-zinc-500"
-          >
-            <option value="">Choose…</option>
-            {rooms.map((room) => (
-              <option key={room.id} value={room.id}>
-                {room.username ? `@${room.username}` : room.name || room.id.slice(0, 8)}
-              </option>
-            ))}
-          </select>
+      <div className="flex h-full flex-col items-center justify-center gap-4 bg-zinc-900 p-4 text-zinc-400">
+        {!platform ? (
+          <>
+            <p className="text-center text-sm">Which platform?</p>
+            <div className="flex w-full max-w-xs flex-col gap-2">
+              {(['tiktok', 'youtube'] as const).map((name) => {
+                const count = rooms.filter((r) => (r.provider ?? 'tiktok') === name).length
+                return (
+                  <button
+                    key={name}
+                    onClick={() => setPlatform(name)}
+                    className="flex items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm font-semibold text-zinc-100 transition-colors hover:border-zinc-500"
+                  >
+                    <span aria-hidden="true">{name === 'youtube' ? '▶' : '♪'}</span>
+                    {name === 'youtube' ? 'YouTube' : 'TikTok'}
+                    <span className="ml-auto text-xs font-normal text-zinc-500">
+                      {count} {count === 1 ? 'stream' : 'streams'}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </>
+        ) : platformRooms.length === 0 ? (
+          <>
+            <p className="text-center text-sm">
+              No {platform === 'youtube' ? 'YouTube' : 'TikTok'} streams yet.
+            </p>
+            <button
+              onClick={() => setPlatform(null)}
+              className="text-xs text-zinc-400 underline"
+            >
+              ← Pick another platform
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="text-center text-sm">
+              Which {platform === 'youtube' ? 'YouTube' : 'TikTok'} stream?
+            </p>
+            <div className="flex w-full max-w-xs flex-col gap-2">
+              {platformRooms.map((room) => (
+                <button
+                  key={room.id}
+                  onClick={() => {
+                    setRoomId(room.id)
+                    const url = new URL(window.location.href)
+                    url.searchParams.set('room', room.id)
+                    window.history.replaceState({}, '', url.toString())
+                  }}
+                  className="flex items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-left text-sm text-zinc-100 transition-colors hover:border-zinc-500"
+                >
+                  <span className="truncate">
+                    {room.username ? `@${room.username}` : room.name || room.id.slice(0, 8)}
+                  </span>
+                  {room.connected && (
+                    <span className="ml-auto shrink-0 text-xs text-emerald-400">live</span>
+                  )}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setPlatform(null)}
+              className="text-xs text-zinc-400 underline"
+            >
+              ← Pick another platform
+            </button>
+          </>
         )}
       </div>
     )

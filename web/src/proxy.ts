@@ -63,20 +63,16 @@ function isOpen(pathname: string): boolean {
     // No session — OBS cannot type a password, same reason as overlays.
     pathname === '/docks' ||
     pathname.startsWith('/docks/') ||
-    // The connect app: pick a platform, connect a stream, copy its overlay
-    // link. Public for the same reason the connect route behind it is — it
-    // takes no session and hands out URLs OBS has to load without one.
-    pathname === '/app' ||
-    pathname.startsWith('/app/') ||
-    // ...and the one backend call that page makes. The path is on the API
-    // allowlist already; what it needs is to skip the session check, for the
-    // same reason the page does — it is public and the backend route behind it
-    // carries no token gate.
+    // The one write the desktop app may make with no credential. The backend
+    // exempts this path from its own token gate; this is the app's session
+    // check letting it past so the backend gets to answer at all.
     pathname === '/api/backend/room-connect-by-username' ||
-    // Docks polls these for a room's live state, and the page is public (OBS
-    // loads it with no credential). The backend answers them without a token
-    // for a real room id; this is the app's own session check letting them past
-    // so the backend gets to answer at all.
+    // Docks is a public OBS browser source, and these are the three reads it
+    // makes: the room list for its platform picker, and the two per-room reads
+    // behind the badge. The backend answers all three without a token — the
+    // room list it serves publicly carries no config and no styling. Without
+    // this the page rendered and every number on it was blank.
+    pathname === '/api/backend/rooms/public' ||
     /^\/api\/backend\/rooms\/[0-9a-f-]{36}\/(status|session)$/.test(pathname) ||
     // Next's own static assets, which carry no data.
     pathname.startsWith('/_next/') ||

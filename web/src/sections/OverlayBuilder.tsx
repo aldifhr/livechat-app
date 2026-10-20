@@ -50,7 +50,8 @@ import {
   type OverlayPosition,
 } from '@shared/overlay'
 import { api } from '../lib/client/api'
-import { profilePath } from '../lib/client/streamLinks'
+import { profilePath, streamRoot } from '../lib/client/streamLinks'
+import type { StreamProvider } from '../lib/types'
 import type { Room } from '../lib/types'
 import CopyField from '../components/CopyField'
 import OverlayStage from '../components/OverlayStage'
@@ -434,7 +435,15 @@ const CANVASES = [
   { label: '720×1280', width: 720, height: 1280 },
 ]
 
-export default function OverlayBuilder({ handle, kind }: { handle: string; kind: BuilderKind }) {
+export default function OverlayBuilder({
+  handle,
+  kind,
+  provider,
+}: {
+  handle: string
+  kind: BuilderKind
+  provider?: StreamProvider
+}) {
   // The handle is the part a person types; a room with no handle is reachable by its
   // id, the same two forms the profile resolves. The leading `@` is optional.
   const wanted = decodeURIComponent(handle).trim().replace(/^@/, '')
@@ -567,7 +576,7 @@ export default function OverlayBuilder({ handle, kind }: { handle: string; kind:
           </div>
         </div>
         <div className="panel">
-          <Link className="btn" href="/admin/streams">
+          <Link className="btn" href={`${streamRoot(provider)}/streams`}>
             Back to streams
           </Link>
         </div>
@@ -580,7 +589,7 @@ export default function OverlayBuilder({ handle, kind }: { handle: string; kind:
       <div className="page-head">
         <div>
           <p className="faint">
-            <Link className="quiet-link" href={profilePath(room.username, room.id)}>
+            <Link className="quiet-link" href={profilePath(room.username, room.id, provider)}>
               ← {room.username ? `@${room.username}` : room.name}
             </Link>
           </p>

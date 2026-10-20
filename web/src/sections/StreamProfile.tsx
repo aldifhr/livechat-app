@@ -25,7 +25,8 @@ import { api, ApiError, isAuthFailure } from '@/lib/client/api'
 import { useOrigin } from '@/hooks/useBrowser'
 import { usePoll } from '@/hooks/usePoll'
 import { useConnectionWatch } from '@/hooks/useConnectionWatch'
-import { streamLinks, LINK_LABELS, customizerPath, giveawayPath } from '@/lib/client/streamLinks'
+import { streamLinks, LINK_LABELS, customizerPath, giveawayPath, streamRoot } from '@/lib/client/streamLinks'
+import type { StreamProvider } from '@/lib/types'
 import type { Room, RoomSession, RoomStatus } from '@/lib/types'
 import LinkLine from '@/components/LinkLine'
 import ConfirmDialog from '@/components/ConfirmDialog'
@@ -49,7 +50,13 @@ function matches(room: Room, wanted: string): boolean {
   return room.username === wanted || room.id === wanted
 }
 
-export default function StreamProfile({ handle }: { handle: string }) {
+export default function StreamProfile({
+  handle,
+  provider,
+}: {
+  handle: string
+  provider?: StreamProvider
+}) {
   const wanted = decodeURIComponent(handle).trim().replace(/^@/, '')
   const [room, setRoom] = useState<Room | null>(null)
   const [status, setStatus] = useState<RoomStatus | undefined>()
@@ -167,7 +174,7 @@ export default function StreamProfile({ handle }: { handle: string }) {
       await api.deleteRoom(room.id)
       setPendingDelete(false)
       toast(`Deleted @${room.username || room.name || 'stream'}. Its overlay links stop working.`)
-      router.push('/admin/streams')
+      router.push(`${streamRoot(provider)}/streams`)
     } catch (cause) {
       setPendingDelete(false)
       setError(
@@ -195,7 +202,7 @@ export default function StreamProfile({ handle }: { handle: string }) {
           </div>
         </div>
         <div className="panel">
-          <Link className="btn" href="/admin/streams">
+          <Link className="btn" href={`${streamRoot(provider)}/streams`}>
             Back to streams
           </Link>
         </div>
@@ -210,7 +217,7 @@ export default function StreamProfile({ handle }: { handle: string }) {
       <div className="page-head">
         <div>
           <p className="faint">
-            <Link className="quiet-link" href="/admin/streams">
+            <Link className="quiet-link" href={`${streamRoot(provider)}/streams`}>
               ← Streams
             </Link>
           </p>
@@ -236,19 +243,19 @@ export default function StreamProfile({ handle }: { handle: string }) {
               {running ? 'Stop' : 'Start'}
             </button>
           )}
-          <Link className="btn" href={customizerPath(room.username, room.id, 'chat')}>
+          <Link className="btn" href={customizerPath(room.username, room.id, 'chat', provider)}>
             Style chat
           </Link>
-          <Link className="btn" href={customizerPath(room.username, room.id, 'top-chatter')}>
+          <Link className="btn" href={customizerPath(room.username, room.id, 'top-chatter', provider)}>
             Style board
           </Link>
-          <Link className="btn" href={customizerPath(room.username, room.id, 'cat')}>
+          <Link className="btn" href={customizerPath(room.username, room.id, 'cat', provider)}>
             Style cat
           </Link>
-          <Link className="btn" href={customizerPath(room.username, room.id, 'like-target')}>
+          <Link className="btn" href={customizerPath(room.username, room.id, 'like-target', provider)}>
             Style likes
           </Link>
-          <Link className="btn" href={giveawayPath(room.username, room.id)}>
+          <Link className="btn" href={giveawayPath(room.username, room.id, provider)}>
             Giveaway
           </Link>
           <button className="danger" onClick={() => setPendingDelete(true)} disabled={busy}>

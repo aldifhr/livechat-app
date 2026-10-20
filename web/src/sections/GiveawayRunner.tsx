@@ -16,7 +16,8 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '@/lib/client/api'
-import { profilePath } from '@/lib/client/streamLinks'
+import { profilePath, streamRoot } from '@/lib/client/streamLinks'
+import type { StreamProvider } from '@/lib/types'
 import {
   sha256,
   deriveWinnerFromSeed,
@@ -41,7 +42,15 @@ function formatTime(milliseconds: number): string {
   return `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`
 }
 
-export default function GiveawayRunner({ handle, backendOrigin }: { handle: string; backendOrigin: string }) {
+export default function GiveawayRunner({
+  handle,
+  backendOrigin,
+  provider,
+}: {
+  handle: string
+  backendOrigin: string
+  provider?: StreamProvider
+}) {
   const wanted = decodeURIComponent(handle).trim().replace(/^@/, '')
 
   const [rooms, setRooms] = useState<Room[]>([])
@@ -511,7 +520,7 @@ export default function GiveawayRunner({ handle, backendOrigin }: { handle: stri
           </div>
         </div>
         <div className="panel">
-          <Link className="btn" href="/admin/streams">
+          <Link className="btn" href={`${streamRoot(provider)}/streams`}>
             Back to streams
           </Link>
         </div>
@@ -526,7 +535,7 @@ export default function GiveawayRunner({ handle, backendOrigin }: { handle: stri
       <div className="page-head">
         <div>
           <p className="faint">
-            <Link className="quiet-link" href={profilePath(room.username, room.id)}>
+            <Link className="quiet-link" href={profilePath(room.username, room.id, provider)}>
               ← {room.username ? `@${room.username}` : room.name}
             </Link>
           </p>
