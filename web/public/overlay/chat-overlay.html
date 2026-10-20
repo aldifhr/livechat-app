@@ -834,6 +834,20 @@
    * colour, with the sticker and the diamond count — the money that just arrived,
    * which is the one thing on a stream everyone looks up for.
    */
+  /**
+   * What a membership reads as in the gift line.
+   *
+   * The gift renderer joins this with " sent ", so the label has to be a noun
+   * phrase: "sent membered for 12 months" is what a verb phrase produces here.
+   * YouTube sends the month count; TikTok's `subscription` carries none, and the
+   * label is built here rather than teaching `renderGift` about two platforms.
+   */
+  function membershipLabel(months) {
+    var n = Number(months) || 0
+    if (n <= 0) return 'a membership'
+    return 'a ' + n + '-month membership'
+  }
+
   function renderGift(user, giftName, count, value, userId, giftImage) {
     var who = String(user == null ? '' : user).trim() || 'Someone'
     var row = document.createElement('li')
@@ -1089,6 +1103,22 @@
       // comments would bury the one thing everyone looks up for.
       if (frame.type === 'gift') {
         renderGift(frame.user, frame.giftName, frame.count, frame.value, frame.userId, frame.giftImage)
+        return
+      }
+      // A membership is an event too, and it was reaching this page and being
+      // dropped: the adapter emits `subscription` and the only handler past this
+      // point was `comment`. It goes through the gift renderer rather than the
+      // chat queue for the same reason a gift does — it is something that
+      // happened, not something somebody said.
+      if (frame.type === 'subscription') {
+        renderGift(
+          frame.user,
+          membershipLabel(frame.months),
+          1,
+          0,
+          frame.userId,
+          frame.giftImage,
+        )
         return
       }
       // Comments only beyond this. The rest of the wire — likes, joins, view

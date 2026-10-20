@@ -173,7 +173,12 @@ function connectChat(){
         wake()
         C.boop=1.2
         for(let i=0;i<6;i++)em('heart',C.x+rnd(-10,10),backY()-4,rnd(-8,8),rnd(-30,-18),1.2)
-      } else if(frame.type==='gift'||frame.type==='like'||frame.type==='follow'){
+      } else if(frame.type==='gift'||frame.type==='like'||frame.type==='follow'||frame.type==='subscription'){
+        // A membership goes through `react` with the rest of the paid events.
+        // YouTube emits `subscription` where TikTok emits `gift`, so leaving it
+        // off the list made a membership invisible on the cat overlay — the one
+        // event a streamer most wants acknowledged. It carries no `value`, so
+        // `react` sees tier 0 and gives the small reaction a follow gets.
         react(frame)
       }
     }catch(e){}

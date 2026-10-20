@@ -1656,6 +1656,80 @@
     @apply text-dim transition-colors hover:text-accent;
   }
 
+  /* ---- /app: platform choice -------------------------------------------- */
+
+  /* Centred column, because this page is a decision and not a document: two
+     stacked buttons with nothing beside them. A hero grid would put a paragraph
+     next to the choice and invite reading instead of choosing. */
+  .app-pick {
+    @apply mx-auto flex max-w-[440px] flex-col gap-6 py-[clamp(3rem,9vw,7rem)];
+  }
+
+  .app-pick h1 {
+    @apply text-[clamp(1.9rem,4vw,2.6rem)] leading-[1.1] font-semibold tracking-tight text-text;
+  }
+
+  .app-pick h1 span {
+    @apply text-accent;
+  }
+
+  .platform-pick {
+    @apply flex flex-col gap-3;
+  }
+
+  /* Each button carries its own background so the two read as separate things
+     to pick between rather than one list with two rows. */
+  .platform-btn {
+    @apply flex items-center gap-4 rounded-xl border border-line px-5 py-4 text-[15px] font-semibold text-text no-underline transition-[border-color,background,transform] duration-120;
+    background:
+      radial-gradient(120% 140% at 0% 0%, rgb(99 230 193 / 10%), transparent 60%),
+      var(--bg-raised);
+  }
+
+  .platform-btn:hover {
+    @apply border-accent bg-bg;
+  }
+
+  .platform-btn .platform-mark {
+    @apply grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-accent/25 bg-accent/10 text-base text-accent;
+  }
+
+  .platform-btn .platform-go {
+    @apply ml-auto text-faint transition-colors;
+  }
+
+  .platform-btn:hover .platform-go {
+    @apply text-accent;
+  }
+
+  .app-pick .field {
+    @apply flex flex-col gap-2;
+  }
+
+  .app-pick .field > span {
+    @apply text-[12px] font-medium text-dim;
+  }
+
+  .app-pick .field > input {
+    @apply w-full rounded-field border border-line bg-raised px-4 py-3 text-[15px] text-text outline-none transition-colors;
+  }
+
+  .app-pick .field > input:focus {
+    @apply border-accent;
+  }
+
+  .app-actions {
+    @apply flex flex-wrap gap-2;
+  }
+
+  .overlay-link {
+    @apply overflow-x-auto rounded-field border border-line bg-sunken px-4 py-3;
+
+    code {
+      @apply whitespace-nowrap text-[12px] text-accent;
+    }
+  }
+
   .login {
     background:
       radial-gradient(ellipse at 70% 22%, rgb(57 156 132 / 10%), transparent 40%),

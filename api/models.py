@@ -181,6 +181,10 @@ class TriggerRequest(BaseModel):
     #: impossible to exercise from the editor.
     diamonds: int = 0
     count: int = 1
+    #: Membership length for a triggered `subscription`. The real event carries
+    #: it, so a manual trigger without it renders as a nameless "membered" and
+    #: the overlay's month line cannot be exercised from the editor at all.
+    months: int = 0
 
 
 class HookRequest(BaseModel):

@@ -58,3 +58,9 @@ htpasswd
 # TypeScript incremental build cache — rewritten by every web build, so it is
 # noise in a diff, not source.
 web/tsconfig.tsbuildinfo
+
+# Runtime state. The API writes sessions and rooms here when STREAMKIT_CONFIG_DIR
+# is not set (tests, a dev run); in production it points at /var/lib/streamkit.
+# Committed once by accident and every local test run dirtied the tree.
+api/config/sessions.json
+api/config/rooms.json

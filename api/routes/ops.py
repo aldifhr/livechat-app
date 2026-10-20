@@ -126,6 +126,7 @@ async def trigger(room_id: str, req: TriggerRequest):
                 "giftName": req.text or "Gift",
                 "diamonds": req.diamonds * req.count,
                 "value": req.diamonds * req.count,
+                "months": req.months,
             },
         ),
     )
