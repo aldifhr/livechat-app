@@ -20,6 +20,7 @@ import re
 from typing import Any, AsyncGenerator
 
 from protocols import EventAdapter
+import events
 from events import (
     COMMENT,
     GIFT,
@@ -232,6 +233,17 @@ class YouTubeLiveAdapter(EventAdapter):
 
             self._connected = True
             logger.info("YouTube: connected to %s", self.video_id)
+            # Broadcast the transition, not just flip a flag. The status frame is
+            # edge-triggered and nothing else produces one mid-session, so a room
+            # that connects after the overlay attached would sit on "connecting"
+            # forever. It also drives `eventlog.connected`, which is what the
+            # analytics endpoint reports — without this the room showed as
+            # offline with a hundred events already counted against it.
+            await events.emit_status(
+                self.room_id,
+                connected=True,
+                message=f"Connected to YouTube {self.video_id}",
+            )
             poll_failures = 0
 
             try:
@@ -276,6 +288,14 @@ class YouTubeLiveAdapter(EventAdapter):
             await asyncio.sleep(3)
 
         self._running = False
+        # Announce the end here, at the exit — not inside the rebuild branch.
+        # A reconnect flips `_connected` off for the three seconds it sleeps, and
+        # emitting "Offline" for that window made the overlay flap off and on
+        # again on a socket that had not lost anything.
+        try:
+            await events.emit_status(self.room_id, connected=False, message="Offline")
+        except Exception as exc:
+            logger.warning("YouTube: could not emit Offline for %s: %s", self.room_id, exc)
         # Wake any parked consumer.
         await self._events.put(_STOP)
 
