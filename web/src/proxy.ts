@@ -62,6 +62,7 @@ function isOpen(pathname: string): boolean {
     // OBS docks: public browser source for OBS, mirrors desktop home.
     // No session — OBS cannot type a password, same reason as overlays.
     pathname === '/docks' ||
+    pathname.startsWith('/docks/') ||
     // The connect app: pick a platform, connect a stream, copy its overlay
     // link. Public for the same reason the connect route behind it is — it
     // takes no session and hands out URLs OBS has to load without one.
@@ -72,6 +73,11 @@ function isOpen(pathname: string): boolean {
     // same reason the page does — it is public and the backend route behind it
     // carries no token gate.
     pathname === '/api/backend/room-connect-by-username' ||
+    // Docks polls these for a room's live state, and the page is public (OBS
+    // loads it with no credential). The backend answers them without a token
+    // for a real room id; this is the app's own session check letting them past
+    // so the backend gets to answer at all.
+    /^\/api\/backend\/rooms\/[0-9a-f-]{36}\/(status|session)$/.test(pathname) ||
     // Next's own static assets, which carry no data.
     pathname.startsWith('/_next/') ||
     pathname === '/favicon.ico'

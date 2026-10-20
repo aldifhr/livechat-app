@@ -27,6 +27,7 @@ from events import (
     JOIN,
     LIKE,
     SUBSCRIPTION,
+    VIEWERS,
     Event,
 )
 
@@ -44,6 +45,18 @@ class _Stop:
 
 
 _STOP = _Stop()
+
+#: A desktop UA. YouTube serves a stripped page to anything that looks like a
+#: bot, and the stripped page has no `ytInitialData`.
+_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
+
+#: The concurrent viewer count, as the watch page renders it. `originalViewCount`
+#: is the raw number; the visible runs beside it are "127" and " watching now",
+#: and the second of those changes shape between a live and a finished stream.
+_RE_VIEWER_COUNT = re.compile(r'"originalViewCount":"(\d+)"')
 
 
 def _resolve_video_id(raw: str) -> str | None:
@@ -89,6 +102,11 @@ class YouTubeLiveAdapter(EventAdapter):
     #: is retried rather than treated as terminal on the first attempt.
     _MAX_CREATE_FAILURES = 3
 
+    #: How often the watch page is read for a viewer count. The page is a full
+    #: HTML document, so this is minutes rather than seconds; YouTube updates the
+    #: number on the same order anyway.
+    _VIEWER_POLL_SECONDS = 60
+
     def __init__(self, video_id: str, room_id: str) -> None:
         self.video_id = _resolve_video_id(video_id)
         self.room_id = room_id
@@ -97,8 +115,9 @@ class YouTubeLiveAdapter(EventAdapter):
         self._running = False
         self._connected = False
         self._task: asyncio.Task | None = None
+        self._viewer_task: asyncio.Task | None = None
         self._events: asyncio.Queue[Event | _Stop] = asyncio.Queue()
-        self._last_viewers = 0
+        self._last_viewers: int | None = None
 
     # ------------------------------------------------------------------
     # EventAdapter protocol
@@ -127,6 +146,9 @@ class YouTubeLiveAdapter(EventAdapter):
         self._running = True
         self._connected = False
         self._task = asyncio.create_task(self._run_loop(pytchat))
+        # Separate task, separate cadence: the viewer count comes from the watch
+        # page, not the chat API, and fetches a whole document each time.
+        self._viewer_task = asyncio.create_task(self._poll_viewers())
         return True
 
     def stop(self) -> None:
@@ -152,6 +174,12 @@ class YouTubeLiveAdapter(EventAdapter):
         self._running = False
         # Wake any consumer parked in `get()` so observe() ends.
         self._events.put_nowait(_STOP)
+        if self._viewer_task is not None:
+            # Cancelled rather than awaited: it sleeps for a minute between reads
+            # and waiting that out on a disconnect would hang the route for the
+            # remainder of the interval.
+            self._viewer_task.cancel()
+            self._viewer_task = None
         if self._task is not None:
             try:
                 await asyncio.wait_for(self._task, timeout=5)
@@ -188,8 +216,66 @@ class YouTubeLiveAdapter(EventAdapter):
         return {
             "connected": True,
             "message": "connected",
+            # `None`, not 0, when no headcount has been read yet. A widget that
+            # prints "0 watching" on a stream with 127 people reads as broken, and
+            # the two states are not the same thing: one means nobody is here, the
+            # other means we have not looked.
             "viewers": self._last_viewers,
         }
+
+    async def _poll_viewers(self) -> None:
+        """Read the live viewer count off the watch page, every so often.
+
+        The chat API does not carry it — measured against a live stream, the
+        header has an overflow menu, a view selector and a leaderboard entry
+        point, and no count anywhere in the response. The number is on the watch
+        page as `videoViewCountRenderer.originalViewCount`, which while a stream
+        is live is the concurrent viewer count.
+
+        A separate loop rather than part of the poll because the page fetch is a
+        full HTML document (~1 MB) and the chat polls every few seconds; doing
+        this at the chat's cadence would be a megabyte per poll for one integer.
+        """
+        while self._running:
+            try:
+                count = await asyncio.to_thread(self._fetch_viewers)
+                if count is not None:
+                    self._last_viewers = count
+                    # Pushed as a VIEWERS event, the same kind TikTok emits from
+                    # its own headcount — the overlay reads it, the event log
+                    # counts it, and nothing downstream has to know which
+                    # platform produced it.
+                    await self._events.put(Event(kind=VIEWERS, meta={"count": count}))
+            except Exception as exc:
+                logger.debug("YouTube: viewer count unavailable for %s: %s", self.video_id, exc)
+            await asyncio.sleep(self._VIEWER_POLL_SECONDS)
+
+    def _fetch_viewers(self) -> int | None:
+        """The concurrent viewer count, or None if the page does not say.
+
+        Blocking; called through `to_thread`. Returns None rather than 0 for
+        "could not read it" — see `status_payload`.
+        """
+        import httpx
+
+        try:
+            resp = httpx.get(
+                f"https://www.youtube.com/watch?v={self.video_id}",
+                headers={"user-agent": _UA},
+                timeout=20,
+                follow_redirects=True,
+            )
+        except httpx.HTTPError:
+            return None
+        if resp.status_code != 200:
+            return None
+        match = _RE_VIEWER_COUNT.search(resp.text)
+        if not match:
+            return None
+        try:
+            return int(match.group(1).replace(",", ""))
+        except ValueError:
+            return None
 
     # ------------------------------------------------------------------
     # the pytchat loop
@@ -212,6 +298,7 @@ class YouTubeLiveAdapter(EventAdapter):
         """
         self._connected = False
         create_failures = 0
+        session_failures = 0
 
         while self._running:
             try:
@@ -264,6 +351,18 @@ class YouTubeLiveAdapter(EventAdapter):
                         await asyncio.sleep(min(2 ** poll_failures, 15))
                         continue
 
+                    # pytchat swallows the server's own rejection: `get()` hands
+                    # back an empty list and `is_alive()` keeps saying True, so a
+                    # session YouTube is refusing looks exactly like a quiet
+                    # chat. Measured on a stream whose chat was rejected — the
+                    # adapter reconnected every five seconds forever, and the
+                    # room never left "connecting". `raise_for_status` is the only
+                    # place pytchat surfaces it.
+                    try:
+                        await asyncio.to_thread(chat.raise_for_status)
+                    except Exception as exc:
+                        raise RuntimeError(f"chat session rejected: {exc}") from exc
+
                     for item in items:
                         event = self._normalise(item)
                         if event is not None:
@@ -273,6 +372,19 @@ class YouTubeLiveAdapter(EventAdapter):
                     await asyncio.sleep(0.05)
             except Exception as exc:
                 logger.warning("YouTube: session for %s ended: %s", self.video_id, exc)
+                # A rejection is not a blip to retry — the token YouTube refused
+                # will be refused again on the next attempt, and retrying it in a
+                # tight loop is how the room sat in "connecting" forever. Counted
+                # like a create failure so the same budget ends it.
+                session_failures += 1
+                if session_failures >= self._MAX_CREATE_FAILURES:
+                    logger.error(
+                        "YouTube: giving up on %s after %d failed sessions",
+                        self.video_id, session_failures,
+                    )
+                    break
+            else:
+                session_failures = 0
             finally:
                 try:
                     chat.terminate()

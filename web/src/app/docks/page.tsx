@@ -56,6 +56,16 @@ export default function DocksPage() {
   const [error, setError] = useState('')
   const [loaded, setLoaded] = useState(false)
   const [rooms, setRooms] = useState<Array<{ id: string; username: string; name: string; connected: boolean }>>([])
+
+  // Read room id from URL. This was here from the first docks commit and got
+  // dropped in c472374 ("works without ?room=") — the replacement only handled
+  // the no-room case, so every link carrying ?room=<id> opened on "Not connected"
+  // and never opened a socket. The room list below still covers the no-room case.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const id = params.get('room') || ''
+    setRoomId(id)
+  }, [])
   const wsRef = useRef<WebSocket | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const feedContainerRef = useRef<HTMLDivElement>(null)
@@ -307,36 +317,40 @@ export default function DocksPage() {
     setNewCount(0)
   }
 
-  // No room selected and multiple (or zero) rooms: show a picker so the
-  // operator can choose one without editing the URL.
+  // No room in the URL and nothing to auto-select. This is an OBS browser
+  // source, so there is no one here to fill a form in: it says what is missing
+  // and stops. Connecting happens on the web app, which is where a person is.
   if (!roomId && rooms.length !== 1) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 bg-zinc-900 p-4 text-zinc-400">
-        {rooms.length === 0 ? (
-          <p className="text-center text-sm">No streams yet — add one in the dashboard.</p>
-        ) : (
-          <>
-            <p className="text-center text-sm">Select a stream</p>
-            <select
-              aria-label="Select room"
-              onChange={(e) => {
-                const next = e.target.value
-                if (!next) return
-                setRoomId(next)
-                const url = new URL(window.location.href)
-                url.searchParams.set('room', next)
-                window.history.replaceState({}, '', url.toString())
-              }}
-              className="max-w-64 rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-200 focus:border-zinc-500"
-            >
-              <option value="">Choose…</option>
-              {rooms.map((room) => (
-                <option key={room.id} value={room.id}>
-                  {room.username ? `@${room.username}` : room.name || room.id.slice(0, 8)}
-                </option>
-              ))}
-            </select>
-          </>
+        <p className="text-center text-sm">
+          No stream selected. Add <code className="text-zinc-300">?room=&lt;id&gt;</code> to this
+          URL, or connect one at{' '}
+          <a href="/app" className="text-zinc-200 underline">
+            /app
+          </a>
+          .
+        </p>
+        {rooms.length > 0 && (
+          <select
+            aria-label="Select room"
+            onChange={(e) => {
+              const next = e.target.value
+              if (!next) return
+              setRoomId(next)
+              const url = new URL(window.location.href)
+              url.searchParams.set('room', next)
+              window.history.replaceState({}, '', url.toString())
+            }}
+            className="max-w-64 rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-200 focus:border-zinc-500"
+          >
+            <option value="">Choose…</option>
+            {rooms.map((room) => (
+              <option key={room.id} value={room.id}>
+                {room.username ? `@${room.username}` : room.name || room.id.slice(0, 8)}
+              </option>
+            ))}
+          </select>
         )}
       </div>
     )
