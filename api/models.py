@@ -15,6 +15,9 @@ class ConnectRequest(BaseModel):
     # editor's Stop button silently doing nothing. /api/connect validates it.
     username: str = ""
     room_id: str | None = None
+    #: Which platform to connect. "tiktok" (default) or "youtube".
+    #: For YouTube, `username` is a video id / URL / channel handle.
+    provider: str = "tiktok"
 
 
 class CreateRoomRequest(BaseModel):
@@ -51,6 +54,8 @@ class ConnectByUsernameRequest(BaseModel):
     # still parses the full dict first (there is no depth/size limit on a
     # plain dict[str, Any]), but the parse result is thrown away.
     overlay: dict[str, Any] | None = None
+    #: Platform to connect: "tiktok" (default) or "youtube".
+    provider: str = "tiktok"
 
 
 #: The overlay keys the app may store on a room, and nothing else. A connect body

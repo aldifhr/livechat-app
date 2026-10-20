@@ -109,6 +109,7 @@ def create_room(name: str, config: dict[str, Any]) -> dict[str, Any]:
     record = {
         "name": name,
         "username": "",
+        "provider": "",
         "config": config,
         "createdAt": time.time(),
     }
@@ -123,6 +124,7 @@ def update_room(
     *,
     name: str | None = None,
     username: str | None = None,
+    provider: str | None = None,
 ) -> dict[str, Any] | None:
     with _lock:
         record = _record(room_id)
@@ -132,9 +134,14 @@ def update_room(
             record["name"] = name
         if username is not None:
             record["username"] = username
+        if provider is not None:
+            record["provider"] = provider
         _flush()
         return copy.deepcopy(record)
 
+
+async def provider_of_async(room_id: str) -> str:
+    return await asyncio.to_thread(provider_of, room_id)
 
 def delete_room(room_id: str) -> bool:
     with _lock:
@@ -159,6 +166,19 @@ def username_of(room_id: str) -> str:
     with _lock:
         record = _record(room_id)
         return str(record.get("username", "")) if record else ""
+
+
+def provider_of(room_id: str) -> str:
+    """The platform this room connects to: "tiktok" or "youtube".
+
+    Defaults to "tiktok" — rooms saved before this field existed have none, and
+    TikTok is the only source they could ever have used.
+    """
+    with _lock:
+        record = _record(room_id)
+        if record is None:
+            return ""
+        return str(record.get("provider", "") or "tiktok")
 
 
 def find_room_by_username(username: str) -> dict[str, Any] | None:

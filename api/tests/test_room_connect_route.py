@@ -50,7 +50,7 @@ def check(name: str, ok: bool, extra: object = "") -> bool:
 calls: list[tuple[str, str]] = []
 
 
-async def fake_connect(room_id: str, username: str) -> dict:
+async def fake_connect(room_id: str, username: str, provider: str = "tiktok") -> dict:
     calls.append((room_id, username))
     return {"status": "connecting", "room_id": room_id, "username": username}
 

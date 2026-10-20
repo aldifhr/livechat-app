@@ -94,6 +94,12 @@ def main_run():
         async def stop(self):
             started["stopped"] = True
 
+        async def disconnect(self):
+            started["stopped"] = True
+
+        def is_connected(self):
+            return False
+
         def status_payload(self):
             return {"connected": False}
 

@@ -42,7 +42,7 @@ def check(label, cond, detail=""):
 calls: list[tuple[str, str]] = []
 
 
-async def fake_connect(room_id: str, username: str) -> dict:
+async def fake_connect(room_id: str, username: str, provider: str = "tiktok") -> dict:
     # Async because `restore_sources` awaits it. A synchronous fake failed with
     # "object dict can't be used in 'await' expression" on every call, which made
     # the "one room failing" case pass for the wrong reason — the healthy rooms
@@ -109,7 +109,7 @@ with_rooms({
 })
 
 
-async def half_broken(room_id: str, username: str) -> dict:
+async def half_broken(room_id: str, username: str, provider: str = "tiktok") -> dict:
     calls.append((room_id, username))
     if room_id == "ov-bad":
         raise RuntimeError("TikTok refused the connection")

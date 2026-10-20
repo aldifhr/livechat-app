@@ -16,3 +16,8 @@ pydantic==2.14.0
 # and the difference is invisible in a log file until somebody greps for a field
 # that is not there. It was installed but never listed.
 python-json-logger==4.2.0
+# YouTube Live source. Installed from the local fork (`pytchatV2`) rather than
+# PyPI: upstream 0.5.5 generates chat continuations with a protobuf YouTube no
+# longer accepts and returns zero items without an error. The fork scrapes the
+# page's own token instead. See `sources/youtube.py`.
+pytchat==0.6.0

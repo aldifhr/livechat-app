@@ -70,6 +70,12 @@ def main_run():
         async def stop(self):
             self._running = False
 
+        async def disconnect(self):
+            self._running = False
+
+        def is_connected(self):
+            return not self._running
+
         def status_payload(self):
             return {"connected": False, "connecting": True}
 

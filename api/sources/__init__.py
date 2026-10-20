@@ -7,5 +7,6 @@ block (delivery is queued per client inside `hub`).
 """
 
 from sources.tiktok import TikTokAdapter
+from sources.youtube import YouTubeLiveAdapter
 
-__all__ = ["TikTokAdapter"]
+__all__ = ["TikTokAdapter", "YouTubeLiveAdapter"]

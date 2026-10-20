@@ -83,7 +83,8 @@ async def room_connect(room_id: str):
             status_code=409,
             detail="room has no username configured; set one in the editor",
         )
-    return await _connect_room(room_id, username)
+    provider = (await store.provider_of_async(room_id)) or "tiktok"
+    return await _connect_room(room_id, username, provider=provider)
 
 
 @router.post("/api/connect")
@@ -94,7 +95,7 @@ async def connect(req: ConnectRequest):
     username = req.username.strip().lstrip("@")
     if not username:
         raise HTTPException(status_code=400, detail="username is required")
-    return await _connect_room(room_id, username)
+    return await _connect_room(room_id, username, provider=req.provider)
 
 
 @router.post("/api/room-connect-by-username")
@@ -133,15 +134,16 @@ async def room_connect_by_username(req: ConnectByUsernameRequest):
 
     room_id = record["id"]
 
-    # Remember overlay styling on a room this route just invented. Existing
-    # rooms keep their prior config — this route is unauthenticated, so
+    # Remember overlay styling and provider on a room this route just invented.
+    # Existing rooms keep their prior config — this route is unauthenticated, so
     # restyling someone else's room by id would be an unauthenticated write.
     overlay = _clean_overlay(req.overlay) if req.overlay else {}
-    if created and overlay:
+    if created:
         existing = record.get("config") or {}
-        await store.set_config_async(room_id, {**existing, **overlay})
+        patch = {**existing, **overlay, "provider": req.provider}
+        await store.set_config_async(room_id, patch)
 
-    result = await _connect_room(room_id, username)
+    result = await _connect_room(room_id, username, provider=req.provider)
     return {"room_id": room_id, **result}
 
 
