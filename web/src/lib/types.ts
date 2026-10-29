@@ -18,9 +18,9 @@ export interface Room {
 }
 
 /** The platforms a room can read. One string in two places: the request and the
- *  room record. `tiktok` is the default so every room and every stored config
- *  written before YouTube existed keeps meaning what it meant. */
-export type StreamProvider = 'tiktok' | 'youtube'
+ *  room record. `tiktok` is the only platform served; the type stays a union so
+ *  a room record carrying a retired value does not fail to type-check. */
+export type StreamProvider = 'tiktok'
 
 export interface RoomStatus {
   connected: boolean

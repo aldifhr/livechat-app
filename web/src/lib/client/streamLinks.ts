@@ -6,11 +6,9 @@
  * it. Spelling the shape out in more than one place is more than one place to
  * change when it changes.
  *
- * Since the platform consoles arrived there are two trees, and a stream belongs
- * to the one for its own platform: `/app/tiktok/stream/@handle` for a TikTok
- * room, `/app/youtube/stream/@handle` for a YouTube one. `/admin` still has the
- * same pages and still works — it is the console that shows every platform at
- * once — so both shapes have to be buildable from here.
+ * A stream lives under its platform console: `/app/tiktok/stream/@handle`.
+ * `/admin` still has the same pages and still works — it is the console that
+ * shows the whole list — so both shapes have to be buildable from here.
  */
 
 import { api } from './api'

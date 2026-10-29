@@ -15,8 +15,7 @@ class ConnectRequest(BaseModel):
     # editor's Stop button silently doing nothing. /api/connect validates it.
     username: str = ""
     room_id: str | None = None
-    #: Which platform to connect. "tiktok" (default) or "youtube".
-    #: For YouTube, `username` is a video id / URL / channel handle.
+    #: Which platform to connect. Only "tiktok" is served.
     provider: str = "tiktok"
 
 
@@ -54,7 +53,7 @@ class ConnectByUsernameRequest(BaseModel):
     # still parses the full dict first (there is no depth/size limit on a
     # plain dict[str, Any]), but the parse result is thrown away.
     overlay: dict[str, Any] | None = None
-    #: Platform to connect: "tiktok" (default) or "youtube".
+    #: Platform to connect. Only "tiktok" is served.
     provider: str = "tiktok"
 
 

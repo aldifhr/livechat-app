@@ -20,7 +20,6 @@ const POLL_MS = 15_000
 
 const LABELS: Record<StreamProvider, string> = {
   tiktok: 'TikTok',
-  youtube: 'YouTube',
 }
 
 /**

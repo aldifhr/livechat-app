@@ -211,8 +211,8 @@ async def analytics(request: Request, provider: str = "") -> dict[str, Any]:
     is a ceiling on what can be reported, not an approximation added for
     convenience, and the page says so where it draws them.
     """
-    if provider and provider not in ("tiktok", "youtube"):
-        raise HTTPException(status_code=400, detail="provider must be 'tiktok' or 'youtube'")
+    if provider and provider != "tiktok":
+        raise HTTPException(status_code=400, detail="provider must be 'tiktok'")
     if not _state["token_is_valid"](request):
         raise HTTPException(status_code=401, detail=TOKEN_REJECTED_DETAIL)
     rooms = await store.all_rooms_async()

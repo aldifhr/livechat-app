@@ -25,7 +25,7 @@ import { useOrigin } from '@/hooks/useBrowser'
 import { usePoll } from '@/hooks/usePoll'
 import { useConnectionWatch } from '@/hooks/useConnectionWatch'
 import { profilePath } from '../lib/client/streamLinks'
-import type { Room, RoomStatus, StreamProvider } from '../lib/types'
+import type { Room, RoomStatus } from '../lib/types'
 import RoomStateBadge from '../components/RoomStateBadge'
 import { useToast } from '../components/Toast'
 
@@ -45,12 +45,10 @@ function StreamRow({ room, status }: { room: Room; status: RoomStatus | undefine
         href={profilePath(room.username, room.id, room.provider)}
       >
         <span className="stream-row-name">
-          {/* Every row carries its platform. A YouTube room's `username` is a
-              video id, and `@xgzRSS31nu4` reads as a handle that does not exist;
-              a TikTok row without a label is no better once YouTube rows in the
-              same list have one. Absent means TikTok: rooms created before the
-              field existed are all TikTok. */}
-          <span className="faint">{room.provider === 'youtube' ? 'YouTube' : 'TikTok'} · </span>
+          {/* Every row carries its platform label. Absent means TikTok: rooms
+              created before the field existed are all TikTok, and it is the only
+              platform served. */}
+          <span className="faint">TikTok · </span>
           @{room.username || 'no handle'}
           <RoomStateBadge status={status} />
         </span>
@@ -71,15 +69,13 @@ function StreamRow({ room, status }: { room: Room; status: RoomStatus | undefine
 }
 
 /** What the page shows before there is anything to show. */
-function GettingStarted({ provider }: { provider: StreamProvider }) {
+function GettingStarted() {
   return (
     <div className="panel getting-started">
       <h3>Nothing is connected yet</h3>
       <ol className="steps">
         <li>
-          <strong>
-            Connect a {provider === 'youtube' ? 'YouTube video id or link' : 'TikTok username'}.
-          </strong>{' '}
+          <strong>Connect a TikTok username.</strong>{' '}
           StreamKit starts watching it straight away — a stream that is not live yet is fine, it
           connects when it goes live.
         </li>
@@ -96,14 +92,11 @@ function GettingStarted({ provider }: { provider: StreamProvider }) {
   )
 }
 
-export default function Streams({ provider: scoped }: { provider?: StreamProvider }) {
+export default function Streams() {
   const [rooms, setRooms] = useState<Room[]>([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [newHandle, setNewHandle] = useState('')
-  // A platform-scoped Streams locks to that platform; the admin Streams offers the
-  // choice, because there it is the whole list.
-  const [provider, setProvider] = useState<StreamProvider>(scoped ?? 'tiktok')
   // The whole status, not `connected`. The backend distinguishes connecting,
   // waiting and live-ended from offline, and a row that kept only the boolean
   // rendered all four as "offline" — including the seconds straight after a
@@ -123,16 +116,14 @@ export default function Streams({ provider: scoped }: { provider?: StreamProvide
   const load = useCallback(async () => {
     try {
       const { rooms: found } = await api.rooms()
-      setRooms(
-        scoped ? found.filter((room) => (room.provider ?? 'tiktok') === scoped) : found,
-      )
+      setRooms(found)
       setError('')
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'The stream list could not be loaded')
     } finally {
       setLoaded(true)
     }
-  }, [scoped])
+  }, [])
 
   usePoll(load, POLL_MS)
 
@@ -191,7 +182,7 @@ export default function Streams({ provider: scoped }: { provider?: StreamProvide
     if (handle === '') return
     setBusy(true)
     try {
-      const answer = await api.connectHandle(handle, provider)
+      const answer = await api.connectHandle(handle, 'tiktok')
       setNewHandle('')
       setError('')
       // What the request actually said. `connecting` is the normal answer for a
@@ -234,7 +225,7 @@ export default function Streams({ provider: scoped }: { provider?: StreamProvide
         <div>
           <h2>Streams</h2>
           <p className="muted">
-            Connect a TikTok username or a YouTube video, style its overlay, then copy a
+            Connect a TikTok username, style its overlay, then copy a
             browser source link into OBS.
           </p>
           {/* The origin is on every one of this page's links and is the same on all
@@ -257,26 +248,12 @@ export default function Streams({ provider: scoped }: { provider?: StreamProvide
         <div className="row">
           <input
             className="grow"
-            placeholder={
-              provider === 'youtube'
-                ? 'YouTube video id or URL — e.g. xgzRSS31nu4'
-                : 'TikTok username — with or without the @'
-            }
+            placeholder="TikTok username — with or without the @"
             value={newHandle}
             onChange={(event) => setNewHandle(event.target.value)}
             onKeyDown={(event) => event.key === 'Enter' && void connect()}
-            aria-label={provider === 'youtube' ? 'YouTube video id or URL' : 'TikTok username'}
+            aria-label="TikTok username"
           />
-          {!scoped && (
-            <select
-              value={provider}
-              onChange={(event) => setProvider(event.target.value as StreamProvider)}
-              aria-label="Stream platform"
-            >
-              <option value="tiktok">TikTok</option>
-              <option value="youtube">YouTube</option>
-            </select>
-          )}
           <button
             className="primary"
             onClick={() => void connect()}
@@ -291,7 +268,7 @@ export default function Streams({ provider: scoped }: { provider?: StreamProvide
       </div>
 
       {loaded && rooms.length === 0 ? (
-        <GettingStarted provider={provider} />
+        <GettingStarted />
       ) : (
         <ul className="stream-list">
           {rooms.map((room) => (

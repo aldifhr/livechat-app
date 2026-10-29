@@ -35,7 +35,7 @@ const SECTIONS = {
 } as const
 
 /** The platform a `/app/<platform>/...` address belongs to, if it is one. */
-const PLATFORMS = ['tiktok', 'youtube'] as const
+const PLATFORMS = ['tiktok'] as const
 
 export default function Sidebar() {
   const pathname = usePathname()
