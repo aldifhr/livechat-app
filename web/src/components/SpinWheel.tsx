@@ -5,10 +5,10 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 're
 /**
  * The spin wheel, drawn on a canvas.
  *
- * The desktop app used `ts-spin-wheel`; that package peer-depends on React 17/18
- * and ships a UMD bundle, which fights React 19 and SSR. The wheel here is the
- * same idea with no dependency: sectors are painted once, the canvas is rotated
- * with a CSS transition, and `spin(index)` aims it at one sector.
+ * The wheel is the same idea the desktop app's `ts-spin-wheel` implemented, with
+ * no dependency: that package peer-depends on React 17/18 and ships a UMD
+ * bundle, which fights React 19 and SSR. Sectors are painted once, the canvas is
+ * rotated with a CSS transition, and `spin(index)` aims it at one sector.
  *
  * It is decoration. The winner is derived from the committed seed before the wheel
  * moves — the stopping sector is aimed at that winner so the two agree, but nothing

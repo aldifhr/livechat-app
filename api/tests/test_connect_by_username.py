@@ -1,15 +1,16 @@
 """Connect by handle alone: no room to make first, no token to hold.
 
-The desktop app's whole flow is one field — type a handle, watch the chat. That
-needed a route that creates the room it needs, because `POST /api/rooms` sits
-behind the write token and the app deliberately does not carry one: a token
-embedded in a shipped binary is extractable and grants full write access.
+An overlay page's whole flow is one field — a handle, and it watches the chat.
+That needed a route that creates the room it needs, because `POST /api/rooms`
+sits behind the write token and a browser source deliberately does not carry
+one: a token in a page served to OBS is extractable and grants full write
+access.
 
 The cost of the exemption is that this is an open proxy for "connect to any
 handle". These assert the three things that bound it — the handle has to be
 shaped like a handle, one room per handle, and existing rooms are reused rather
 than duplicated — plus that the route really is reachable without a token, since
-the whole point is that the app has none.
+the whole point is that the caller has none.
 """
 
 import os

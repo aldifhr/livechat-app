@@ -82,7 +82,7 @@ export default function GiveawaysPage() {
       ) : snapshots.length === 0 ? (
         <div className="panel">
           <p className="muted">
-            No snapshots yet. Publish one from the desktop app after a giveaway draw.
+            No snapshots yet. Publish one from a stream's giveaway page after a draw.
           </p>
         </div>
       ) : (

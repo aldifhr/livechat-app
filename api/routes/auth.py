@@ -61,21 +61,21 @@ def token_is_valid(request: Request) -> bool:
     )
 
 
-#: The write routes the desktop app needs. It sends no token: the handle is the
-#: whole ask, and a token in the app binary would be extractable and would grant
-#: full write access to every other route besides these two. Matched per path
-#: segment rather than as a prefix: a plain `startswith` also exempted anything
-#: that merely began with those characters, which would arrive one refactor
-#: later with no auth and no diff on this line.
+#: The write routes an overlay page needs. It sends no token: the handle is the
+#: whole ask, and a token in a page served to OBS would be extractable and would
+#: grant full write access to every other route besides these two. Matched per
+#: path segment rather than as a prefix: a plain `startswith` also exempted
+#: anything that merely began with those characters, which would arrive one
+#: refactor later with no auth and no diff on this line.
 #:
 #: Both are safe because neither lets the caller choose the destination beyond
 #: the handle: `room-connect/{id}` reads its username from the stored room, and
 #: `room-connect-by-username` creates or reuses the room for the handle given.
 #:
 #: `/api/giveaways/snapshots` was here and is not any more. It was exempt on the
-#: theory that the desktop app has no credential — but the app publishes through
+#: theory that the desktop app had no credential — but the app published through
 #: the dashboard's own route, which holds the token and forwards it, so nothing
-#: that works needed the exemption. What it bought was an unauthenticated write
+#: that worked needed the exemption. What it bought was an unauthenticated write
 #: that could fill the 1,000-snapshot cap (~2 GB at 2 MB each) and lock real
 #: publishing out, straight at the backend, past the dashboard's origin check and
 #: its rate limit — both of which live in front of the backend and are reachable
@@ -117,10 +117,9 @@ def is_exempt_write_path(path: str) -> bool:
 #:
 #: The overlay pages never call these. An overlay opens a WebSocket and, for a
 #: bare handle, POSTs to the exempt connect route; it never reads the room list.
-#: The dashboard reaches them through its Next proxy, which holds the token, and
-#: the desktop app talks to the backend for `/api/room-connect` alone. So gating
-#: them costs no working caller anything, and it closes a list of every streamer
-#: and their overlay settings to anyone who finds the host.
+#: The dashboard reaches them through its Next proxy, which holds the token. So
+#: gating them costs no working caller anything, and it closes a list of every
+#: streamer and their overlay settings to anyone who finds the host.
 #:
 #: `/health` and `/metrics` are deliberately NOT here: an orchestrator probes them
 #: without a credential. `/health` no longer carries the per-room map to an

@@ -1,9 +1,9 @@
 # Every suite in the repo, on every push.
 #
 # There was no CI at all, which made "everything is green" a claim about whoever
-# last remembered to run it. Four parts build from four directories with four
-# different toolchains and no root manifest between them, so they are four jobs:
-# one failure should not hide the other three, and each is a few minutes rather
+# last remembered to run it. Three parts build from three directories with three
+# different toolchains and no root manifest between them, so they are three jobs:
+# one failure should not hide the other two, and each is a few minutes rather
 # than one queue behind a Tauri build.
 #
 # What is NOT here, and why:
@@ -12,9 +12,10 @@
 #     cannot reach `api/config/rooms.json`.
 #   - Any secret. Nothing in any suite reads one; the token gates are exercised
 #     by setting `STREAMKIT_TOKEN` in the test's own env.
-#   - A build of the installer. `tauri build` needs a signing identity and a
-#     bundler per platform, and a green test run says nothing about whether that
-#     worked. Releases stay a deliberate, human action.
+#   - A build of the installer. Releases stay a deliberate, human action.
+#
+# The desktop app and its Rust crate were removed; the two jobs that built them
+# went with them. `shared/` stayed, because the dashboard imports it.
 
 name: ci
 
@@ -24,60 +25,12 @@ on:
   pull_request:
 
 # A new push to the same branch cancels the run it supersedes, so a branch with
-# five commits does not queue five full Rust builds behind each other.
+# five commits does not queue five full builds behind each other.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  desktop:
-    name: desktop app (typescript)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: desktop
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: desktop/package-lock.json
-      - run: npm ci
-      # `npm test` is typecheck plus every suite, so a type error fails here
-      # before any of them run rather than after.
-      - run: npm test
-
-  rust:
-    name: desktop app (rust)
-    runs-on: ubuntu-22.04
-    defaults:
-      run:
-        working-directory: desktop/src-tauri
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: desktop/src-tauri
-      # Tauri's build script links against these through pkg-config, so the
-      # crate will not compile without them even though no test touches a window.
-      # `libwebkit2gtk-4.1` is the Tauri v2 split from the 4.0 that Ubuntu 20.04
-      # shipped; on 22.04 the name and the version are both right.
-      - name: system libraries tauri links against
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf
-      - run: cargo test
-      # Warnings are not failures here, but an unused import is almost always a
-      # half-finished edit, and the changelog records several being cleaned up by
-      # hand. Printed, not denied, so a new warning is visible without blocking.
-      - run: cargo build 2>&1 | grep -E "^warning" || true
-
   web:
     name: dashboard
     runs-on: ubuntu-latest

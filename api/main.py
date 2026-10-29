@@ -234,8 +234,8 @@ async def guard_mutations(request: Request, call_next):
 # The list is explicit rather than "*". The only browser that talks to this API
 # cross-origin is an overlay page: it is served from the frontend host and posts
 # a handle to /api/room-connect-by-username to resolve it. Everything else
-# reaches the backend server-side — the dashboard through its Next proxy, the
-# desktop app through native Rust HTTP — so neither needs a CORS grant at all.
+# reaches the backend server-side — the dashboard through its Next proxy — so
+# nothing else needs a CORS grant at all.
 # A wildcard would also let any page on the internet read this API's responses
 # from a victim's browser, which is a permission nothing here asks for.
 #

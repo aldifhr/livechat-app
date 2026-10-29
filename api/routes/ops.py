@@ -43,9 +43,8 @@ def _health_body(request: Request, *, include_rooms: bool) -> dict[str, Any]:
     """The liveness body, with or without the per-room map.
 
     `/health` withholds the map from an unauthenticated caller because each entry
-    names the streamer's handle; `/health/desktop` always includes it for the
-    desktop app, which cannot send a token. Everything else is identical, so it
-    is built once.
+    names the streamer's handle. Everything else is identical, so it is built
+    once.
     """
     app = request.app
     uptime_s = int(time.time() - getattr(app.state, "started_at", time.time()))
@@ -74,19 +73,6 @@ async def health(request: Request) -> dict[str, Any]:
     endpoint is open. The counts are what a probe acts on and they stay.
     """
     return _health_body(request, include_rooms=_state["token_is_valid"](request))
-
-
-@router.get("/health/desktop")
-async def health_desktop(request: Request) -> dict[str, Any]:
-    """Per-room health for the desktop app, which cannot send a token.
-
-    The desktop app has no credential, so `/health` answers with counts only.
-    It needs to know whether the room it is watching is connected, and how many
-    viewers it has, without holding a secret. This endpoint is open like
-    `/health` — the same reasoning applies: the room map is already visible on
-    the stream itself, and an orchestrator probing it needs the same data.
-    """
-    return _health_body(request, include_rooms=True)
 
 
 @router.get("/metrics")

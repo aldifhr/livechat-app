@@ -95,10 +95,10 @@ def run() -> None:
     room_id = store.create_room("Gift room", {})["id"]
 
     # The route emits through `events.emit`, so the frame is read back off the wire
-    # the same way an overlay or the desktop app reads it — asserting on the
-    # handler's own arguments would only prove the handler agrees with itself. The
-    # event is kept as well, because `diamonds` is a gift field and an alert
-    # deliberately never carries it, so the meta can only be checked from here.
+    # the same way an overlay page reads it — asserting on the handler's own
+    # arguments would only prove the handler agrees with itself. The event is kept
+    # as well, because `diamonds` is a gift field and an alert deliberately never
+    # carries it, so the meta can only be checked from here.
     import events
 
     seen: list[tuple[object, dict]] = []

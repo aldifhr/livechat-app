@@ -10,12 +10,10 @@ node_modules/
 dist/
 .next/
 out/
-desktop/src-tauri/target/
-desktop/src-tauri/gen/
 
-# Credentials are typed into the app at runtime and read from Tauri's config
-# directory, never from here. Ignored anyway so a stray file cannot be committed
-# by accident.
+# Credentials are typed into the app at runtime and read from the server's own
+# environment file, never from here. Ignored anyway so a stray file cannot be
+# committed by accident.
 .env
 .env.*
 

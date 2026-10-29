@@ -6,8 +6,7 @@ import type { OverlayEventFrame } from '@shared/events'
 /**
  * A live room's frames, over the backend's overlay socket.
  *
- * The desktop app reads these from the Rust host; the web has no host, so it opens
- * the same `/ws/overlay/<room>` socket the OBS overlays do. That socket is
+ * Opens the same `/ws/overlay/<room>` socket the OBS overlays do. That socket is
  * unauthenticated and read-only — it carries the room's events and nothing a caller
  * can write — so a dashboard page can listen to it without a credential.
  *

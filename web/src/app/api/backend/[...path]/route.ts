@@ -39,11 +39,10 @@ const ALLOWED = [
   /^\/api\/analytics$/,
   /^\/api\/health$/,
   /^\/api\/metrics$/,
-  // Giveaway snapshots: the desktop app (no credential) POSTs from its
-  // Tauri webview to the dashboard's own /api/giveaways/snapshots route, which
-  // validates and rate-limits it and then forwards here with the token attached
-  // — the backend gates this write like any other. The public snapshot page
-  // reads one by id with no credential at all.
+  // Giveaway snapshots: the dashboard's own /api/giveaways/snapshots route
+  // validates and rate-limits a publish, then forwards it here with the token
+  // attached — the backend gates this write like any other. The public snapshot
+  // page reads one by id with no credential at all.
   /^\/api\/giveaways\/snapshots$/,
   /^\/api\/giveaways\/snapshots\/[A-Za-z0-9_-]{16}$/,
   /^\/api\/rooms\/[0-9a-f-]{36}\/session$/,

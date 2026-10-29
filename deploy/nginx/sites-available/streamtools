@@ -5,13 +5,13 @@
 #   /overlay/             the chat overlay OBS loads
 #   /topchatter/          the leaderboard overlay
 #   /giveaway/<id>        public, read-only giveaway snapshot
-#   /api/giveaways/snapshots  validated desktop-app snapshot upload
+#   /api/giveaways/snapshots  validated snapshot upload
 #   /api/backend/*        proxied to Next, which attaches the backend's token
 #   /ws/                  proxied to the backend on loopback, no credential
 #
 # The backend is reached on 127.0.0.1:8000 and never by its public hostname: it
 # binds loopback, and nginx is its only front door. Everything that has to reach
-# it from outside — the desktop app, an OBS docks page — comes through this vhost
+# it from outside — an OBS docks page, an overlay page — comes through this vhost
 # as well, so the backend's own public listener can be closed to everyone but
 # this host.
 #
@@ -204,8 +204,8 @@ server {
         include snippets/streamtools-next.conf;
     }
 
-    # The desktop app has no dashboard cookie. Its bounded report upload is
-    # validated/rate-limited by Next and forwarded to the token-protected API.
+    # A report upload is validated and rate-limited by Next, then forwarded to
+    # the token-protected API.
     location = /api/giveaways/snapshots {
         include snippets/streamtools-next.conf;
     }

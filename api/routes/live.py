@@ -69,7 +69,7 @@ def normalise_username(raw: str) -> str:
 async def room_connect(room_id: str):
     """Connect the room an room is already configured for, with no login.
 
-    The desktop app connects by handle through /api/room-connect-by-username, so
+    An overlay page connects by handle through /api/room-connect-by-username, so
     this stays for a caller that names a room it does not have a username for —
     the editor, or anything scripting against the backend. /api/connect, which
     takes the username from the request and can therefore aim the global room

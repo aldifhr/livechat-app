@@ -4,6 +4,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
 
 ## [Unreleased]
 
+### Removed
+- **Desktop app (Tauri) dihapus total.** Seluruh `desktop/` — 166 file: React
+  frontend, Rust host (`src-tauri/`), 15 suite `.mjs`, dan 5 script diagnostik.
+  Semua fungsinya sudah ada di dashboard web: overlay pages di-serve nginx dari
+  disk, giveaway runner jalan di `/admin/streams/@handle/giveaway`, dan docks
+  adalah browser source OBS yang sama.
+  - **Yang ikut dibuang, dan alasannya:** `test-overlay-page.mjs` (satu-satunya
+    suite yang memuat HTML overlay ke DOM asli dan mendorong frame lewat socket —
+    bug yang dijaganya adalah *hang*, dan hang tak terlihat oleh regex), dan
+    `desktop/scripts/*.py` + `probe-ui.mjs` (probe WebSocket yang bicara ke
+    backend, bukan ke app). Diputuskan bersih total, bukan diporting.
+  - **`shared/` tetap.** Di-import `web/` lewat alias `@shared` — overlay, events,
+    platforms, giveaway.
+  - **CI:** job `desktop` dan `rust` dibuang. Sisanya tiga: `api`, `web`, dan
+    `shared` (typecheck).
+  - **Route `/health/desktop` dihapus.** Ada hanya untuk app desktop yang tidak
+    bisa mengirim token, dan route itu terbuka sambil membocorkan handle setiap
+    streamer. Tanpa app-nya tidak ada caller yang membutuhkannya.
+  - **Origin allowlist Tauri dibuang.** `giveawayOrigin.ts` kini same-origin
+    saja; handler `OPTIONS` di route commit dan snapshot dihapus karena tidak ada
+    lagi caller cross-origin yang perlu preflight.
+  - Komentar dan docstring yang menyebut desktop sebagai consumer aktif
+    diperbarui di `api/`, `web/`, `shared/`, `deploy/nginx/`, dan overlay HTML.
+
 ### Security
 - **Snapshot giveaway: tulis dan daftar kini lewat token, tautan publik tetap terbuka.**
   Dua lubang di route yang sama, dan keduanya karena asumsi "desktop app tidak

@@ -22,14 +22,14 @@ class SnapshotRequest(BaseModel):
 async def create_giveaway_snapshot(request: SnapshotRequest):
     """Store one published report and mint its public id.
 
-    Token-gated like any other write. The desktop app has no credential, so it
-    publishes through the dashboard's own `/api/giveaways/snapshots` route, which
-    validates the report, rate-limits the caller and forwards this with the token
-    attached. The exemption this route used to carry bought nothing that worked
-    and cost an unauthenticated write straight at the backend: the cap is 1,000
-    snapshots at 2 MB each, so anyone who found the host could fill it and lock
-    real publishing out, and each write rewrites the whole JSON file under the
-    store lock from inside an async handler.
+    Token-gated like any other write. The dashboard's own
+    `/api/giveaways/snapshots` route validates the report, rate-limits the
+    caller and forwards this with the token attached. The exemption this route
+    used to carry bought nothing that worked and cost an unauthenticated write
+    straight at the backend: the cap is 1,000 snapshots at 2 MB each, so anyone
+    who found the host could fill it and lock real publishing out, and each
+    write rewrites the whole JSON file under the store lock from inside an async
+    handler.
     """
     try:
         encoded = json.dumps(request.report, ensure_ascii=False, separators=(",", ":")).encode("utf-8")

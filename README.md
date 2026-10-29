@@ -1,20 +1,14 @@
 # StreamKit
 
-Live chat overlays for streaming, plus a desktop app for watching the chat.
+Live chat overlays for streaming, plus a dashboard for building and running them.
 
-Three parts, each building from its own directory. **The repo root has no
+Two parts, each building from its own directory. **The repo root has no
 manifest** — `npm install` at the root does nothing, and that is deliberate.
 
 | Part | What it is | Stack |
 |---|---|---|
 | `api/` | Live chat API | FastAPI + TikTokLive |
-| `web/` | Dashboard: stream list, per-stream pages, overlay builder | Next.js 16 + React 19 |
-| `desktop/` | Desktop viewer for the operator | Tauri + React |
-
-> **No TikTok process on the user's PC.** The desktop app reads the backend in
-> this repo over `WS /ws/room/{id}` and translates its frames into the shape the
-> UI expects. If the backend is down the app cannot read chat — that is a choice,
-> so run the backend.
+| `web/` | Dashboard: stream list, per-stream pages, overlay builder, giveaway runner | Next.js 16 + React 19 |
 
 ## Layout
 
@@ -22,11 +16,6 @@ manifest** — `npm install` at the root does nothing, and that is deliberate.
 .
 ├── api/              FastAPI. See "Backend" below.
 ├── web/              Next.js dashboard.
-├── desktop/          Tauri desktop app.
-│   ├── src/          React (Vite)
-│   ├── src-tauri/    Rust host: WebSocket client, frame mapper, tray, TTS
-│   ├── test/         13 `.mjs` suites (own runner, not Vitest/Jest)
-│   └── scripts/      Diagnostics: Python WS probes + `probe-ui.mjs`
 ├── shared/           Cross-app TypeScript contracts: overlay, events,
 │                    platforms. Imported via the `@shared` alias.
 ├── deploy/           systemd units + nginx config
@@ -85,19 +74,6 @@ temporary config dir per suite.
 python api/tests/run_all.py
 ```
 
-### Diagnostics
-
-Not tests — utilities that deliberately live outside `tests/` so they are not
-counted as suites.
-
-```bash
-python desktop/scripts/dump_ws_frames.py
-python desktop/scripts/measure_broadcast.py
-python desktop/scripts/probe_live_viewers.py
-python desktop/scripts/validate_live_city.py
-node   desktop/scripts/probe-ui.mjs
-```
-
 ### API
 
 Every write needs the `X-StreamKit-Token` header. So does `GET /api/rooms*` — it
@@ -114,7 +90,7 @@ host. `/health`, `/metrics`, the overlay pages, and the WebSocket stay open.
 | `POST` | `/api/rooms/{id}/config` | token | Save config (replaces, does not merge) |
 | `GET` | `/api/rooms/{id}/status` | token | Connection status |
 | `GET` | `/api/giveaways/snapshots` | token | Snapshot list — the ids, and an id opens a full entrant list |
-| `POST` | `/api/giveaways/snapshots` | token | Publish a report (the desktop app goes through the dashboard's route) |
+| `POST` | `/api/giveaways/snapshots` | token | Publish a report (the dashboard's own route validates and forwards it) |
 | `GET` | `/api/giveaways/snapshots/{id}` | — | One report, by the unguessable id in its shared link |
 | `DELETE` | `/api/giveaways/snapshots/{id}` | token | Unpublish, so the link stops resolving |
 | `POST` | `/api/connect` | token | Connect to a room |
@@ -132,7 +108,7 @@ at all any more. They are static files that nginx serves off the dashboard host
 (see [Overlay](#overlay)); the backend answers 404 for `/overlay/*`.
 | `WS` | `/ws/{client_type}/{id}` | — | Event stream |
 
-`client_type` is `room` (desktop app) or `overlay` (HTML pages). A socket that
+`client_type` is `room` (a dashboard page) or `overlay` (HTML pages). A socket that
 just attached receives a `{"type":"config"}` frame before the status snapshot.
 
 ### Auth
@@ -250,59 +226,6 @@ you.
 | `PRODUCT_NAME` | Wordmark. Default `StreamKit`. |
 | `TAGLINE` | Default `Live chat overlays for streaming.` |
 
-## Desktop app
-
-```bash
-cd desktop
-npm install
-npm run tauri:dev      # development
-npm run tauri:build    # installer
-```
-
-### Tests
-
-```bash
-cd desktop && npm test              # typecheck + 11 suite scripts (15 .mjs files)
-cd desktop/src-tauri && cargo test  # Rust unit tests: frame mapper, TTS, sound
-```
-
-No test framework — plain `.mjs` with a `check()` helper, exiting non-zero on
-failure. `test-ui.mjs` runs the real React components in jsdom with the Tauri
-transport faked.
-
-`test:wire` is the contract between the Rust host (`to_app_event`) and the
-TypeScript app (the `SidecarEvent` union). The two are joined by anything except
-one file: the first writes plain JSON, the second claims its shape with a cast.
-That suite reads both files and compares them.
-
-### Voice
-
-Speech is opt-in, and every setting that reaches it is — the text is sent to a
-voice service to be spoken, which is the price of a neural voice that does not
-sound like a screen reader.
-
-| Setting | What it does |
-|---|---|
-| Read chat aloud | Speaks every incoming message |
-| Say gifts | Announces each gift with the same voice |
-| Say mentions | Speaks the sender when a message names you |
-| Language | The only thing on this service that picks a voice |
-| Reading pace | Slow / Normal / Fast |
-| Volume | 0–100%, applied to the audio locally |
-| ▶ Test the voice | Speaks a sample in the chosen language, and says whether it worked |
-
-Language, pace and volume are one block shown while any of the three toggles is
-on, because they are the same mouth. Chat, gifts and mentions cannot be given
-different voices — they are one `Audio` element, and two would talk over each
-other.
-
-The engine is Google's translate read-aloud endpoint: no key, no account, and one
-voice per language. A `voice=` parameter sent to it is ignored and returns
-byte-identical audio, so there is no voice picker to offer and pitch and random
-voice are not reachable without a different engine. The Tester exists mostly
-because of that: it is the only way to check a setting before a live starts
-rather than during one.
-
 ## Overlay
 
 Four pages, one copy of each, all in `web/public/overlay/`:
@@ -323,7 +246,7 @@ which the backend served with the room's styling baked into the HTML. It was
 not worth having: a browser source cannot depend on a server rendering a page
 for it, the styling it baked was already arriving over the socket, and the two
 copies drifted — the chat pair was nineteen lines apart before this was removed,
-with `test-overlay-page.mjs` reading the stale twin and failing on a feature that
+with the overlay page test reading the stale twin and failing on a feature that
 had already shipped. `api/routes/overlay.py` went with it; `page_config()`
 lives in `api/models.py` now, because the socket is the only thing left that
 needs it.
@@ -359,7 +282,7 @@ nginx holds back part of the surface: `/ws/` and `= /api/room-connect-by-usernam
 are proxied to the backend **outside the gate**, because OBS cannot carry a
 credential and the overlay pages do not need one. Public giveaway snapshot pages
 and their validated upload endpoint are also open so viewers can read shared
-reports and the desktop app can publish them. Other `/api/` routes and dashboard
+reports and the dashboard can publish them. Other `/api/` routes and dashboard
 pages are gated by `auth_request` to `/api/auth/verify`; `/login` is open and
 rate-limited. Overlays are served from disk and never touch the dashboard.
 

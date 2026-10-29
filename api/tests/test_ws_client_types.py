@@ -5,11 +5,11 @@ list it validated against held only `room` and `customizer`. `overlay` — the t
 the overlay pages in `web/public/overlay/` hardcode, and therefore the type every
 OBS browser source and every inline dashboard preview connects as — was not in it,
 so the route closed every real overlay with 1008 and the product was dark.
-
 It shipped green because the coverage was the other way round: every websocket
-suite here opened `/ws/room/`, which is what the desktop app uses, and not one
-opened `/ws/overlay/`. A suite can only catch the client types it exercises, so
-this one exercises all of them, and asserts the refusal of an unknown one.
+suite here opened `/ws/room/`, which is what the desktop app used before it was
+removed, and not one opened `/ws/overlay/`. A suite can only catch the client
+types it exercises, so this one exercises all of them, and asserts the refusal
+of an unknown one.
 
 The caps are asserted here too, because both of them were aimed at the wrong
 thing. The per-room cap read `client_type == ROOM`, so it never applied to the
