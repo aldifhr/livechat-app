@@ -95,7 +95,13 @@ const BACKOFF_MAX_SECS: u64 = 15;
 /// stays in the config file and stays editable — a second backend, or a local one
 /// on `http://127.0.0.1:8000`, is a normal thing to point this at — but a fresh
 /// install already knows where to look.
-pub const DEFAULT_BASE_URL: &str = "https://kit-backend.aldifhr.my.id";
+///
+/// The dashboard host rather than the backend's own. The backend binds loopback
+/// and nginx is its only front door, so the two routes this app uses —
+/// `/api/room-connect-by-username` and `/ws/room/{id}` — are proxied there. Going
+/// through the public edge means the backend itself needs no listener on the
+/// internet at all, which is what lets it be firewalled to this one host.
+pub const DEFAULT_BASE_URL: &str = "https://streamtools.aldifhr.my.id";
 
 /// Where the backend lives and which stream to read.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -147,7 +147,22 @@ async def restore_sources() -> list[str]:
     return restored
 
 
-app = FastAPI(title="StreamKit", lifespan=lifespan)
+#: Whether `/docs`, `/openapi.json` and `/redoc` answer at all.
+#:
+#: They used to answer to anyone, and they map every route — including the ones
+#: the token protects, with their full request and response shapes. That is a
+#: free reconnaissance page bolted onto a deployed API. Off unless a deploy asks
+#: for it with `STREAMKIT_DOCS=true`, which is the local-development case and
+#: nothing else.
+_DOCS = os.environ.get("STREAMKIT_DOCS", "").strip().lower() in {"1", "true", "yes", "on"}
+
+app = FastAPI(
+    title="StreamKit",
+    lifespan=lifespan,
+    docs_url="/docs" if _DOCS else None,
+    openapi_url="/openapi.json" if _DOCS else None,
+    redoc_url="/redoc" if _DOCS else None,
+)
 
 
 # --------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 """Persistent, read-by-link giveaway snapshots."""
 
+import asyncio
 import json
 import os
 import secrets
@@ -98,3 +99,35 @@ def list_snapshots() -> list[dict[str, Any]]:
         ]
     items.sort(key=lambda item: item["createdAt"], reverse=True)
     return items
+
+
+# --------------------------------------------------------------------------
+# async wrappers
+#
+# Every function above takes a `threading.Lock` and does file I/O, and the routes
+# that call them are `async def`. Called directly, that work runs on the event
+# loop: the whole `giveaways.json` is re-serialised on every publish — up to 1,000
+# snapshots at 2 MB each — while every other coroutine in the process waits,
+# including the WebSocket fan-out that keeps overlays alive. A publish would
+# stall live chat for as long as it took to write the file.
+#
+# `store.py` solved the same problem the same way, so the convention is already
+# here: a sync body under the lock, and an `_async` twin that runs it in a worker
+# thread. The routes call the twins.
+# --------------------------------------------------------------------------
+
+
+async def create_snapshot_async(report: dict[str, Any]) -> dict[str, Any]:
+    return await asyncio.to_thread(create_snapshot, report)
+
+
+async def get_snapshot_async(snapshot_id: str) -> dict[str, Any] | None:
+    return await asyncio.to_thread(get_snapshot, snapshot_id)
+
+
+async def delete_snapshot_async(snapshot_id: str) -> bool:
+    return await asyncio.to_thread(delete_snapshot, snapshot_id)
+
+
+async def list_snapshots_async() -> list[dict[str, Any]]:
+    return await asyncio.to_thread(list_snapshots)

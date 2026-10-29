@@ -113,6 +113,10 @@ host. `/health`, `/metrics`, the overlay pages, and the WebSocket stay open.
 | `DELETE` | `/api/rooms/{id}` | token | Delete room |
 | `POST` | `/api/rooms/{id}/config` | token | Save config (replaces, does not merge) |
 | `GET` | `/api/rooms/{id}/status` | token | Connection status |
+| `GET` | `/api/giveaways/snapshots` | token | Snapshot list — the ids, and an id opens a full entrant list |
+| `POST` | `/api/giveaways/snapshots` | token | Publish a report (the desktop app goes through the dashboard's route) |
+| `GET` | `/api/giveaways/snapshots/{id}` | — | One report, by the unguessable id in its shared link |
+| `DELETE` | `/api/giveaways/snapshots/{id}` | token | Unpublish, so the link stops resolving |
 | `POST` | `/api/connect` | token | Connect to a room |
 | `POST` | `/api/room-connect/{id}` | **exempt** | Username from the room's stored config |
 | `POST` | `/api/room-connect-by-username` | **exempt** | Room created on demand from a handle |
@@ -149,7 +153,11 @@ boot that all writes are open.
 The gate decides **by method**, not from a path list: a new mutating route is
 protected from the moment it is added, rather than from the day someone remembers
 to add it. `GET /api/rooms*` is gated too because it leaks the list of handles
-and overlay configs, and no working caller reads it without a credential.
+and overlay configs, and no working caller reads it without a credential. So is
+`GET /api/giveaways/snapshots`: that list is the ids, and an id is the whole
+credential for the report behind it — which names every entrant's TikTok id and
+nickname. Reading one snapshot by id stays open, because that is the shared link
+and a viewer holding it has nothing else.
 
 Two exempt writes:
 
@@ -172,6 +180,9 @@ name (`/api/room-connect-admin`) does not inherit the exemption.
 | `STREAMKIT_CONFIG_DIR` | Where `rooms.json` lives. Default `api/config`. Created automatically. |
 | `STREAMKIT_LOG_LEVEL` | Root log level. Default `INFO`. |
 | `STREAMKIT_ALLOWED_ORIGINS` | CORS allow-list, comma-separated. Defaults to the dashboard origin only. |
+| `STREAMKIT_DOCS` | `true` serves `/docs`, `/openapi.json` and `/redoc`. Off by default — they map every route. |
+| `BACKEND_URL` (dashboard) | Where Next reaches the backend. Defaults to `http://127.0.0.1:8000` — same box, loopback. |
+| `BACKEND_ORIGIN` (dashboard) | Where a *browser* reaches the backend, for the overlay socket. Defaults to the dashboard host, which proxies `/ws/` through. |
 
 ## Dashboard (web/)
 

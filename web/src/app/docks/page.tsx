@@ -172,9 +172,16 @@ export default function DocksPage() {
 
     const params = new URLSearchParams(window.location.search)
     const custom = params.get('ws') || params.get('backend')
+    // This page is served by the dashboard host, and that host proxies /ws/ to
+    // the backend on loopback — so the socket is same-origin by default and the
+    // backend needs no listener on the internet. `?ws=`/`?backend=` still point
+    // it anywhere, for a local backend or a second box.
+    //
+    // The scheme follows the page rather than being fixed to `wss`, so a dev
+    // server on plain http does not ask for a TLS socket it cannot serve.
     const base = custom
       ? custom.replace(/\/+$/, '').replace(/^http/, 'ws')
-      : 'wss://kit-backend.aldifhr.my.id'
+      : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`
     const url = `${base}/ws/overlay/${encodeURIComponent(roomId)}`
 
     function connectWs() {

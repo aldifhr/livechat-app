@@ -4,6 +4,11 @@ A deployed API is public on the network. Without a token anyone could delete a
 stream's rooms, rewrite its config, or post a fake 999-diamond gift. Read and
 stream access stays open on purpose: the room page is loaded by OBS, which
 cannot send a header, and it needs the event stream to render at all.
+
+Two reads are the exception and carry the token like a write does — `/api/rooms*`
+(every streamer's handle and overlay config) and the giveaway snapshot
+collection (every snapshot id, and an id opens a full entrant list). See
+`is_sensitive_read_path`.
 """
 import os
 import secrets
@@ -66,14 +71,18 @@ def token_is_valid(request: Request) -> bool:
 #: Both are safe because neither lets the caller choose the destination beyond
 #: the handle: `room-connect/{id}` reads its username from the stored room, and
 #: `room-connect-by-username` creates or reuses the room for the handle given.
+#:
+#: `/api/giveaways/snapshots` was here and is not any more. It was exempt on the
+#: theory that the desktop app has no credential — but the app publishes through
+#: the dashboard's own route, which holds the token and forwards it, so nothing
+#: that works needed the exemption. What it bought was an unauthenticated write
+#: that could fill the 1,000-snapshot cap (~2 GB at 2 MB each) and lock real
+#: publishing out, straight at the backend, past the dashboard's origin check and
+#: its rate limit — both of which live in front of the backend and are reachable
+#: around by calling the backend directly.
 EXEMPT_WRITE_PATHS = frozenset({
     "/api/room-connect/",
     "/api/room-connect-by-username",
-    # Giveaway snapshots are public by design — the desktop app has no
-    # credential, and the published link is meant to be opened by anyone.
-    # The caller only writes their own report; they cannot read or alter
-    # another snapshot (GET is by id, and the id is unguessable).
-    "/api/giveaways/snapshots",
 })
 
 
@@ -118,8 +127,25 @@ def is_exempt_write_path(path: str) -> bool:
 #: unauthenticated caller (see the handler) — it leaked the handles.
 SENSITIVE_READ_PREFIX = "/api/rooms"
 
+#: Reads gated by exact path rather than by prefix.
+#:
+#: `/api/giveaways/snapshots` is the collection, and it answers with every
+#: stored snapshot's id. That id is the entire credential for the public report
+#: behind it — and the report names every entrant's TikTok id and nickname. So
+#: the list being open defeated the "unguessable link" design on its own: one
+#: unauthenticated GET handed out the ids, and each one opened a full entrant
+#: list. The dashboard lists through its proxy, which holds the token, so gating
+#: the collection costs no working caller anything.
+#:
+#: Exact, deliberately, and not a prefix: `/api/giveaways/snapshots/{id}` is the
+#: read the shared link depends on and must stay open to anyone holding the link.
+#: Only the collection is gated.
+SENSITIVE_READ_EXACT = frozenset({"/api/giveaways/snapshots"})
+
 
 def is_sensitive_read_path(path: str) -> bool:
+    if path in SENSITIVE_READ_EXACT:
+        return True
     return path == SENSITIVE_READ_PREFIX or path.startswith(SENSITIVE_READ_PREFIX + "/")
 
 

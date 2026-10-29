@@ -132,4 +132,29 @@ check('a real room id matches its session pattern', patterns.some((p) => p.test(
 check('the token gate itself is not forwarded', !patterns.some((p) => p.test('/api/rooms?token=x')))
 check('a made-up path is not forwarded', !patterns.some((p) => p.test('/api/secrets')))
 
+// Which reads carry the token. The two giveaway reads are the whole point of
+// this block: the collection answers with every snapshot's id, and an id is the
+// entire credential for the report behind it — which names every entrant's
+// TikTok id and nickname. It used to be forwarded with no credential on both
+// sides, so one unauthenticated GET handed out the ids. Reading one snapshot by
+// id is the opposite case and must stay open: that is the shared link, and a
+// viewer holding it has nothing else.
+function literal(name) {
+  const line = routeSource.split('\n').find((l) => l.startsWith(`const ${name} = /`))
+  if (!line) return null
+  return new RegExp(line.slice(line.indexOf('= ') + 3, line.lastIndexOf('/')))
+}
+
+const SENSITIVE_READ = literal('SENSITIVE_READ')
+const PUBLIC_READ = literal('PUBLIC_READ')
+check('the sensitive-read pattern was found', SENSITIVE_READ !== null)
+check('the public-read pattern was found', PUBLIC_READ !== null)
+
+const SNAPSHOT_LIST = '/api/giveaways/snapshots'
+const SNAPSHOT_ONE = `/api/giveaways/snapshots/${SNAPSHOT_ID}`
+check('the snapshot collection is a sensitive read', SENSITIVE_READ.test(SNAPSHOT_LIST))
+check('and it is not a public read', !PUBLIC_READ.test(SNAPSHOT_LIST))
+check('a snapshot by id is not a sensitive read', !SENSITIVE_READ.test(SNAPSHOT_ONE))
+check('and it is the public read', PUBLIC_READ.test(SNAPSHOT_ONE))
+
 console.log(`\nall checks passed (${passed})`)

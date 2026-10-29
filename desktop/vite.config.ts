@@ -25,8 +25,10 @@ export default defineConfig({
     strictPort: true,
     // Keep local giveaway uploads same-origin in the webview, avoiding browser
     // CORS preflight while forwarding them to the public snapshot endpoint.
-    // The production backend exempts this path from auth, so the desktop app
-    // can publish without a credential.
+    // The dashboard's route validates and rate-limits the upload and forwards it
+    // to the backend with the token attached, so the app needs no credential of
+    // its own — which is the whole reason this goes through the dashboard rather
+    // than at the backend directly.
     proxy: {
       '/api/giveaways/snapshots': {
         target: 'https://streamtools.aldifhr.my.id',

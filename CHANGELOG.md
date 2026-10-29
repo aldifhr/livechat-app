@@ -4,6 +4,58 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
 
 ## [Unreleased]
 
+### Security
+- **Snapshot giveaway: tulis dan daftar kini lewat token, tautan publik tetap terbuka.**
+  Dua lubang di route yang sama, dan keduanya karena asumsi "desktop app tidak
+  punya kredensial".
+  - `POST /api/giveaways/snapshots` dulu **exempt** dari token gate. Padahal app
+    desktop sudah publish lewat route dashboard sendiri (`/api/giveaways/snapshots`
+    di Next), yang memegang token dan meneruskannya — jadi exemption itu tidak
+    melayani satu caller pun yang bekerja. Yang dibelinya: satu write tanpa auth
+    langsung ke backend, melewati origin check dan rate limit dashboard (keduanya
+    ada di depan backend, jadi bisa diakses dari belakang). Cap-nya 1.000 snapshot
+    @ 2 MB, jadi siapa pun yang tahu host bisa mengisinya dan mengunci publish
+    sungguhan.
+  - `GET /api/giveaways/snapshots` (koleksi) tidak pernah digate sama sekali.
+    Dia menjawab dengan **setiap id snapshot** — dan id itu seluruh kredensial untuk
+    laporan di belakangnya, yang menyebut TikTok id dan nickname setiap peserta.
+    Jadi desain "tautan tak-tertebak" dikalahkan oleh satu route yang membagikan
+    id-nya. Sekarang koleksi digate exact-path; baca satu snapshot by id tetap
+    terbuka, karena itu yang dipakai tautan yang dibagikan.
+  - Ditambah `SENSITIVE_READ_EXACT` di `routes/auth.py` — exact, bukan prefix, supaya
+    `/api/giveaways/snapshots/{id}` tidak ikut tergate.
+  - Proxy Next: `SENSITIVE_READ` dapat `giveaways/snapshots$`, `PUBLIC_READ` dipersempit
+    ke bentuk id saja, supaya daftar membawa token dan by-id tidak.
+  - **Setiap write snapshot juga tidak lagi membekukan event loop.** `giveaway_store`
+    melakukan I/O file di bawah `threading.Lock`, dan dipanggil langsung dari handler
+    `async def` — jadi seluruh `giveaways.json` (sampai 1.000 × 2 MB) diserialisasi
+    ulang di loop yang sama sementara WebSocket fan-out menunggu. Kini ada twins
+    `_async` yang jalan di worker thread, konvensi yang sudah dipakai `store.py`.
+  - 12 assertion baru di `test_api.py` + 4 di `test-proxy-allowlist.mjs`.
+
+- **Backend tidak lagi dijangkau lewat hostname publiknya.** uvicorn bind
+  `127.0.0.1:8000` dan nginx ada di box yang sama, tapi nginx mem-proxy ke
+  `https://kit-backend.aldifhr.my.id` — setiap frame chat keluar ke router dan
+  kembali, dan backend terlihat seperti sesuatu yang *harus* ada di internet.
+  Kini `/ws/` dan `= /api/room-connect-by-username` mem-proxy ke loopback, begitu
+  pula `BACKEND_URL` default di Next. `BACKEND_ORIGIN` ditambahkan sebagai konstanta
+  terpisah untuk origin yang dijangkau **browser** (socket overlay, tautan galeri
+  gift) — 127.0.0.1 di browser orang lain adalah mesin mereka sendiri, bukan server
+  ini. Default desktop app dan halaman docks ikut pindah ke host dashboard, yang
+  sudah mem-proxy kedua route itu — sehingga listener publik backend bisa ditutup.
+
+- **Dua route terbuka overlay dapat plafon per-IP.** `/ws/` tanpa auth dengan
+  `room_id` bebas: 40 room id karangan × 5 socket mengisi cap global 200 dan setiap
+  overlay sungguhan ditolak dengan 1013 — siaran blank karena orang lain menjalankan
+  loop. Kini `limit_conn wsconn 20`. `/api/room-connect-by-username` membuat room
+  untuk handle apa pun sampai kuota global 20 auto-room, jadi skrip tidak menghabiskan
+  backend tapi menghabiskan *kuota*-nya; kini `limit_req zone=autoroom rate=2r/s`.
+
+- **`/docs`, `/openapi.json` dan `/redoc` mati oleh default.** Ketiganya menjawab
+  siapa pun dan memetakan setiap route — termasuk yang dijaga token — lengkap dengan
+  bentuk request dan response-nya. Halaman rekognisi gratis di depan API produksi.
+  `STREAMKIT_DOCS=true` menyalakannya kembali untuk development.
+
 ### Added
 - **Favicon untuk dashboard.** Halaman web tidak punya ikon sama sekali: tidak
   ada `public/`, tidak ada `favicon.ico`, dan `metadata` di `layout.tsx` cuma

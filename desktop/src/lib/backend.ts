@@ -16,8 +16,11 @@
  * Mirrors `DEFAULT_BASE_URL` in src-tauri/src/backend.rs. It is written in rather
  * than asked for because it is one address that does not change between users,
  * and it stays editable in Set up for the second-backend and local cases.
+ *
+ * The dashboard host, not the backend's own: the backend binds loopback and nginx
+ * proxies the two routes this app uses, so the backend needs no public listener.
  */
-export const DEFAULT_BASE_URL = 'https://kit-backend.aldifhr.my.id'
+export const DEFAULT_BASE_URL = 'https://streamtools.aldifhr.my.id'
 
 export interface BackendConfig {
   /** Origin, optionally with a path: `https://kit-backend.example`. */
