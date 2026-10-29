@@ -9,8 +9,8 @@ import 'server-only'
  * cookie cannot be valid to one gate and not the other.
  */
 
-import { dashboardUser, passwordFile, sessionSecret } from './config'
-import { passwordHashCached } from './htpasswd'
+import { sessionSecret } from './config'
+import { passwordHash } from './credentials'
 import { sessionKey, verifySession } from './session'
 
 export async function isSessionValid(token: string | undefined): Promise<boolean> {
@@ -22,7 +22,7 @@ export async function isSessionValid(token: string | undefined): Promise<boolean
   // The key is derived from the hash in force, so this also refuses a cookie that
   // was valid until the password changed — which is the point of deriving it from
   // the hash rather than storing a session.
-  const hash = await passwordHashCached(passwordFile, dashboardUser).catch(() => null)
+  const hash = passwordHash()
   if (!hash) return false
 
   return verifySession(sessionKey(secret, hash), token) !== null

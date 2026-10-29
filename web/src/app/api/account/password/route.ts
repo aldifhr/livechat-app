@@ -2,10 +2,12 @@
  * Changing the dashboard password.
  *
  * The password being changed is this dashboard's own login — the one the login
- * page checks — and it lives in a file on this host. That is why this route does
- * not touch the backend or `STREAMKIT_TOKEN`. The hashing is done in-process
- * (see `lib/htpasswd`) rather than by shelling out, so the password never
- * touches a command line.
+ * page checks — and it lives in the environment, as a bcrypt hash. That is why
+ * this route does not touch the backend or `STREAMKIT_TOKEN`. The hashing is done
+ * in-process (see `lib/server/credentials`) rather than by shelling out, so the
+ * password never touches a command line, and the new hash is written back into
+ * `.env` by `lib/server/envFile` — atomically, and only after it has been proven
+ * to verify.
  *
  * It sits behind the session gate like every other /api route, so the caller is
  * already signed in. The current password is still asked for and checked, for
@@ -17,20 +19,15 @@
 import 'server-only'
 
 import { NextRequest } from 'next/server'
-import { setPassword, verifyPassword } from '@/lib/server/htpasswd'
-import { dashboardUser, passwordFile } from '@/lib/server/config'
+import { hashPassword, passwordMatchesHash, verifyPassword } from '@/lib/server/credentials'
+import { persistPasswordHash } from '@/lib/server/envFile'
 import { isSameOrigin } from '@/lib/server/auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/** The file the login checks, and the account within it. Both are deployment
- *  facts with a working default, so a default install needs no configuration. */
-const FILE = passwordFile
-const USER = dashboardUser
-
 /** bcrypt hashes at most 72 bytes; a longer password would be silently cut. A
- *  newline would too, since an htpasswd line is one line. Refuse both. */
+ *  newline would too, since the hash is written as one `.env` line. Refuse both. */
 const MIN_BYTES = 8
 const MAX_BYTES = 72
 
@@ -71,21 +68,29 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   let check: Awaited<ReturnType<typeof verifyPassword>>
   try {
-    check = await verifyPassword(FILE, USER, current)
+    check = await verifyPassword(current)
   } catch {
-    return refuse('The password file could not be read.', 500)
+    return refuse('The dashboard password is not configured correctly.', 500)
   }
   if (check === 'no-user') {
-    return refuse(`There is no account named "${USER}" in the password file.`, 500)
+    return refuse('No dashboard password is configured on this server.', 500)
   }
   if (check === 'wrong') {
     return refuse('That is not the current password.', 403)
   }
 
+  // Hash, then prove the hash verifies against its own plaintext before it is
+  // allowed anywhere near the live file. A hash that did not verify would be a
+  // lockout, and this is the last point at which that can be caught.
+  const hash = await hashPassword(next)
+  if (!(await passwordMatchesHash(next, hash))) {
+    return refuse('The new password could not be verified.', 500)
+  }
+
   try {
-    await setPassword(FILE, USER, next)
+    await persistPasswordHash(hash)
   } catch {
-    return refuse('The password could not be changed.', 500)
+    return refuse('The password could not be saved. The server\'s .env is not writable.', 500)
   }
 
   return Response.json({ ok: true })

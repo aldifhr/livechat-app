@@ -189,7 +189,7 @@ npm run build && npm start
 ### Testing
 
 ```bash
-cd web && npm test   # 5 suites: htpasswd, session, style-store, room-live, proxy-allowlist
+cd web && npm test   # 5 suites: credentials, session, style-store, room-live, proxy-allowlist
 ```
 
 ### Pages
@@ -214,7 +214,7 @@ before a stream had a handle does not dead-end.
 The dashboard has its own gate (`src/proxy.ts`) mirroring the nginx one, so a
 lost session gets a login page instead of a console whose API calls all 401.
 Sessions are signed with a key derived from both the session secret and the
-htpasswd hash, so changing the password signs everyone out.
+password hash in force, so changing the password signs everyone out.
 
 The Next server forwards only the backend paths it is allowed to, attaching the
 token to `POST`/`PATCH`/`DELETE` and to `GET /api/rooms*`. Everything else 404s on
@@ -222,16 +222,20 @@ the web side — it does not become an open proxy.
 
 ### Env (web)
 
-All server-side. There are no `NEXT_PUBLIC_*` variables.
+All server-side. There are no `NEXT_PUBLIC_*` variables. Copy `.env.example` to
+`.env`, or run `npm run secrets` to generate the two secrets and write them for
+you.
 
 | Name | Meaning |
 |---|---|
 | `BACKEND_URL` | Backend origin the server proxies to. |
 | `STREAMKIT_TOKEN` | Backend token, attached server-side. Empty shows a "no API token" banner. |
-| `STREAMKIT_HTPASSWD` | Path to the htpasswd file. |
-| `STREAMKIT_DASHBOARD_USER` | Account name inside that file. Default `admin`. |
+| `STREAMKIT_DASHBOARD_PASSWORD_HASH` | The dashboard password as a bcrypt hash. **Empty = nobody can sign in.** The change-password page rewrites this line in place. |
+| `STREAMKIT_DASHBOARD_USER` | Account name, used to label the session. Default `admin`. |
 | `STREAMKIT_SESSION_SECRET` | Session signing key. **Empty = no session can be issued or accepted.** |
 | `STREAMKIT_SESSION_DAYS` | Session lifetime. Default 7. A non-positive value falls back to 7, not to forever. |
+| `STREAMKIT_ENV_FILE` | Where the change-password route writes the new hash. Default `.env` beside the server. |
+| `STREAMKIT_DATA_DIR` | Where runtime state (giveaway commitments) lives. Default `.data` beside the server. |
 | `PRODUCT_NAME` | Wordmark. Default `StreamKit`. |
 | `TAGLINE` | Default `Live chat overlays for streaming.` |
 
@@ -350,8 +354,9 @@ rate-limited. Overlays are served from disk and never touch the dashboard.
 
 Both services run as `streamkit`, not root. The repo's code stays owned by root
 and read-only; the only things `chown`ed to `streamkit` are the two that genuinely
-have to be written — the password file and the room store. The env files are
-`0640 root:streamkit`: root still owns them, but the service can read them.
+have to be written — the web env file (the change-password route rewrites the hash
+line in it) and the room store. The backend's env file is `0640 root:streamkit`:
+root still owns it, but the service can read it.
 
 ## References
 

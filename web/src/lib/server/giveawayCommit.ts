@@ -2,7 +2,7 @@ import 'server-only'
 
 import { createHash, randomBytes } from 'node:crypto'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 
 /**
  * Giveaway commitments, held by the server rather than the operator's browser.
@@ -14,18 +14,17 @@ import { dirname, join } from 'node:path'
  * winner they like. So the seed is generated here, kept secret until the draw, and
  * only its hash is handed back.
  *
- * The file lives beside the password hash (same directory, same reason: it is state
- * a running deployment must keep), written atomically so a crash mid-save cannot
- * leave a truncated file behind.
+ * The file lives in the deployment's data directory (`STREAMKIT_DATA_DIR`), the
+ * same place a running deployment keeps state it must not lose, written
+ * atomically so a crash mid-save cannot leave a truncated file behind.
  */
+
+import { dataDir } from './config'
 
 type Commit = { seed: string; poolHash: string; committedAt: string; revealed: boolean }
 type Store = Record<string, Commit>
 
-const DATA_DIR = process.env.STREAMKIT_HTPASSWD
-  ? dirname(process.env.STREAMKIT_HTPASSWD)
-  : join(process.cwd(), '.data')
-const FILE = join(DATA_DIR, 'giveaway-commits.json')
+const FILE = join(dataDir, 'giveaway-commits.json')
 
 function hash(seed: string): string {
   return createHash('sha256').update(seed).digest('hex')
@@ -49,7 +48,7 @@ async function read(): Promise<Store> {
 }
 
 async function write(store: Store): Promise<void> {
-  await mkdir(DATA_DIR, { recursive: true })
+  await mkdir(dataDir, { recursive: true })
   const tmp = `${FILE}.tmp`
   await writeFile(tmp, JSON.stringify(store), 'utf8')
   await rename(tmp, FILE)

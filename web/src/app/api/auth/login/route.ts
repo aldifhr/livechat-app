@@ -6,9 +6,9 @@
  * name is a fact of the deployment and asking for it would only be asking them
  * to guess it. The password is the one thing not known in advance.
  *
- * The password is the one in the htpasswd file this app also changes, and it is
- * checked here in-process — the password never leaves this server, and it is not
- * compared anywhere a shell or nginx can see it.
+ * The password is the one the deployment set in `STREAMKIT_DASHBOARD_PASSWORD_HASH`,
+ * and it is checked here in-process — the password never leaves this server, and it
+ * is not compared anywhere a shell or nginx can see it.
  *
  * What comes back is a cookie, not a browser credential: nginx no longer holds
  * the password, it asks this app whether the cookie is a session it signed. That
@@ -18,8 +18,8 @@
 import 'server-only'
 
 import { NextRequest, NextResponse } from 'next/server'
-import { passwordHashCached, verifyPassword } from '@/lib/server/htpasswd'
-import { dashboardUser, passwordFile, sessionSecret } from '@/lib/server/config'
+import { passwordHash, verifyPassword } from '@/lib/server/credentials'
+import { dashboardUser, sessionSecret } from '@/lib/server/config'
 import { sessionCookie, sessionKey, signSession } from '@/lib/server/session'
 import { isSameOrigin } from '@/lib/server/auth'
 
@@ -61,9 +61,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   let check: Awaited<ReturnType<typeof verifyPassword>>
   try {
-    check = await verifyPassword(passwordFile, user, password)
+    check = await verifyPassword(password)
   } catch {
-    return refuse('The password file could not be read.', 500)
+    return refuse('The dashboard password is not configured correctly.', 500)
   }
 
   // One message for both a missing account and a wrong password: which names
@@ -72,8 +72,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return refuse('That password is not correct.', 401)
   }
 
-  const hash = await passwordHashCached(passwordFile, user).catch(() => null)
-  if (!hash) return refuse('The password file could not be read.', 500)
+  const hash = passwordHash()
+  if (!hash) return refuse('The dashboard password is not configured.', 500)
 
   // The session is signed with a key derived from the password hash in force, so
   // changing the password invalidates every cookie signed with the old one — the

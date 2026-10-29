@@ -22,11 +22,18 @@ Type=simple
 # delete rooms and disconnect streams, so the blast radius of anything that gets
 # code execution in it — a bad dependency, a request that reaches the renderer —
 # should be one unprivileged account rather than the whole box. It needs exactly
-# two writable places: the password file it checks, and Next's own cache.
+# two writable places: the environment file it reads (the change-password route
+# rewrites the hash line in it) and Next's own cache.
+#
+# The env file lives under /var/lib rather than /etc because ProtectSystem=full
+# makes /etc read-only to this service: a password change would fail at the last
+# step, in production only. It is still the file Next loads, via
+# STREAMKIT_ENV_FILE below.
 User=streamkit
 Group=streamkit
 WorkingDirectory=/root/livechat-app/web/.next/standalone
-EnvironmentFile=/etc/streamtools-web.env
+EnvironmentFile=/var/lib/streamtools/web.env
+Environment=STREAMKIT_ENV_FILE=/var/lib/streamtools/web.env
 ExecStart=/usr/bin/node web/server.js
 Restart=always
 RestartSec=3

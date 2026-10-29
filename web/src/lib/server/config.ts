@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { join } from 'node:path'
+
 /**
  * The settings, read on the server at request time.
  *
@@ -22,18 +24,24 @@ export const tagline = process.env.TAGLINE ?? 'Live chat overlays for streaming.
 export const tokenConfigured = (process.env.STREAMKIT_TOKEN ?? '').trim() !== ''
 
 /**
- * Where the dashboard's password is kept.
- *
- * Under /var/lib rather than /etc/nginx because the service runs with
- * `ProtectSystem=full`: /etc is read-only to it, so a password change could
- * never be written there — it would fail at the last step, in production only.
- * nginx no longer reads this file either: it asks this app whether a request
- * carries a valid session, and the app is what knows the password.
+ * The dashboard's password lives in `STREAMKIT_DASHBOARD_PASSWORD_HASH` as a
+ * bcrypt hash, and is read by `lib/server/credentials` — which reads the variable
+ * directly rather than through here, so it can be tested under plain `node`
+ * without pulling in `server-only`.
  */
-export const passwordFile = process.env.STREAMKIT_HTPASSWD ?? '/var/lib/streamtools/htpasswd'
 
-/** The account in that file. */
+/** The account name, used only to label the session. The password is the whole
+ *  credential; this is a fact of the deployment, not something a visitor types. */
 export const dashboardUser = process.env.STREAMKIT_DASHBOARD_USER ?? 'admin'
+
+/**
+ * Where runtime state that is not source lives — giveaway commitments, and
+ * anything else a running deployment has to keep.
+ *
+ * Its own variable rather than borrowed from a password path: this is state, and
+ * a deployment that moves its state should not be moving its credentials with it.
+ */
+export const dataDir = process.env.STREAMKIT_DATA_DIR ?? join(process.cwd(), '.data')
 
 /**
  * The key sessions are signed with.
