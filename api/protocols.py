@@ -1,7 +1,7 @@
 """Event adapter protocol.
 
 Every external event source implements the EventAdapter protocol. This
-decouples providers (TikTok, YouTube Live, Twitch, etc.) from the core
+decouples providers (TikTok, Twitch, etc.) from the core
 pipeline so adding a new provider does not require changes to backend logic.
 """
 

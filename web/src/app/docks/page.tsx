@@ -56,7 +56,6 @@ export default function DocksPage() {
   const [error, setError] = useState('')
   const [loaded, setLoaded] = useState(false)
   const [rooms, setRooms] = useState<Array<{ id: string; username: string; name: string; connected: boolean; provider?: StreamProvider }>>([])
-  const [platform, setPlatform] = useState<StreamProvider | null>(null)
 
   // Read room id from URL. This was here from the first docks commit and got
   // dropped in c472374 ("works without ?room=") — the replacement only handled
@@ -318,64 +317,24 @@ export default function DocksPage() {
     setNewCount(0)
   }
 
-  // No room in the URL: pick a platform, then a streamer on it.
+  // No room in the URL: pick a streamer.
   //
-  // Two steps rather than one list because that is how a streamer thinks about
-  // their streams — "my TikTok ones, my YouTube ones" — and because a single
-  // flat list of every room gets unreadable fast. The platform is held in state
-  // rather than in the URL: it is a step in choosing, not an address, and the
-  // address that matters is the one that ends in `?room=`.
+  // This used to be two steps — platform, then streamer — because there were two
+  // platforms. With one left the first step has a single answer, so it is gone and
+  // the list is the rooms themselves.
   //
   // Auto-select is kept for the one-room case: a streamer with a single room
   // should not have to click through a picker every time they open their scene.
   if (!roomId && rooms.length !== 1) {
-    const platformRooms = platform
-      ? rooms.filter((room) => (room.provider ?? 'tiktok') === platform)
-      : []
-
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 bg-zinc-900 p-4 text-zinc-400">
-        {!platform ? (
-          <>
-            <p className="text-center text-sm">Which platform?</p>
-            <div className="flex w-full max-w-xs flex-col gap-2">
-              {(['tiktok', 'youtube'] as const).map((name) => {
-                const count = rooms.filter((r) => (r.provider ?? 'tiktok') === name).length
-                return (
-                  <button
-                    key={name}
-                    onClick={() => setPlatform(name)}
-                    className="flex items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm font-semibold text-zinc-100 transition-colors hover:border-zinc-500"
-                  >
-                    <span aria-hidden="true">{name === 'youtube' ? '▶' : '♪'}</span>
-                    {name === 'youtube' ? 'YouTube' : 'TikTok'}
-                    <span className="ml-auto text-xs font-normal text-zinc-500">
-                      {count} {count === 1 ? 'stream' : 'streams'}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          </>
-        ) : platformRooms.length === 0 ? (
-          <>
-            <p className="text-center text-sm">
-              No {platform === 'youtube' ? 'YouTube' : 'TikTok'} streams yet.
-            </p>
-            <button
-              onClick={() => setPlatform(null)}
-              className="text-xs text-zinc-400 underline"
-            >
-              ← Pick another platform
-            </button>
-          </>
+        {rooms.length === 0 ? (
+          <p className="text-center text-sm">No streams yet.</p>
         ) : (
           <>
-            <p className="text-center text-sm">
-              Which {platform === 'youtube' ? 'YouTube' : 'TikTok'} stream?
-            </p>
+            <p className="text-center text-sm">Which stream?</p>
             <div className="flex w-full max-w-xs flex-col gap-2">
-              {platformRooms.map((room) => (
+              {rooms.map((room) => (
                 <button
                   key={room.id}
                   onClick={() => {
@@ -395,12 +354,6 @@ export default function DocksPage() {
                 </button>
               ))}
             </div>
-            <button
-              onClick={() => setPlatform(null)}
-              className="text-xs text-zinc-400 underline"
-            >
-              ← Pick another platform
-            </button>
           </>
         )}
       </div>

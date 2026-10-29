@@ -17,7 +17,9 @@ export interface Room {
   provider?: StreamProvider
 }
 
-/** The platforms a room can read. Only tiktok is supported now. */
+/** The platforms a room can read. One string in two places: the request and the
+ *  room record. `tiktok` is the only platform served; the type stays a union so
+ *  a room record carrying a retired value does not fail to type-check. */
 export type StreamProvider = 'tiktok'
 
 export interface RoomStatus {

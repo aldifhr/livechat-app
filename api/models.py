@@ -15,7 +15,7 @@ class ConnectRequest(BaseModel):
     # editor's Stop button silently doing nothing. /api/connect validates it.
     username: str = ""
     room_id: str | None = None
-    #: Which platform to connect. Only "tiktok" is supported now.
+    #: Which platform to connect. Only "tiktok" is served.
     provider: str = "tiktok"
 
 
@@ -47,8 +47,13 @@ class ConnectByUsernameRequest(BaseModel):
     # body is read and parsed in full before the handle regex rejects it, so the
     # only limit on what an unauthenticated caller sends is the server's.
     username: str = Field(default="", max_length=64)
+    # Overlay styling to store on the room. The whitelist in clean_overlay
+    # below is the only defence: it discards any key outside the known seven,
+    # so an unauthenticated caller cannot smuggle arbitrary config in. Pydantic
+    # still parses the full dict first (there is no depth/size limit on a
+    # plain dict[str, Any]), but the parse result is thrown away.
     overlay: dict[str, Any] | None = None
-    #: Platform to connect. Only "tiktok" is supported now.
+    #: Platform to connect. Only "tiktok" is served.
     provider: str = "tiktok"
 
 

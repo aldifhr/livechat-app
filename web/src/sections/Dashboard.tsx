@@ -27,7 +27,6 @@ import RoomStateBadge from '@/components/RoomStateBadge'
 
 const LABELS: Record<StreamProvider, string> = {
   tiktok: 'TikTok',
-  youtube: 'YouTube',
 }
 
 /** How often the numbers are re-read. The same beat the streams page uses, so

@@ -49,7 +49,7 @@ DEFAULT_ROOM_CONFIG: dict[str, Any] = {}
 # --------------------------------------------------------------------------
 
 #: room_id -> source. One live room per room, whatever asked for it.
-#: Values are TikTokAdapter instances; both implement EventAdapter.
+#: Values are TikTokAdapter, which implements EventAdapter.
 sources: dict[str, TikTokAdapter] = {}
 
 #: Serialises replacing one room's source. `_connect_room` has to `await` the old
@@ -268,7 +268,11 @@ app.include_router(live_router)
 def _make_source(provider: str, username: str, room_id: str) -> TikTokAdapter:
     """Build the adapter for the requested provider.
 
-    TikTok takes a channel handle. Only TikTok is supported now.
+    TikTok takes a channel handle.
+
+    The TikTok branch resolves the class at call time rather than closing over a
+    module-level import, so a test that monkey-patches `main.TikTokAdapter` (the
+    long-standing way these tests substitute a source) still takes effect.
     """
     return TikTokAdapter(username, room_id)
 
@@ -317,8 +321,11 @@ async def _observe_source(room_id: str, source: TikTokAdapter) -> None:
 
     The observer starts immediately rather than waiting for `is_connected()`.
     That wait was written for TikTok, whose adapter only queues once its socket
-    is up. The adapter already gates what it emits; the observer's only job is
-    to drain.
+    is up; a source that reconnects mid-stream has `is_connected()` False for a
+    moment during the rebuild, and the wait loop then returned, leaving
+    `observe()` never called and every event after it queued for a consumer that
+    did not exist. The adapter already gates what it emits; the observer's only
+    job is to drain.
     """
     try:
         async for event in source.observe():

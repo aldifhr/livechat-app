@@ -1,10 +1,10 @@
 /**
  * The OBS browser source, one address per platform.
  *
- * `/docks/youtube?room=<id>` and `/docks/tiktok?room=<id>` render the same
- * page. The platform segment exists because a streamer building an OBS scene
- * has a different mental model per platform — the link reads like the thing it
- * watches — and because it gives the two somewhere to diverge later without
+ * `/docks/tiktok?room=<id>` and `/docks?room=<id>` render the same page. The
+ * platform segment exists because a streamer building an OBS scene has a
+ * different mental model per platform — the link reads like the thing it
+ * watches — and because it gives platforms somewhere to diverge later without
  * moving anyone's saved browser source.
  *
  * The segment is not used to fetch anything: the room id in the query is what

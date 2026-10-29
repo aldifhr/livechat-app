@@ -169,7 +169,7 @@ def username_of(room_id: str) -> str:
 
 
 def provider_of(room_id: str) -> str:
-    """The platform this room connects to: "tiktok" or "youtube".
+    """The platform this room connects to. Only "tiktok" is served.
 
     Defaults to "tiktok" — rooms saved before this field existed have none, and
     TikTok is the only source they could ever have used.

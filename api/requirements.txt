@@ -16,6 +16,7 @@ pydantic==2.14.0
 # and the difference is invisible in a log file until somebody greps for a field
 # that is not there. It was installed but never listed.
 python-json-logger==4.2.0
-# fastapi/starlette already pull httpx for TestClient; pinning the range here
-# keeps the two from disagreeing.
+# The test suites drive the ASGI app directly with `httpx.AsyncClient` for the
+# cases `TestClient` cannot reach (concurrency, teardown under load), so this is
+# a real dependency of the suite rather than something a source pulled in.
 httpx[http2]>=0.27,<0.29

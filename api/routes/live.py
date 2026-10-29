@@ -25,8 +25,6 @@ router = APIRouter()
 #: A TikTok handle. Narrow on purpose: letters, digits, dot, underscore, 2-24
 #: chars — what the platform actually issues. This is the only check between an
 #: unauthenticated caller and a connection attempt.
-#: TikTok handles. Applied only when the request names TikTok — only TikTok
-#: is supported now.
 USERNAME_RE = re.compile(r"^[A-Za-z0-9._]{2,24}$")
 
 #: How many rooms this endpoint may bring into existence. The route is exempt
@@ -145,8 +143,8 @@ async def room_connect_by_username(req: ConnectByUsernameRequest):
         await store.set_config_async(room_id, {**existing, **overlay})
         # `provider` belongs on the record, not in `config`: it is what
         # `summary()` reports and what the startup restore reads to rebuild the
-        # right adapter. Writing it into `config` left every YouTube room
-        # reporting `provider: tiktok` while connecting over YouTube, because
+        # right adapter. Writing it into `config` left every room reporting
+        # `provider: tiktok` regardless of what it connected over, because
         # nothing reads it back out of there.
         await store.update_room_async(room_id, provider=req.provider)
 
