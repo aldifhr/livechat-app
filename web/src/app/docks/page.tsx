@@ -174,9 +174,7 @@ export default function DocksPage() {
     const custom = params.get('ws') || params.get('backend')
     const base = custom
       ? custom.replace(/\/+$/, '').replace(/^http/, 'ws')
-      : location.hostname === 'localhost' || location.hostname === '127.0.0.1'
-        ? 'wss://kit-backend.aldifhr.my.id'
-        : location.origin.replace(/^http/, 'ws')
+      : 'wss://kit-backend.aldifhr.my.id'
     const url = `${base}/ws/overlay/${encodeURIComponent(roomId)}`
 
     function connectWs() {
