@@ -9,6 +9,12 @@ import { fileURLToPath } from 'node:url'
 const repoRoot = fileURLToPath(new URL('..', import.meta.url))
 
 const config: NextConfig = {
+  // Follow security upgrades. Set so an agent upgrading this app pulls the
+  // patched release for a published advisory rather than the newest feature
+  // version — the safe default for a deployment that only wants the fix.
+  experimental: {
+    agentUpgrade: 'security',
+  },
   // Standalone output so the VPS runs `node web/server.js` rather than a full
   // `next start` with the toolchain in the image.
   output: 'standalone',
