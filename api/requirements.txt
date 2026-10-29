@@ -16,13 +16,6 @@ pydantic==2.14.0
 # and the difference is invisible in a log file until somebody greps for a field
 # that is not there. It was installed but never listed.
 python-json-logger==4.2.0
-# YouTube Live source. Installed from the fork's git URL, not PyPI: upstream
-# 0.5.5 generates chat continuations with a protobuf YouTube stopped accepting
-# and returns *zero items with no error*. The fork (v0.6.0, tag on
-# aldifhr/pytchatV2) scrapes the page's own token instead. A bare
-# `pytchat==0.6.0` would not resolve — PyPI has no such version — so the URL is
-# the only form that installs on a fresh machine.
-pytchat @ git+https://github.com/aldifhr/pytchatV2.git@v0.6.0
-# pytchat declares `httpx[http2]` itself, but fastapi/starlette already pull
-# httpx for TestClient; pinning the range here keeps the two from disagreeing.
+# fastapi/starlette already pull httpx for TestClient; pinning the range here
+# keeps the two from disagreeing.
 httpx[http2]>=0.27,<0.29

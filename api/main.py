@@ -26,7 +26,7 @@ import logbuffer
 import store
 from watchdog import LivenessWatchdog
 from hub import hub, CLIENT_TYPES as HUB_CLIENT_TYPES
-from sources import TikTokAdapter, YouTubeLiveAdapter
+from sources import TikTokAdapter
 
 #: Module-level logger. Bootstrapped in `logging_setup`: one place, one handler,
 #: one level. Every route module gets the same logger through it rather than
@@ -49,8 +49,8 @@ DEFAULT_ROOM_CONFIG: dict[str, Any] = {}
 # --------------------------------------------------------------------------
 
 #: room_id -> source. One live room per room, whatever asked for it.
-#: Values are TikTokAdapter or YouTubeLiveAdapter; both implement EventAdapter.
-sources: dict[str, TikTokAdapter | YouTubeLiveAdapter] = {}
+#: Values are TikTokAdapter instances; both implement EventAdapter.
+sources: dict[str, TikTokAdapter] = {}
 
 #: Serialises replacing one room's source. `_connect_room` has to `await` the old
 #: source's `stop()` before it can put the new one in place, and an `await` in the
@@ -265,18 +265,11 @@ bind_live_state(sources, _sources_lock, hub)
 app.include_router(live_router)
 
 
-def _make_source(provider: str, username: str, room_id: str) -> TikTokAdapter | YouTubeLiveAdapter:
-    """Build the right adapter for the requested provider.
+def _make_source(provider: str, username: str, room_id: str) -> TikTokAdapter:
+    """Build the adapter for the requested provider.
 
-    TikTok takes a channel handle; YouTube takes a video id / URL / channel
-    handle (pytchatV2 resolves handles to the current live video itself).
-
-    The TikTok branch resolves the class at call time rather than closing over a
-    module-level import, so a test that monkey-patches `main.TikTokAdapter` (the
-    long-standing way these tests substitute a source) still takes effect.
+    TikTok takes a channel handle. Only TikTok is supported now.
     """
-    if provider == "youtube":
-        return YouTubeLiveAdapter(username, room_id)
     return TikTokAdapter(username, room_id)
 
 
@@ -319,16 +312,13 @@ async def _connect_room(room_id: str, username: str, provider: str = "tiktok") -
         return {"status": "connecting", "username": username, "room_id": room_id, "provider": provider}
 
 
-async def _observe_source(room_id: str, source: TikTokAdapter | YouTubeLiveAdapter) -> None:
+async def _observe_source(room_id: str, source: TikTokAdapter) -> None:
     """Consume events from adapter and broadcast to WebSocket clients.
 
     The observer starts immediately rather than waiting for `is_connected()`.
     That wait was written for TikTok, whose adapter only queues once its socket
-    is up; for a source that reconnects mid-stream — YouTube's does, after an
-    HTTP/2 reset — `is_connected()` is False for a moment during the rebuild and
-    the wait loop then returned, leaving `observe()` never called and every event
-    after it queued for a consumer that did not exist. The adapter already gates
-    what it emits; the observer's only job is to drain.
+    is up. The adapter already gates what it emits; the observer's only job is
+    to drain.
     """
     try:
         async for event in source.observe():

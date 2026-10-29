@@ -16,7 +16,6 @@ import { productName } from '@/lib/server/config'
 export const dynamic = 'force-dynamic'
 
 const PLATFORMS = [
-  { href: '/app/youtube', name: 'YouTube', mark: '▶' },
   { href: '/app/tiktok', name: 'TikTok', mark: '♪' },
 ] as const
 
