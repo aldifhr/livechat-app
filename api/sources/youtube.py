@@ -2,7 +2,7 @@
 
 Uses `pytchatV2` for the chat fetch and normalises its items into the same
 `events.Event` values the rest of the pipeline already understands — COMMENT,
-GIFT, JOIN, LIKE, SUBSCRIPTION. The adapter implements the `EventAdapter`
+GIFT, SUBSCRIPTION. The adapter implements the `EventAdapter`
 protocol, so the rest of the system (WebSocket fan-out, status frames, the
 event log) treats a YouTube room exactly like a TikTok one.
 
@@ -24,8 +24,6 @@ import events
 from events import (
     COMMENT,
     GIFT,
-    JOIN,
-    LIKE,
     SUBSCRIPTION,
     VIEWERS,
     Event,

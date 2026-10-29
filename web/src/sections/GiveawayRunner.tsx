@@ -8,9 +8,8 @@
  * room socket (`/ws/overlay/<room>`) instead of the desktop host, and it saves a
  * snapshot to this app instead of publishing through the desktop's sidecar.
  *
- * The draw math lives in `lib/giveaway.ts`, duplicated from the app on purpose: the
- * whole value of the audit report is that the app and the web derive a winner the
- * same way.
+ * The draw math lives in `shared/giveaway.ts`, so the app and the web derive a
+ * winner the same way and either one's audit report verifies by the same steps.
  */
 
 import Link from 'next/link'

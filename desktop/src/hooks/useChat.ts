@@ -308,7 +308,19 @@ export function useChat({ collapseWindowMs, collapseThreshold }: UseChatOptions)
           break
         case 'notice':
           if (!inRoom) break
-          push({ ...event, platform: 'tiktok', kind: 'notice', text: event.text })
+          // A room notice is not from a viewer, so it carries no identity. The
+          // fields are filled with empty strings rather than left off because a
+          // feed row is a `Viewer`: the renderer already falls back to "Room" for
+          // a blank name, and an absent field would be the same value with a type
+          // that does not say so.
+          push({
+            ...event,
+            platform: 'tiktok',
+            kind: 'notice',
+            id: '',
+            avatar: '',
+            text: event.text,
+          })
           break
         case 'subscription':
           if (!inRoom) break
@@ -317,7 +329,18 @@ export function useChat({ collapseWindowMs, collapseThreshold }: UseChatOptions)
           break
         case 'poll':
           if (!inRoom) break
-          push({ ...event, platform: 'tiktok', kind: 'poll', text: event.question, options: event.options })
+          // Same as a notice: a poll is the streamer's, not a viewer's, so there
+          // is no identity to carry. The renderer names a blank row "Room".
+          push({
+            ...event,
+            platform: 'tiktok',
+            kind: 'poll',
+            id: '',
+            nickname: '',
+            avatar: '',
+            text: event.question,
+            options: event.options,
+          })
           logPush('info', `tiktok: poll "${event.question}" (${event.options.length} options)`)
           break
         default:
