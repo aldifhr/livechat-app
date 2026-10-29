@@ -5,12 +5,17 @@ happened" stay independent: a new event source never needs to know how
 broadcasting works, and a new client type never needs to know what an event is.
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
+import time
 import uuid
 from typing import Any
 
 from fastapi import WebSocket
+
+from metrics import metrics as _metrics
 
 #: The kinds of client that attach to a room's event stream.
 #:
@@ -101,6 +106,33 @@ SEND_TIMEOUT_S = 5.0
 VIEWER_FLUSH_S = 1.0
 
 
+class _Outgoing(dict):
+    """One message on its way to one client, stamped when it was queued.
+
+    The stamp is what makes ingest-to-send latency measurable at all. The wire
+    dict cannot carry it: those dicts *are* the client contract, and a key the
+    overlay pages do not know is a key that ships to every browser. So the
+    timestamp rides alongside the payload instead of inside it.
+
+    A `dict` subclass rather than a wrapper, deliberately: the payload is the
+    message, and anything that reads one of these — a test asserting on queue
+    contents, `json.dumps` on the way out — must see the payload and nothing
+    else. `enqueued_at` is the one addition, and `getattr` with a default is
+    how the reader treats a payload that arrived without one.
+
+    That span is queue wait plus send — everything from `events.emit` handing
+    the message over to the bytes hitting the socket. Normalisation and routing
+    happen before the stamp and are not in it; the number is honest about what
+    it covers and is labelled that way in `/metrics`.
+    """
+
+    __slots__ = ("enqueued_at",)
+
+    def __init__(self, payload: dict[str, Any], enqueued_at: float | None = None) -> None:
+        super().__init__(payload)
+        self.enqueued_at = enqueued_at if enqueued_at is not None else time.monotonic()
+
+
 class Hub:
     def __init__(self) -> None:
         self.active: dict[str, WebSocket] = {}
@@ -117,7 +149,7 @@ class Hub:
         # measured at 0.1ms with all clients healthy and 250.5ms with one slow
         # socket among eight, and a real stalled send takes however long the
         # socket takes to give up rather than a quarter of a second.
-        self._queues: dict[str, asyncio.Queue[dict[str, Any]]] = {}
+        self._queues: dict[str, asyncio.Queue[_Outgoing]] = {}
         self._writers: dict[str, asyncio.Task[None]] = {}
         self._strikes: dict[str, int] = {}
         # The newest viewer count per client, held outside the queue.
@@ -130,12 +162,69 @@ class Hub:
         # whole API going dead while the backend still logged events. Holding
         # the count in a slot of its own is O(1), cannot reorder the queue, and
         # cannot block: the newest number is simply the one that gets sent.
-        self._held_viewers: dict[str, dict[str, Any]] = {}
+        self._held_viewers: dict[str, _Outgoing] = {}
         # Counted rather than logged: `/metrics` used to read a `_disconnection_log`
         # attribute that never existed, so `getattr(..., [])` fell through to an
         # empty list and the metric reported a permanent zero. A counter that is
         # actually incremented is the smallest thing that makes the number true.
         self.disconnected_clients_count = 0
+
+        # --- admission reservations --------------------------------------
+        #
+        # Both caps were checked *before* `await websocket.accept()` and the
+        # client was registered *after* it, which left a window where any number
+        # of handshakes could pass the same check. Two sockets arriving in the
+        # same tick both read "four of five", both accepted, both registered —
+        # and the cap that is the only thing between an unauthenticated port and
+        # a process out of file descriptors was a suggestion.
+        #
+        # The window cannot be closed with a lock: the point of the `await` is
+        # that the handshake itself is slow, and holding a lock across it is the
+        # "avoid holding a global lock across slow network operations" failure
+        # with extra steps. What closes it is counting the handshakes that are
+        # *in flight* alongside the ones that are registered. Both counters are
+        # mutated by synchronous code with no `await` between the check and the
+        # increment, so on a single-threaded event loop the check-and-reserve is
+        # atomic by construction — no lock, nothing held across the handshake.
+        #
+        # A reservation is released on exactly two paths: the handshake failed,
+        # or it succeeded and the client is now counted in `active` instead.
+        # There is no third path, so a slot cannot leak.
+        self._pending_total = 0
+        self._pending_rooms: dict[str, int] = {}
+
+    # --- admission -------------------------------------------------------
+
+    def _reserve(self, client_type: str, room_id: str | None) -> str | None:
+        """Take a slot for a handshake that is about to happen.
+
+        Returns `None` when the slot is taken, or the reason it is not. Called
+        with no `await` between the read and the write, which is what makes it
+        atomic here.
+        """
+        if len(self.active) + self._pending_total >= MAX_CLIENTS_TOTAL:
+            return "total"
+        if room_id and client_type in VIEWER_TYPES:
+            # In-flight handshakes for this room count against it too, or the
+            # per-room cap has the same hole the total one did.
+            current = sum(1 for rid in self.room_clients.values() if rid == room_id)
+            current += self._pending_rooms.get(room_id, 0)
+            if current >= MAX_CLIENTS_PER_ROOM:
+                return "room"
+        self._pending_total += 1
+        if room_id and client_type in VIEWER_TYPES:
+            self._pending_rooms[room_id] = self._pending_rooms.get(room_id, 0) + 1
+        return None
+
+    def _unreserve(self, client_type: str, room_id: str | None) -> None:
+        """Give back a slot taken by `_reserve`. Idempotent by construction."""
+        self._pending_total = max(0, self._pending_total - 1)
+        if room_id and client_type in VIEWER_TYPES:
+            remaining = self._pending_rooms.get(room_id, 0) - 1
+            if remaining > 0:
+                self._pending_rooms[room_id] = remaining
+            else:
+                self._pending_rooms.pop(room_id, None)
 
     async def connect(self, websocket: WebSocket, client_type: str, room_id: str | None = None) -> str:
         """Register a client and give it a queue, but start nothing yet.
@@ -162,29 +251,30 @@ class Hub:
         walking into the ceiling evicted the real errors that page exists to show,
         repeatably, without a credential, using any made-up room id.
         """
-        # Checked before `accept`, so a client that is going to be refused never
-        # costs a queue, a task, or an entry in five dictionaries. The path is
-        # unauthenticated — OBS cannot carry a credential — so this ceiling is the
-        # only thing between an open port and a process that runs out of file
-        # descriptors.
-        if len(self.active) >= MAX_CLIENTS_TOTAL:
-            await websocket.close(code=1013, reason="server at capacity")
+        # Reserved before `accept`, released after registration or on failure.
+        # The caps are the only thing between an unauthenticated path and a
+        # process out of file descriptors, so the check and the slot it guards
+        # have to be one step — see `_reserve`.
+        refusal = self._reserve(client_type, room_id)
+        if refusal is not None:
+            _metrics.ws_refuse(refusal)
+            await websocket.close(
+                code=1013,
+                reason="server at capacity" if refusal == "total" else "room is full",
+            )
             return ""
-        # Per room, and only for viewers. This one used to be `client_type == ROOM`,
-        # which meant it never applied to the clients that actually have count: the
-        # overlay pages connect as `overlay`, so an OBS source and a dashboard
-        # preview were both uncapped and the ceiling sat there doing nothing. A
-        # customizer is still exempt — it is the operator's own surface, and
-        # blocking it because a room already has overlays on it would lock them out
-        # of styling a stream that is set up and running, which is the normal state
-        # of the thing they are trying to do.
-        if room_id and client_type in VIEWER_TYPES:
-            current = sum(1 for rid in self.room_clients.values() if rid == room_id)
-            if current >= MAX_CLIENTS_PER_ROOM:
-                await websocket.close(code=1013, reason="room is full")
-                return ""
 
-        await websocket.accept()
+        try:
+            await websocket.accept()
+        except BaseException:
+            # The handshake itself failed — the peer vanished, or the server is
+            # shutting the socket down. The slot goes back whether or not
+            # anything was registered, and the exception propagates: a failed
+            # handshake is the caller's to handle, and swallowing it here would
+            # leave the route believing it had a client.
+            self._unreserve(client_type, room_id)
+            raise
+
         client_id = str(uuid.uuid4())
         self.active[client_id] = websocket
         self._queues[client_id] = asyncio.Queue(maxsize=CLIENT_QUEUE_LIMIT)
@@ -192,6 +282,10 @@ class Hub:
             self.room_clients[client_id] = room_id
         if client_type == CUSTOMIZER:
             self.customizer_clients.add(client_id)
+        # Registered, so the caps count this client from here on and the
+        # in-flight reservation is no longer needed.
+        self._unreserve(client_type, room_id)
+        _metrics.ws_connect()
         return client_id
 
     def prime(self, client_id: str) -> None:
@@ -225,6 +319,10 @@ class Hub:
         """
         return sum(q.qsize() for q in self._queues.values())
 
+    def queue_high_water(self) -> int:
+        """The deepest any single client queue has been since boot."""
+        return _metrics.client_queue_high_water
+
     def disconnect(self, client_id: str) -> None:
         # Only a client that was actually connected counts. `disconnect` is called
         # from the socket teardown, and a duplicate call for an id already gone
@@ -251,14 +349,6 @@ class Hub:
         if queue is None:
             return
 
-        async def send(payload: dict[str, Any]) -> None:
-            # Serialised on the way out, not on the way in: a viewer count held
-            # for coalescing must not have been encoded already.
-            await asyncio.wait_for(
-                ws.send_text(json.dumps(payload, ensure_ascii=False)),
-                timeout=SEND_TIMEOUT_S,
-            )
-
         while True:
             try:
                 message = await asyncio.wait_for(queue.get(), timeout=VIEWER_FLUSH_S)
@@ -272,27 +362,47 @@ class Hub:
             except asyncio.CancelledError:
                 raise
 
-            try:
-                await send(message)
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                # A source OBS tore down mid-send, or one that stopped reading
-                # long enough to time out. Either way it is not coming back.
-                self.disconnect(client_id)
+            if not await self._deliver(client_id, ws, message):
                 return
 
             # The queue is drained, so anything held back can go now, and it is
             # the newest count rather than the oldest.
             held = self._held_viewers.pop(client_id, None)
             if held is not None:
-                try:
-                    await send(held)
-                except asyncio.CancelledError:
-                    raise
-                except Exception:
-                    self.disconnect(client_id)
+                if not await self._deliver(client_id, ws, held):
                     return
+
+    async def _deliver(self, client_id: str, ws: WebSocket, message: _Outgoing) -> bool:
+        """Write one message to one socket, and clean up if it cannot be.
+
+        Returns False when the client is gone, so the writer stops. Every
+        failure path ends here rather than being written twice, and every one of
+        them drops the client: a send that timed out, a socket the peer tore
+        down mid-write and a serialisation that raised are all the same answer
+        from this side — this client is not coming back.
+        """
+        try:
+            await asyncio.wait_for(
+                ws.send_text(json.dumps(message, ensure_ascii=False)),
+                timeout=SEND_TIMEOUT_S,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # A source OBS tore down mid-send, or one that stopped reading long
+            # enough to time out. Either way it is not coming back.
+            _metrics.dead_client()
+            self.disconnect(client_id)
+            return False
+        # Measured here rather than at enqueue: the queue wait is part of what
+        # the client experiences, and a number that only counted the send would
+        # hide the backlog that is the actual problem. A payload that arrived
+        # without a stamp — a test putting one straight into the queue — is
+        # sent and simply not measured.
+        enqueued_at = getattr(message, "enqueued_at", None)
+        if enqueued_at is not None:
+            _metrics.sent(time.monotonic() - enqueued_at)
+        return True
 
     def _send(self, client_id: str, message: dict[str, Any]) -> None:
         """Hand a message to one client without waiting for it.
@@ -317,7 +427,12 @@ class Hub:
             # order; a viewer count is only ever true as of now, so the newest
             # one supersedes every older one and there is no reason to give it a
             # place in line behind a backlog of comments.
-            self._held_viewers[client_id] = message
+            if client_id in self._held_viewers:
+                # A count was already waiting and this one replaces it. Counted,
+                # because "the overlay is being sent fewer audience updates than
+                # the room produces" is a fact worth being able to see.
+                _metrics.coalesce_viewer()
+            self._held_viewers[client_id] = _Outgoing(message)
             # The strike counter is deliberately left alone here. It exists to
             # answer "is this client draining?", and an audience update answers
             # nothing about that — it never touches the queue. Resetting it meant
@@ -329,11 +444,14 @@ class Hub:
             return
 
         try:
-            queue.put_nowait(message)
+            queue.put_nowait(_Outgoing(message))
             self._strikes[client_id] = 0
+            _metrics.note_client_depth(queue.qsize())
         except asyncio.QueueFull:
             self._strikes[client_id] = self._strikes.get(client_id, 0) + 1
             if self._strikes[client_id] >= CLIENT_OVERFLOW_STRIKES:
+                _metrics.slow_client()
+                _metrics.drop_client()
                 self.disconnect(client_id)
 
     def _targets(self, client_type: str | None, room_id: str | None) -> set[str]:

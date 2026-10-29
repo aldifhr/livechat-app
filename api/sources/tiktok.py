@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 from typing import Any, AsyncGenerator
 
 from protocols import EventAdapter
 from sources.viewers_count import judge
+from metrics import metrics as _metrics
 import events
 from events import (
     COMMENT,
@@ -289,6 +291,45 @@ _LIVE_POLL_INTERVAL = 60.0
 _LIVE_WAIT_POLLS = 120
 
 
+#: How many normalised events one source may hold before it starts dropping.
+#:
+#: The queue used to be unbounded, which is correct right up to the moment the
+#: producers outpace the consumer: TikTokLive invokes every handler as soon as
+#: the frame arrives, and the observer drains at whatever rate `events.emit`
+#: and the per-client fan-out allow. A room that bursts — a raid, a gift combo
+#: storm, a chat moving faster than one overlay can draw — then grows this
+#: queue without limit, and the memory is the process's.
+#:
+#: 2048 is a burst buffer, not a rate limit: at a sustained 200 events a second
+#: it is ten seconds of slack, which is far more than any transient spike and
+#: far less than the minutes a wedged consumer would need to matter. The point
+#: is that growth is bounded and the bound is visible (`source_queue_depth` on
+#: `/metrics`), not that the number is magic.
+SOURCE_QUEUE_LIMIT = int(os.environ.get("STREAMKIT_SOURCE_QUEUE", "") or 2048)
+
+#: Kinds that must arrive, and everything else is replaceable under load.
+#:
+#: The split is by what the event *is*, not by how often it comes:
+#:
+#:   * a comment, a gift, a follow, a share, a subscription, a notice, a poll
+#:     and the stream intro are each one thing that happened, once. Losing one
+#:     is losing a fact — a gift that never reaches the overlay is a gift the
+#:     streamer is never credited with on screen.
+#:   * a like frame, a join and a viewer count are state wearing an event's
+#:     clothes. A like carries a running `totalLikes`, a join is one row in a
+#:     feed nobody reads at volume, and a viewer count is only ever true as the
+#:     newest one — the hub coalesces those already. Dropping one of these
+#:     loses a redraw, not a fact.
+#:
+#: A fixed set, not a caller's string: it is the other half of the label
+#: cardinality rule in `metrics`, and a kind that is not in either set is
+#: treated as a keeper, because the safe answer to "is this important?" about a
+#: kind nobody classified is yes.
+MUST_KEEP_KINDS = frozenset({
+    COMMENT, GIFT, FOLLOW, SHARE, SUBSCRIPTION, NOTICE, POLL, INTRO,
+})
+
+
 def _is_offline_error(exc: BaseException) -> bool:
     """Whether this exception means "there is no live to read", not "we failed".
 
@@ -364,7 +405,7 @@ class TikTokAdapter(EventAdapter):
         self._consecutive_sign_failures = 0
         # The single background task running the connect/reconnect loop.
         self._task: asyncio.Task | None = None
-        self._events: asyncio.Queue[Event | _Stop] = asyncio.Queue()
+        self._events: asyncio.Queue[Event | _Stop] = asyncio.Queue(maxsize=SOURCE_QUEUE_LIMIT)
         # Streak state, keyed by user_id: the last running total seen for the
         # combo in progress. `repeat_count` is cumulative, so this holds the
         # latest value rather than a sum of the frames.
@@ -648,7 +689,7 @@ class TikTokAdapter(EventAdapter):
             emotes = emotes_in(event)
             if emotes:
                 meta["emotes"] = emotes
-            await self._events.put(Event(
+            await self._enqueue(Event(
                 kind=COMMENT,
                 user=name,
                 user_id=display_id(event.user),
@@ -665,7 +706,7 @@ class TikTokAdapter(EventAdapter):
             name = display_name(event.user)
             if not name:
                 return
-            await self._events.put(Event(
+            await self._enqueue(Event(
                 kind=LIKE,
                 user=name,
                 user_id=display_id(event.user),
@@ -705,7 +746,7 @@ class TikTokAdapter(EventAdapter):
                 return  # Streak still running — nothing to dispatch yet
             count, value = step
 
-            await self._events.put(Event(
+            await self._enqueue(Event(
                 kind=GIFT,
                 user=name,
                 user_id=user_id,
@@ -727,7 +768,7 @@ class TikTokAdapter(EventAdapter):
             name = display_name(event.user)
             if not name:
                 return
-            await self._events.put(Event(
+            await self._enqueue(Event(
                 kind=JOIN,
                 user=name,
                 user_id=display_id(event.user),
@@ -742,7 +783,7 @@ class TikTokAdapter(EventAdapter):
             if verdict.warning:
                 logger.warning(verdict.warning)
             if verdict.count is not None:
-                await self._events.put(Event(
+                await self._enqueue(Event(
                     kind=VIEWERS,
                     meta={"count": verdict.count},
                 ))
@@ -752,7 +793,7 @@ class TikTokAdapter(EventAdapter):
             name = display_name(event.user)
             if not name:
                 return
-            await self._events.put(Event(
+            await self._enqueue(Event(
                 kind=FOLLOW,
                 user=name,
                 user_id=display_id(event.user),
@@ -765,7 +806,7 @@ class TikTokAdapter(EventAdapter):
             if not name:
                 return
             joined = event.users_joined
-            await self._events.put(Event(
+            await self._enqueue(Event(
                 kind=SHARE,
                 user=name,
                 user_id=display_id(event.user),
@@ -782,7 +823,7 @@ class TikTokAdapter(EventAdapter):
             name = display_name(event.user)
             if not name:
                 return
-            await self._events.put(Event(
+            await self._enqueue(Event(
                 kind=INTRO,
                 user=name,
                 user_id=display_id(event.user),
@@ -796,7 +837,7 @@ class TikTokAdapter(EventAdapter):
             name = display_name(event.user)
             if not name:
                 return
-            await self._events.put(Event(
+            await self._enqueue(Event(
                 kind=SUBSCRIPTION,
                 user=name,
                 user_id=display_id(event.user),
@@ -822,7 +863,7 @@ class TikTokAdapter(EventAdapter):
             if not text:
                 return
             name = display_name(event.user) or ""
-            await self._events.put(Event(
+            await self._enqueue(Event(
                 kind=NOTICE,
                 user=name,
                 user_id=display_id(event.user),
@@ -847,7 +888,7 @@ class TikTokAdapter(EventAdapter):
                 for opt in (getattr(content, "option_list", None) or [])
                 if (getattr(opt, "display_content", "") or "").strip()
             ]
-            await self._events.put(Event(
+            await self._enqueue(Event(
                 kind=POLL,
                 value=question,
                 meta={
@@ -857,14 +898,77 @@ class TikTokAdapter(EventAdapter):
                 },
             ))
 
+    def queue_depth(self) -> int:
+        """How many normalised events are waiting for the observer.
+
+        Public for the same reason `is_running` is: `/metrics` needs the front
+        of the pipeline's backlog, and a caller reaching into `_events` is a
+        caller coupled to this class's queue.
+        """
+        return self._events.qsize()
+
+    async def _enqueue(self, event: Event) -> None:
+        """Hand one normalised event to the observer, bounded.
+
+        `await`ed rather than called, so the handler bodies read exactly as
+        they did when this was `await self._events.put(...)` — but it never
+        actually suspends. That is the point: a bounded queue would make
+        `put()` block when full, and a blocked handler blocks TikTokLive's
+        dispatch, which backs the whole socket up into the library. The
+        overflow policy below decides what is lost instead, synchronously, and
+        counts it.
+
+        The policy is newest-wins with a priority for facts. When the queue is
+        full the oldest entry is dropped to make room, because a live feed is
+        only useful current and the queue is FIFO so the head is the only O(1)
+        removal. What that costs depends on what the head was: a like, a join
+        or a viewer count is a redraw, and a comment or a gift is a fact. Both
+        are counted, separately, because "we are dropping likes under load" and
+        "we are dropping gifts under load" are different incidents.
+        """
+        queue = self._events
+        try:
+            queue.put_nowait(event)
+        except asyncio.QueueFull:
+            dropped = queue.get_nowait()
+            _metrics.drop_source(dropped.kind in MUST_KEEP_KINDS)
+            try:
+                queue.put_nowait(event)
+            except asyncio.QueueFull:
+                # Unreachable on a single-threaded loop — the `get_nowait`
+                # above just emptied a slot and nothing has run since — but a
+                # dropped event is a better outcome than a raised one inside a
+                # TikTokLive callback, which the library would log and swallow
+                # while this room silently stopped receiving that kind.
+                _metrics.drop_source(event.kind in MUST_KEEP_KINDS)
+        _metrics.note_source_depth(queue.qsize())
+
     def _release_observer(self) -> None:
         """Wake a consumer parked in `observe()`.
 
         `put_nowait` rather than an await: this is called from teardown paths,
         one of which (`_run_client` finishing) is the last statement of the task
         that would otherwise be the one doing the awaiting.
+
+        The sentinel must get in even when the queue is full, or the wake-up is
+        lost and the observer parks in `get()` for the life of the process —
+        which is the exact leak this sentinel exists to prevent, reintroduced by
+        a bounded queue. So room is made for it: the oldest entry goes, because
+        a stop that does not arrive is worse than one event that does not.
         """
-        self._events.put_nowait(_STOP)
+        queue = self._events
+        while True:
+            try:
+                queue.put_nowait(_STOP)
+                return
+            except asyncio.QueueFull:
+                try:
+                    queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    # Nothing to drop and no room: the queue is empty, which
+                    # means the put that just failed raced a drain. Retry once
+                    # more and the loop ends either way.
+                    continue
 
     async def disconnect(self) -> None:
         """Stop connection and cleanup."""
@@ -1163,13 +1267,6 @@ class TikTokAdapter(EventAdapter):
                 )
             except Exception:  # noqa: BLE001 — a status frame must not kill the loop
                 pass
-
-
-        # The loop gave up on its own (retries exhausted, circuit breaker, live
-        # ended) rather than through `disconnect()`, so the observer parked in
-        # `queue.get()` still has to be woken here. Without this the observer
-        # for every room that failed to connect outlived its source.
-        self._release_observer()
 
     async def _wait_for_live(self) -> None:
         """Wait for a streamer with no live stream to start one, then reconnect.

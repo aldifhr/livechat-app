@@ -4,6 +4,8 @@ All request/response shapes live here so `main.py` can stay focused on
 routing. The backend stores whatever config the frontend sends without
 interpreting it — this module owns neither the schema nor its defaults.
 """
+from __future__ import annotations
+
 from typing import Any
 
 from pydantic import BaseModel, Field

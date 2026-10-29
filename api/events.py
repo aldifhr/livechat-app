@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from hub import hub
+from metrics import metrics as _metrics
 from models import page_config
 
 import eventlog
@@ -236,6 +237,10 @@ async def emit(room_id: str, event: Event) -> None:
     eventlog.record(
         room_id, event.kind, user=event.user, text=event.value, meta=event.meta, user_id=event.user_id
     )
+    # Counted here for the same reason it is logged here: one line covers every
+    # producer. The kind is the only label, and `to_wire` maps an unknown kind to
+    # `alert`, so the set of labels is closed — see `metrics`.
+    _metrics.event_in(event.kind)
     await hub.broadcast(to_wire(event), room_id=room_id)
 
 

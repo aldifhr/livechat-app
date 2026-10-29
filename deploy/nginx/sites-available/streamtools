@@ -76,6 +76,12 @@ server {
     # than a limit (see conf.d/streamkit-limits.conf).
     location /ws/ {
         limit_conn wsconn 20;
+        # The socket's own log format, which is `combined` without the query
+        # string — an overlay token rides in the query, and the access log is
+        # the one copy of it nobody thinks to scrub. See
+        # conf.d/streamkit-limits.conf for the format and why it is scoped to
+        # this location alone.
+        access_log /var/log/nginx/streamkit-ws.log streamkit_ws;
         # Loopback, not the backend's public hostname. The backend binds
         # 127.0.0.1:8000 and this vhost is on the same box, so reaching it by
         # public name sent every chat frame out to the router and back for

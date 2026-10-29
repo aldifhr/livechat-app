@@ -1,5 +1,7 @@
 """Persistent, read-by-link giveaway snapshots."""
 
+from __future__ import annotations
+
 import asyncio
 import json
 import os

@@ -39,8 +39,12 @@ arrives in the URL, so an entry created on read would be one an anonymous caller
 could allocate by guessing.
 """
 
+from __future__ import annotations
+
 import json
 import logging
+import os
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -60,23 +64,56 @@ SESSIONS_FILE: Path = store.CONFIG_DIR / "sessions.json"
 SESSIONS_KEEP = 200
 
 
+#: Guards the read-modify-write in `_append_session`.
+#
+# Two rooms disconnecting in the same tick each read the file, each append their
+# own record and each write the whole list back — so one of the two sessions
+# silently vanishes from the history, and which one depends on scheduling. A
+# plain `threading.Lock` because the whole critical section is synchronous file
+# I/O and the callers are on the event loop.
+_session_lock = threading.Lock()
+
+
 def _append_session(record: dict[str, Any]) -> None:
     """Append one finished session to the history, pruning the oldest.
 
     Best-effort: a failure to persist must not take down the disconnect that
     produced the record. The session's own counters are already in memory for
     the current run; this is the copy that survives a restart.
+
+    Written through a temp file and `os.replace`, the same way `store` writes
+    `rooms.json`. The old version wrote the file in place, so a crash — or a
+    full disk — part-way through left a truncated `sessions.json` behind, and
+    the next read of it raised, which the loader answers by treating the whole
+    history as empty. One bad moment cost every session ever recorded rather
+    than the one being written.
+
+    Called at most twice per session (once on connect, once on disconnect), so
+    the blocking write is not worth moving off the loop: it is not on a path any
+    event takes.
     """
-    try:
-        history: list[dict[str, Any]] = []
-        if SESSIONS_FILE.exists():
-            history = json.loads(SESSIONS_FILE.read_text(encoding="utf-8"))
-        history.append(record)
-        if len(history) > SESSIONS_KEEP:
-            history = history[-SESSIONS_KEEP:]
-        SESSIONS_FILE.write_text(json.dumps(history, ensure_ascii=False), encoding="utf-8")
-    except (OSError, ValueError) as exc:
-        log.debug("could not persist session history (%s)", exc)
+    with _session_lock:
+        try:
+            history: list[dict[str, Any]] = []
+            if SESSIONS_FILE.exists():
+                history = json.loads(SESSIONS_FILE.read_text(encoding="utf-8"))
+                if not isinstance(history, list):
+                    # A file that is valid JSON but not a list is not something
+                    # to append to, and `history.append` would raise on it.
+                    history = []
+            history.append(record)
+            if len(history) > SESSIONS_KEEP:
+                history = history[-SESSIONS_KEEP:]
+            SESSIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
+            tmp = SESSIONS_FILE.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(history, ensure_ascii=False), encoding="utf-8")
+            os.replace(tmp, SESSIONS_FILE)
+        except (OSError, ValueError) as exc:
+            log.debug("could not persist session history (%s)", exc)
+            try:
+                tmp.unlink(missing_ok=True)
+            except (OSError, NameError, UnboundLocalError):
+                pass
 
 log = logging.getLogger("streamkit.events")
 

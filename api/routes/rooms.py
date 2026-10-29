@@ -7,11 +7,12 @@ once at startup from `main` via `bind_state`, so this module never imports
 """
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 import eventlog
 import events
 import store
+import wsguard
 from models import (
     ConfigUpdateRequest,
     CreateRoomRequest,
@@ -165,6 +166,11 @@ async def room_session(room_id: str):
 async def delete_room(room_id: str):
     if not await store.delete_room_async(room_id):
         raise room_not_found()
+    # Every overlay token minted for this room goes with it. A credential that
+    # outlives the thing it opens is a key to a room that no longer exists —
+    # and `verify` would keep answering for it, because the token carries the
+    # room id and nothing checks that the room is still there.
+    wsguard.revoke_room(room_id)
     had_source = await teardown_source(_state, room_id)
     # Its counters go with it. Left behind, a deleted room would still answer a
     # leaderboard request with the viewers it used to have, which is a room
@@ -187,3 +193,38 @@ async def update_room_config(room_id: str, req: ConfigUpdateRequest):
         raise room_not_found()
     await events.emit_config(room_id, req.config)
     return {"status": "ok"}
+
+
+@router.post("/api/rooms/{room_id}/overlay-token")
+async def mint_overlay_token(room_id: str):
+    """A credential that opens this room's event socket, and only this one.
+
+    Token-gated like every other write — the middleware covers POST — so this
+    is an operator action: the dashboard mints one, puts it in the overlay URL
+    it hands to OBS, and the socket then checks it instead of trusting the room
+    id alone. See `wsguard` for why the id alone is not enough and for the
+    transition that keeps every existing overlay working.
+
+    No URL is built here. The backend sits behind a proxy that rewrites `Host`,
+    so any address it constructed would name the backend's own name rather than
+    the one the browser uses — the caller knows its own origin and this only
+    supplies the value that goes in the query.
+    """
+    await require_room(room_id)
+    return wsguard.mint(room_id)
+
+
+@router.delete("/api/rooms/{room_id}/overlay-token/{token}")
+async def revoke_overlay_token(room_id: str, token: str):
+    """Withdraw one overlay token, so its URL stops opening the socket.
+
+    Scoped to the room in the path: a token minted for one room cannot be
+    revoked through another's, which would make the route a way to learn
+    whether an arbitrary token is live. An unknown, expired or foreign token
+    answers 404 — the same answer a token for a room that never existed gets,
+    because from the outside those are the same thing.
+    """
+    await require_room(room_id)
+    if not wsguard.verify(token, room_id) or not wsguard.revoke(token):
+        raise HTTPException(status_code=404, detail="Overlay token not found")
+    return {"status": "revoked"}

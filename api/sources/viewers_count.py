@@ -19,6 +19,8 @@ Measured live: `total_user` 627,555 against `join.viewers` 19,682, 31.9 times
 apart, both still climbing. Before the switch the city was reading duration.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 #: A room cannot hold this many people. Past it the field is something else.
