@@ -1,5 +1,12 @@
 """Run every backend test in this directory, and fail if one is not run.
 
+**This is the runner, not pytest.** There is no pytest here. Every suite in
+this directory is a plain script using a local `check(label, cond, detail)`
+helper and `print`, with no `test_*` functions and no fixtures, so
+`python -m pytest tests/ -q` collects nothing and exits 5. That exit code
+means "no tests ran", not "tests passed" -- a gate wired to it would be green
+on an empty suite. CI runs this file directly for the same reason.
+
 Four of these lived in `apps/api/` rather than `tests/`, so a `tests/test_*.py`
 glob reported a clean suite while never executing them — which is how a green run
 came to mean nothing at all. Anything matching `test_*.py` here runs, and the

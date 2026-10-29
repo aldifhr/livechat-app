@@ -684,6 +684,57 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
   cookie tidak dikirim pada POST lintas situs, dan `/api/account/password` tetap
   menanyakan password lama yang penyerang tidak punya. Perilaku tidak diubah —
   yang ditambahkan hanya penjelasan kenapa dua lapis itu sudah cukup.
+- **`api/tests/run_all.py` adalah runner-nya, bukan pytest.** Tidak ada pytest di
+  direktori ini: setiap suite adalah script polos dengan helper
+  `check(label, cond, detail)` dan `print`, tanpa fungsi `test_*` dan tanpa
+  fixture. Akibatnya `python -m pytest tests/ -q` tidak mengumpulkan apa pun dan
+  **exit 5** — yang berarti "tidak ada test yang jalan", bukan "test lulus".
+  Gate yang disambungkan ke perintah itu akan hijau di atas suite kosong. CI
+  menjalankan file ini langsung. Header docstring `run_all.py` sekarang
+  menyatakan ini supaya orang berikutnya tidak kehilangan waktu pada exit 5.
+
+### Deployment
+- **Backend `20aa24c`..`ae33f2e` sudah live di VPS** (`streamer-api.service`,
+  PID 3073870, boot 06:15:22 WIB). Sebelum restart dua prasyarat dikonfirmasi
+  lebih dulu, bukan setelah: repo pada `ae33f2e` (HEAD == `origin/main`, working
+  tree bersih), dan tidak ada session yang akan putus — `totalConnections: 0`,
+  nol aktivitas WebSocket 10 menit sebelumnya, tiga room `Offline` dan satu
+  `waiting` (`@d4r311` tidak live).
+  - **Bukti pasca-restart, bukan asumsi:** `systemctl status` → `active
+    (running)`, `NRestarts: 0`, memori 81.9M dari cap 512M. `/health` → `200`
+    dengan `activeRooms: 4`. `/metrics` — modul baru dari build ini — berisi
+    angka nyata, bukan objek kosong: `events_in_total: 79` dengan rincian per
+    kind (`comment: 22`, `join: 28`, `viewers: 15`, `like: 12`, `follow: 1`,
+    `intro: 1`), `sources_active: 4`, `background_tasks: 5` (task registry baru),
+    `source_queue_high_water: 11`.
+  - **Satu room benar-benar connect dan mengirim frame end to end.** `@zaylinho`
+    hidup saat restore, dan socket-nya mengirim 6 frame asli dari stream TikTok:
+    `config`, `status`, `join`, `viewers`, `like`, `join`. Frame `status` tidak
+    membawa `liveEnded`/`waiting` — benar, karena keduanya hanya dikirim saat
+    true dan stream itu memang live.
+  - **Overlay token bersifat aditif, bukan pengganti.** `POST
+    /api/rooms/{id}/overlay-token` mencetak token (`expiresIn: 21600`), dan
+    handshake **tanpa** token tetap diterima. Jadi setiap tautan OBS yang sudah
+    ada survive upgrade tanpa diubah.
+  - **Yang masih terbuka:** `STREAMKIT_WS_REQUIRE_TOKEN` belum di-set, jadi token
+    tetap opsional dan model kapabilitas room-id masih berlaku. Ini P0 yang
+    *tereduksi*, bukan *tertutup*.
+  - **Watch item, bukan alarm:** `event_loop_lag_max_s: 1.075` adalah maksimum
+    atas window uptime, dan stall ~1s saat startup biasa — empat sumber
+    TikTokLive attach, koneksi pertama, import settling. Yang perlu diperiksa
+    adalah apakah angkanya masih naik setelah proses hangat. Pasangan yang
+    menenangkan: `source_queue_high_water: 11` masih jauh dari plafon queue,
+    jadi jalur evict newest-wins **teruji tapi belum terbukti live** pada trafik
+    produksi.
+
+### Known issues (pre-existing, bukan dari audit ini)
+- ~~**Lima suite backend gagal di baseline: `test_avatar`,
+  `test_gift_fields`, `test_live_return`, `test_reconnect_budget`,
+  `test_viewer_coalesce`.**~~ **Bukan gagal — artefak lingkungan Python 3.9.6.**
+  Kelimanya lulus pada venv Python 3.12 yang dipinjam `api/requirements.txt`:
+  `tests/run_all.py` melaporkan **30/30 suite lulus**. Jadi backend ini hijau di
+  stack yang dipinjam, bukan hanya hijau di tempat ia dites. Catatan dicatat ke
+  depan di sini, bukan dengan menulis ulang pesan commit yang sudah di-push.
 
 ## [1.1.0] — 2026-10-14
 
