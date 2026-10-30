@@ -719,13 +719,41 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
   - **Yang masih terbuka:** `STREAMKIT_WS_REQUIRE_TOKEN` belum di-set, jadi token
     tetap opsional dan model kapabilitas room-id masih berlaku. Ini P0 yang
     *tereduksi*, bukan *tertutup*.
-  - **Watch item, bukan alarm:** `event_loop_lag_max_s: 1.075` adalah maksimum
-    atas window uptime, dan stall ~1s saat startup biasa — empat sumber
-    TikTokLive attach, koneksi pertama, import settling. Yang perlu diperiksa
-    adalah apakah angkanya masih naik setelah proses hangat. Pasangan yang
-    menenangkan: `source_queue_high_water: 11` masih jauh dari plafon queue,
-    jadi jalur evict newest-wins **teruji tapi belum terbukti live** pada trafik
-    produksi.
+  - **Dua dari empat kind baru sudah teramati di produksi.** Ini yang mengubah
+    klaim "kontrak sudah dibetulkan" dari argumen menjadi bukti: sebelumnya yang
+    bisa diverifikasi hanyalah serialiser-nya, dan serialiser yang menghasilkan
+    frame bukan hal yang sama dengan frame yang benar-benar sampai di socket.
+    - `config` — teramati saat verifikasi deploy di atas: `frame type=config,
+      keys=['config','type']`.
+    - `share` — teramati kemudian, difangkap langsung dari socket room yang
+      sedang live: `{"type":"share","user":"MRVN\ud83d\udc51","userId":"m4rv1n536",
+      "avatar":"https://p16-common-sign.tiktokcdn.com/…","count":1}`. Bentuknya
+      sama persis dengan `ShareFrame` di `shared/events.ts` — `type`, `user`,
+      `userId`, `avatar`, `count`, dengan `count` opsional dan field user dari
+      `BaseUserFrame`.
+    - `alert` dan `error` belum, dan tidak perlu dikejar: keduanya jarang dan
+      hanya di jalur khusus — donasi atau kind yang tak tertangani, dan kegagalan
+      sisi backend. Kalau salah satunya pernah muncul, ia akan bertipe benar.
+  - **Klaim "behavior-preserving" kini punya saksi live, bukan hanya alasan.**
+  Setiap consumer digrepping: tidak satu pun komponen dashboard dan tidak satu
+  pun overlay HTML punya cabang untuk `share` (yang muncul di file overlay
+  adalah kata bahasa Inggris di dalam komentar). Jadi frame itu diterima
+  `isOverlayFrame` lalu diabaikan oleh semua consumer — persis seperti sebelum
+  perubahan, ketika ia di-cast buta dan tetap diabaikan. Guard-nya membuat
+  drop itu disengaja, bukan kebetulan. Perilaku pengguna tidak bergerak
+  sepeser pun; yang berubah hanyalah bahwa drop-nya sekarang punya alasan.
+  - **Watch item `event_loop_lag_max_s` — DITUTUP.** Dua pembacaan: `1.075` saat
+    uptime 32 detik, dan `1.075` lagi saat uptime 1.575 detik (26 menit steady
+    state, 2.456 event). Angkanya tidak bergerak, jadi itu memang startup —
+    empat sumber TikTokLive attach sekaligus, koneksi pertama, import settling.
+    Bukan defect dan bukan tren. Dicatat supaya pembaca berikutnya tahu angka
+    itu sudah diselidiki, bukan diabaikan.
+  - **Safety net-nya tidak pernah perlu menyala, dan itu hasil ideal.**
+  `events_dropped_source_low_total: 0`, `events_dropped_client_overflow_total:
+  0`, `slow_client_disconnects_total: 0`, dan `client_queue_high_water: 1`
+  across 2.456 event. Queue bounded dan slow-client shedding terbukti lewat
+  benchmark, dan **tidak pernah terpicu di dunia nyata** — dicatat seperti itu,
+  bukan sebagai "belum teruji."
 
 ### Known issues (pre-existing, bukan dari audit ini)
 - ~~**Lima suite backend gagal di baseline: `test_avatar`,
