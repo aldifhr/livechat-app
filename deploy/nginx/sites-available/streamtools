@@ -5,9 +5,15 @@
 #   /overlay/             the chat overlay OBS loads
 #   /topchatter/          the leaderboard overlay
 #   /giveaway/<id>        public, read-only giveaway snapshot
-#   /api/giveaways/snapshots  validated desktop-app snapshot upload
+#   /api/giveaways/snapshots  validated snapshot upload
 #   /api/backend/*        proxied to Next, which attaches the backend's token
-#   /ws/                  proxied straight to the backend, no credential
+#   /ws/                  proxied to the backend on loopback, no credential
+#
+# The backend is reached on 127.0.0.1:8000 and never by its public hostname: it
+# binds loopback, and nginx is its only front door. Everything that has to reach
+# it from outside — an OBS docks page, an overlay page — comes through this vhost
+# as well, so the backend's own public listener can be closed to everyone but
+# this host.
 #
 # The overlay pages are static and served from disk, not through Next: OBS loads
 # them on a canvas-sized browser source where a framework runtime is dead weight,
@@ -21,6 +27,8 @@
 # /ws/ carries chat, gifts and viewer counts. It is deliberately outside the
 # gate: OBS cannot present a credential, and an overlay that asked for one would
 # show a password box on stream. Nothing that can change anything goes through it.
+# What it does need is a per-IP socket cap, because the room id is free-form and
+# the hub's global ceiling is shared — see conf.d/streamkit-limits.conf.
 #
 # The dashboard is behind a SESSION, not behind `auth_basic`. nginx does not read
 # a password file any more — it asks the app, once per request, whether the
@@ -63,8 +71,23 @@ server {
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
     # --- the overlay event stream, open to OBS ------------------------------
+    # Capped per IP: the socket is unauthenticated and the room id is free-form,
+    # so without a cap the hub's global ceiling of 200 sockets is a target rather
+    # than a limit (see conf.d/streamkit-limits.conf).
     location /ws/ {
-        proxy_pass https://kit-backend.aldifhr.my.id;
+        limit_conn wsconn 20;
+        # The socket's own log format, which is `combined` without the query
+        # string — an overlay token rides in the query, and the access log is
+        # the one copy of it nobody thinks to scrub. See
+        # conf.d/streamkit-limits.conf for the format and why it is scoped to
+        # this location alone.
+        access_log /var/log/nginx/streamkit-ws.log streamkit_ws;
+        # Loopback, not the backend's public hostname. The backend binds
+        # 127.0.0.1:8000 and this vhost is on the same box, so reaching it by
+        # public name sent every chat frame out to the router and back for
+        # nothing — and left the impression that the backend had to be on the
+        # internet for this to work. It does not: nginx is its only front door.
+        proxy_pass http://127.0.0.1:8000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -89,12 +112,21 @@ server {
     # hand-edited handle link resolves again.
     #
     # Not a hole: the route is exempt from the backend's write token by design —
-    # it is the one write the desktop app may make without a credential — and it
-    # is already reachable directly on kit-backend. Proxying it here adds no
-    # reachability that did not exist, and unlike /api/backend/* it attaches no
-    # token, so it is not a confused deputy.
+    # it is the one write the desktop app may make without a credential — and
+    # unlike /api/backend/* it attaches no token, so it is not a confused deputy.
+    # It is bounded instead: the handle is validated before it reaches the store,
+    # and the auto-room quota is capped (see the rate limit below).
+    #
+    # Rate-limited per IP because the route creates a room for any handle it is
+    # given, up to a global ceiling of 20 auto-created rooms. Without a limit a
+    # script burns that quota in seconds and every real streamer gets a 429 until
+    # someone deletes rooms by hand.
+    #
+    # Loopback, like /ws/ above: the backend is on this box and nginx is its only
+    # front door.
     location = /api/room-connect-by-username {
-        proxy_pass https://kit-backend.aldifhr.my.id;
+        limit_req zone=autoroom burst=10 nodelay;
+        proxy_pass http://127.0.0.1:8000;
         proxy_http_version 1.1;
         proxy_set_header Host kit-backend.aldifhr.my.id;
         proxy_set_header X-Real-IP $remote_addr;
@@ -178,8 +210,8 @@ server {
         include snippets/streamtools-next.conf;
     }
 
-    # The desktop app has no dashboard cookie. Its bounded report upload is
-    # validated/rate-limited by Next and forwarded to the token-protected API.
+    # A report upload is validated and rate-limited by Next, then forwarded to
+    # the token-protected API.
     location = /api/giveaways/snapshots {
         include snippets/streamtools-next.conf;
     }

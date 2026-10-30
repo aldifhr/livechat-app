@@ -24,8 +24,11 @@ import events
 import eventlog
 import logbuffer
 import store
+import tasks
+import wsguard
 from watchdog import LivenessWatchdog
 from hub import hub, CLIENT_TYPES as HUB_CLIENT_TYPES
+from metrics import metrics as _metrics
 from sources import TikTokAdapter
 
 #: Module-level logger. Bootstrapped in `logging_setup`: one place, one handler,
@@ -74,7 +77,11 @@ async def lifespan(app: FastAPI):
     # restarted process cannot otherwise be asked about.
     logbuffer.install()
 
-
+    # And again here rather than only at import: uvicorn configures its own
+    # handlers when the server starts, which is before it imports this module —
+    # but a deployment that runs this app some other way (a test, a worker) may
+    # not have them yet at import time. Idempotent, so the second call is free.
+    wsguard.install_log_scrub()
 
     # Re-aim every room that was pointed at a room when the process last went
     # down.
@@ -100,6 +107,12 @@ async def lifespan(app: FastAPI):
     # nothing, and the only evidence available is a stack taken from outside it.
     liveness.start()
 
+    # The watchdog measures the loop's lag from outside it; this folds that
+    # measurement into the metrics `/metrics` reads. Sampled rather than
+    # per-beat because the number is for a dashboard, not for a control loop,
+    # and a task that wakes five times a minute is not load.
+    tasks.spawn(_sample_loop_lag(), name="loop-lag-sampler")
+
     yield
     # Graceful shutdown sequence:
     # 1. Stop all TikTok sources first (stop accepting new events)
@@ -120,7 +133,22 @@ async def lifespan(app: FastAPI):
             logger.warning("Failed to cleanly close WebSocket %s", client_id[:8])
         hub.disconnect(client_id)
 
+    # 3. Wait for the work this process started. The sources are stopped and the
+    # sockets are closed, so anything still running is an observer draining a
+    # queue nobody will read — it gets cancelled and awaited rather than left to
+    # finish into a process that is already on its way out.
+    await tasks.shutdown()
+
     liveness.stop()
+
+
+async def _sample_loop_lag() -> None:
+    """Fold the watchdog's loop-lag measurement into `/metrics`, periodically."""
+    while True:
+        await asyncio.sleep(5.0)
+        gap = liveness.max_gap
+        if gap > _metrics.loop_lag_max:
+            _metrics.loop_lag_max = gap
 
 
 async def restore_sources() -> list[str]:
@@ -147,7 +175,55 @@ async def restore_sources() -> list[str]:
     return restored
 
 
-app = FastAPI(title="StreamKit", lifespan=lifespan)
+#: Whether `/docs`, `/openapi.json` and `/redoc` answer at all.
+#:
+#: They used to answer to anyone, and they map every route — including the ones
+#: the token protects, with their full request and response shapes. That is a
+#: free reconnaissance page bolted onto a deployed API. Off unless a deploy asks
+#: for it with `STREAMKIT_DOCS=true`, which is the local-development case and
+#: nothing else.
+_DOCS = os.environ.get("STREAMKIT_DOCS", "").strip().lower() in {"1", "true", "yes", "on"}
+
+app = FastAPI(
+    title="StreamKit",
+    lifespan=lifespan,
+    docs_url="/docs" if _DOCS else None,
+    openapi_url="/openapi.json" if _DOCS else None,
+    redoc_url="/redoc" if _DOCS else None,
+)
+
+
+# --------------------------------------------------------------------------
+# store failures as HTTP answers
+#
+# The store raises two things a route should not have to translate: a write that
+# did not reach disk, and a ceiling the by-username route hit. Both used to be
+# raw exceptions that became a 500 with a traceback in the journal, which reads
+# as a bug in the handler rather than as the disk being full.
+@app.exception_handler(store.StorageError)
+async def storage_error_handler(request: Request, exc: store.StorageError) -> JSONResponse:
+    """503: the write did not land. The mutation is kept in memory, not rolled back.
+
+    Keeping it is deliberate and is pinned by `tests/test_store.py`: for a store
+    that rewrites one whole file, the next write that succeeds persists the
+    change, so rolling back would throw a streamer's new room away to a
+    transient disk error. What the caller is told is the same either way — the
+    write did not land — and 503 is the honest answer to that.
+    """
+    return JSONResponse(status_code=503, content={"detail": "storage unavailable; change not saved"})
+
+
+@app.exception_handler(store.AutoRoomQuotaError)
+async def auto_room_quota_handler(request: Request, exc: store.AutoRoomQuotaError) -> JSONResponse:
+    """429: the by-username route is at its ceiling on auto-created rooms.
+
+    Logged here rather than in the route, because this is now the one place a
+    refusal can happen. It used to be logged in the route that also had to undo
+    the room it had just created; with the ceiling inside the store's critical
+    section there is nothing to undo and one place to say so.
+    """
+    logger.warning("room-connect-by-username refused: %s", exc)
+    return JSONResponse(status_code=429, content={"detail": str(exc)})
 
 
 # --------------------------------------------------------------------------
@@ -219,8 +295,8 @@ async def guard_mutations(request: Request, call_next):
 # The list is explicit rather than "*". The only browser that talks to this API
 # cross-origin is an overlay page: it is served from the frontend host and posts
 # a handle to /api/room-connect-by-username to resolve it. Everything else
-# reaches the backend server-side — the dashboard through its Next proxy, the
-# desktop app through native Rust HTTP — so neither needs a CORS grant at all.
+# reaches the backend server-side — the dashboard through its Next proxy — so
+# nothing else needs a CORS grant at all.
 # A wildcard would also let any page on the internet read this API's responses
 # from a victim's browser, which is a permission nothing here asks for.
 #
@@ -311,8 +387,11 @@ async def _connect_room(room_id: str, username: str, provider: str = "tiktok") -
         source = _make_source(provider, username, room_id)
         sources[room_id] = source
         source.start_background()
-        # Start observer task to consume events from adapter queue and broadcast
-        asyncio.create_task(_observe_source(room_id, source))
+        # Start observer task to consume events from adapter queue and broadcast.
+        # Spawned through the task registry rather than bare `create_task`: the
+        # observer outlives the function that starts it and the process has to
+        # be able to cancel and await it at shutdown — see `tasks`.
+        tasks.spawn(_observe_source(room_id, source), name=f"observe:{room_id}")
         return {"status": "connecting", "username": username, "room_id": room_id, "provider": provider}
 
 
@@ -337,7 +416,6 @@ async def _observe_source(room_id: str, source: TikTokAdapter) -> None:
         pass
     except Exception as e:
         logger.error("Observer task failed for room %s: %s", room_id, e)
-
 
 # Manual triggers and webhooks live in `routes/ops` alongside health/metrics.
 
@@ -396,6 +474,17 @@ async def websocket_endpoint(websocket: WebSocket, client_type: str, room_id: st
     # connected as anything but `room`.
     if client_type not in HUB_CLIENT_TYPES:
         await websocket.close(code=1008, reason="unknown client type")
+        return
+    # Admission policy, before a slot is reserved. A handshake that is going to
+    # be refused should not cost a queue, a writer task or a place in the caps,
+    # and the reason it was refused is written here rather than discovered from
+    # a 1013 that means something else. See `wsguard` for the model: a
+    # room-scoped token when one is presented, the room id as the capability
+    # when none is, and Origin as defence in depth when it is switched on.
+    refusal = wsguard.authorize(websocket, room_id, _allowed_origins())
+    if refusal is not None:
+        _metrics.ws_refuse(refusal.replace(" ", "_"))
+        await websocket.close(code=1008, reason=refusal)
         return
     client_id = await hub.connect(websocket, client_type, room_id)
     # A cap was reached. `hub.connect` has already closed the socket, and returns an

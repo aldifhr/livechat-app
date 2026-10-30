@@ -8,6 +8,8 @@ file is now read once and mutated in place behind a lock, and each write is
 atomic so a crash mid-save cannot leave a truncated file behind.
 """
 
+from __future__ import annotations
+
 import asyncio
 import copy
 import json
@@ -34,6 +36,54 @@ ROOMS_FILE = CONFIG_DIR / "rooms.json"
 # re-entrant or cross-thread caller. asyncio.Lock would also demand `async with`.
 _lock = threading.Lock()
 _cache: dict[str, Any] | None = None
+
+
+class StorageError(OSError):
+    """A write did not reach disk.
+
+    An `OSError` subclass rather than a plain `RuntimeError`, and the mutation
+    that provoked it is deliberately **kept** in memory. Both of those are the
+    existing contract, pinned by `tests/test_store.py`: a full disk used to be
+    swallowed entirely, and the fix that landed was to propagate the failure
+    while leaving the roster coherent, so a retry after freeing the disk writes
+    the whole thing rather than a fragment. Rolling the cache back instead was
+    considered and rejected — for a store that rewrites one whole file, losing a
+    streamer's new room to a transient disk error is a worse outcome than
+    persisting it on the next write that works, and the caller is told either
+    way.
+
+    What this class adds is only the type: the store's failures used to reach a
+    route as a bare `OSError`, which FastAPI answered with a 500 and a traceback
+    in the journal — indistinguishable from a bug in the handler. `main` maps
+    this one type to 503, so "the disk is full" reads as what it is.
+    """
+
+
+class AutoRoomQuotaError(RuntimeError):
+    """The by-username route reached its ceiling on auto-created rooms.
+
+    Raised from inside the store's critical section rather than from the route,
+    because that is the only place the count and the insert are one step. Mapped
+    to 429 by an exception handler in `main`.
+    """
+
+
+def _transaction() -> None:
+    """Flush the store after a mutation, naming the failure if it does not land.
+
+    Not a rollback. The cache is left exactly as the mutation left it, on
+    purpose — see `StorageError` for why, and `tests/test_store.py` for the
+    assertion that pins it.
+
+    It exists so that "the write failed" is one sentence in one place rather
+    than an `OSError` escaping from whichever of the five mutators happened to
+    be called, and so the log line and the exception type cannot drift apart
+    between them.
+    """
+    try:
+        _flush()
+    except OSError as exc:
+        raise StorageError(f"could not persist rooms: {exc}") from exc
 
 
 def _data() -> dict[str, Any]:
@@ -115,7 +165,7 @@ def create_room(name: str, config: dict[str, Any]) -> dict[str, Any]:
     }
     with _lock:
         _data()[room_id] = record
-        _flush()
+        _transaction()
     return {"id": room_id, **record}
 
 
@@ -136,7 +186,7 @@ def update_room(
             record["username"] = username
         if provider is not None:
             record["provider"] = provider
-        _flush()
+        _transaction()
         return copy.deepcopy(record)
 
 
@@ -148,7 +198,7 @@ def delete_room(room_id: str) -> bool:
         if room_id not in _data():
             return False
         del _data()[room_id]
-        _flush()
+        _transaction()
         return True
 
 
@@ -158,7 +208,7 @@ def set_config(room_id: str, config: dict[str, Any]) -> bool:
         if record is None:
             return False
         record["config"] = config
-        _flush()
+        _transaction()
         return True
 
 
@@ -201,7 +251,9 @@ def find_room_by_username(username: str) -> dict[str, Any] | None:
     return None
 
 
-def find_or_create_room_for_username(username: str, config: dict[str, Any] | None = None) -> tuple[dict[str, Any], bool]:
+def find_or_create_room_for_username(
+    username: str, config: dict[str, Any] | None = None, limit: int | None = None
+) -> tuple[dict[str, Any], bool]:
     """The room for this handle, created if there is none. One room per handle.
 
     The lookup and the insert share one critical section on purpose. Doing them
@@ -210,10 +262,24 @@ def find_or_create_room_for_username(username: str, config: dict[str, Any] | Non
     streamer — and two TikTok connections to the same live, which is the exact
     thing this function exists to make impossible.
 
+    The ceiling lives here too, for the same reason. It used to be checked by
+    the route *after* this returned, which is two bugs in one line: the count
+    and the insert are separate steps, so N concurrent requests all read the
+    same count and all insert, and the route then had to delete the room it had
+    just made — a write, a flush and a rollback to answer a request that should
+    never have touched the store. Inside the section the count and the insert
+    are one step, nothing is created that should not be, and the caller gets an
+    exception instead of a room to clean up.
+
     Returns the record and whether this call is what brought it into existence.
     The flag is the only way the caller can tell a room it just invented from one
-    that was already there, which matters because the ceiling below counts only
-    the invented ones.
+    that was already there, which matters because the ceiling counts only the
+    invented ones.
+
+    Raises `AutoRoomQuotaError` when `limit` is given and already reached. An
+    existing room is never blocked by it: a handle a human wired up in the
+    dashboard is not an auto-created room, and refusing to connect it would
+    break the room that was working before the store filled up.
     """
     wanted = username.strip().lstrip("@").casefold()
     if not wanted:
@@ -224,6 +290,12 @@ def find_or_create_room_for_username(username: str, config: dict[str, Any] | Non
             stored = str(record.get("username", "")).strip().lstrip("@").casefold()
             if stored == wanted:
                 return {"id": room_id, **copy.deepcopy(record)}, False
+        if limit is not None:
+            auto = sum(1 for record in data.values() if record.get("autoCreated"))
+            if auto >= limit:
+                raise AutoRoomQuotaError(
+                    f"too many auto-created rooms (limit {limit}); delete some first"
+                )
         room_id = str(uuid.uuid4())
         record = {
             "name": username.strip().lstrip("@"),
@@ -231,15 +303,15 @@ def find_or_create_room_for_username(username: str, config: dict[str, Any] | Non
             "config": config or {},
             "createdAt": time.time(),
             # Marked at birth, because "did this route invent it?" is the only
-            # question the ceiling needs answered. It used to be inferred from the
-            # room holding a username but no live source, which is unreachable in
-            # practice: the route that creates a room connects it on the next
-            # statement, so the room is never source-less by the time anyone
-            # counts. The cap therefore never fired.
+            # question the ceiling needs answered. It used to be inferred from
+            # the room holding a username but no live source, which is
+            # unreachable in practice: the route that creates a room connects
+            # it on the next statement, so the room is never source-less by the
+            # time anyone counts. The cap therefore never fired.
             "autoCreated": True,
         }
         data[room_id] = record
-        _flush()
+        _transaction()
         return {"id": room_id, **copy.deepcopy(record)}, True
 
 
@@ -306,9 +378,9 @@ async def username_of_async(room_id: str) -> str:
 
 
 async def find_or_create_room_for_username_async(
-    username: str, config: dict[str, Any] | None = None
+    username: str, config: dict[str, Any] | None = None, limit: int | None = None
 ) -> tuple[dict[str, Any], bool]:
-    return await asyncio.to_thread(find_or_create_room_for_username, username, config)
+    return await asyncio.to_thread(find_or_create_room_for_username, username, config, limit)
 
 
 async def count_auto_rooms_async() -> int:

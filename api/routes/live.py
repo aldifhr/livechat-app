@@ -16,7 +16,6 @@ from fastapi import APIRouter, HTTPException
 
 import events
 import store
-from logging_setup import logger
 from models import ConnectByUsernameRequest, ConnectRequest, clean_overlay as _clean_overlay
 from routes.common import teardown_source
 
@@ -69,7 +68,7 @@ def normalise_username(raw: str) -> str:
 async def room_connect(room_id: str):
     """Connect the room an room is already configured for, with no login.
 
-    The desktop app connects by handle through /api/room-connect-by-username, so
+    An overlay page connects by handle through /api/room-connect-by-username, so
     this stays for a caller that names a room it does not have a username for —
     the editor, or anything scripting against the backend. /api/connect, which
     takes the username from the request and can therefore aim the global room
@@ -116,21 +115,15 @@ async def room_connect_by_username(req: ConnectByUsernameRequest):
             detail="username must be 2-24 characters of letters, digits, dot or underscore",
         )
 
-    record, created = await store.find_or_create_room_for_username_async(username)
-    if created:
-        # Counted once — see AUTO_ROOM_LIMIT above for the ceiling that keeps
-        # this exempt route from being an open-room DoS.
-        auto = await store.count_auto_rooms_async()
-        if auto > AUTO_ROOM_LIMIT:
-            logger.warning(
-                "room-connect-by-username: refusing @%s (%d >= %d)",
-                username, auto, AUTO_ROOM_LIMIT,
-            )
-            await store.delete_room_async(record["id"])
-            raise HTTPException(
-                status_code=429,
-                detail=f"too many auto-created rooms (limit {AUTO_ROOM_LIMIT}); delete some first",
-            )
+    record, created = await store.find_or_create_room_for_username_async(
+        username, limit=AUTO_ROOM_LIMIT
+    )
+    # The ceiling is enforced inside the store's critical section, so a request
+    # past it raises before a room exists — there is nothing to roll back and no
+    # second write to undo. It used to be checked here, after the room was
+    # already created and flushed, which meant the count and the insert were
+    # separate steps (so concurrent requests all passed the same count) and a
+    # refusal cost a create, a flush and a delete.
 
     room_id = record["id"]
 

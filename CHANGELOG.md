@@ -4,6 +4,82 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
 
 ## [Unreleased]
 
+### Removed
+- **Desktop app (Tauri) dihapus total.** Seluruh `desktop/` — 166 file: React
+  frontend, Rust host (`src-tauri/`), 15 suite `.mjs`, dan 5 script diagnostik.
+  Semua fungsinya sudah ada di dashboard web: overlay pages di-serve nginx dari
+  disk, giveaway runner jalan di `/admin/streams/@handle/giveaway`, dan docks
+  adalah browser source OBS yang sama.
+  - **Yang ikut dibuang, dan alasannya:** `test-overlay-page.mjs` (satu-satunya
+    suite yang memuat HTML overlay ke DOM asli dan mendorong frame lewat socket —
+    bug yang dijaganya adalah *hang*, dan hang tak terlihat oleh regex), dan
+    `desktop/scripts/*.py` + `probe-ui.mjs` (probe WebSocket yang bicara ke
+    backend, bukan ke app). Diputuskan bersih total, bukan diporting.
+  - **`shared/` tetap.** Di-import `web/` lewat alias `@shared` — overlay, events,
+    platforms, giveaway.
+  - **CI:** job `desktop` dan `rust` dibuang. Sisanya tiga: `api`, `web`, dan
+    `shared` (typecheck).
+  - **Route `/health/desktop` dihapus.** Ada hanya untuk app desktop yang tidak
+    bisa mengirim token, dan route itu terbuka sambil membocorkan handle setiap
+    streamer. Tanpa app-nya tidak ada caller yang membutuhkannya.
+  - **Origin allowlist Tauri dibuang.** `giveawayOrigin.ts` kini same-origin
+    saja; handler `OPTIONS` di route commit dan snapshot dihapus karena tidak ada
+    lagi caller cross-origin yang perlu preflight.
+  - Komentar dan docstring yang menyebut desktop sebagai consumer aktif
+    diperbarui di `api/`, `web/`, `shared/`, `deploy/nginx/`, dan overlay HTML.
+
+### Security
+- **Snapshot giveaway: tulis dan daftar kini lewat token, tautan publik tetap terbuka.**
+  Dua lubang di route yang sama, dan keduanya karena asumsi "desktop app tidak
+  punya kredensial".
+  - `POST /api/giveaways/snapshots` dulu **exempt** dari token gate. Padahal app
+    desktop sudah publish lewat route dashboard sendiri (`/api/giveaways/snapshots`
+    di Next), yang memegang token dan meneruskannya — jadi exemption itu tidak
+    melayani satu caller pun yang bekerja. Yang dibelinya: satu write tanpa auth
+    langsung ke backend, melewati origin check dan rate limit dashboard (keduanya
+    ada di depan backend, jadi bisa diakses dari belakang). Cap-nya 1.000 snapshot
+    @ 2 MB, jadi siapa pun yang tahu host bisa mengisinya dan mengunci publish
+    sungguhan.
+  - `GET /api/giveaways/snapshots` (koleksi) tidak pernah digate sama sekali.
+    Dia menjawab dengan **setiap id snapshot** — dan id itu seluruh kredensial untuk
+    laporan di belakangnya, yang menyebut TikTok id dan nickname setiap peserta.
+    Jadi desain "tautan tak-tertebak" dikalahkan oleh satu route yang membagikan
+    id-nya. Sekarang koleksi digate exact-path; baca satu snapshot by id tetap
+    terbuka, karena itu yang dipakai tautan yang dibagikan.
+  - Ditambah `SENSITIVE_READ_EXACT` di `routes/auth.py` — exact, bukan prefix, supaya
+    `/api/giveaways/snapshots/{id}` tidak ikut tergate.
+  - Proxy Next: `SENSITIVE_READ` dapat `giveaways/snapshots$`, `PUBLIC_READ` dipersempit
+    ke bentuk id saja, supaya daftar membawa token dan by-id tidak.
+  - **Setiap write snapshot juga tidak lagi membekukan event loop.** `giveaway_store`
+    melakukan I/O file di bawah `threading.Lock`, dan dipanggil langsung dari handler
+    `async def` — jadi seluruh `giveaways.json` (sampai 1.000 × 2 MB) diserialisasi
+    ulang di loop yang sama sementara WebSocket fan-out menunggu. Kini ada twins
+    `_async` yang jalan di worker thread, konvensi yang sudah dipakai `store.py`.
+  - 12 assertion baru di `test_api.py` + 4 di `test-proxy-allowlist.mjs`.
+
+- **Backend tidak lagi dijangkau lewat hostname publiknya.** uvicorn bind
+  `127.0.0.1:8000` dan nginx ada di box yang sama, tapi nginx mem-proxy ke
+  `https://kit-backend.aldifhr.my.id` — setiap frame chat keluar ke router dan
+  kembali, dan backend terlihat seperti sesuatu yang *harus* ada di internet.
+  Kini `/ws/` dan `= /api/room-connect-by-username` mem-proxy ke loopback, begitu
+  pula `BACKEND_URL` default di Next. `BACKEND_ORIGIN` ditambahkan sebagai konstanta
+  terpisah untuk origin yang dijangkau **browser** (socket overlay, tautan galeri
+  gift) — 127.0.0.1 di browser orang lain adalah mesin mereka sendiri, bukan server
+  ini. Default desktop app dan halaman docks ikut pindah ke host dashboard, yang
+  sudah mem-proxy kedua route itu — sehingga listener publik backend bisa ditutup.
+
+- **Dua route terbuka overlay dapat plafon per-IP.** `/ws/` tanpa auth dengan
+  `room_id` bebas: 40 room id karangan × 5 socket mengisi cap global 200 dan setiap
+  overlay sungguhan ditolak dengan 1013 — siaran blank karena orang lain menjalankan
+  loop. Kini `limit_conn wsconn 20`. `/api/room-connect-by-username` membuat room
+  untuk handle apa pun sampai kuota global 20 auto-room, jadi skrip tidak menghabiskan
+  backend tapi menghabiskan *kuota*-nya; kini `limit_req zone=autoroom rate=2r/s`.
+
+- **`/docs`, `/openapi.json` dan `/redoc` mati oleh default.** Ketiganya menjawab
+  siapa pun dan memetakan setiap route — termasuk yang dijaga token — lengkap dengan
+  bentuk request dan response-nya. Halaman rekognisi gratis di depan API produksi.
+  `STREAMKIT_DOCS=true` menyalakannya kembali untuk development.
+
 ### Added
 - **Favicon untuk dashboard.** Halaman web tidak punya ikon sama sekali: tidak
   ada `public/`, tidak ada `favicon.ico`, dan `metadata` di `layout.tsx` cuma
@@ -608,6 +684,85 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikut
   cookie tidak dikirim pada POST lintas situs, dan `/api/account/password` tetap
   menanyakan password lama yang penyerang tidak punya. Perilaku tidak diubah —
   yang ditambahkan hanya penjelasan kenapa dua lapis itu sudah cukup.
+- **`api/tests/run_all.py` adalah runner-nya, bukan pytest.** Tidak ada pytest di
+  direktori ini: setiap suite adalah script polos dengan helper
+  `check(label, cond, detail)` dan `print`, tanpa fungsi `test_*` dan tanpa
+  fixture. Akibatnya `python -m pytest tests/ -q` tidak mengumpulkan apa pun dan
+  **exit 5** — yang berarti "tidak ada test yang jalan", bukan "test lulus".
+  Gate yang disambungkan ke perintah itu akan hijau di atas suite kosong. CI
+  menjalankan file ini langsung. Header docstring `run_all.py` sekarang
+  menyatakan ini supaya orang berikutnya tidak kehilangan waktu pada exit 5.
+
+### Deployment
+- **Backend `20aa24c`..`ae33f2e` sudah live di VPS** (`streamer-api.service`,
+  PID 3073870, boot 06:15:22 WIB). Sebelum restart dua prasyarat dikonfirmasi
+  lebih dulu, bukan setelah: repo pada `ae33f2e` (HEAD == `origin/main`, working
+  tree bersih), dan tidak ada session yang akan putus — `totalConnections: 0`,
+  nol aktivitas WebSocket 10 menit sebelumnya, tiga room `Offline` dan satu
+  `waiting` (`@d4r311` tidak live).
+  - **Bukti pasca-restart, bukan asumsi:** `systemctl status` → `active
+    (running)`, `NRestarts: 0`, memori 81.9M dari cap 512M. `/health` → `200`
+    dengan `activeRooms: 4`. `/metrics` — modul baru dari build ini — berisi
+    angka nyata, bukan objek kosong: `events_in_total: 79` dengan rincian per
+    kind (`comment: 22`, `join: 28`, `viewers: 15`, `like: 12`, `follow: 1`,
+    `intro: 1`), `sources_active: 4`, `background_tasks: 5` (task registry baru),
+    `source_queue_high_water: 11`.
+  - **Satu room benar-benar connect dan mengirim frame end to end.** `@zaylinho`
+    hidup saat restore, dan socket-nya mengirim 6 frame asli dari stream TikTok:
+    `config`, `status`, `join`, `viewers`, `like`, `join`. Frame `status` tidak
+    membawa `liveEnded`/`waiting` — benar, karena keduanya hanya dikirim saat
+    true dan stream itu memang live.
+  - **Overlay token bersifat aditif, bukan pengganti.** `POST
+    /api/rooms/{id}/overlay-token` mencetak token (`expiresIn: 21600`), dan
+    handshake **tanpa** token tetap diterima. Jadi setiap tautan OBS yang sudah
+    ada survive upgrade tanpa diubah.
+  - **Yang masih terbuka:** `STREAMKIT_WS_REQUIRE_TOKEN` belum di-set, jadi token
+    tetap opsional dan model kapabilitas room-id masih berlaku. Ini P0 yang
+    *tereduksi*, bukan *tertutup*.
+  - **Dua dari empat kind baru sudah teramati di produksi.** Ini yang mengubah
+    klaim "kontrak sudah dibetulkan" dari argumen menjadi bukti: sebelumnya yang
+    bisa diverifikasi hanyalah serialiser-nya, dan serialiser yang menghasilkan
+    frame bukan hal yang sama dengan frame yang benar-benar sampai di socket.
+    - `config` — teramati saat verifikasi deploy di atas: `frame type=config,
+      keys=['config','type']`.
+    - `share` — teramati kemudian, difangkap langsung dari socket room yang
+      sedang live: `{"type":"share","user":"MRVN\ud83d\udc51","userId":"m4rv1n536",
+      "avatar":"https://p16-common-sign.tiktokcdn.com/…","count":1}`. Bentuknya
+      sama persis dengan `ShareFrame` di `shared/events.ts` — `type`, `user`,
+      `userId`, `avatar`, `count`, dengan `count` opsional dan field user dari
+      `BaseUserFrame`.
+    - `alert` dan `error` belum, dan tidak perlu dikejar: keduanya jarang dan
+      hanya di jalur khusus — donasi atau kind yang tak tertangani, dan kegagalan
+      sisi backend. Kalau salah satunya pernah muncul, ia akan bertipe benar.
+  - **Klaim "behavior-preserving" kini punya saksi live, bukan hanya alasan.**
+  Setiap consumer digrepping: tidak satu pun komponen dashboard dan tidak satu
+  pun overlay HTML punya cabang untuk `share` (yang muncul di file overlay
+  adalah kata bahasa Inggris di dalam komentar). Jadi frame itu diterima
+  `isOverlayFrame` lalu diabaikan oleh semua consumer — persis seperti sebelum
+  perubahan, ketika ia di-cast buta dan tetap diabaikan. Guard-nya membuat
+  drop itu disengaja, bukan kebetulan. Perilaku pengguna tidak bergerak
+  sepeser pun; yang berubah hanyalah bahwa drop-nya sekarang punya alasan.
+  - **Watch item `event_loop_lag_max_s` — DITUTUP.** Dua pembacaan: `1.075` saat
+    uptime 32 detik, dan `1.075` lagi saat uptime 1.575 detik (26 menit steady
+    state, 2.456 event). Angkanya tidak bergerak, jadi itu memang startup —
+    empat sumber TikTokLive attach sekaligus, koneksi pertama, import settling.
+    Bukan defect dan bukan tren. Dicatat supaya pembaca berikutnya tahu angka
+    itu sudah diselidiki, bukan diabaikan.
+  - **Safety net-nya tidak pernah perlu menyala, dan itu hasil ideal.**
+  `events_dropped_source_low_total: 0`, `events_dropped_client_overflow_total:
+  0`, `slow_client_disconnects_total: 0`, dan `client_queue_high_water: 1`
+  across 2.456 event. Queue bounded dan slow-client shedding terbukti lewat
+  benchmark, dan **tidak pernah terpicu di dunia nyata** — dicatat seperti itu,
+  bukan sebagai "belum teruji."
+
+### Known issues (pre-existing, bukan dari audit ini)
+- ~~**Lima suite backend gagal di baseline: `test_avatar`,
+  `test_gift_fields`, `test_live_return`, `test_reconnect_budget`,
+  `test_viewer_coalesce`.**~~ **Bukan gagal — artefak lingkungan Python 3.9.6.**
+  Kelimanya lulus pada venv Python 3.12 yang dipinjam `api/requirements.txt`:
+  `tests/run_all.py` melaporkan **30/30 suite lulus**. Jadi backend ini hijau di
+  stack yang dipinjam, bukan hanya hijau di tempat ia dites. Catatan dicatat ke
+  depan di sini, bukan dengan menulis ulang pesan commit yang sudah di-push.
 
 ## [1.1.0] — 2026-10-14
 

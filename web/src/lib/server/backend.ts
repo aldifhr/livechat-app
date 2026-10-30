@@ -15,9 +15,37 @@
 
 import 'server-only'
 
-/** The backend, from the server's own environment. */
+/** The backend, from the server's own environment.
+ *
+ * Loopback by default: the backend binds 127.0.0.1:8000 and runs on the same box
+ * as this server, so the default used to be a public hostname that sent every
+ * dashboard call out to the router and back — and made the backend's own listener
+ * look like something this app depended on. It does not. `BACKEND_URL` overrides
+ * it for a split deployment.
+ */
 export const BACKEND =
-  process.env.BACKEND_URL?.replace(/\/+$/, '') ?? 'https://kit-backend.aldifhr.my.id'
+  process.env.BACKEND_URL?.replace(/\/+$/, '') ?? 'http://127.0.0.1:8000'
+
+/**
+ * The backend as a *browser* has to reach it.
+ *
+ * Deliberately a different constant from `BACKEND`, and the split is the whole
+ * point. This server fetches the backend over loopback; a page that opens the
+ * overlay socket — the dashboard's giveaway runner, the injected overlay config —
+ * is running in somebody else's browser, where `127.0.0.1` is their own machine
+ * and not this one. It used to be one constant serving both, which left a choice
+ * between a public hostname for server-side fetches (a round trip out to the
+ * router and back on every dashboard call, and a backend that had to be on the
+ * internet) and a loopback address handed to the browser (a socket that could
+ * never open).
+ *
+ * The dashboard host is the default because that host already proxies `/ws/` and
+ * `/api/room-connect-by-username` through to the backend, so the backend needs no
+ * public listener of its own. `BACKEND_ORIGIN` overrides it for a split
+ * deployment.
+ */
+export const BACKEND_ORIGIN =
+  process.env.BACKEND_ORIGIN?.replace(/\/+$/, '') ?? 'https://streamtools.aldifhr.my.id'
 
 /**
  * One request to the backend, with the token attached.

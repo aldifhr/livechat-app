@@ -39,10 +39,10 @@ const ALLOWED = [
   /^\/api\/analytics$/,
   /^\/api\/health$/,
   /^\/api\/metrics$/,
-  // Giveaway snapshots: the desktop app (no credential) POSTs from its
-  // Tauri webview to this proxy, and the public snapshot page reads the
-  // result. The backend exempts this path from its own token gate for
-  // the same reason — the published link is meant to be opened by anyone.
+  // Giveaway snapshots: the dashboard's own /api/giveaways/snapshots route
+  // validates and rate-limits a publish, then forwards it here with the token
+  // attached — the backend gates this write like any other. The public snapshot
+  // page reads one by id with no credential at all.
   /^\/api\/giveaways\/snapshots$/,
   /^\/api\/giveaways\/snapshots\/[A-Za-z0-9_-]{16}$/,
   /^\/api\/rooms\/[0-9a-f-]{36}\/session$/,
@@ -81,12 +81,19 @@ const MUTATING = new Set(['POST', 'PATCH', 'DELETE'])
  * is, and this dashboard is behind the session and already reads every handle
  * from `/api/rooms`, so it is not reaching anything new.
  */
-const SENSITIVE_READ = /^\/api\/(rooms(\/|$)|logs$|analytics$)/
-// Giveaway snapshots are deliberately NOT sensitive-read: the desktop
-// app has no token, and the public snapshot page must load without one.
-// Without this exclusion the proxy would forward the read with no
-// credential and the backend would answer 401.
-const PUBLIC_READ = /^\/api\/giveaways\/snapshots/
+const SENSITIVE_READ = /^\/api\/(rooms(\/|$)|logs$|analytics$|giveaways\/snapshots$)/
+// Giveaway snapshots by id are deliberately NOT sensitive-read: the public
+// snapshot page must load with no credential, because the shared link is the
+// only thing a viewer has. Without this exclusion the proxy would forward the
+// read with nothing attached and the backend would answer 401.
+//
+// The collection above is the opposite case and IS gated: it answers with every
+// snapshot's id, and an id opens a report naming every entrant's TikTok id and
+// nickname. The list used to be open on both sides, which handed those ids to
+// anyone who asked for them. Anchored to the id shape rather than to the prefix
+// so the two cannot be confused — a bare `snapshots` is the list, anything after
+// the slash is the public read.
+const PUBLIC_READ = /^\/api\/giveaways\/snapshots\/[A-Za-z0-9_-]{16}$/
 
 
 

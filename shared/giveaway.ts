@@ -1,5 +1,5 @@
 /**
- * The giveaway's provably-fair core, shared by the desktop app and the web.
+ * The giveaway's provably-fair core, shared by the web dashboard.
  *
  * The winner is not picked by a random number generator at draw time: a seed is
  * committed (its SHA-256 published) before any entry is drawn, and each winner is
@@ -8,8 +8,9 @@
  * report. The wheel on screen is decoration; this is the draw.
  *
  * One copy rather than two. It lived inline in each client before, and a drift
- * between them would mean a snapshot published from the app could not be verified
- * by the steps the web prints — which is exactly the guarantee the report is for.
+ * between them would mean a snapshot published from one place could not be
+ * verified by the steps the web prints — which is exactly the guarantee the report
+ * is for.
  */
 
 /** SHA-256 of a string, hex-encoded. */

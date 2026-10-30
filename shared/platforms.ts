@@ -1,5 +1,5 @@
 /**
- * Shared TikTok platform utilities used across desktop (app) and web (docks/dashboard).
+ * Shared TikTok platform utilities used by the web dashboard and overlays.
  */
 
 const USERNAME = /^[A-Za-z0-9._]+$/

@@ -10,21 +10,18 @@ The wire format for the pre-existing kinds is unchanged from the original
 single-file server, so a frontend on the old build keeps working against a
 server on this one.
 
-These dicts are read in three places, and only the first is a Python caller:
-the Rust host maps them in `src-tauri/src/backend.rs` (`to_app_event`), the app
-reads whatever that host emits through the `SidecarEvent` union in
-`src/lib/sidecar.ts`, and `static/overlay.html` consumes this format directly
-without going through the host at all. So renaming a key here is not contained:
-the host will quietly emit `undefined` for the renamed field, and the overlay
-will read the old name and show nothing. `api/tests/test_api.py` pins the
-Python side and `test/test-wire.mjs` pins the other two against each other —
-run both after changing a key.
+These dicts are read in two places, and only the first is a Python caller: the
+overlay pages in `web/public/overlay/` consume this format directly, and the
+dashboard reads it through the same socket. So renaming a key here is not
+contained: the overlay will read the old name and show nothing.
+`api/tests/test_api.py` pins the Python side — run it after changing a key.
 """
 
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from hub import hub
+from metrics import metrics as _metrics
 from models import page_config
 
 import eventlog
@@ -240,6 +237,10 @@ async def emit(room_id: str, event: Event) -> None:
     eventlog.record(
         room_id, event.kind, user=event.user, text=event.value, meta=event.meta, user_id=event.user_id
     )
+    # Counted here for the same reason it is logged here: one line covers every
+    # producer. The kind is the only label, and `to_wire` maps an unknown kind to
+    # `alert`, so the set of labels is closed — see `metrics`.
+    _metrics.event_in(event.kind)
     await hub.broadcast(to_wire(event), room_id=room_id)
 
 

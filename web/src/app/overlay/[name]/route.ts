@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { NextRequest } from 'next/server'
-import { BACKEND } from '@/lib/server/backend'
+import { BACKEND_ORIGIN } from '@/lib/server/backend'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,7 +22,12 @@ export async function GET(
   if (!file) return new Response('Not found', { status: 404 })
 
   const html = await readFile(join(process.cwd(), 'public', 'overlay', file), 'utf8')
-  const payload = JSON.stringify({ baseUrl: BACKEND })
+  // The origin a *browser* reaches the backend by, not the one this server uses:
+  // the page opens its socket from the viewer's machine. The dashboard host, which
+  // proxies /ws/ and the connect route through to the backend — so the backend
+  // needs no listener on the internet. The static copies nginx serves off disk
+  // fall back to `location.origin` and land on the same place.
+  const payload = JSON.stringify({ baseUrl: BACKEND_ORIGIN })
     .replace(/</g, '\\u003c')
     .replace(/>/g, '\\u003e')
     .replace(/&/g, '\\u0026')

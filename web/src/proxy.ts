@@ -53,17 +53,17 @@ function isOpen(pathname: string): boolean {
     // bounded and validated by its route handler; private dashboard APIs remain gated.
     /^\/giveaway\/[A-Za-z0-9_-]{16}$/.test(pathname) ||
     pathname === '/api/giveaways/snapshots' ||
-    // Giveaway commitments. Open at the proxy for the same reason as the
-    // snapshots above — the desktop app has no session — and gated inside the
-    // route by origin: the dashboard same-origin, or the app's webview.
+    // Giveaway commitments. Open at the proxy so the giveaway page can reach
+    // them without a session, and gated inside the route by origin: the
+    // dashboard same-origin only.
     pathname === '/api/giveaways/commit' ||
     pathname.startsWith('/api/giveaways/commit/') ||
     pathname === '/api/tts' ||
-    // OBS docks: public browser source for OBS, mirrors desktop home.
+    // OBS docks: public browser source for OBS, mirrors the stream home page.
     // No session — OBS cannot type a password, same reason as overlays.
     pathname === '/docks' ||
     pathname.startsWith('/docks/') ||
-    // The one write the desktop app may make with no credential. The backend
+    // The one write an overlay may make with no credential. The backend
     // exempts this path from its own token gate; this is the app's session
     // check letting it past so the backend gets to answer at all.
     pathname === '/api/backend/room-connect-by-username' ||

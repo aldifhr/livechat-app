@@ -57,6 +57,13 @@ class LivenessWatchdog:
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._heartbeat_task: asyncio.Task[None] | None = None
+        # Longest gap between two beats. The heartbeat asks for one second and
+        # measures how long it actually got: a loop that is keeping up wakes on
+        # time, and a loop that is wedged — or merely busy — wakes late. That
+        # overshoot *is* the event loop's lag, and it is the one runtime number
+        # nothing inside the process can see for itself, which is the same
+        # reason the watchdog exists at all.
+        self.max_gap = 0.0
 
     # --- the loop's side ---------------------------------------------------
     def beat(self) -> None:
@@ -67,8 +74,12 @@ class LivenessWatchdog:
     async def heartbeat(self) -> None:
         """The loop's own proof that it is still scheduling work."""
         while True:
+            started = time.monotonic()
             self.beat()
             await asyncio.sleep(self._beat_interval)
+            gap = time.monotonic() - started
+            if gap > self.max_gap:
+                self.max_gap = gap
 
     # --- the observer's side ----------------------------------------------
     def _stalled_for(self) -> float:

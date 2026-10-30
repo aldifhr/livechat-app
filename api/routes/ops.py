@@ -11,6 +11,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 
+import tasks
+from metrics import metrics as _metrics, runtime_gauges
 
 import eventlog
 import events
@@ -43,9 +45,8 @@ def _health_body(request: Request, *, include_rooms: bool) -> dict[str, Any]:
     """The liveness body, with or without the per-room map.
 
     `/health` withholds the map from an unauthenticated caller because each entry
-    names the streamer's handle; `/health/desktop` always includes it for the
-    desktop app, which cannot send a token. Everything else is identical, so it
-    is built once.
+    names the streamer's handle. Everything else is identical, so it is built
+    once.
     """
     app = request.app
     uptime_s = int(time.time() - getattr(app.state, "started_at", time.time()))
@@ -76,23 +77,19 @@ async def health(request: Request) -> dict[str, Any]:
     return _health_body(request, include_rooms=_state["token_is_valid"](request))
 
 
-@router.get("/health/desktop")
-async def health_desktop(request: Request) -> dict[str, Any]:
-    """Per-room health for the desktop app, which cannot send a token.
-
-    The desktop app has no credential, so `/health` answers with counts only.
-    It needs to know whether the room it is watching is connected, and how many
-    viewers it has, without holding a secret. This endpoint is open like
-    `/health` — the same reasoning applies: the room map is already visible on
-    the stream itself, and an orchestrator probing it needs the same data.
-    """
-    return _health_body(request, include_rooms=True)
-
-
 @router.get("/metrics")
 async def metrics() -> dict[str, Any]:
-    """Prometheus-style metrics exposed as JSON for simple scraping."""
-    return {
+    """Prometheus-style metrics exposed as JSON for simple scraping.
+
+    The four originals are kept with their names, because a scraper and a
+    dashboard read them. Everything after them comes from `metrics`, which is
+    where the pipeline reports itself: what came in, what was dropped and
+    where, how deep the queues got, how long delivery took, and what the
+    event loop's own lag was. None of it is labelled with a username, a message
+    body or a room id — see `metrics` for why that is the rule and not a
+    preference.
+    """
+    body: dict[str, Any] = {
         "sources_active": len(_state["sources"]),
         "websocket_connections": len(_state["hub"].active),
         "queued_messages_total": _state["hub"].queued_messages(),
@@ -100,7 +97,21 @@ async def metrics() -> dict[str, Any]:
         # a `_disconnection_log` attribute that was never defined, so the getattr
         # default was all it ever returned and the metric was a permanent zero.
         "clients_disconnected_total": _state["hub"].disconnected_clients_count,
+        # The front of the pipeline rather than the back: how many normalised
+        # events are waiting for an observer. The client-queue numbers say
+        # whether delivery is keeping up; this says whether the source is.
+        # Read through a method rather than the adapter's own queue so a source
+        # without one — a fake in a test — is simply not counted.
+        "source_queue_depth": sum(
+            source.queue_depth()
+            for source in _state["sources"].values()
+            if hasattr(source, "queue_depth")
+        ),
+        "background_tasks": tasks.live(),
     }
+    body.update(_metrics.snapshot())
+    body.update(runtime_gauges())
+    return body
 
 
 @router.post("/api/rooms/{room_id}/trigger")

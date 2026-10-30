@@ -569,6 +569,100 @@ try:
 finally:
     os.environ.pop("STREAMKIT_TOKEN", None)
 
+print("giveaway snapshots: the write is gated, the collection is gated, the link is not")
+# The snapshot routes were the one place the gate was open in both directions.
+# `POST` was exempt outright, so anyone who found the host could fill the
+# 1,000-slot cap and lock real publishing out; and `GET` on the collection was
+# never gated at all, so the same caller was handed every snapshot id — and an id
+# is the whole credential for the report behind it, which names every entrant's
+# TikTok id and nickname. The desktop app publishes through the dashboard's route,
+# which holds the token, so nothing that works needed either hole.
+REPORT = {
+    "format": "livechat-giveaway-audit-v1",
+    "entrants": [{"id": "viewer.one", "nickname": "Viewer One"}],
+    "draws": [{"winner": "viewer.one", "pool": ["viewer.one"], "drawnAt": "2026-10-30T10:00:00Z"}],
+}
+os.environ["STREAMKIT_TOKEN"] = "s3cret"
+try:
+    with TestClient(main.app) as snaps:
+        check(
+            "publishing a snapshot with no token is refused",
+            snaps.post("/api/giveaways/snapshots", json={"report": REPORT}).status_code == 401,
+        )
+        published = snaps.post(
+            "/api/giveaways/snapshots",
+            json={"report": REPORT},
+            headers={"x-streamkit-token": "s3cret"},
+        )
+        check("and with the token it is stored", published.status_code == 200, f"got {published.status_code}")
+        snapshot_id = published.json().get("id", "")
+        check("the id is the 16-char shape the link uses", len(snapshot_id) == 16, snapshot_id)
+
+        check(
+            "the snapshot list with no token is refused",
+            snaps.get("/api/giveaways/snapshots").status_code == 401,
+        )
+        listed = snaps.get("/api/giveaways/snapshots", headers={"x-streamkit-token": "s3cret"})
+        check("and with the token it lists", listed.status_code == 200, f"got {listed.status_code}")
+        check(
+            "the list carries the id the link needs",
+            any(item.get("id") == snapshot_id for item in listed.json().get("snapshots", [])),
+        )
+
+        # The one read that must stay open: a viewer with the shared link has
+        # nothing but the link.
+        opened = snaps.get(f"/api/giveaways/snapshots/{snapshot_id}")
+        check("the public link still opens with no token", opened.status_code == 200, f"got {opened.status_code}")
+        check(
+            "and it carries the report",
+            opened.json().get("report", {}).get("format") == "livechat-giveaway-audit-v1",
+        )
+        check(
+            "a made-up id is a 404, not a 401",
+            snaps.get("/api/giveaways/snapshots/aaaaaaaaaaaaaaaa").status_code == 404,
+        )
+        check(
+            "deleting with no token is refused",
+            snaps.delete(f"/api/giveaways/snapshots/{snapshot_id}").status_code == 401,
+        )
+        check(
+            "and with the token it is removed",
+            snaps.delete(
+                f"/api/giveaways/snapshots/{snapshot_id}", headers={"x-streamkit-token": "s3cret"}
+            ).status_code == 200,
+        )
+finally:
+    os.environ.pop("STREAMKIT_TOKEN", None)
+
+print("the sensitive-read list is exact, not a prefix")
+# `/api/giveaways/snapshots/{id}` is public and `/api/giveaways/snapshots` is
+# not, so the match has to be exact. A prefix here would gate every shared link
+# and break the one thing the feature exists for.
+for path, should_be_gated in (
+    ("/api/giveaways/snapshots", True),
+    ("/api/giveaways/snapshots/a1B2c3D4e5F6g7H8", False),
+    ("/api/rooms", True),
+    # Sensitive, and then exempted one layer out by `is_public_read_path` — the
+    # OBS docks browser source needs it and it carries no config. The two
+    # predicates answer different questions, which is why this row is True.
+    ("/api/rooms/public", True),
+):
+    check(
+        f"{path} {'is' if should_be_gated else 'is not'} a sensitive read",
+        main.is_sensitive_read_path(path) is should_be_gated,
+    )
+
+print("the API's own route map is not published")
+# `/docs` and `/openapi.json` answered to anyone and described every route,
+# including the ones the token protects, with their full request and response
+# shapes — a free reconnaissance page bolted onto a deployed API. Off unless a
+# deploy asks for them with STREAMKIT_DOCS=true.
+with TestClient(main.app) as plain:
+    check("the interactive docs do not answer", plain.get("/docs").status_code == 404,
+          f"got {plain.get('/docs').status_code}")
+    check("and neither does the schema", plain.get("/openapi.json").status_code == 404,
+          f"got {plain.get('/openapi.json').status_code}")
+
 print("a hostile token header is a 401, not a 500")
 # `secrets.compare_digest` raises TypeError on a str holding any non-ASCII code
 # point, and headers arrive decoded as latin-1 — so one byte above 0x80 in the

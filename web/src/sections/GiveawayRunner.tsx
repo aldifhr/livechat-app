@@ -3,13 +3,13 @@
 /**
  * The giveaway picker, on the dashboard.
  *
- * A port of `desktop/src/components/GiveawayPage.tsx`. Same state machine, same
- * commit-reveal draw, same audit report — but the entries come off the backend's
- * room socket (`/ws/overlay/<room>`) instead of the desktop host, and it saves a
- * snapshot to this app instead of publishing through the desktop's sidecar.
+ * Runs the commit-reveal draw: a seed is committed (its SHA-256 published)
+ * before any entry is drawn, then each winner is derived from it. Entries come
+ * off the backend's room socket (`/ws/overlay/<room>`), and the finished report
+ * is saved as a snapshot through this app's own route.
  *
- * The draw math lives in `shared/giveaway.ts`, so the app and the web derive a
- * winner the same way and either one's audit report verifies by the same steps.
+ * The draw math lives in `shared/giveaway.ts`, so a report published from here
+ * verifies by the steps the public snapshot page prints.
  */
 
 import Link from 'next/link'

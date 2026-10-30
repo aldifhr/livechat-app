@@ -12,17 +12,16 @@
   inline for that reason — a second request is a second thing that can be slow,
   and a page that is still arriving is a page showing nothing on someone's stream.
 
-  What it deliberately does not do is talk to the desktop app. It resolves the
+  What it deliberately does not do is depend on a desktop app. It resolves the
   handle itself and opens its own socket to the StreamKit backend, so it works
-  whether or not the app is running, and the app is only involved in building the
-  URL.
+  on its own, and the dashboard is only involved in building the URL.
 
-  This file is the only copy. The backend serves it over HTTP and the desktop host
-  embeds the very same file with include_str!, which is why it lives here and not
-  under src-tauri/: the backend is deployed to a VPS with only the api/
-  directory, so this is the half that has to stand alone. Do not add a second
-  copy — that is what let the two versions drift apart once already, with OBS and
-  the app serving different overlays and no test failing over it.
+  This file is the only copy. The backend serves it over HTTP and nginx serves
+  it from disk, which is why it lives here and not under src/: the backend is
+  deployed to a VPS with only the api/ directory, so this is the half that has
+  to stand alone. Do not add a second copy — that is what let the two versions
+  drift apart once already, with OBS and the app serving different overlays and
+  no test failing over it.
 -->
 <style>
   :root {
@@ -155,9 +154,9 @@
 
   /* The gift's own picture, sized to the text beside it rather than to the row, so
      a row stays one line tall and the list keeps fitting as many as it did before
-     gifts had pictures. The backend has always sent `giftImage` on the frame and
-     the desktop app has always drawn it; this page read the frame and dropped the
-     field, so the stream showed less than the operator's own window. */
+     gifts had pictures. The backend has always sent `giftImage` on the frame;
+     this page read it and dropped the field, so the stream showed less than the
+     operator's own window. */
   .gift-image {
     width: 20px;
     height: 20px;
@@ -436,8 +435,8 @@
     // un-styled overlay look like — and they were answering it differently. This
     // was 0.05, so an overlay opened with the video straight through it and then
     // grew a faint scrim the first time the backend pushed a style for a room
-    // whose saved config carried no `bg`. Both are now 0, and
-    // `test-overlay-sync.mjs` holds them together.
+    // whose saved config carried no `bg`. Both are now 0, and `shared/overlay.ts`
+    // is the single source they agree with.
     background: 0,
     max: 8,
     delay: 500,
@@ -1125,12 +1124,12 @@
       // counts, connection status — is not chat, and an overlay that showed it
       // would be a dashboard rather than a chat.
       //
-      // These are the backend's own field names, read straight off the socket. The
-      // desktop app does not do this: the Rust host remaps every frame to
-      // `nickname`/`id` first. So this page is a second consumer of the Python wire
-      // format with no host in between, and a rename in api/events.py reaches
-      // it directly — `user` here would become `nickname` and every row would go
-      // blank with no error. test/test-overlay-page.mjs pins these names.
+      // These are the backend's own field names, read straight off the socket.
+      // So this page is a second consumer of the Python wire format with no host
+      // in between, and a rename in api/events.py reaches it directly — `user`
+      // here would become `nickname` and every row would go blank with no error.
+      // The names are pinned by the overlay page's own defaults in
+      // `shared/overlay.ts` and by the backend's frame tests.
       if (frame.type !== 'comment') return
       enqueue(frame.user, frame.text, frame.userId, frame.emotes)
     }

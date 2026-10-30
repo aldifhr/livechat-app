@@ -4,36 +4,18 @@ After=network.target
 
 [Service]
 Type=simple
-# Not root, for the same reason the dashboard is not: this one dials TikTok and
-# answers over the network, and an unauthenticated route on it is reachable from
-# the open internet (see the /ws/ and room-connect notes in the nginx vhost). A
-# compromise here should cost one account, not the box. It writes exactly one
-# place: the room store under /var/lib/streamkit, which is chowned to it.
 User=streamkit
 Group=streamkit
 WorkingDirectory=/root/livechat-app/api
 Environment=PYTHONPATH=/root/livechat-app/api
 Environment=STREAMKIT_LOG_LEVEL=INFO
-# The room store lives outside the source tree. Inside it, a rebuild from a
-# clean checkout throws every room away, and the test suite could write into the
-# deployed file (it did). The directory is created below and backed up by a
-# timer; store.py makes it if it is missing.
 Environment=STREAMKIT_CONFIG_DIR=/var/lib/streamkit
-EnvironmentFile=/etc/streamkit/env
-# Loopback only. nginx (and the Next proxy behind it) reaches the API at
-# 127.0.0.1:8000; nothing else has a reason to. Binding 0.0.0.0 exposed the
-# process to the LAN and left the firewall as the only thing in front of it.
-ExecStart=/root/livechat-app/api/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
+EnvironmentFile=/root/livechat-app/api/.env
+ExecStart=/var/lib/streamkit/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=5
 LimitNOFILE=65536
-# A reconnect storm once drove this process to ~1 GB RSS. The breaker in the
-# source stops it now, but a memory cap is the backstop that keeps a runaway
-# loop from taking the whole box down: it is OOM-killed and restarted, not the
-# host. The live process sits around 90 MB.
 MemoryMax=512M
-# Sandboxing, matched to streamtools-web. ProtectSystem=full makes /usr, /boot
-# and /etc read-only to the unit; the store under /var/lib stays writable.
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=full

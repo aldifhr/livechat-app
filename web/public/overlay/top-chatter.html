@@ -15,14 +15,14 @@
   It is a copy of the chat page's *shape*, not of its markup: one inline file,
   because OBS fetches it once and a page that is still arriving shows nothing on
   someone's stream; it resolves the handle itself and opens its own socket to the
-  StreamKit backend, because it has to work whether or not the desktop app is
-  running; and it reads its styling from the room's `config` frame, so the board
-  in OBS is what the builder's sliders say it is.
+  StreamKit backend, so it works on its own; and it reads its styling from the
+  room's `config` frame, so the board in OBS is what the builder's sliders say it
+  is.
 
-  This file is the only copy. The desktop host embeds it with `include_str!` and
-  nginx serves it from disk; the backend bakes nothing into it any more. Do not add
-  a second copy — that is what let the versions drift apart once already, with the
-  board rendering at 28px while the slider beside it said 36.
+  This file is the only copy. nginx serves it from disk and the backend bakes
+  nothing into it any more. Do not add a second copy — that is what let the
+  versions drift apart once already, with the board rendering at 28px while the
+  slider beside it said 36.
 -->
 <style>
   :root {
@@ -219,7 +219,7 @@
   // Needed because a pushed style is the room's *whole* style rather than a patch,
   // so a key the push leaves out means "back to default" — not "keep whatever it
   // was". These are the board's half of the numbers `shared/overlay.ts` holds, and
-  // `test-overlay-sync.mjs` holds them together.
+  // that file is the single source they agree with.
   var STYLE_DEFAULTS = {
     size: 36,
     max: 10,
