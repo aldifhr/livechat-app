@@ -23,6 +23,7 @@ import { api } from '@/lib/client/api'
 import { usePoll } from '@/hooks/usePoll'
 import type { Room, RoomStatus } from '@/lib/types'
 import NumberTicker from '@/components/magicui/NumberTicker'
+import { Stagger, StaggerItem } from '@/components/magicui/Stagger'
 import RoomStateBadge from '@/components/RoomStateBadge'
 
 /** How often the numbers are re-read. The same beat the streams page uses, so
@@ -133,8 +134,8 @@ export default function Dashboard() {
 
       {error && <div className="notice error">{error}</div>}
 
-      <div className="stat-row">
-        <div className="stat">
+      <Stagger className="stat-row">
+        <StaggerItem className="stat">
           <span className="stat-label">Viewers now</span>
           <span className="stat-value">
             {totals.viewers === null ? '—' : <NumberTicker value={totals.viewers} />}
@@ -142,23 +143,23 @@ export default function Dashboard() {
           <span className="stat-note">
             across {totals.live} live {totals.live === 1 ? 'stream' : 'streams'}
           </span>
-        </div>
-        <div className="stat">
+        </StaggerItem>
+        <StaggerItem className="stat">
           <span className="stat-label">Peak on this page</span>
           <span className="stat-value">
             {history.length ? <NumberTicker value={peak} /> : '—'}
           </span>
           <span className="stat-note">high-water mark since it was opened</span>
-        </div>
-        <div className="stat">
+        </StaggerItem>
+        <StaggerItem className="stat">
           <span className="stat-label">Streams</span>
           <span className="stat-value">
             <NumberTicker value={totals.live} />
             <span className="stat-of"> / <NumberTicker value={totals.rooms} /></span>
           </span>
           <span className="stat-note">live of configured</span>
-        </div>
-      </div>
+        </StaggerItem>
+      </Stagger>
 
       <div className="panel">
         <h3>Viewers trend</h3>
@@ -183,9 +184,9 @@ export default function Dashboard() {
                 <th className="num">Viewers</th>
               </tr>
             </thead>
-            <tbody>
+            <Stagger as="tbody">
               {rows.map((row) => (
-                <tr key={row.id}>
+                <StaggerItem as="tr" key={row.id}>
                   <td>{row.name}</td>
                   <td className="mono faint">@{row.username}</td>
                   <td>
@@ -200,9 +201,9 @@ export default function Dashboard() {
                       ? row.status.viewers.toLocaleString()
                       : '—'}
                   </td>
-                </tr>
+                </StaggerItem>
               ))}
-            </tbody>
+            </Stagger>
           </table>
         </div>
       )}

@@ -27,6 +27,7 @@ import { useConnectionWatch } from '@/hooks/useConnectionWatch'
 import { profilePath } from '../lib/client/streamLinks'
 import type { Room, RoomStatus } from '../lib/types'
 import RoomStateBadge from '../components/RoomStateBadge'
+import { Stagger, StaggerItem } from '../components/magicui/Stagger'
 import { useToast } from '../components/Toast'
 
 /** How often to ask about a room's live state. Long enough to be quiet, short
@@ -36,7 +37,7 @@ const POLL_MS = 15_000
 /** One line per stream: who it is, and whether it is running. */
 function StreamRow({ room, status }: { room: Room; status: RoomStatus | undefined }) {
   return (
-    <li>
+    <StaggerItem as="li">
       <Link
         className="stream-row"
         // The row already knows its platform, so the link is built from the
@@ -64,7 +65,7 @@ function StreamRow({ room, status }: { room: Room; status: RoomStatus | undefine
           →
         </span>
       </Link>
-    </li>
+    </StaggerItem>
   )
 }
 
@@ -180,6 +181,13 @@ export default function Streams() {
   const connect = async () => {
     const handle = newHandle.trim().replace(/^@/, '')
     if (handle === '') return
+    // One stream only. The form is hidden once a room exists, but the guard
+    // lives here too: the form is not the rule, it is a picture of the rule, and
+    // a second room must not be creatable by a stale tab or a replayed request.
+    if (rooms.length > 0) {
+      setError('This dashboard runs one stream. Disconnect the current one before adding another.')
+      return
+    }
     setBusy(true)
     try {
       const answer = await api.connectHandle(handle, 'tiktok')
@@ -225,7 +233,7 @@ export default function Streams() {
         <div>
           <h2>Streams</h2>
           <p className="muted">
-            Connect a TikTok username, style its overlay, then copy a
+            Connect your TikTok username, style its overlay, then copy a
             browser source link into OBS.
           </p>
           {/* The origin is on every one of this page's links and is the same on all
@@ -243,38 +251,45 @@ export default function Streams() {
 
       {error && <div className="notice error">{error}</div>}
 
-      <div className="panel">
-        <h3>Connect a stream</h3>
-        <div className="row">
-          <input
-            className="grow"
-            placeholder="TikTok username — with or without the @"
-            value={newHandle}
-            onChange={(event) => setNewHandle(event.target.value)}
-            onKeyDown={(event) => event.key === 'Enter' && void connect()}
-            aria-label="TikTok username"
-          />
-          <button
-            className="primary"
-            onClick={() => void connect()}
-            disabled={busy || newHandle.trim() === ''}
-          >
-            Connect
-          </button>
+      {/* One stream only. This dashboard is a personal console, so the connect
+          form is shown while there is nothing connected and hidden the moment
+          there is — a second stream is not a feature here, it is a mistake the
+          form would otherwise invite. The row it already has is the way back to
+          it. */}
+      {rooms.length === 0 && (
+        <div className="panel">
+          <h3>Connect a stream</h3>
+          <div className="row">
+            <input
+              className="grow"
+              placeholder="TikTok username — with or without the @"
+              value={newHandle}
+              onChange={(event) => setNewHandle(event.target.value)}
+              onKeyDown={(event) => event.key === 'Enter' && void connect()}
+              aria-label="TikTok username"
+            />
+            <button
+              className="primary"
+              onClick={() => void connect()}
+              disabled={busy || newHandle.trim() === ''}
+            >
+              Connect
+            </button>
+          </div>
+          <p className="faint tight-caption">
+            Connecting a handle that already has a room reuses it and keeps its styling.
+          </p>
         </div>
-        <p className="faint tight-caption">
-          Connecting a handle that already has a room reuses it and keeps its styling.
-        </p>
-      </div>
+      )}
 
       {loaded && rooms.length === 0 ? (
         <GettingStarted />
       ) : (
-        <ul className="stream-list">
+        <Stagger as="ul" className="stream-list">
           {rooms.map((room) => (
             <StreamRow key={room.id} room={room} status={statuses[room.id]} />
           ))}
-        </ul>
+        </Stagger>
       )}
     </>
   )

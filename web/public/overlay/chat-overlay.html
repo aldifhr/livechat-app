@@ -201,10 +201,36 @@
     to   { opacity: 1; transform: none; }
   }
 
+  /* A gift arrives differently from a comment. A comment slides up; a gift
+     lands — it drops in with a little overshoot and a flash of its own colour,
+     then settles. The two entrances sharing one keyframe made a gift read as
+     just another message with a different colour, which is the opposite of what
+     a gift row is for. */
+  li.gift.entering { animation: gift-land 420ms cubic-bezier(0.2, 0.9, 0.3, 1.2); }
+
+  @keyframes gift-land {
+    0%   { opacity: 0; transform: translateY(-0.5em) scale(0.94); }
+    55%  { opacity: 1; transform: translateY(0.06em) scale(1.015); }
+    100% { opacity: 1; transform: none; }
+  }
+
+  /* The diamonds badge pops a beat after the row lands, so the eye is drawn to
+     the number last — the thing worth reading is the thing that moves last. */
+  li.gift.entering .gift-diamonds { animation: badge-pop 320ms 220ms ease-out both; }
+
+  @keyframes badge-pop {
+    0%   { opacity: 0; transform: scale(0.6); }
+    60%  { opacity: 1; transform: scale(1.12); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+
   /* No motion asked for: no animation, and no fade. The rows still appear and
      still expire, they just do it all at once. */
   @media (prefers-reduced-motion: reduce) {
     li { transition: none; animation: none; }
+    li.entering { animation: none; }
+    li.gift.entering { animation: none; }
+    li.gift.entering .gift-diamonds { animation: none; }
     li.fading { display: none; }
   }
 

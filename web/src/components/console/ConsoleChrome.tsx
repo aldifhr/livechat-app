@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils'
 import TopBar from './TopBar'
 import AppSidebar from './AppSidebar'
 import CommandPalette from './CommandPalette'
+import BlurFade from '@/components/magicui/BlurFade'
 
 const SIDEBAR_COOKIE = 'streamkit_sidebar'
 
@@ -54,7 +55,6 @@ export default function ConsoleChrome({
         productName={productName}
         head={head}
         tail={tail}
-        user={user}
         collapsed={collapsed}
         onToggleSidebar={toggle}
         onOpenPalette={() => setPaletteOpen(true)}
@@ -62,14 +62,16 @@ export default function ConsoleChrome({
       <div className="flex flex-1">
         <aside
           className={cn(
-            'sticky top-14 hidden h-[calc(100svh-3.5rem)] shrink-0 flex-col overflow-y-auto border-r border-border bg-sidebar py-3 transition-[width] duration-200 md:flex',
-            collapsed ? 'w-16' : 'w-60',
+            'sticky top-14 hidden h-[calc(100svh-3.5rem)] shrink-0 flex-col border-r-2 border-border bg-sidebar py-4 transition-[width] duration-200 md:flex',
+            collapsed ? 'w-[76px]' : 'w-64',
           )}
         >
-          <AppSidebar collapsed={collapsed} />
+          <AppSidebar collapsed={collapsed} user={user} />
         </aside>
         <main className="min-w-0 flex-1">
-          <div className="mx-auto w-full max-w-[1200px] px-5 py-6 sm:px-8 sm:py-8">{children}</div>
+          <div className="mx-auto w-full max-w-[1200px] px-5 py-6 sm:px-8 sm:py-8">
+            <BlurFade>{children}</BlurFade>
+          </div>
         </main>
       </div>
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />

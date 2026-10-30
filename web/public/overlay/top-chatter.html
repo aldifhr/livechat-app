@@ -138,6 +138,27 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* The board is redrawn whole on every frame, so each row animates in as the
+     ranking settles rather than the panel swapping its contents instantly. The
+     rows are staggered top to bottom — the leader lands first — which reads as a
+     ranking being read out, not a list blinking. */
+  #board li { animation: board-in 320ms cubic-bezier(0.22, 0.61, 0.36, 1) both; }
+  #board li:nth-child(1) { animation-delay: 0ms; }
+  #board li:nth-child(2) { animation-delay: 45ms; }
+  #board li:nth-child(3) { animation-delay: 90ms; }
+  #board li:nth-child(4) { animation-delay: 135ms; }
+  #board li:nth-child(5) { animation-delay: 180ms; }
+  #board li:nth-child(n + 6) { animation-delay: 220ms; }
+
+  @keyframes board-in {
+    from { opacity: 0; transform: translateY(-0.35em); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #board li { animation: none; }
+  }
+
   /* A link with no handle is a wrong link, not a transient failure, and the only
      way it reaches a stream is if somebody pasted it in without checking — which
      is exactly when they need to see it. */

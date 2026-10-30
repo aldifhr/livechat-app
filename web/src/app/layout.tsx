@@ -16,17 +16,18 @@ export const metadata: Metadata = {
 }
 
 /**
- * The theme cookie: `light`, `dark`, or `system`.
+ * The theme cookie: `light` or `dark`.
  *
  * Read on the server so the first paint is already the right mode — a class set
  * only by a client effect is a flash of the wrong theme on every navigation.
  *
  * The inline script below is the single authority on the class, and it runs
- * before the body paints. The server cannot resolve `system` (the OS preference
- * lives in the browser) and it also cannot see a cookie that a *later* navigation
- * changes without a full reload, so rather than have the server and the script
- * each guess and disagree — which is a hydration mismatch on `<html>` — the
- * script owns the decision and the server only provides the class for the
+ * before the body paints. With no cookie it follows the OS preference; with one
+ * it obeys it. The server cannot resolve the OS preference (it lives in the
+ * browser) and it also cannot see a cookie that a *later* navigation changes
+ * without a full reload, so rather than have the server and the script each
+ * guess and disagree — which is a hydration mismatch on `<html>` — the script
+ * owns the decision and the server only provides the class for the
  * no-JavaScript case.
  */
 const THEME_COOKIE = 'streamkit_theme'
@@ -50,7 +51,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             class. With no cookie it follows the OS; with one it obeys it. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var m=document.cookie.match(/(?:^|; )${THEME_COOKIE}=([^;]+)/);var t=m?decodeURIComponent(m[1]):'system';var d=t==='dark'||(t!=='light'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);}catch(e){}})();`,
+            __html: `(function(){try{var m=document.cookie.match(/(?:^|; )${THEME_COOKIE}=([^;]+)/);var t=m?decodeURIComponent(m[1]):'';var d=t==='dark'||(t!=='light'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);}catch(e){}})();`,
           }}
         />
       </head>

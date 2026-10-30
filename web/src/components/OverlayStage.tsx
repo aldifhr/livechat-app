@@ -150,7 +150,6 @@ export default function OverlayStage({
           likeTextColour: previewStyle.likeTextColour,
           likePosition: previewStyle.likePosition,
         },
-        streamkitPreviewSample: true,
       },
       targetOrigin,
     )

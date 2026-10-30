@@ -88,6 +88,42 @@
     transition: width 240ms ease;
   }
 
+  /* A soft sheen that sweeps the filled part, so a bar that is mostly still
+     still reads as live rather than as a screenshot. Slow and low-contrast on
+     purpose: this sits over somebody's stream. */
+  #fill::after {
+    content: '';
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+    background-size: 40% 100%;
+    background-repeat: no-repeat;
+    animation: bar-sheen 2.4s ease-in-out infinite;
+  }
+
+  @keyframes bar-sheen {
+    0%   { background-position: -40% 0; }
+    60%  { background-position: 140% 0; }
+    100% { background-position: 140% 0; }
+  }
+
+  /* The count gives a small kick each time it changes, so a like that lands is
+     felt in the number and not only in the bar's width. */
+  #current.pulse { animation: count-kick 300ms ease-out; }
+
+  @keyframes count-kick {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.18); }
+    100% { transform: scale(1); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #fill { transition: none; }
+    #fill::after { animation: none; }
+    #current.pulse { animation: none; }
+  }
+
   #numbers {
     margin-top: 0.35em;
     display: flex;
@@ -192,6 +228,14 @@
     var target = Math.max(1, Math.round(config.likeTarget))
     var ratio = Math.max(0, Math.min(1, current / target))
     fill.style.width = (ratio * 100).toFixed(2) + '%'
+    // Restart the kick only when the number actually moved. Re-adding the class
+    // on every draw would re-fire the animation on each poll and leave the count
+    // permanently twitching.
+    if (currentEl.textContent !== current.toLocaleString()) {
+      currentEl.classList.remove('pulse')
+      void currentEl.offsetWidth
+      currentEl.classList.add('pulse')
+    }
     currentEl.textContent = current.toLocaleString()
     targetEl.textContent = target.toLocaleString()
     panel.hidden = false

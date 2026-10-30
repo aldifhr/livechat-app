@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Addresses and account.
+ * Addresses.
  *
  * Exists so the domains are named in one place on the page. Someone who has to
  * work out whether a link belongs to the dashboard or the backend from the address
@@ -13,7 +13,6 @@
  * domain to hand out and nothing to keep in step.
  */
 
-import PasswordPanel from '@/components/PasswordPanel'
 import { useOrigin } from '@/hooks/useBrowser'
 
 export default function About({ backend }: { backend?: string }) {
@@ -66,31 +65,6 @@ export default function About({ backend }: { backend?: string }) {
             </div>
           </div>
         ))}
-      </div>
-
-      <div className="panel">
-        <h3>Password</h3>
-        <p className="muted">
-          This dashboard is behind a password, and this is where you change it. Changing it here changes the
-          login on the server too — and signs out every device that was signed in with the old one, because
-          the session is signed with the password itself.
-        </p>
-        <PasswordPanel />
-      </div>
-
-      <div className="panel">
-        <h3>Who can write what</h3>
-        <p className="muted">
-          This dashboard is behind a password, and its own server attaches the backend's credential to the
-          calls it forwards. The token is read from the server's environment at request time — it is not in
-          the page, not in the bundle, and not in any NEXT_PUBLIC_ variable, so nothing here can be read by
-          opening the source.
-        </p>
-        <p className="muted">
-          The overlay pages are not behind the password, and the event stream they read is open too: OBS
-          cannot present a credential, and an overlay that asked for one would show a password box on
-          stream. That stream carries chat, gifts and viewer counts, and nothing that can change anything.
-        </p>
       </div>
     </>
   )

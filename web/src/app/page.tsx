@@ -24,12 +24,6 @@ const FEATURES = [
     body: 'Run a keyword giveaway, review the entries, then draw a winner you can prove was fair.',
     mark: '★',
   },
-  {
-    index: '04',
-    title: 'Analytics',
-    body: 'Viewers, gifts, diamonds and uptime for every stream — counted by the backend, not guessed here.',
-    mark: '▤',
-  },
 ]
 
 const STEPS = [
@@ -38,7 +32,7 @@ const STEPS = [
   { n: '03', title: 'Copy into OBS', body: 'One browser-source link per overlay. It keeps working when this tab is closed.' },
 ]
 
-const MARQUEE = ['CHAT OVERLAY', 'TOP CHATTERS', 'GIVEAWAYS', 'ANALYTICS', 'OBS READY', 'NO INSTALL']
+const MARQUEE = ['CHAT OVERLAY', 'TOP CHATTERS', 'GIVEAWAYS', 'OBS READY', 'NO INSTALL']
 
 export default function Landing() {
   const [head, tail] = splitWordmark(productName)
@@ -121,13 +115,13 @@ export default function Landing() {
         </div>
 
         <section id="features" className="landing-features">
-          <div className="section-intro">
+          <Reveal inView className="section-intro">
             <div>
               <p className="eyebrow">Everything in one place</p>
               <h2>From setup to stream, <span>keep it simple.</span></h2>
             </div>
             <p>One dashboard for the links, the styling, the giveaways and the numbers behind them.</p>
-          </div>
+          </Reveal>
           <div className="feature-grid">
             {FEATURES.map((feature, i) => (
               <Reveal key={feature.index} inView delay={i * 0.06}>
@@ -142,27 +136,33 @@ export default function Landing() {
         </section>
 
         <section id="how" className="landing-steps">
-          <p className="eyebrow">Three steps</p>
-          <h2>Live in <span>minutes.</span></h2>
+          <Reveal inView>
+            <p className="eyebrow">Three steps</p>
+            <h2>Live in <span>minutes.</span></h2>
+          </Reveal>
           <div className="step-grid">
-            {STEPS.map((step) => (
-              <article key={step.n} className="step-card">
-                <span className="step-num">{step.n}</span>
-                <h3>{step.title}</h3>
-                <p>{step.body}</p>
-              </article>
+            {STEPS.map((step, i) => (
+              <Reveal key={step.n} inView delay={i * 0.08}>
+                <article className="step-card">
+                  <span className="step-num">{step.n}</span>
+                  <h3>{step.title}</h3>
+                  <p>{step.body}</p>
+                </article>
+              </Reveal>
             ))}
           </div>
         </section>
 
         <section className="landing-cta">
-          <div>
+          <Reveal inView>
             <p className="eyebrow">Ready when you are</p>
             <h2>Your next stream starts <span>here.</span></h2>
-          </div>
-          <Link href="/dashboard" className="btn primary landing-primary">
-            Connect a stream <span aria-hidden="true">↗</span>
-          </Link>
+          </Reveal>
+          <Reveal inView delay={0.1}>
+            <Link href="/dashboard" className="btn primary landing-primary">
+              Connect a stream <span aria-hidden="true">↗</span>
+            </Link>
+          </Reveal>
         </section>
       </main>
 

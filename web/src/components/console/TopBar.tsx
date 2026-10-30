@@ -3,28 +3,23 @@
 /**
  * The console's top bar.
  *
- * The strip above the page: the sidebar toggle, the product mark, a search
- * affordance that opens the command palette, and the account menu. It is the
- * Linear/Vercel shape — a fixed bar the content scrolls under, with the
- * navigation it controls to its left.
+ * The strip above the page: the sidebar toggle, a search affordance that opens
+ * the command palette, and the theme switch. It is deliberately thin — the brand
+ * and the account both live in the sidebar now, so this row carries only the
+ * controls that are about the window rather than about where you are.
  *
  * The search box is a button, not an input. Typing in it would do nothing the
  * palette does not, and a real input here would put a second, worse search
  * beside the one that already knows every destination.
  */
 
-import Link from 'next/link'
-import { PanelLeft, Search } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import AccountMenu from './AccountMenu'
 import ThemeToggle from './ThemeToggle'
 
 export default function TopBar({
   productName,
-  head,
-  tail,
-  user,
   collapsed,
   onToggleSidebar,
   onOpenPalette,
@@ -32,13 +27,12 @@ export default function TopBar({
   productName: string
   head: string
   tail: string
-  user: string
   collapsed: boolean
   onToggleSidebar: () => void
   onOpenPalette: () => void
 }) {
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background/80 px-3 backdrop-blur-md">
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b-2 border-border bg-background/80 px-3 backdrop-blur-md">
       <Button
         variant="ghost"
         size="icon"
@@ -46,18 +40,14 @@ export default function TopBar({
         aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         className="text-muted-foreground"
       >
-        <PanelLeft />
+        {/* The chevron points the way the rail will move: left to collapse,
+            right to bring it back. */}
+        {collapsed ? <ChevronRight /> : <ChevronLeft />}
       </Button>
 
-      <Link href="/" className="flex items-center gap-2.5 no-underline" aria-label={`${productName} home`}>
-        <span className="grid size-7 place-items-center rounded-lg bg-primary/15 text-sm font-bold text-primary">
-          {head.charAt(0) || 'S'}
-        </span>
-        <span className="text-sm font-semibold tracking-tight text-foreground">
-          {head}
-          {tail && <span className="text-primary">{tail}</span>}
-        </span>
-      </Link>
+      <span className="text-sm font-semibold tracking-tight text-muted-foreground max-sm:hidden">
+        {productName}
+      </span>
 
       <button
         type="button"
@@ -77,7 +67,6 @@ export default function TopBar({
       </button>
 
       <ThemeToggle />
-      <AccountMenu user={user} />
     </header>
   )
 }

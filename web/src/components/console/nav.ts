@@ -15,9 +15,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   LayoutDashboard,
   Radio,
-  BarChart3,
   Gift,
-  ScrollText,
   Info,
 } from 'lucide-react'
 
@@ -34,9 +32,7 @@ export function navItems(): NavItem[] {
   return [
     { href: '/dashboard', label: 'Overview', icon: LayoutDashboard, hint: 'Live status and viewers' },
     { href: '/streams', label: 'Streams', icon: Radio, hint: 'Links and styling for each stream' },
-    { href: '/analytics', label: 'Analytics', icon: BarChart3, hint: 'Session totals across streams' },
     { href: '/giveaways', label: 'Giveaways', icon: Gift, hint: 'Published giveaway snapshots' },
-    { href: '/logs', label: 'Logs', icon: ScrollText, hint: 'What the backend has been saying' },
     { href: '/about', label: 'About', icon: Info, hint: 'Addresses and the dashboard password' },
   ]
 }
