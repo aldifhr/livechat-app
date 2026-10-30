@@ -44,9 +44,23 @@ function envFile(): string {
   return process.env.STREAMKIT_ENV_FILE?.trim() || join(process.cwd(), '.env')
 }
 
+/**
+ * A hash as it has to appear in the file.
+ *
+ * A bcrypt hash is full of `$` — `$2b$10$...` — and Next.js expands `$` in an
+ * `.env` value as a reference to another variable, so an unescaped hash is read
+ * back as `$2b$10` with the salt and digest silently dropped. It then fails the
+ * bcrypt check and the password appears to have been rejected. `\$` is the
+ * escape the loader understands: it reads back as a literal `$`, so the hash
+ * survives the round trip. The in-memory value below is the real hash, not this.
+ */
+function fileValue(hash: string): string {
+  return hash.replace(/\$/g, '\\$')
+}
+
 /** The file's text with the hash line replaced, or appended if it is not there. */
 function withHash(text: string, hash: string): string {
-  const line = `${KEY}=${hash}`
+  const line = `${KEY}=${fileValue(hash)}`
   const lines = text.split('\n')
   let replaced = false
   const next = lines.map((existing) => {

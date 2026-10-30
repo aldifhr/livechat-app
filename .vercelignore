@@ -1,0 +1,12 @@
+**/node_modules
+**/.next
+**/.vercel
+**/__pycache__
+**/.venv
+**/*.pyc
+**/.env
+**/.env.*
+desktop/src-tauri/target
+desktop/src-tauri/gen
+api/config
+web/.data

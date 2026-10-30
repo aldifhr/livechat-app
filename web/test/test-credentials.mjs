@@ -95,7 +95,13 @@ process.env.STREAMKIT_ENV_FILE = envFile
 await persistPasswordHash(fresh)
 
 const written = readFileSync(envFile, 'utf8')
-check('the new hash is in the file', written.includes(`STREAMKIT_DASHBOARD_PASSWORD_HASH=${fresh}`))
+// The hash is written with `$` escaped as `\$`: Next.js expands `$` in an `.env`
+// value, so an unescaped `$2b$10$...` reads back as `$2b$10` and the password is
+// rejected. The file therefore holds the escaped form, and the loader turns it
+// back into `fresh`.
+const escaped = fresh.replace(/\$/g, '\\$')
+check('the new hash is in the file, $-escaped', written.includes(`STREAMKIT_DASHBOARD_PASSWORD_HASH=${escaped}`))
+check('the file does not hold an unescaped bcrypt hash', !written.includes(`STREAMKIT_DASHBOARD_PASSWORD_HASH=${fresh}`))
 check('the old hash is gone', !written.includes('old-hash-value'))
 check('the backend token survives', written.includes('STREAMKIT_TOKEN=backend-token-value'))
 check('the session secret survives', written.includes('STREAMKIT_SESSION_SECRET=session-secret-value'))
@@ -116,7 +122,7 @@ writeFileSync(
 await persistPasswordHash(fresh)
 const withComment = readFileSync(envFile, 'utf8')
 check('a commented-out line is left as a comment', withComment.includes('# STREAMKIT_DASHBOARD_PASSWORD_HASH=disabled'))
-check('and the live line is appended', withComment.includes(`\nSTREAMKIT_DASHBOARD_PASSWORD_HASH=${fresh}`))
+check('and the live line is appended, $-escaped', withComment.includes(`\nSTREAMKIT_DASHBOARD_PASSWORD_HASH=${escaped}`))
 
 // A file that does not exist is a failure to report, not a silent success that
 // changed only the in-memory value.
@@ -128,6 +134,21 @@ try {
   failed = true
 }
 check('a missing env file fails the change', failed)
+
+// The property the escaping exists for: what the loader reads back is the real
+// hash, not a `$`-truncated one. This is the round trip that was broken — the
+// file was correct-looking and the password was still rejected.
+try {
+  const { config } = await import('@dotenvx/dotenvx')
+  writeFileSync(envFile, `STREAMKIT_DASHBOARD_PASSWORD_HASH=${escaped}\n`, 'utf8')
+  const read = config({ path: envFile, processEnv: {}, quiet: true, overload: true })
+  const loaded = read.parsed?.STREAMKIT_DASHBOARD_PASSWORD_HASH
+  check('the loader reads the escaped hash back whole', loaded === fresh)
+} catch {
+  // The loader is a Next dependency; if it cannot be resolved here the escape is
+  // still covered by the file-content checks above.
+  console.log('  skip  loader round-trip (dotenvx not resolvable)')
+}
 
 delete process.env.STREAMKIT_ENV_FILE
 rmSync(dir, { recursive: true, force: true })

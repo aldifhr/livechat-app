@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 /**
@@ -38,10 +39,14 @@ export const dashboardUser = process.env.STREAMKIT_DASHBOARD_USER ?? 'admin'
  * Where runtime state that is not source lives — giveaway commitments, and
  * anything else a running deployment has to keep.
  *
- * Its own variable rather than borrowed from a password path: this is state, and
- * a deployment that moves its state should not be moving its credentials with it.
+ * Not an environment variable. A deployment should not have to spell out a
+ * filesystem path just to start, and the only place this ever differed was
+ * Vercel, whose bundle is read-only: `/tmp` is the one writable place there, so
+ * the platform decides rather than the operator.
  */
-export const dataDir = process.env.STREAMKIT_DATA_DIR ?? join(process.cwd(), '.data')
+export const dataDir = process.env.VERCEL
+  ? join(tmpdir(), 'streamkit')
+  : join(process.cwd(), '.data')
 
 /**
  * The key sessions are signed with.

@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 
-export default function AdminIndexPage(): never {
-  redirect('/admin/dashboard')
+/** The old console entry point, now the root. */
+export default function AdminRedirect() {
+  redirect('/dashboard')
 }

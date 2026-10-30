@@ -100,35 +100,35 @@ export default function GiveawayVerifier({ report, committedAt }: { report: Veri
   const skipped = checks?.filter((check) => check.ok === null).length ?? 0
   const summary =
     failed > 0
-      ? { text: `${failed} check${failed === 1 ? '' : 's'} failed — this report does not reproduce.`, tone: 'text-rose-400' }
+      ? { text: `${failed} check${failed === 1 ? '' : 's'} failed — this report does not reproduce.`, tone: 'text-bad' }
       : skipped > 0
-        ? { text: `Checked what this report allows; ${skipped} check${skipped === 1 ? '' : 's'} need the revealed seed, which it does not include.`, tone: 'text-amber-400' }
-        : { text: 'All checks passed.', tone: 'text-emerald-400' }
+        ? { text: `Checked what this report allows; ${skipped} check${skipped === 1 ? '' : 's'} need the revealed seed, which it does not include.`, tone: 'text-[#fbbf24]' }
+        : { text: 'All checks passed.', tone: 'text-accent' }
 
   return (
-    <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-      <h2 className="mb-2 mt-0 text-base font-semibold">Verify it yourself</h2>
-      <p className="mb-4 mt-0 text-xs leading-relaxed text-zinc-400">
-        These checks run in your browser, not on the server. A winner is <code className="text-zinc-300">SHA-256(seed + &quot;|&quot; + sorted_pool)</code> folded into an index, so the report alone is enough to reproduce every draw.
+    <section className="rounded-card border border-line-soft bg-raised p-5">
+      <h2 className="mt-0 mb-2 text-base font-semibold">Verify it yourself</h2>
+      <p className="mt-0 mb-4 text-xs leading-relaxed text-dim">
+        These checks run in your browser, not on the server. A winner is <code className="text-text">SHA-256(seed + &quot;|&quot; + sorted_pool)</code> folded into an index, so the report alone is enough to reproduce every draw.
       </p>
       {checks === null ? (
-        <p className="m-0 text-sm text-zinc-400">Checking…</p>
+        <p className="m-0 text-sm text-dim">Checking…</p>
       ) : (
         <>
           <ul className="m-0 grid list-none gap-2 p-0 text-sm">
             {checks.map((check, index) => (
               <li key={index} className="flex items-start gap-2">
-                <span className={check.ok === true ? 'text-emerald-400' : check.ok === false ? 'text-rose-400' : 'text-zinc-500'} aria-hidden="true">
+                <span className={check.ok === true ? 'text-accent' : check.ok === false ? 'text-bad' : 'text-faint'} aria-hidden="true">
                   {check.ok === true ? '✓' : check.ok === false ? '✗' : '–'}
                 </span>
-                <span className="text-zinc-200">
+                <span className="text-text">
                   {check.label}
-                  {check.detail && <span className="text-zinc-500"> — {check.detail}</span>}
+                  {check.detail && <span className="text-faint"> — {check.detail}</span>}
                 </span>
               </li>
             ))}
           </ul>
-          <p className={`mb-0 mt-4 text-sm font-semibold ${summary.tone}`} role="status">
+          <p className={`mt-4 mb-0 text-sm font-semibold ${summary.tone}`} role="status">
             {summary.text}
           </p>
         </>

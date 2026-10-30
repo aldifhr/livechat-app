@@ -15,8 +15,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '@/lib/client/api'
-import { profilePath, streamRoot } from '@/lib/client/streamLinks'
-import type { StreamProvider } from '@/lib/types'
+import { profilePath } from '@/lib/client/streamLinks'
 import {
   sha256,
   deriveWinnerFromSeed,
@@ -44,11 +43,13 @@ function formatTime(milliseconds: number): string {
 export default function GiveawayRunner({
   handle,
   backendOrigin,
-  provider,
+  embedded = false,
 }: {
   handle: string
   backendOrigin: string
-  provider?: StreamProvider
+  /** Mounted inside the hub rather than on a stream's own page: the heading and
+   *  the back-link are the hub's to draw, so the runner drops them. */
+  embedded?: boolean
 }) {
   const wanted = decodeURIComponent(handle).trim().replace(/^@/, '')
 
@@ -78,6 +79,10 @@ export default function GiveawayRunner({
   const [prize, setPrize] = useState('')
   const [winnerCount, setWinnerCount] = useState(1)
   const [testMode, setTestMode] = useState(false)
+  // Whether a follow is required to enter. On by default — the giveaway this was
+  // built for asks for a follow — but off is a real mode: a keyword-only draw
+  // where the follow event is not what makes somebody eligible.
+  const [requireFollow, setRequireFollow] = useState(true)
   const [isTestRun, setIsTestRun] = useState(false)
   const [rulesCopied, setRulesCopied] = useState(false)
   const [snapshotUrl, setSnapshotUrl] = useState('')
@@ -137,15 +142,20 @@ export default function GiveawayRunner({
   const closeGiveaway = useCallback(async () => {
     if (status !== 'open') return
     const current = [...peopleRef.current.values()]
-    const snapshot = current.filter((p) => enteredRef.current.has(p.id) && followedRef.current.has(p.id)).map((p) => p.id)
+    const snapshot = current
+      .filter((p) => enteredRef.current.has(p.id) && (!requireFollow || followedRef.current.has(p.id)))
+      .map((p) => p.id)
     const allEntrants: GiveawayEntrant[] = current
       .filter((p) => enteredRef.current.has(p.id))
       .map((p) => {
-        const eligible = followedRef.current.has(p.id)
+        const followed = followedRef.current.has(p.id)
+        // When a follow is not required, everyone who entered is eligible and the
+        // follow flag is kept only as a fact about the entrant, not as a gate.
+        const eligible = !requireFollow || followed
         return {
           id: p.id,
           nickname: p.nickname || `@${p.id}`,
-          followed: eligible,
+          followed,
           eligible,
           keywordMessages: entryCountsRef.current[p.id] ?? 1,
           reason: eligible ? undefined : 'Follow not detected',
@@ -157,7 +167,7 @@ export default function GiveawayRunner({
     setRemainingMs(REVIEW_MS)
     setReviewEndsAt(Date.now() + REVIEW_MS)
     setStatus('review')
-  }, [status])
+  }, [status, requireFollow])
 
   /**
    * Fix a seed for the frozen pool, on the server.
@@ -262,8 +272,10 @@ export default function GiveawayRunner({
   const eligibleIds = useMemo(() => {
     if (status === 'closed' || status === 'review') return eligibleSnapshot
     if (status !== 'open') return []
-    return [...people.values()].filter((p) => entries.has(p.id) && followed.has(p.id)).map((p) => p.id)
-  }, [status, eligibleSnapshot, people, entries, followed])
+    return [...people.values()]
+      .filter((p) => entries.has(p.id) && (!requireFollow || followed.has(p.id)))
+      .map((p) => p.id)
+  }, [status, eligibleSnapshot, people, entries, followed, requireFollow])
   const availableIds = eligibleIds.filter((id) => !winners.includes(id))
 
   const wheelSectors: WheelSector[] = availableIds.map((id, index) => ({
@@ -418,6 +430,7 @@ export default function GiveawayRunner({
       prize,
       winnerCount,
       testMode: isTestRun,
+      requireFollow,
       startedAt,
       closedAt,
       entrants: entrySnapshot,
@@ -494,7 +507,7 @@ export default function GiveawayRunner({
     setEligibleSnapshot((current) => current.filter((entrantId) => entrantId !== id))
   }
 
-  const rulesText = `Giveaway${prize.trim() ? ` — ${prize.trim()}` : ''}\nEntry keyword: ${keyword.trim()}\nRequirement: send a chat containing the keyword before entries close; follow status must be detected during the live session.\nEntry window: ${durationMinutes} minute(s)\nWinners: ${winnerCount}\nOne entry per account; repeated keyword messages do not increase odds.`
+  const rulesText = `Giveaway${prize.trim() ? ` — ${prize.trim()}` : ''}\nEntry keyword: ${keyword.trim()}\nRequirement: send a chat containing the keyword before entries close${requireFollow ? '; follow status must be detected during the live session' : ''}.\nEntry window: ${durationMinutes} minute(s)\nWinners: ${winnerCount}\nOne entry per account; repeated keyword messages do not increase odds.`
 
   async function copyRules() {
     try {
@@ -510,16 +523,18 @@ export default function GiveawayRunner({
   if (!room) {
     return (
       <>
-        <div className="page-head">
-          <div>
-            <h2>No such stream</h2>
-            <p className="muted">
-              Nothing here is called <strong>@{wanted}</strong>.
-            </p>
+        {!embedded && (
+          <div className="page-head">
+            <div>
+              <h2>No such stream</h2>
+              <p className="muted">
+                Nothing here is called <strong>@{wanted}</strong>.
+              </p>
+            </div>
           </div>
-        </div>
+        )}
         <div className="panel">
-          <Link className="btn" href={`${streamRoot(provider)}/streams`}>
+          <Link className="btn" href="/streams">
             Back to streams
           </Link>
         </div>
@@ -531,19 +546,37 @@ export default function GiveawayRunner({
     <>
       <Confetti ref={confettiRef} manualstart className="pointer-events-none fixed inset-0 z-60 h-screen w-screen" />
 
-      <div className="page-head">
-        <div>
-          <p className="faint">
-            <Link className="quiet-link" href={profilePath(room.username, room.id, provider)}>
-              ← {room.username ? `@${room.username}` : room.name}
-            </Link>
-          </p>
-          <h2>Giveaway picker</h2>
-          <p className="muted">
-            Collect entries, review the list, then draw the configured number of winners. {connected ? 'Listening to the room.' : 'Not connected — start the stream, or use test mode.'}
-          </p>
+      {!embedded && (
+        <div className="page-head">
+          <div>
+            <p className="faint">
+              <Link className="quiet-link" href={profilePath(room.username, room.id)}>
+                ← {room.username ? `@${room.username}` : room.name}
+              </Link>
+            </p>
+            <h2>Giveaway picker</h2>
+            <p className="muted">
+              Collect entries, review the list, then draw the configured number of winners. {connected ? 'The stream is live.' : 'The stream is offline — start it, or use test mode.'}
+            </p>
+          </div>
         </div>
-      </div>
+      )}
+
+      {embedded && (
+        <div className="panel">
+          <div className="row">
+            <div className="grow">
+              <span className="stat-label">Running on</span>
+              <div className="stream-name">
+                {room.username ? `@${room.username}` : room.name}
+                <span className={connected ? 'badge live' : 'badge off'}>
+                  {connected ? 'LIVE' : 'OFFLINE'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="panel">
         <h3>Setup</h3>
@@ -567,12 +600,21 @@ export default function GiveawayRunner({
             <input id="gw-winners" type="number" min={1} max={100} value={winnerCount} disabled={settingsLocked} onChange={(e) => setWinnerCount(Math.max(1, Math.min(100, Number(e.target.value) || 1)))} />
           </div>
         </div>
-        <div className="field">
-          <label htmlFor="gw-test">Test mode</label>
-          <select id="gw-test" value={testMode ? 'on' : 'off'} disabled={settingsLocked} onChange={(e) => setTestMode(e.target.value === 'on')}>
-            <option value="off">Off — real participants</option>
-            <option value="on">On — fictional participants</option>
-          </select>
+        <div className="field-row">
+          <div className="field">
+            <label htmlFor="gw-follow">Follow required</label>
+            <select id="gw-follow" value={requireFollow ? 'on' : 'off'} disabled={settingsLocked} onChange={(e) => setRequireFollow(e.target.value === 'on')}>
+              <option value="on">On — must follow to enter</option>
+              <option value="off">Off — keyword is enough</option>
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="gw-test">Test mode</label>
+            <select id="gw-test" value={testMode ? 'on' : 'off'} disabled={settingsLocked} onChange={(e) => setTestMode(e.target.value === 'on')}>
+              <option value="off">Off — real participants</option>
+              <option value="on">On — fictional participants</option>
+            </select>
+          </div>
         </div>
         <p className="faint tight-caption">{rulesText.split('\n').join(' ')}</p>
         <button type="button" onClick={() => void copyRules()}>{rulesCopied ? 'Copied!' : 'Copy rules'}</button>
@@ -620,8 +662,8 @@ export default function GiveawayRunner({
       </div>
 
       {announcedWinnerId && (
-        <div className="fixed inset-0 z-60 grid place-items-center p-4" style={{ background: 'rgb(0 0 0 / 0.6)' }} role="dialog" aria-modal="true" aria-label="Winner">
-          <div className="panel max-w-sm text-center">
+        <div className="modal" role="dialog" aria-modal="true" aria-label="Winner">
+          <div className="modal-panel">
             <h3 className="flush-top">🎉 Winner{prize.trim() ? ` · ${prize.trim()}` : ''}</h3>
             <p className="muted">The giveaway draw is complete.</p>
             <p className="stat-value break-all">{announcedWinner?.nickname || `@${announcedWinnerId}`}</p>

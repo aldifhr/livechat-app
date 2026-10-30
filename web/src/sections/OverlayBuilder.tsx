@@ -50,8 +50,7 @@ import {
   type OverlayPosition,
 } from '@shared/overlay'
 import { api } from '../lib/client/api'
-import { profilePath, streamRoot } from '../lib/client/streamLinks'
-import type { StreamProvider } from '../lib/types'
+import { profilePath } from '../lib/client/streamLinks'
 import type { Room } from '../lib/types'
 import CopyField from '../components/CopyField'
 import OverlayStage from '../components/OverlayStage'
@@ -101,7 +100,7 @@ function ChatCustomizer({ roomId, style, design, onChange }: {
           <div className="mt-2">
             <button
               type="button"
-              className="btn btn-small"
+              className="btn-small"
               onClick={() => onChange({ position: OVERLAY_DEFAULT_STYLE.position })}
               disabled={style.position === OVERLAY_DEFAULT_STYLE.position}
             >
@@ -438,11 +437,9 @@ const CANVASES = [
 export default function OverlayBuilder({
   handle,
   kind,
-  provider,
 }: {
   handle: string
   kind: BuilderKind
-  provider?: StreamProvider
 }) {
   // The handle is the part a person types; a room with no handle is reachable by its
   // id, the same two forms the profile resolves. The leading `@` is optional.
@@ -576,7 +573,7 @@ export default function OverlayBuilder({
           </div>
         </div>
         <div className="panel">
-          <Link className="btn" href={`${streamRoot(provider)}/streams`}>
+          <Link className="btn" href="/streams">
             Back to streams
           </Link>
         </div>
@@ -589,7 +586,7 @@ export default function OverlayBuilder({
       <div className="page-head">
         <div>
           <p className="faint">
-            <Link className="quiet-link" href={profilePath(room.username, room.id, provider)}>
+            <Link className="quiet-link" href={profilePath(room.username, room.id)}>
               ← {room.username ? `@${room.username}` : room.name}
             </Link>
           </p>

@@ -42,7 +42,7 @@ function StreamRow({ room, status }: { room: Room; status: RoomStatus | undefine
         // The row already knows its platform, so the link is built from the
         // room's own record rather than from the page's scope — a mixed list
         // (which `/admin/streams` is) then links each row into its own tree.
-        href={profilePath(room.username, room.id, room.provider)}
+        href={profilePath(room.username, room.id)}
       >
         <span className="stream-row-name">
           {/* Every row carries its platform label. Absent means TikTok: rooms

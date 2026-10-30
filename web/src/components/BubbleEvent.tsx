@@ -16,15 +16,19 @@ export interface BubbleEventProps {
  * The styles per kind. One table rather than a chain of ternaries: the kinds have
  * nothing in common beyond being a coloured bubble, and a ternary per field is
  * how the colours drifted the last time one was added.
+ *
+ * Each kind is a light card with a solid black border — the dock is drawn over
+ * video and the bubble has to hold its contrast against anything — and the kind
+ * is carried by the name colour and a tinted left edge, not by a dark fill.
  */
 const STYLES = {
-  gift: { bg: '#2a1a08', border: '#854d0e', name: '#fcd34d' },
-  like: { bg: '#27272a', border: '#3f3f46', name: '#ffffff' },
-  follow: { bg: '#2a101b', border: '#9d174d', name: '#f472b6' },
-  subscription: { bg: '#0b2340', border: '#1d4ed8', name: '#93c5fd' },
-  notice: { bg: '#27272a', border: '#3f3f46', name: '#a1a1aa' },
-  poll: { bg: '#1a2a1a', border: '#3f6212', name: '#bef264' },
-  intro: { bg: '#1a1a2a', border: '#4338ca', name: '#c7d2fe' },
+  gift: { name: '#b45309', edge: '#f5b942' },
+  like: { name: '#e5484d', edge: '#e5484d' },
+  follow: { name: '#be185d', edge: '#f472b6' },
+  subscription: { name: '#1d4ed8', edge: '#60a5fa' },
+  notice: { name: '#13102b', edge: '#8b83a6' },
+  poll: { name: '#15803d', edge: '#4ade80' },
+  intro: { name: '#4338ca', edge: '#818cf8' },
 } as const
 
 export function BubbleEvent({
@@ -41,8 +45,8 @@ export function BubbleEvent({
 
   return (
     <div
-      style={{ backgroundColor: style.bg, borderColor: style.border }}
-      className="w-fit max-w-[calc(100%-2rem)] min-w-0 rounded-[4px_14px_14px_14px] border px-3 py-1.5 text-xs shadow-sm"
+      style={{ borderLeftColor: style.edge, borderLeftWidth: 6 }}
+      className="w-fit max-w-[calc(100%-2rem)] min-w-0 rounded-[4px_14px_14px_14px] border-2 border-line bg-raised px-3 py-1.5 text-xs text-text"
     >
       {/* A notice and a poll have no viewer behind them — the backend sends a
           name only when the event came from a person. The name block is skipped
@@ -55,58 +59,50 @@ export function BubbleEvent({
               target="_blank"
               rel="noopener noreferrer"
               style={{ color: style.name }}
-              className="shrink-0 font-semibold hover:underline"
+              className="shrink-0 font-extrabold hover:underline"
               title={`Buka @${user} di TikTok`}
             >
               {user}
             </a>
           ) : (
-            <span style={{ color: style.name }} className="shrink-0 font-semibold">
+            <span style={{ color: style.name }} className="shrink-0 font-extrabold">
               {user}
             </span>
           )}
-          <span style={{ color: '#71717a' }} className="shrink-0 text-[10px] font-normal tabular-nums">
-            {time}
-          </span>
+          <span className="shrink-0 text-[10px] font-normal text-faint tabular-nums">{time}</span>
         </div>
       )}
       {!user && (
-        <span style={{ color: '#71717a' }} className="text-[10px] font-normal tabular-nums">
-          {time}
-        </span>
+        <span className="text-[10px] font-normal text-faint tabular-nums">{time}</span>
       )}
       {type === 'like' && (
-        <p style={{ color: '#a1a1aa' }} className="mt-0.5 m-0 leading-snug">
-          ❤️ liked the stream
-        </p>
+        <p className="m-0 mt-0.5 leading-snug text-dim">❤️ liked the stream</p>
       )}
       {type === 'follow' && (
-        <p style={{ color: '#f472b6' }} className="mt-0.5 m-0 font-medium leading-snug">
+        <p style={{ color: style.name }} className="m-0 mt-0.5 leading-snug font-bold">
           💖 followed
         </p>
       )}
       {type === 'gift' && (
-        <p style={{ color: '#fcd34d' }} className="mt-0.5 m-0 font-medium leading-snug">
+        <p style={{ color: style.name }} className="m-0 mt-0.5 leading-snug font-bold">
           🎁 sent {giftName}
         </p>
       )}
       {type === 'subscription' && (
-        <p style={{ color: '#93c5fd' }} className="mt-0.5 m-0 font-medium leading-snug">
+        <p style={{ color: style.name }} className="m-0 mt-0.5 leading-snug font-bold">
           ⭐ subscribed{(months ?? 0) > 1 ? ` · month ${months}` : ''}
         </p>
       )}
       {type === 'notice' && text && (
-        <p style={{ color: '#d4d4d8' }} className="mt-0.5 m-0 leading-snug">
-          📢 {text}
-        </p>
+        <p className="m-0 mt-0.5 leading-snug text-dim">📢 {text}</p>
       )}
       {type === 'poll' && text && (
         <div className="mt-0.5">
-          <p style={{ color: '#bef264' }} className="m-0 font-medium leading-snug">
+          <p style={{ color: style.name }} className="m-0 leading-snug font-bold">
             📊 {text}
           </p>
           {options && options.length > 0 && (
-            <ul style={{ color: '#a3a3a3' }} className="mt-1 mb-0 list-disc space-y-0.5 pl-4">
+            <ul className="mt-1 mb-0 list-disc space-y-0.5 pl-4 text-dim">
               {options.map((option, index) => (
                 <li key={`${option}-${index}`}>{option}</li>
               ))}
@@ -115,7 +111,7 @@ export function BubbleEvent({
         </div>
       )}
       {type === 'intro' && text && (
-        <p style={{ color: '#c7d2fe' }} className="mt-0.5 m-0 leading-snug">
+        <p style={{ color: style.name }} className="m-0 mt-0.5 leading-snug font-bold">
           🔴 went live · {text}
         </p>
       )}

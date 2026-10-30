@@ -60,6 +60,9 @@ export interface GiveawayReport {
   prize: string
   winnerCount: number
   testMode: boolean
+  /** Whether a follow was required to enter. Absent on reports made before the
+   *  option existed, which were all follow-required. */
+  requireFollow?: boolean
   startedAt: string | null
   closedAt: string | null
   entrants: GiveawayEntrant[]

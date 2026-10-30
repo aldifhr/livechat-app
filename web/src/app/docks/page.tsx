@@ -327,12 +327,12 @@ export default function DocksPage() {
   // should not have to click through a picker every time they open their scene.
   if (!roomId && rooms.length !== 1) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 bg-zinc-900 p-4 text-zinc-400">
+      <div className="flex h-full flex-col items-center justify-center gap-4 bg-raised p-4 text-dim">
         {rooms.length === 0 ? (
-          <p className="text-center text-sm">No streams yet.</p>
+          <p className="text-center text-sm font-semibold">No streams yet.</p>
         ) : (
           <>
-            <p className="text-center text-sm">Which stream?</p>
+            <p className="text-center text-sm font-bold">Which stream?</p>
             <div className="flex w-full max-w-xs flex-col gap-2">
               {rooms.map((room) => (
                 <button
@@ -343,13 +343,13 @@ export default function DocksPage() {
                     url.searchParams.set('room', room.id)
                     window.history.replaceState({}, '', url.toString())
                   }}
-                  className="flex items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-left text-sm text-zinc-100 transition-colors hover:border-zinc-500"
+                  className="flex items-center gap-3 rounded-field border-2 border-line bg-raised px-4 py-2.5 text-left text-sm font-bold text-text transition-colors hover:border-accent hover:bg-accent-tint"
                 >
                   <span className="truncate">
                     {room.username ? `@${room.username}` : room.name || room.id.slice(0, 8)}
                   </span>
                   {room.connected && (
-                    <span className="ml-auto shrink-0 text-xs text-emerald-400">live</span>
+                    <span className="ml-auto shrink-0 text-xs font-extrabold text-good">live</span>
                   )}
                 </button>
               ))}
@@ -362,8 +362,8 @@ export default function DocksPage() {
 
   if (error && !loaded) {
     return (
-      <div className="flex h-full items-center justify-center bg-zinc-900 p-4 text-red-400">
-        <p className="text-center text-sm">{error}</p>
+      <div className="flex h-full items-center justify-center bg-raised p-4 text-bad">
+        <p className="text-center text-sm font-bold">{error}</p>
       </div>
     )
   }
@@ -389,9 +389,9 @@ export default function DocksPage() {
   const activeViewers = viewers ?? status?.viewers ?? null
 
   return (
-    <div className="dark flex h-full flex-col bg-zinc-900 text-zinc-100">
+    <div className="flex h-full flex-col bg-transparent text-text">
       {/* Header — room switcher + status */}
-      <div className="flex items-center gap-2 border-b border-zinc-800 bg-zinc-950 px-3 py-2">
+      <div className="flex items-center gap-2 border-b-2 border-line bg-raised px-3 py-2">
         {rooms.length > 1 && (
           <select
             aria-label="Select room"
@@ -404,7 +404,7 @@ export default function DocksPage() {
               else url.searchParams.delete('room')
               window.history.replaceState({}, '', url.toString())
             }}
-            className="max-w-32 rounded border border-zinc-700 bg-zinc-900 px-1.5 py-1 text-xs text-zinc-200 focus:border-zinc-500"
+            className="max-w-32 rounded-field border-2 border-line bg-raised px-1.5 py-1 text-xs text-text"
           >
             {!roomId && <option value="">Select room</option>}
             {rooms.map((room) => (
@@ -415,37 +415,32 @@ export default function DocksPage() {
           </select>
         )}
         <div className="flex items-center gap-2">
-          {/* `waiting` before `connecting`, the same precedence `RoomStateBadge`
-              uses and for the same reason: the backend sets `connecting` while it
-              polls for a streamer who is not live, so reading it first would say
-              "Connecting" for somebody who is simply offline. */}
+          {/* Two states only: connected is LIVE, everything else is OFFLINE. The
+              backend distinguishes more, but the dock answers one question — is
+              chat coming in — and a second label for "no" only invites doubt. */}
           <span
             className={`inline-block h-2.5 w-2.5 rounded-full ${
-              status?.connected
-                ? 'bg-[#34d399] shadow-[0_0_8px_#34d399]'
-                : status?.waiting || status?.connecting
-                  ? 'bg-[#fbbf24]'
-                  : 'bg-[#52525b]'
+              status?.connected ? 'bg-good' : 'bg-faint'
             }`}
           />
-          <span className="text-xs font-medium text-zinc-300">
-            {status?.connected ? 'Live' : status?.waiting ? 'Waiting' : status?.connecting ? 'Connecting' : 'Offline'}
+          <span className="text-xs font-bold text-dim">
+            {status?.connected ? 'LIVE' : 'OFFLINE'}
           </span>
         </div>
         {status?.connected && activeViewers != null && (
-          <span className="ml-auto rounded-full bg-[#34d399]/15 px-2.5 py-0.5 text-xs font-semibold text-[#34d399]">
+          <span className="ml-auto rounded-pill border-2 border-line bg-accent-tint px-2.5 py-0.5 text-xs font-extrabold text-accent">
             <RollingNumber value={activeViewers} /> watching
           </span>
         )}
-        <div className="flex items-center gap-1 ml-auto">
+        <div className="ml-auto flex items-center gap-1">
           <button
             type="button"
             onClick={toggleTts}
             title={ttsEnabled ? 'Matikan Google TTS' : 'Aktifkan Google TTS (baca chat, gift & follow)'}
-            className={`shrink-0 rounded p-1 text-xs transition-colors ${
+            className={`shrink-0 rounded-field border-2 p-1 text-xs transition-colors ${
               ttsEnabled
-                ? 'bg-sky-400/20 text-sky-300 hover:bg-sky-400/30'
-                : 'text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300'
+                ? 'border-accent bg-accent-tint text-accent'
+                : 'border-transparent text-faint hover:border-line hover:text-dim'
             }`}
             aria-label={ttsEnabled ? 'Matikan TTS' : 'Aktifkan TTS'}
           >
@@ -455,10 +450,10 @@ export default function DocksPage() {
             type="button"
             onClick={toggleSound}
             title={soundEnabled ? 'Mute alert sounds' : 'Enable alert sounds for chat, gifts & follows'}
-            className={`shrink-0 rounded p-1 text-xs transition-colors ${
+            className={`shrink-0 rounded-field border-2 p-1 text-xs transition-colors ${
               soundEnabled
-                ? 'bg-amber-400/20 text-amber-300 hover:bg-amber-400/30'
-                : 'text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300'
+                ? 'border-accent bg-accent-tint text-accent'
+                : 'border-transparent text-faint hover:border-line hover:text-dim'
             }`}
             aria-label={soundEnabled ? 'Mute alert sound' : 'Enable alert sound'}
           >
@@ -469,16 +464,16 @@ export default function DocksPage() {
 
       {/* Quick stats */}
       {session && !(!session.connected && events === 0 && session.total_diamonds === 0) && (
-        <div className="grid grid-cols-2 gap-px border-b border-zinc-800 bg-zinc-800">
-          <div className="bg-zinc-900 px-2 py-1.5 text-center">
-            <div className="text-[10px] uppercase tracking-wider text-zinc-500">Peak</div>
-            <div className="text-xs font-semibold text-zinc-200">
+        <div className="grid grid-cols-2 border-b-2 border-line bg-raised">
+          <div className="border-r-2 border-line px-2 py-1.5 text-center">
+            <div className="text-[10px] font-extrabold tracking-wider text-faint uppercase">Peak</div>
+            <div className="text-xs font-extrabold text-text">
               {session.peak_viewers ? <RollingNumber value={session.peak_viewers} /> : '—'}
             </div>
           </div>
-          <div className="bg-zinc-900 px-2 py-1.5 text-center">
-            <div className="text-[10px] uppercase tracking-wider text-zinc-500">Diamonds</div>
-            <div className="text-xs font-semibold text-zinc-200">
+          <div className="px-2 py-1.5 text-center">
+            <div className="text-[10px] font-extrabold tracking-wider text-faint uppercase">Diamonds</div>
+            <div className="text-xs font-extrabold text-text">
               {session.total_diamonds ? <RollingNumber value={session.total_diamonds} /> : '—'}
             </div>
           </div>
@@ -486,12 +481,12 @@ export default function DocksPage() {
       )}
 
       {/* Filter and control bar */}
-      <div className="border-b border-zinc-800 bg-zinc-950 px-3 py-1.5 space-y-1.5">
+      <div className="space-y-1.5 border-b-2 border-line bg-raised px-3 py-2">
         <div className="flex items-center gap-2">
           <div
             ref={filterScroll.ref}
             {...filterScroll.events}
-            className="flex-1 min-w-0 flex items-center gap-1.5 overflow-x-auto pr-3 [scrollbar-width:none] cursor-grab active:cursor-grabbing select-none [mask-image:linear-gradient(to_right,white_calc(100%-20px),transparent)]"
+            className="flex min-w-0 flex-1 cursor-grab items-center gap-1.5 overflow-x-auto pr-3 select-none [mask-image:linear-gradient(to_right,white_calc(100%-20px),transparent)] [scrollbar-width:none] active:cursor-grabbing"
           >
             {FILTERS.map((f) => (
               <button
@@ -502,23 +497,23 @@ export default function DocksPage() {
                     setFilter(f.id)
                   }
                 }}
-                className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors select-none ${
+                className={`shrink-0 rounded-pill border-2 px-2.5 py-0.5 text-[11px] font-bold transition-colors select-none ${
                   filter === f.id
-                    ? 'bg-zinc-200 text-zinc-900 font-semibold'
-                    : 'bg-zinc-800/60 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+                    ? 'border-accent-dim bg-accent text-accent-ink'
+                    : 'border-line bg-raised text-dim hover:text-text'
                 }`}
               >
                 {f.label}
               </button>
             ))}
           </div>
-          <div className="flex items-center pl-1 border-l border-zinc-800 shrink-0">
+          <div className="flex shrink-0 items-center border-l-2 border-line pl-1">
             <button
               type="button"
               onClick={clearChat}
               title="Clear chat feed"
               aria-label="Clear chat feed"
-              className="rounded p-1 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-red-400 transition-colors"
+              className="rounded-field border-2 border-transparent p-1 text-xs text-faint transition-colors hover:border-bad hover:text-bad"
             >
               🗑️
             </button>
@@ -527,20 +522,20 @@ export default function DocksPage() {
 
         {/* Search input */}
         <div className="relative flex items-center">
-          <span className="absolute left-2 text-xs text-zinc-500 select-none">🔍</span>
+          <span className="absolute left-2 text-xs text-faint select-none">🔍</span>
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search username or text..."
             aria-label="Search chat"
-            className="w-full rounded bg-zinc-900 border border-zinc-800 pl-6 pr-6 py-1 text-xs text-zinc-200 placeholder:text-zinc-500 focus:border-zinc-600 focus:bg-zinc-900/90 transition-colors"
+            className="w-full rounded-field border-2 border-line bg-raised py-1 pr-6 pl-6 text-xs text-text transition-colors placeholder:text-faint focus:border-accent"
           />
           {search && (
             <button
               type="button"
               onClick={() => setSearch('')}
-              className="absolute right-2 text-xs text-zinc-500 hover:text-zinc-300"
+              className="absolute right-2 text-xs text-faint hover:text-dim"
               title="Clear search"
               aria-label="Clear search"
             >
@@ -551,7 +546,7 @@ export default function DocksPage() {
       </div>
 
       {/* Live chat feed with auto-scroll pause */}
-      <div className="relative flex-1 min-h-0">
+      <div className="relative min-h-0 flex-1">
         <div
           ref={feedContainerRef}
           onScroll={handleScroll}
@@ -561,11 +556,11 @@ export default function DocksPage() {
           className="h-full overflow-y-auto px-3 py-3 [scrollbar-width:thin]"
         >
           {filteredChat.length === 0 ? (
-            <p className="py-4 text-center text-xs text-zinc-600">
+            <p className="py-4 text-center text-xs font-semibold text-faint">
               {chat.length === 0
                 ? status?.connected
                   ? 'Waiting for chat…'
-                  : 'Not connected'
+                  : 'OFFLINE'
                 : search
                   ? `No events matching "${search}"`
                   : 'No events matching filter'}
@@ -615,7 +610,7 @@ export default function DocksPage() {
           <button
             type="button"
             onClick={scrollToBottom}
-            className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full bg-zinc-800/95 hover:bg-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-200 shadow-xl border border-zinc-700 backdrop-blur transition-all"
+            className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-pill border-2 border-line bg-raised px-3 py-1.5 text-xs font-bold text-text shadow-[0_4px_0_0_var(--line)] transition-all hover:bg-accent-tint"
           >
             <span>↓</span>
             <span>New messages{newCount > 0 ? ` (${newCount})` : ''}</span>

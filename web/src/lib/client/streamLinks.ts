@@ -6,20 +6,12 @@
  * it. Spelling the shape out in more than one place is more than one place to
  * change when it changes.
  *
- * A stream lives under its platform console: `/app/tiktok/stream/@handle`.
- * `/admin` still has the same pages and still works — it is the console that
- * shows the whole list — so both shapes have to be buildable from here.
+ * A stream lives at `/stream/@handle`. There is one platform, so the address
+ * carries no platform segment: the room record knows which platform it reads, and
+ * a second source of truth in the URL could only disagree with it.
  */
 
 import { api } from './api'
-import type { StreamProvider } from '../types'
-
-/** The root a stream's pages hang off, for one platform. */
-export function streamRoot(provider: StreamProvider | undefined): string {
-  // Absent means TikTok: rooms created before the field existed are all TikTok,
-  // the same default the backend applies.
-  return `/app/${provider ?? 'tiktok'}`
-}
 
 /**
  * The address of a stream's profile.
@@ -35,13 +27,8 @@ export function streamRoot(provider: StreamProvider | undefined): string {
  * profile resolves either, so a link built before the handle was set does not
  * dead-end.
  */
-export function profilePath(
-  username: string,
-  id: string,
-  provider?: StreamProvider,
-): string {
-  const root = `${streamRoot(provider)}/stream`
-  return username ? `${root}/@${encodeURIComponent(username)}` : `${root}/${id}`
+export function profilePath(username: string, id: string): string {
+  return username ? `/stream/@${encodeURIComponent(username)}` : `/stream/${id}`
 }
 
 /** The kind of overlay a customizer styles, as it appears in the address. */
@@ -55,22 +42,13 @@ export type OverlayKind = 'chat' | 'top-chatter' | 'cat' | 'like-target'
  * path segment so each overlay is its own page — a link to "restyle my chat" is a
  * link to somewhere.
  */
-export function customizerPath(
-  username: string,
-  id: string,
-  kind: OverlayKind,
-  provider?: StreamProvider,
-): string {
-  return `${profilePath(username, id, provider)}/overlay/${kind}`
+export function customizerPath(username: string, id: string, kind: OverlayKind): string {
+  return `${profilePath(username, id)}/overlay/${kind}`
 }
 
 /** A stream's giveaway picker, under the stream's own address. */
-export function giveawayPath(
-  username: string,
-  id: string,
-  provider?: StreamProvider,
-): string {
-  return `${profilePath(username, id, provider)}/giveaway`
+export function giveawayPath(username: string, id: string): string {
+  return `${profilePath(username, id)}/giveaway`
 }
 
 /**

@@ -52,10 +52,16 @@ if (passwordFlag !== -1 && (!password || password.length < 8)) {
 const secret = randomBytes(32).toString('hex')
 const hash = bcrypt.hashSync(password, 10)
 
+// A bcrypt hash is full of `$`, and Next.js expands `$` in an `.env` value as a
+// reference to another variable — so `$2b$10$<salt><digest>` is read back as
+// `$2b$10` with everything after it gone, and the password is rejected. `\$` is
+// the escape the loader understands; it reads back as a literal `$`.
+const fileHash = hash.replace(/\$/g, '\\$')
+
 const lines = [
   `STREAMKIT_SESSION_SECRET=${secret}`,
   `STREAMKIT_DASHBOARD_USER=${user}`,
-  `STREAMKIT_DASHBOARD_PASSWORD_HASH=${hash}`,
+  `STREAMKIT_DASHBOARD_PASSWORD_HASH=${fileHash}`,
 ]
 
 if (!write) {

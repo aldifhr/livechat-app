@@ -21,13 +21,9 @@ import Link from 'next/link'
 import { useCallback, useMemo, useState } from 'react'
 import { api } from '@/lib/client/api'
 import { usePoll } from '@/hooks/usePoll'
-import type { Room, RoomStatus, StreamProvider } from '@/lib/types'
+import type { Room, RoomStatus } from '@/lib/types'
 import NumberTicker from '@/components/magicui/NumberTicker'
 import RoomStateBadge from '@/components/RoomStateBadge'
-
-const LABELS: Record<StreamProvider, string> = {
-  tiktok: 'TikTok',
-}
 
 /** How often the numbers are re-read. The same beat the streams page uses, so
  *  two pages side by side are not showing different moments. */
@@ -55,8 +51,7 @@ interface Row extends Room {
   stale?: boolean
 }
 
-export default function Dashboard({ provider }: { provider?: StreamProvider }) {
-  const label = provider ? LABELS[provider] : ''
+export default function Dashboard() {
   const [rows, setRows] = useState<Row[]>([])
   const [history, setHistory] = useState<Reading[]>([])
   const [error, setError] = useState('')
@@ -65,12 +60,7 @@ export default function Dashboard({ provider }: { provider?: StreamProvider }) {
   const poll = useCallback(async () => {
     let rooms: Room[]
     try {
-      const all = (await api.rooms()).rooms
-      // A platform dashboard is the same view over a subset: rooms written
-      // before the field existed are TikTok, which is the backend's own default.
-      rooms = provider
-        ? all.filter((room) => (room.provider ?? 'tiktok') === provider)
-        : all
+      rooms = (await api.rooms()).rooms
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'The stream list could not be loaded')
       return
@@ -107,7 +97,7 @@ export default function Dashboard({ provider }: { provider?: StreamProvider }) {
     if (answered && (connected.length === 0 || countsComplete)) {
       setHistory((current) => [...current, { at: Date.now(), total }].slice(-HISTORY))
     }
-  }, [provider])
+  }, [])
 
   usePoll(poll, POLL_MS)
 
@@ -133,10 +123,10 @@ export default function Dashboard({ provider }: { provider?: StreamProvider }) {
     <>
       <div className="page-head">
         <div>
-          <h2>{provider ? `${label} overview` : 'Overview'}</h2>
+          <h2>Overview</h2>
           <p className="muted">
-            {provider ? `${label} streams only, re` : 'Every stream at once, re'}-read every{' '}
-            {POLL_MS / 1000} seconds. Counts are since this page was opened — nothing is stored.
+            Every stream at once, re-read every {POLL_MS / 1000} seconds. Counts are since this page
+            was opened — nothing is stored.
           </p>
         </div>
       </div>
@@ -177,13 +167,7 @@ export default function Dashboard({ provider }: { provider?: StreamProvider }) {
 
       {loaded && rows.length === 0 && !error && (
         <div className="empty">
-          {provider ? (
-            <>No {label} streams yet. Add one from <Link href={`/app/${provider}/streams`}>Streams</Link>.</>
-          ) : (
-            <>
-              No streams configured yet. Add one from <a href="/admin/streams">Streams</a>.
-            </>
-          )}
+          No streams configured yet. Add one from <Link href="/streams">Streams</Link>.
         </div>
       )}
 

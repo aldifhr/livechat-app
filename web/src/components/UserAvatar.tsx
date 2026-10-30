@@ -13,7 +13,7 @@ export function UserAvatar({ avatar, user, profileUrl }: UserAvatarProps) {
   const initial = (user.trim()[0] || '?').toUpperCase()
 
   const avatarCircle = (
-    <div className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-zinc-800 text-xs font-semibold text-zinc-300 overflow-hidden ring-1 ring-zinc-700/50 hover:ring-sky-400 transition-all">
+    <div className="relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-raised text-xs font-semibold text-dim ring-1 ring-line/60 transition-all hover:ring-accent">
       <span>{initial}</span>
       {avatar && !failed && (
         <img
