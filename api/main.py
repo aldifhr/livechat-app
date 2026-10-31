@@ -302,11 +302,16 @@ async def guard_mutations(request: Request, call_next):
 #
 # Overridable so a deployment that moves the frontend domain does not have to
 # edit code: STREAMKIT_ALLOWED_ORIGINS is a comma-separated list.
+#
+# Both frontend hosts are in the default because both serve overlay pages — the
+# Vercel one and the VPS one. An overlay resolves its room with a cross-origin
+# POST, so a host missing from this list gets a page that loads and then never
+# connects, which reads as a dead overlay rather than a CORS problem.
 def _allowed_origins() -> list[str]:
     raw = os.environ.get("STREAMKIT_ALLOWED_ORIGINS", "").strip()
     if raw:
         return [o.strip().rstrip("/") for o in raw.split(",") if o.strip()]
-    return ["https://streamtools.aldifhr.my.id"]
+    return ["https://streamtools.aldifhr.my.id", "https://livechat.aldifhr.my.id"]
 
 
 app.add_middleware(
