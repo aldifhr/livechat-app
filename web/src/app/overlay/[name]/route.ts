@@ -23,10 +23,12 @@ export async function GET(
 
   const html = await readFile(join(process.cwd(), 'public', 'overlay', file), 'utf8')
   // The origin a *browser* reaches the backend by, not the one this server uses:
-  // the page opens its socket from the viewer's machine. The dashboard host, which
-  // proxies /ws/ and the connect route through to the backend — so the backend
-  // needs no listener on the internet. The static copies nginx serves off disk
-  // fall back to `location.origin` and land on the same place.
+  // the page opens its socket from the viewer's machine, so the baked value has to
+  // be a host that proxies /ws/ and the connect route through to the backend —
+  // which is why the backend itself needs no listener on the internet. Baking it
+  // here is what keeps an overlay working wherever this page is served from; a
+  // copy served without this handler falls back to `location.origin` and only
+  // connects when that origin proxies /ws/ itself.
   const payload = JSON.stringify({ baseUrl: BACKEND_ORIGIN })
     .replace(/</g, '\\u003c')
     .replace(/>/g, '\\u003e')

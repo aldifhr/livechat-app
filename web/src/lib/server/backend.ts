@@ -39,13 +39,19 @@ export const BACKEND =
  * internet) and a loopback address handed to the browser (a socket that could
  * never open).
  *
- * The dashboard host is the default because that host already proxies `/ws/` and
+ * The backend host is the default because that host already proxies `/ws/` and
  * `/api/room-connect-by-username` through to the backend, so the backend needs no
  * public listener of its own. `BACKEND_ORIGIN` overrides it for a split
  * deployment.
+ *
+ * The default is `kit-backend`, not the dashboard host: the dashboard runs on
+ * Vercel now, and a host that serves the page without proxying `/ws/` hands every
+ * browser an origin whose socket can never open. That is not hypothetical — the
+ * overlays sat reconnecting against exactly such a host, because this default
+ * still named it.
  */
 export const BACKEND_ORIGIN =
-  process.env.BACKEND_ORIGIN?.replace(/\/+$/, '') ?? 'https://streamtools.aldifhr.my.id'
+  process.env.BACKEND_ORIGIN?.replace(/\/+$/, '') ?? 'https://kit-backend.aldifhr.my.id'
 
 /**
  * One request to the backend, with the token attached.
