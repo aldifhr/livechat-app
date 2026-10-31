@@ -1,5 +1,5 @@
 import GiveawayRunner from '@/sections/GiveawayRunner'
-import { BACKEND } from '@/lib/server/backend'
+import { BACKEND_ORIGIN } from '@/lib/server/backend'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,5 +12,5 @@ export const dynamic = 'force-dynamic'
  */
 export default async function GiveawayPage({ params }: { params: Promise<{ handle: string }> }) {
   const { handle } = await params
-  return <GiveawayRunner handle={handle} backendOrigin={BACKEND} />
+  return <GiveawayRunner handle={handle} backendOrigin={BACKEND_ORIGIN} />
 }
