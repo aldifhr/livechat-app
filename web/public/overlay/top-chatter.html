@@ -86,7 +86,7 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: var(--name-colour);
+    color: var(--title-colour, var(--name-colour));
   }
 
   #board {
@@ -228,6 +228,7 @@
     textColour: param('color', baked.textColour || '#ffffff'),
     font: param('font', baked.font || '"Segoe UI", system-ui, sans-serif'),
     title: param('title', baked.title || 'Top Yapping'),
+    titleColour: param('titleColor', baked.titleColour || '#ffd76a'),
     // How often the board asks for a fresh ranking, in seconds. Pushed as a
     // parameter rather than a fixed beat so a quiet board can be cheap and a busy
     // one can keep up; the backend answers the request to this socket only.
@@ -248,7 +249,8 @@
     nameColour: '#ffd76a',
     textColour: '#ffffff',
     font: '"Segoe UI", system-ui, sans-serif',
-    title: 'Top Yapping'
+    title: 'Top Yapping',
+    titleColour: '#ffd76a'
   }
 
   var panel = document.getElementById('panel')
@@ -261,6 +263,7 @@
     var root = document.documentElement
     root.style.setProperty('--size', config.size + 'px')
     root.style.setProperty('--name-colour', config.nameColour)
+    root.style.setProperty('--title-colour', config.titleColour)
     root.style.setProperty('--text-colour', config.textColour)
     root.style.setProperty('--font', config.font)
     // The background goes behind the panel and nowhere else. One setting, one
@@ -283,6 +286,7 @@
     if (typeof style.textColour === 'string') config.textColour = style.textColour
     if (typeof style.font === 'string') config.font = style.font
     if (typeof style.title === 'string') config.title = style.title
+    if (typeof style.titleColour === 'string') config.titleColour = style.titleColour
     applyConfig()
   }
 

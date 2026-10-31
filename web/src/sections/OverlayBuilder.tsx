@@ -227,6 +227,11 @@ function BoardCustomizer({ roomId, style, onChange }: {
         </div>
 
         <div className="field">
+          <label htmlFor="board-title-colour">Title colour</label>
+          <input id="board-title-colour" type="color" value={style.titleColour} onChange={(e) => onChange({ titleColour: e.target.value })} />
+        </div>
+
+        <div className="field">
           <label htmlFor="board-size">Text size <span className="value">{style.size}px</span></label>
           <input id="board-size" type="range" min={OVERLAY_SIZE.min} max={OVERLAY_SIZE.max} value={style.size} onChange={(e) => onChange({ size: Number(e.target.value) })} />
         </div>

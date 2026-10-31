@@ -257,6 +257,14 @@ export interface BoardStyle {
   font: string
   /** The heading above the ranking. */
   title: string
+  /**
+   * The heading's colour.
+   *
+   * Its own field rather than a share with `nameColour`, which the rank numbers
+   * and the counts wear: the title is the one thing on the board a streamer is
+   * most likely to want in their own colour.
+   */
+  titleColour: string
 }
 
 export const BOARD_DEFAULT_STYLE: BoardStyle = {
@@ -272,6 +280,11 @@ export const BOARD_DEFAULT_STYLE: BoardStyle = {
   textColour: OVERLAY_DEFAULT_STYLE.textColour,
   font: OVERLAY_DEFAULT_STYLE.font,
   title: OVERLAY_DEFAULT_TITLE,
+  // The name colour, because that is what the heading wore before it could be
+  // set on its own. A room saved before this field existed carries no
+  // `overlayTitleColour`, and this default is what keeps such a room looking
+  // exactly as it did.
+  titleColour: OVERLAY_DEFAULT_STYLE.nameColour,
 }
 
 /** A board style read out of a query string — the mirror of `chatStyleFromQuery`. */
@@ -286,6 +299,7 @@ export function boardStyleFromQuery(search: string): BoardStyle {
     textColour: resolveColour(raw('color'), BOARD_DEFAULT_STYLE.textColour),
     font: resolveOverlayFont(raw('font')),
     title: resolveTitle(raw('title')),
+    titleColour: resolveColour(raw('titleColor'), BOARD_DEFAULT_STYLE.titleColour),
   }
 }
 
@@ -299,6 +313,7 @@ export function boardStyleToQuery(style: BoardStyle): Record<string, string> {
     color: style.textColour,
     font: style.font,
     title: style.title,
+    titleColor: style.titleColour,
   }
 }
 
@@ -329,6 +344,7 @@ export function resolveBoardStyle(saved: Partial<BoardStyle> | null | undefined)
     textColour: resolveColour(saved?.textColour, BOARD_DEFAULT_STYLE.textColour),
     font: resolveOverlayFont(saved?.font),
     title: resolveTitle(saved?.title),
+    titleColour: resolveColour(saved?.titleColour, BOARD_DEFAULT_STYLE.titleColour),
   }
 }
 
@@ -478,6 +494,7 @@ const STORED_TO_FIELD = {
   overlayBubbleOpacity: 'bubbleOpacity',
   overlayGiftColour: 'giftColour',
   overlayTitle: 'title',
+  overlayTitleColour: 'titleColour',
   catPalette: 'pal',
   catChonk: 'chonk',
   likeTarget: 'likeTarget',
@@ -500,7 +517,7 @@ type StyleField = (typeof STORED_TO_FIELD)[keyof typeof STORED_TO_FIELD]
  * field the other owns.
  */
 export type StoredStyle = Partial<OverlayStyle> &
-  Partial<Pick<BoardStyle, 'title'>> &
+  Partial<Pick<BoardStyle, 'title' | 'titleColour'>> &
   Partial<CatStyle> &
   Partial<LikeTargetStyle>
 
@@ -557,6 +574,7 @@ export function boardStyleToStored(style: BoardStyle): Record<string, unknown> {
     overlayTextColour: style.textColour,
     overlayFont: style.font,
     overlayTitle: style.title,
+    overlayTitleColour: style.titleColour,
   }
 }
 
