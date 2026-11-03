@@ -23,6 +23,64 @@ import { dashboardUser, sessionSecret } from '@/lib/server/config'
 import { sessionCookie, sessionKey, signSession } from '@/lib/server/session'
 import { isSameOrigin } from '@/lib/server/auth'
 
+// ---------------------------------------------------------------------------
+// In-memory rate limiter for the login endpoint.
+//
+// A production deploy on Vercel should swap this for Vercel KV / Upstash
+// so the limit survives across instances. The in-memory map is bounded by
+// sweeping expired entries on every call, and it keys on the real client
+// address (X-Forwarded-For first hop, falling back to the socket).
+// ---------------------------------------------------------------------------
+
+const WINDOW_MS = 15 * 60 * 1000 // 15 minutes
+const MAX_ATTEMPTS = 5
+
+type Entry = { count: number; firstAttempt: number }
+const attempts = new Map<string, Entry>()
+
+function clientKey(request: NextRequest): string {
+  const fwd = request.headers.get('x-forwarded-for')
+  if (fwd) return fwd.split(',')[0].trim()
+  return request.headers.get('x-real-ip') || 'unknown'
+}
+
+function recordFailure(key: string): void {
+  const now = Date.now()
+  const entry = attempts.get(key)
+  if (!entry || now - entry.firstAttempt > WINDOW_MS) {
+    attempts.set(key, { count: 1, firstAttempt: now })
+    return
+  }
+  entry.count += 1
+}
+
+function clearFailures(key: string): void {
+  attempts.delete(key)
+}
+
+function isRateLimited(key: string): { limited: boolean; retryAfter?: number } {
+  const entry = attempts.get(key)
+  if (!entry) return { limited: false }
+  const elapsed = Date.now() - entry.firstAttempt
+  if (elapsed > WINDOW_MS) {
+    attempts.delete(key)
+    return { limited: false }
+  }
+  if (entry.count >= MAX_ATTEMPTS) {
+    const retryAfter = Math.ceil((WINDOW_MS - elapsed) / 1000)
+    return { limited: true, retryAfter }
+  }
+  return { limited: false }
+}
+
+// Sweep expired entries so the map does not grow without bound.
+function sweep(): void {
+  const now = Date.now()
+  for (const [key, entry] of attempts) {
+    if (now - entry.firstAttempt > WINDOW_MS) attempts.delete(key)
+  }
+}
+
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
@@ -57,6 +115,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return refuse('A password is required.', 400)
   }
 
+  const key = clientKey(request)
+
+  // Rate-limit failed attempts. A successful login clears the counter so one
+  // mistyped password does not cost the operator a cooldown.
+  const { limited, retryAfter } = isRateLimited(key)
+  if (limited) {
+    return NextResponse.json(
+      { detail: 'Too many attempts. Try again later.' },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(retryAfter),
+        },
+      },
+    )
+  }
+
   const user = dashboardUser
 
   let check: Awaited<ReturnType<typeof verifyPassword>>
@@ -69,6 +144,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // One message for both a missing account and a wrong password: which names
   // exist is not something a login form should be willing to tell anyone.
   if (check !== 'ok') {
+    recordFailure(key)
+    sweep()
     return refuse('That password is not correct.', 401)
   }
 
@@ -79,6 +156,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // changing the password invalidates every cookie signed with the old one — the
   // property a password change exists to have, with no session table to keep.
   const token = signSession(sessionKey(secret, hash), user)
+
+  clearFailures(key)
+  sweep()
 
   const response = NextResponse.json({ ok: true })
   response.headers.append('Set-Cookie', sessionCookie(token))

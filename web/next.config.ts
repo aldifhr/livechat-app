@@ -22,6 +22,51 @@ const config: NextConfig = {
   // repo root. Without this the build cannot see the overlay contract the app
   // imports and the server fails to start.
   outputFileTracingRoot: repoRoot,
+  // Remove the `X-Powered-By: Next.js` header. It is an information leak that
+  // tells an attacker the framework version without them having to guess.
+  poweredByHeader: false,
+
+  async headers() {
+    const csp = [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com data:",
+      "img-src 'self' data: https:",
+      "connect-src 'self' https://kit-backend.aldifhr.my.id https://streamtools.aldifhr.my.id",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ].join('; ')
+
+    return [
+      {
+        source: '/((?!_next/static|_next/image|favicon.ico).*)',
+        headers: [
+          {
+            key: 'Content-Security-Policy',
+            value: csp,
+          },
+          {
+            key: 'X-Frame-Options',
+            value: 'DENY',
+          },
+          {
+            key: 'X-Content-Type-Options',
+            value: 'nosniff',
+          },
+          {
+            key: 'Referrer-Policy',
+            value: 'strict-origin-when-cross-origin',
+          },
+          {
+            key: 'Permissions-Policy',
+            value: 'camera=(), microphone=(), geolocation=()',
+          },
+        ],
+      },
+    ]
+  },
 
   // The overlay addresses, locally.
   //
