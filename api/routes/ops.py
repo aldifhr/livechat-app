@@ -70,25 +70,32 @@ async def health(request: Request) -> dict[str, Any]:
 
     Returns uptime, active room count, total WebSocket connections, and — to a
     caller holding the token — per-room provider status. Used by orchestrators
-    and load balancers, which probe without a credential; the per-room map is
-    withheld from them because each entry names the streamer's handle, and this
-    endpoint is open. The counts are what a probe acts on and they stay.
+    and load balancers, which probe without a credential; only the minimal
+    liveness block is exposed to unauthenticated callers.
     """
-    return _health_body(request, include_rooms=_state["token_is_valid"](request))
+    if not _state["token_is_valid"](request):
+        return {"status": "ok"}
+    return _health_body(request, include_rooms=True)
 
 
 @router.get("/metrics")
-async def metrics() -> dict[str, Any]:
+async def metrics(request: Request) -> dict[str, Any]:
     """Prometheus-style metrics exposed as JSON for simple scraping.
 
-    The four originals are kept with their names, because a scraper and a
-    dashboard read them. Everything after them comes from `metrics`, which is
-    where the pipeline reports itself: what came in, what was dropped and
-    where, how deep the queues got, how long delivery took, and what the
-    event loop's own lag was. None of it is labelled with a username, a message
-    body or a room id — see `metrics` for why that is the rule and not a
-    preference.
+    Token-gated: an orchestrator that needs these without a credential should
+    use `/health` instead. The four originals are kept with their names,
+    because a scraper and a dashboard read them. Everything after them comes
+    from `metrics`, which is where the pipeline reports itself: what came in,
+    what was dropped and where, how deep the queues got, how long delivery
+    took, and what the event loop's own lag was. None of it is labelled with
+    a username, a message body or a room id — see `metrics` for why that is
+    the rule and not a preference.
     """
+    if not _state["token_is_valid"](request):
+        raise HTTPException(
+            status_code=401,
+            detail=TOKEN_REJECTED_DETAIL,
+        )
     body: dict[str, Any] = {
         "sources_active": len(_state["sources"]),
         "websocket_connections": len(_state["hub"].active),

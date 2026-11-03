@@ -430,14 +430,15 @@ try:
             "the room list with the token works",
             guarded.get("/api/rooms", headers={"x-streamkit-token": "s3cret"}).status_code == 200,
         )
-        # The health probe stays open for an orchestrator, but must not carry the
-        # per-room map (each entry names a handle) to an unauthenticated caller.
+        # The health probe is now token-gated. Unauthenticated callers get
+        # {"status":"ok"} only; orchestrators that need full health data use
+        # the token.
         open_health = guarded.get("/health")
-        check("health is open with a token set", open_health.status_code == 200)
-        check("health does not leak the room map", "rooms" not in open_health.json(), str(open_health.json()))
-        check("health still reports the counts", "activeRooms" in open_health.json(), str(open_health.json()))
+        check("health is open without a token", open_health.status_code == 200)
+        check("health returns minimal data without a token", open_health.json() == {"status": "ok"})
         authed_health = guarded.get("/health", headers={"x-streamkit-token": "s3cret"}).json()
         check("health carries the room map to the token holder", "rooms" in authed_health, str(authed_health))
+        check("health carries the counts to the token holder", "activeRooms" in authed_health, str(authed_health))
         # The WebSocket attach must stay open: OBS cannot send a header.
         check(
             "socket attach is open with a token set",
