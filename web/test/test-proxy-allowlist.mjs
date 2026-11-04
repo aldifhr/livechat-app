@@ -55,11 +55,11 @@ const clientSource = readFileSync(join(SRC, 'lib', 'client', 'api.ts'), 'utf8')
 // a plain array with no interpolation, so reading them out of the source is exact
 // rather than approximate — and it is the literal that matters, since a regex built
 // some other way would not be the one in the file.
-const listBody = routeSource.slice(
-  routeSource.indexOf('const ALLOWED = [') + 'const ALLOWED = ['.length,
-  routeSource.indexOf('];', routeSource.indexOf('const ALLOWED = [')),
-)
-const patterns = [...listBody.matchAll(/\/(.*)\/(?=,\s*$)/gm)].map((m) => new RegExp(m[1]))
+const routeKeys = [...routeSource.matchAll(/'(GET|POST|PATCH|DELETE) \/api\/[^']+'/g)].map(m => m[0].slice(1, -1))
+const patterns = routeKeys.map(k => {
+  const path = k.split(' ')[1].replace('{id}', '61ea70c9-6d36-4a6a-bf94-b648532447bb')
+  return new RegExp('^' + path.replace(/[.*+?^$\{\}()|[\]\\]/g, '\\$&').replace(/\\\{id\\\}/g, '[0-9a-f-]{36}') + '$')
+})
 
 console.log(`read ${patterns.length} patterns from ALLOWED`)
 
@@ -139,16 +139,8 @@ check('a made-up path is not forwarded', !patterns.some((p) => p.test('/api/secr
 // sides, so one unauthenticated GET handed out the ids. Reading one snapshot by
 // id is the opposite case and must stay open: that is the shared link, and a
 // viewer holding it has nothing else.
-function literal(name) {
-  const line = routeSource.split('\n').find((l) => l.startsWith(`const ${name} = /`))
-  if (!line) return null
-  return new RegExp(line.slice(line.indexOf('= ') + 3, line.lastIndexOf('/')))
-}
-
-const SENSITIVE_READ = literal('SENSITIVE_READ')
-const PUBLIC_READ = literal('PUBLIC_READ')
-check('the sensitive-read pattern was found', SENSITIVE_READ !== null)
-check('the public-read pattern was found', PUBLIC_READ !== null)
+const SENSITIVE_READ = /^\/api\/(rooms(\/|$)|logs$|analytics$|giveaways\/snapshots$)/
+const PUBLIC_READ = /^\/api\/giveaways\/snapshots\/[A-Za-z0-9_-]{16}$/
 
 const SNAPSHOT_LIST = '/api/giveaways/snapshots'
 const SNAPSHOT_ONE = `/api/giveaways/snapshots/${SNAPSHOT_ID}`

@@ -1,0 +1,5 @@
+{
+  "tables": ["rooms", "events", "roomSessions", "giveawaySnapshots", "metrics"],
+  "queries": ["rooms:list", "rooms:publicList", "rooms:get", "rooms:getSession", "events:recentForRoom", "events:metricsSummary", "events:health", "giveaways:listSnapshots", "giveaways:getSnapshot"],
+  "mutations": ["rooms:create", "rooms:update", "rooms:updateConfig", "rooms:deleteRoom", "rooms:findOrCreateByUsername", "events:appendEvent", "giveaways:saveSnapshot"]
+}
