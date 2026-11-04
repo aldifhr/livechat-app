@@ -9,6 +9,11 @@
  *   2. Import into Convex:
  *      npx convex import --table rooms rooms.jsonl
  *
+ * Run this against /var/lib/streamkit/rooms.json to produce
+ * web/scripts/rooms.convex.jsonl, then:
+ *
+ *   npx convex import --table rooms scripts/rooms.convex.jsonl
+ *
  * Event and metrics tables should be treated as ephemeral live state: only
  * the room catalogue and giveaway snapshots need a durable migration.
  */
