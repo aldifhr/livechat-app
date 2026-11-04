@@ -9,7 +9,10 @@
     "start": "next start --port 5184",
     "typecheck": "tsc --noEmit",
     "test": "node test/test-credentials.mjs && node test/test-session.mjs && node test/test-style-store.mjs && node test/test-room-live.mjs && node test/test-proxy-allowlist.mjs && node test/test-event-contract.mjs && node test/test-overlay-clients.mjs",
-    "secrets": "node scripts/generate-secrets.mjs"
+    "secrets": "node scripts/generate-secrets.mjs",
+    "convex:dev": "npx convex dev",
+    "convex:deploy": "npx convex deploy",
+    "convex:import:rooms": "npx convex import --table rooms scripts/rooms.convex.jsonl"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
