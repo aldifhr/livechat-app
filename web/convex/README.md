@@ -9,8 +9,9 @@ Deploy with:
 
 ```sh
 cd web
-npx convex dev
-npx convex deploy
+npm run convex:dev
+npm run convex:deploy
+npm run convex:import:rooms
 ```
 
 Set `NEXT_PUBLIC_CONVEX_URL` and `CONVEX_URL` to the deployment URL. The
