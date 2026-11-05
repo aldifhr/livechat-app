@@ -33,7 +33,7 @@ const config: NextConfig = {
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com data:",
       "img-src 'self' data: https:",
-      "connect-src 'self' https://kit-backend.aldifhr.my.id https://streamtools.aldifhr.my.id",
+      "connect-src 'self' https://kit-backend.aldifhr.my.id https://streamtools.aldifhr.my.id wss://kit-backend.aldifhr.my.id wss://streamtools.aldifhr.my.id",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",
