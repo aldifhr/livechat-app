@@ -1,5 +1,5 @@
 [Unit]
-Description=Back up the StreamKit room and giveaway stores
+Description=Back up StreamKit state from Convex
 
 [Service]
 Type=oneshot

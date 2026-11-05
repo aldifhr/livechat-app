@@ -8,7 +8,7 @@ import type { OverlayEventFrame } from '@shared/events'
  *
  * This is the third spelling of one contract. The other two are the
  * `OverlayEventFrame` union in `shared/events.ts` and the kind constants plus
- * `SERIALISERS` in `api/events.py`. `web/test/test-event-contract.mjs` reads all
+ * `FRAME_KINDS` in `backend/frames.js`. `web/test/test-event-contract.mjs` reads all
  * three out of the source and asserts they agree, because a type is erased at
  * runtime and a constant nobody imports is dead: the literal in the file is the
  * only thing worth pinning.

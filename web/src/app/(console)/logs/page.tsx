@@ -57,7 +57,7 @@ export default function Logs() {
       // down: one is fixed in the environment, the other by waiting.
       setError(
         cause instanceof Error && 'status' in cause && isAuthFailure(Number((cause as { status: unknown }).status))
-          ? 'The dashboard could not authenticate to the backend. Check STREAMKIT_TOKEN.'
+          ? 'The dashboard could not authenticate to Convex. Check CONVEX_URL / CONVEX_ADMIN_KEY.'
           : cause instanceof Error
             ? cause.message
             : 'The log could not be read',

@@ -7,14 +7,15 @@ manifest** — `npm install` at the root does nothing, and that is deliberate.
 
 | Part | What it is | Stack |
 |---|---|---|
-| `api/` | Live chat API | FastAPI + TikTokLive |
+| `web/convex/` + `backend/` | Backend: Convex state + TikTok bridge | Convex (self-hosted) + Node |
 | `web/` | Dashboard: stream list, per-stream pages, overlay builder, giveaway runner | Next.js 16 + React 19 |
 
 ## Layout
 
 ```
 .
-├── api/              FastAPI. See "Backend" below.
+├── web/convex/       Convex backend. See "Backend" below.
+├── backend/          Node TikTok bridge.
 ├── web/              Next.js dashboard.
 ├── shared/           Cross-app TypeScript contracts: overlay, events,
 │                    platforms. Imported via the `@shared` alias.
@@ -24,141 +25,75 @@ manifest** — `npm install` at the root does nothing, and that is deliberate.
 
 ## Backend (StreamKit)
 
-FastAPI + TikTokLive for live chat rooms. Real-time WebSocket, token auth,
-multi-room. It serves the API and the WebSocket, and nothing else — the overlay
-pages are static files that live with the dashboard and are served by nginx.
+Convex (self-hosted) + a small Node TikTok bridge. The old FastAPI backend
+(`api/`) is gone.
+
+| Part | What it is | Stack |
+|---|---|---|
+| `web/convex/` | Rooms, events, sessions, giveaways, logs | Convex functions (self-hosted) |
+| `backend/` | TikTok LIVE socket + overlay WebSocket fan-out | Node + tiktok-live-connector + ws |
+
+Convex Functions cannot hold a long-lived socket, so the bridge exists only to
+open the TikTok connection and push every event into Convex mutations
+(`events:appendEvent`). Overlay WebSockets are served by the bridge, which polls
+Convex for new events and fans them out. All state lives in Convex.
 
 ```
-api/
-├── main.py           app object, lifespan, middleware, /ws, route wiring
-├── models.py         pydantic request models + styling keys
-├── store.py          rooms.json — atomic + lock
-├── giveaway_store.py Public giveaway snapshots
-├── hub.py            WebSocket hub
-├── events.py         Event type, to_wire, emit_config
-├── eventlog.py       Counters & leaderboard, per-room
-├── logbuffer.py      In-memory log ring for /admin/logs
-├── protocols.py      Protocol registry
-├── watchdog.py       Liveness watchdog
-├── logging_setup.py  The one logger
-├── routes/
-│   ├── auth.py       Token gate + exemptions
-│   ├── rooms.py      Room CRUD + config
-│   ├── live.py       Connect / disconnect / status
-│   ├── ops.py        /health, /metrics, /gifts, trigger + webhook
-│   ├── giveaways.py  Public snapshot create/read
-│   └── common.py     Shared route guards + teardown
-├── sources/          TikTokLive adapter
-├── static/           gifts/ (the gallery served at /gifts)
-├── config/           Runtime state (git-ignored)
-└── tests/            24 suites
+web/convex/
+├── schema.ts       rooms, events, roomSessions, giveawaySnapshots, logs, metrics
+├── rooms.ts        CRUD, status, session, analytics
+├── events.ts       appendEvent, trigger, topChatters, health, logs
+└── giveaways.ts    snapshot save/get/list/delete (16-char public ids)
+backend/
+├── server.js       HTTP connect/disconnect + /ws fan-out + TikTok wiring
+└── frames.js       TikTok event -> overlay wire frame (the format in shared/events.ts)
 ```
 
 ### Running it
 
-`main.py` does flat imports (`import store`, `from sources import …`), so it has
-to run with `api/` as the working directory:
+Convex self-hosted runs as `convex-local.service`
+(`/opt/convex/convex-local-backend`, data `/var/lib/convex`, env
+`/etc/convex/env`, port 3210). The bridge runs as `tiktok-bridge.service`
+(port 8003). nginx on `kit-backend.aldifhr.my.id` routes `/` to Convex and
+`/ws/` + `/api/room-connect*` to the bridge.
 
 ```bash
-python3.12 -m venv api/.venv
-api/.venv/bin/pip install -r api/requirements.txt
-cd api && .venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-### Testing
-
-No pytest. `run_all.py` runs each `test_*.py` as a subprocess with its own
-temporary config dir per suite.
-
-```bash
-python api/tests/run_all.py
+cd web && npx convex deploy   # needs CONVEX_SELF_HOSTED_URL + CONVEX_SELF_HOSTED_ADMIN_KEY
+cd backend && npm install && npm start
 ```
 
 ### API
 
-Every write needs the `X-StreamKit-Token` header. So does `GET /api/rooms*` — it
-hands back every streamer's handle and overlay config to anyone who finds the
-host. `/health`, `/metrics`, the overlay pages, and the WebSocket stay open.
+The dashboard calls `/api/backend/...` on the Next server, which forwards
+everything to Convex except the TikTok connect/disconnect paths, which go to
+the bridge. The session gate in `web/src/proxy.ts` is the auth; there is no
+backend token any more.
 
-| Method | Endpoint | Auth | Notes |
-|---|---|---|---|
-| `GET` | `/api/rooms` | token | List rooms |
-| `POST` | `/api/rooms` | token | Create room (needs `name`) |
-| `GET` | `/api/rooms/{id}` | token | One room's record |
-| `PATCH` | `/api/rooms/{id}` | token | Change `name` / `username` |
-| `DELETE` | `/api/rooms/{id}` | token | Delete room |
-| `POST` | `/api/rooms/{id}/config` | token | Save config (replaces, does not merge) |
-| `GET` | `/api/rooms/{id}/status` | token | Connection status |
-| `GET` | `/api/giveaways/snapshots` | token | Snapshot list — the ids, and an id opens a full entrant list |
-| `POST` | `/api/giveaways/snapshots` | token | Publish a report (the dashboard's own route validates and forwards it) |
-| `GET` | `/api/giveaways/snapshots/{id}` | — | One report, by the unguessable id in its shared link |
-| `DELETE` | `/api/giveaways/snapshots/{id}` | token | Unpublish, so the link stops resolving |
-| `POST` | `/api/connect` | token | Connect to a room |
-| `POST` | `/api/room-connect/{id}` | **exempt** | Username from the room's stored config |
-| `POST` | `/api/room-connect-by-username` | **exempt** | Room created on demand from a handle |
-| `POST` | `/api/disconnect` | token | Disconnect |
-| `POST` | `/api/rooms/{id}/trigger` | token | Manual trigger (test gift) |
-| `POST` | `/api/hooks/{id}` | token | Webhook for outside integrations |
-| `GET` | `/health` | — | Status + uptime. Per-room map only for token holders |
-| `GET` | `/metrics` | — | Runtime counters |
-| `GET` | `/gifts` | — | Gift sticker gallery |
+| Method | Endpoint | Notes |
+|---|---|---|
+| `GET` | `/api/rooms`, `/api/rooms/public` | List rooms |
+| `POST` | `/api/rooms` | Create room |
+| `PATCH`/`DELETE` | `/api/rooms/{id}` | Update / delete room |
+| `POST` | `/api/rooms/{id}/config` | Save overlay config |
+| `GET` | `/api/rooms/{id}/status`, `/session` | Connection status, session stats |
+| `GET` | `/api/giveaways/snapshots`, `/{id}` | Snapshot list / one report (public by id) |
+| `POST` | `/api/giveaways/snapshots` | Publish a report (validated by the dashboard route) |
+| `DELETE` | `/api/giveaways/snapshots/{id}` | Unpublish |
+| `POST` | `/api/room-connect-by-username`, `/room-connect/{id}`, `/connect`, `/disconnect` | TikTok bridge |
+| `POST` | `/api/rooms/{id}/trigger`, `/api/hooks/{id}` | Manual trigger / webhook |
+| `GET` | `/api/health`, `/api/metrics`, `/api/analytics`, `/api/logs` | Ops |
+| `WS` | `/ws/{overlay\|room\|customizer}/{id}` | Event stream (bridge, events from Convex) |
 
-The overlay pages are **not** on this list on purpose — they are not served here
-at all any more. They are static files that nginx serves off the dashboard host
-(see [Overlay](#overlay)); the backend answers 404 for `/overlay/*`.
-| `WS` | `/ws/{client_type}/{id}` | — | Event stream |
-
-`client_type` is `room` (a dashboard page) or `overlay` (HTML pages). A socket that
-just attached receives a `{"type":"config"}` frame before the status snapshot.
-
-### Auth
-
-The token goes **only** in the `X-StreamKit-Token` header and must match
-`STREAMKIT_TOKEN`. `?token=` in a query string was removed: a query string lands
-in access logs, `Referer`, and browser history, so a token that travels there is
-a token that leaks everywhere. If a client cannot send a header, that is a
-reason to use an exempt route, not a reason to add a second path.
-
-**The gate fails closed.** If `STREAMKIT_TOKEN` is unset, every write is refused
-with 401 — not opened up. This differs from the earlier version that accepted
-every write when the env was empty, which turned a deploy that lost its env file
-into an open API while every other layer still looked protected. Opt into dev
-mode explicitly with `STREAMKIT_AUTH_DISABLED=true`, and the backend warns at
-boot that all writes are open.
-
-The gate decides **by method**, not from a path list: a new mutating route is
-protected from the moment it is added, rather than from the day someone remembers
-to add it. `GET /api/rooms*` is gated too because it leaks the list of handles
-and overlay configs, and no working caller reads it without a credential. So is
-`GET /api/giveaways/snapshots`: that list is the ids, and an id is the whole
-credential for the report behind it — which names every entrant's TikTok id and
-nickname. Reading one snapshot by id stays open, because that is the shared link
-and a viewer holding it has nothing else.
-
-Two exempt writes:
-
-- `POST /api/room-connect/{id}` — the username is read from the room's stored
-  config, not from the caller, so there is nothing to forge.
-- `POST /api/room-connect-by-username` — a handle is the only thing asked for.
-  This route creates the room if it does not exist, which is what `AUTO_ROOM_LIMIT`
-  bounds (20 auto-created rooms by default) so an unauthenticated caller cannot
-  exhaust resources.
-
-Both are matched per path segment, not `startswith`, so a route with a longer
-name (`/api/room-connect-admin`) does not inherit the exemption.
-
-### Env (backend)
+### Env
 
 | Name | Meaning |
 |---|---|
-| `STREAMKIT_TOKEN` | The write token. Empty = every write 401s. |
-| `STREAMKIT_AUTH_DISABLED` | `true` disables auth. Development only. |
-| `STREAMKIT_CONFIG_DIR` | Where `rooms.json` lives. Default `api/config`. Created automatically. |
-| `STREAMKIT_LOG_LEVEL` | Root log level. Default `INFO`. |
-| `STREAMKIT_ALLOWED_ORIGINS` | CORS allow-list, comma-separated. Defaults to the dashboard origin only. |
-| `STREAMKIT_DOCS` | `true` serves `/docs`, `/openapi.json` and `/redoc`. Off by default — they map every route. |
-| `BACKEND_URL` (dashboard) | Where Next reaches the backend. Defaults to `http://127.0.0.1:8000` — same box, loopback. |
-| `BACKEND_ORIGIN` (dashboard) | Where a *browser* reaches the backend, for the overlay socket. Defaults to the dashboard host, which proxies `/ws/` through. |
+| `CONVEX_URL` | Convex deployment URL (server-side, e.g. `http://127.0.0.1:3210`) |
+| `CONVEX_ADMIN_KEY` | Convex admin key (server-side, bridge + web) |
+| `NEXT_PUBLIC_CONVEX_URL` | Public Convex URL for browsers (`https://kit-backend.aldifhr.my.id`) |
+| `BRIDGE_URL` | TikTok bridge URL (default `http://127.0.0.1:8003`) |
+| `SIGN_API_KEY` | Euler Stream sign-server key for TikTok connections |
+| `BACKEND_ORIGIN` | Public host browsers reach the bridge at |
 
 ## Dashboard (web/)
 

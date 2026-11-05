@@ -5,9 +5,9 @@
 # by nginx out of /var/www/streamtools/overlay, so OBS keeps working while this
 # service is restarting.
 #
-# The environment lives in a file rather than in this unit so that rotating the
-# backend token is an edit and a restart, not a rebuild: Next reads it when it
-# serves a request, and a token baked in at build time would be both stale and,
+# The environment lives in a file rather than in this unit so that rotating
+# credentials is an edit and a restart, not a rebuild: Next reads it when it
+# serves a request, and a secret baked in at build time would be both stale and,
 # in a NEXT_PUBLIC_ variable, readable by anyone who opened the dashboard.
 
 [Unit]
@@ -18,7 +18,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# Not root. This app proxies every mutating backend call with a token that can
+# Not root. This app proxies every mutating Convex call with an admin key that can
 # delete rooms and disconnect streams, so the blast radius of anything that gets
 # code execution in it — a bad dependency, a request that reaches the renderer —
 # should be one unprivileged account rather than the whole box. It needs exactly

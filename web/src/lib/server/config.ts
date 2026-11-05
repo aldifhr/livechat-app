@@ -19,10 +19,10 @@ export const productName = process.env.PRODUCT_NAME ?? 'StreamKit'
 
 export const tagline = process.env.TAGLINE ?? 'Live chat overlays for streaming.'
 
-/** Whether the server holds a credential. The console says so plainly when it
- *  does not, because writes failing for this reason are otherwise
- *  indistinguishable from the app being broken. */
-export const tokenConfigured = (process.env.STREAMKIT_TOKEN ?? '').trim() !== ''
+/** Whether Convex is configured. The console says so plainly when it is not,
+ *  because writes failing for this reason are otherwise indistinguishable
+ *  from the app being broken. */
+export const tokenConfigured = Boolean(process.env.CONVEX_URL || process.env.NEXT_PUBLIC_CONVEX_URL)
 
 /**
  * The dashboard's password lives in `STREAMKIT_DASHBOARD_PASSWORD_HASH` as a

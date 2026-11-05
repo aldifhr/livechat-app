@@ -3,7 +3,7 @@
  * Legacy data importer for the Convex cutover.
  *
  * Usage:
- *   1. Export existing rooms from the FastAPI service:
+ *   1. Export existing rooms from the old FastAPI service (historical):
  *      curl -H "x-streamkit-token: $STREAMKIT_TOKEN" "$BACKEND/api/rooms"
  *        | jq -c '.rooms[]' > rooms.jsonl
  *   2. Import into Convex:

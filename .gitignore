@@ -62,3 +62,8 @@ web/tsconfig.tsbuildinfo
 # Committed once by accident and every local test run dirtied the tree.
 api/config/sessions.json
 api/config/rooms.json
+
+# Convex: compiled function output (tsc emit next to the .ts sources).
+web/convex/*.js
+# TikTok bridge dependencies
+backend/node_modules/

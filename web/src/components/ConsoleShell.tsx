@@ -2,8 +2,8 @@
  * The console's shell: a top bar, a collapsible sidebar, and the page beside
  * them.
  *
- * Rendered on the server because it reads the environment; the token itself never
- * crosses into the browser.
+ * Rendered on the server because it reads the environment; credentials never
+ * cross into the browser.
  *
  * The sidebar's collapsed state lives in a cookie rather than component state:
  * the shell is a server component, and a width the browser picks on mount is a
@@ -28,8 +28,8 @@ export default async function ConsoleShell({ children }: { children: ReactNode }
     <div className="flex min-h-svh flex-col bg-background">
       {!tokenConfigured && (
         <div className="border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-center text-sm text-destructive">
-          This server has no API token, so creating and connecting rooms will be refused. Set
-          STREAMKIT_TOKEN in the environment and restart.
+          This server has no Convex deployment configured, so creating and connecting rooms will fail. Set
+          CONVEX_URL in the environment and restart.
         </div>
       )}
       <ConsoleChrome

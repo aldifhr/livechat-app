@@ -1,4 +1,4 @@
-import { backendFetch, BackendError } from '@/lib/server/backend'
+import { convexMutation } from '@/lib/server/convex'
 import { originAllowed } from '@/lib/server/giveawayOrigin'
 
 const MAX_BYTES = 2 * 1024 * 1024
@@ -114,9 +114,9 @@ export async function POST(request: Request): Promise<Response> {
     })
     if (!validEntrants || !validDraws) return Response.json({ detail: 'The entrant or draw data is invalid.' }, { status: 400 })
 
-    const saved = await backendFetch<{ id: string; createdAt: string }>('/api/giveaways/snapshots', {
-      method: 'POST',
-      body: JSON.stringify({ report: value }),
+    const saved = await convexMutation<{ id: string; createdAt: string }>('giveaways:saveSnapshot', {
+      keyword: value.keyword,
+      data: { report: value },
     })
     return Response.json({ id: saved.id, createdAt: saved.createdAt }, { status: 201 })
   } catch (cause) {
@@ -126,7 +126,7 @@ export async function POST(request: Request): Promise<Response> {
     if (cause instanceof SyntaxError) {
       return Response.json({ detail: 'The report JSON is invalid.' }, { status: 400 })
     }
-    const status = cause instanceof BackendError ? cause.status : 502
+    const status = 502
     return Response.json({ detail: cause instanceof Error ? cause.message : 'The report could not be published.' }, { status })
   }
 }

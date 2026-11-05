@@ -1,0 +1,16 @@
+{
+  "name": "streamkit-tiktok-bridge",
+  "version": "1.0.0",
+  "description": "TikTok LIVE socket + overlay WebSocket fan-out. State lives in Convex.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --check server.js && node --check frames.js && node -e \"import('./frames.js').then(m=>{const f=m.toFrame('comment',{comment:'hi',user:{nickname:'a',uniqueId:'a'}}); if(f.type!=='comment') throw new Error('frame'); console.log('frames ok', JSON.stringify(f))})\""
+  },
+  "dependencies": {
+    "convex": "^1.49.0",
+    "tiktok-live-connector": "^2.5.0",
+    "ws": "^8.22.1"
+  }
+}

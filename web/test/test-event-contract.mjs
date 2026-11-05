@@ -1,7 +1,7 @@
 /**
  * One wire contract, three spellings, and they must agree.
  *
- * The backend emits overlay frames from `api/events.py`. The dashboard's type
+ * The backend emits overlay frames from `backend/frames.js`. The dashboard's type
  * for them lives in `shared/events.ts`, and the runtime list the socket handler
  * filters against lives in `web/src/hooks/useRoomEvents.ts`. Three files, one
  * contract, and nothing at runtime checks them against each other:
@@ -57,7 +57,7 @@ const hookSource = readFileSync(
   join(REPO, 'web', 'src', 'hooks', 'useRoomEvents.ts'),
   'utf8',
 )
-const apiSource = readFileSync(join(REPO, 'api', 'events.py'), 'utf8')
+const apiSource = readFileSync(join(REPO, 'backend', 'frames.js'), 'utf8')
 
 // ---------------------------------------------------------------------------
 // Spelling 1 — the union in shared/events.ts
@@ -134,90 +134,20 @@ check(
 )
 
 // ---------------------------------------------------------------------------
-// Spelling 3 — api/events.py
+// Spelling 3 — backend/frames.js (the Node TikTok bridge)
 // ---------------------------------------------------------------------------
 
-// The constants block: `NAME = "value"` lines above the first `@dataclass`.
-const constantsAt = apiSource.indexOf('\n@dataclass')
-check('the constants block was found', constantsAt !== -1)
-const constantsBody = apiSource.slice(0, constantsAt)
-const constants = [
-  ...new Set(
-    [...constantsBody.matchAll(/^([A-Z][A-Z0-9_]*)\s*=\s*"([^"]+)"\s*$/gm)].map(
-      (m) => m[2],
-    ),
-  ),
-]
-check(
-  'the kind constants were found',
-  constants.length > 0,
-  `got ${constants.length}`,
+// The bridge declares the kinds it can emit in one FRAME_KINDS list, and
+// toFrame() switches on the same strings. Reading the list out of the source
+// is exact for the same reason the other two spellings are read as text.
+const framesStart = apiSource.indexOf('export const FRAME_KINDS = [')
+check('the bridge FRAME_KINDS array was found', framesStart !== -1)
+const framesBody = apiSource.slice(
+  framesStart + 'export const FRAME_KINDS = ['.length,
+  apiSource.indexOf(']', framesStart),
 )
-
-// The SERIALISERS dict keys. They are written as bare names — `COMMENT: _comment`
-// — so the key is the constant's *name*, and the value it stands for has to be
-// resolved through the constants block above. That indirection is exactly why
-// the two can drift: a key can name a constant that was renamed, and Python
-// would raise at import, but a key can equally be added for a kind no constant
-// names and nothing would complain.
-const serialisersAt = apiSource.indexOf('SERIALISERS: dict[str, Callable[[Event], dict[str, Any]]] = {')
-check('the SERIALISERS dict was found', serialisersAt !== -1)
-const serialisersBody = apiSource.slice(
-  serialisersAt,
-  apiSource.indexOf('\n}', serialisersAt),
-)
-const serialiserKeys = [
-  ...new Set([...serialisersBody.matchAll(/^\s{4}(\w+):/gm)].map((m) => m[1])),
-]
-check(
-  'the SERIALISERS keys were found',
-  serialiserKeys.length > 0,
-  `got ${serialiserKeys.length}`,
-)
-
-const constantNames = new Map(
-  [...constantsBody.matchAll(/^([A-Z][A-Z0-9_]*)\s*=\s*"([^"]+)"\s*$/gm)].map(
-    (m) => [m[1], m[2]],
-  ),
-)
-
-// A constant with no serialiser is dead: `to_wire` looks the serialiser up by
-// `event.kind`, so a kind that reaches `emit` without one is rewritten into an
-// `alert` carrying the kind's own name — visible while developing, and a
-// silently wrong frame in production.
-const unserialised = [...constantNames.entries()].filter(
-  ([name]) => !serialiserKeys.includes(name),
-)
-check(
-  'every kind constant has a serialiser',
-  unserialised.length === 0,
-  unserialised.map(([n, v]) => `${n}="${v}"`).join(', '),
-)
-
-// The other direction: a serialiser key that names no constant is unreachable,
-// because nothing can construct an `Event` with that kind.
-const unresolved = serialiserKeys.filter((key) => !constantNames.has(key))
-check(
-  'every serialiser key names a constant',
-  unresolved.length === 0,
-  unresolved.join(', '),
-)
-
-// The two kinds the backend emits as raw literals rather than through the
-// constants/serialiser path. Collected from the broadcast call sites, because
-// that is the only place they exist.
-const literalKinds = [
-  ...new Set(
-    [...apiSource.matchAll(/\{\s*"type":\s*"([a-z]+)"/g)].map((m) => m[1]),
-  ),
-].filter((kind) => !constants.includes(kind))
-check(
-  'the literal-emitted kinds were found',
-  literalKinds.length > 0,
-  `got ${literalKinds.length}: ${literalKinds.join(', ')}`,
-)
-
-const apiKinds = [...new Set([...constants, ...literalKinds])].sort()
+const apiKinds = [...new Set([...framesBody.matchAll(/'([^']+)'/g)].map((m) => m[1]))].sort()
+check('the bridge FRAME_KINDS is not empty', apiKinds.length > 0, `got ${apiKinds.length}`)
 
 // ---------------------------------------------------------------------------
 // The agreement itself
@@ -265,7 +195,7 @@ for (const field of ['liveEnded', 'waiting']) {
   )
   check(
     `and the backend sends '${field}'`,
-    new RegExp(`payload\\["${field}"\\]`).test(apiSource),
+    new RegExp(`(payload\\["${field}"\\]|frame\\.${field})`).test(apiSource),
   )
 }
 

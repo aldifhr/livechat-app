@@ -34,7 +34,7 @@ export default function About({ backend }: { backend?: string }) {
     // The sticker gallery has been served since the gifts were downloaded and
     // nothing linked it, so the only way to reach it was to know the path. It is a
     // page, not an API, so it opens in a tab.
-    addresses.push({ label: 'Gift sticker gallery', value: `${backend}/gifts/`, href: `${backend}/gifts/` })
+    addresses.push({ label: 'Gift sticker gallery', value: `${origin}/gifts/`, href: `${origin}/gifts/` })
   }
 
   return (

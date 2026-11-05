@@ -56,9 +56,18 @@ const clientSource = readFileSync(join(SRC, 'lib', 'client', 'api.ts'), 'utf8')
 // rather than approximate — and it is the literal that matters, since a regex built
 // some other way would not be the one in the file.
 const routeKeys = [...routeSource.matchAll(/'(GET|POST|PATCH|DELETE) \/api\/[^']+'/g)].map(m => m[0].slice(1, -1))
+// TikTok connect/disconnect paths are forwarded to the Node bridge instead of
+// Convex — they are forwarded all the same, so they count here too.
+const bridgeKeys = [
+  'POST /api/room-connect-by-username',
+  'POST /api/room-connect/{id}',
+  'POST /api/connect',
+  'POST /api/disconnect',
+]
+routeKeys.push(...bridgeKeys)
 const patterns = routeKeys.map(k => {
-  const path = k.split(' ')[1].replace('{id}', '61ea70c9-6d36-4a6a-bf94-b648532447bb')
-  return new RegExp('^' + path.replace(/[.*+?^$\{\}()|[\]\\]/g, '\\$&').replace(/\\\{id\\\}/g, '[0-9a-f-]{36}') + '$')
+  const path = k.split(' ')[1]
+  return new RegExp('^' + path.replace(/[.*+?^$\{\}()|[\]\\]/g, '\\$&').replace(/\\\{id\\\}/g, '[^/]+') + '$')
 })
 
 console.log(`read ${patterns.length} patterns from ALLOWED`)

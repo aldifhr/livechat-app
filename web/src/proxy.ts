@@ -76,6 +76,9 @@ function isOpen(pathname: string): boolean {
     /^\/api\/backend\/rooms\/[0-9a-f-]{36}\/(status|session)$/.test(pathname) ||
     // Next's own static assets, which carry no data.
     pathname.startsWith('/_next/') ||
+    // The gift sticker gallery. Public, like the old backend's static mount.
+    pathname === '/gifts' ||
+    pathname.startsWith('/gifts/') ||
     pathname === '/favicon.ico' ||
     pathname === '/robots.txt' ||
     pathname === '/sitemap.xml'

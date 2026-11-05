@@ -1,5 +1,5 @@
 /**
- * Shared WebSocket frame contract sent by the Python FastAPI backend
+ * Shared WebSocket frame contract sent by the TikTok bridge (backend/frames.js)
  * (/ws/overlay/{room_id}) and consumed by the web dashboard and overlay pages.
  */
 

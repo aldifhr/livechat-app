@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { backendFetch, BackendError } from '@/lib/server/backend'
+import { convexQuery } from '@/lib/server/convex'
 import { readCommit } from '@/lib/server/giveawayCommit'
 import GiveawayVerifier from '@/components/GiveawayVerifier'
 
@@ -53,9 +53,10 @@ export default async function GiveawaySnapshotPage({ params }: { params: Promise
 
   let snapshot: Snapshot
   try {
-    snapshot = await backendFetch<Snapshot>(`/api/giveaways/snapshots/${id}`, { forwardToken: false })
+    const found = await convexQuery<Snapshot | null>('giveaways:getSnapshot', { id })
+    if (!found) notFound()
+    snapshot = found
   } catch (error) {
-    if (error instanceof BackendError && error.status === 404) notFound()
     throw error
   }
 
