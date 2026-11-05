@@ -306,6 +306,14 @@ wss.on('connection', async (ws, req) => {
   ws.on('error', () => clients.delete(ws))
 })
 
-server.listen(PORT, '127.0.0.1', () => {
+server.listen(PORT, '127.0.0.1', async () => {
   console.log(`tiktok bridge listening on 127.0.0.1:${PORT}, convex ${CONVEX_URL}`)
+  // A restart drops every live socket, so any room still marked connecting in
+  // Convex is stale — clear it, or the dashboard sits on "Connecting" forever.
+  try {
+    const rooms = await q('rooms:list', {})
+    for (const room of rooms || []) {
+      await m('rooms:setStatus', { roomId: room.id, connected: false, connecting: false, message: 'Offline' }).catch(() => {})
+    }
+  } catch {}
 })
