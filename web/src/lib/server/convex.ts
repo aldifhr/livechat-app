@@ -2,9 +2,16 @@ import 'server-only'
 
 import { ConvexHttpClient } from 'convex/browser'
 
+/**
+ * The public Convex origin. A deployment that sets CONVEX_URL (the VPS
+ * service sets it to loopback) uses that; everyone else — Vercel included —
+ * reaches the same deployment through its public host, which nginx routes to
+ * Convex. No admin key is required: the functions themselves are the API.
+ */
+const PUBLIC_CONVEX_URL = 'https://kit-backend.aldifhr.my.id'
+
 const convexUrl = () => {
-  const url = (process.env.CONVEX_URL || process.env.NEXT_PUBLIC_CONVEX_URL || '').replace(/\/+$/, '')
-  if (!url) throw new Error('Convex deployment URL is not configured')
+  const url = (process.env.CONVEX_URL || process.env.NEXT_PUBLIC_CONVEX_URL || PUBLIC_CONVEX_URL).replace(/\/+$/, '')
   return url
 }
 

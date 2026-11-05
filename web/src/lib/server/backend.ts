@@ -10,9 +10,14 @@
 
 import 'server-only'
 
-/** The bridge, from the server's own environment. Loopback by default. */
+/**
+ * The bridge, from the server's own environment. The VPS service sets
+ * BRIDGE_URL to loopback; everywhere else (Vercel included) the bridge is
+ * reached through its public host — nginx routes the connect/disconnect
+ * paths to it, so the public origin works for those calls.
+ */
 export const BACKEND =
-  process.env.BRIDGE_URL?.replace(/\/+$/, '') ?? 'http://127.0.0.1:8003'
+  process.env.BRIDGE_URL?.replace(/\/+$/, '') ?? 'https://kit-backend.aldifhr.my.id'
 
 /**
  * The backend as a *browser* has to reach it.
