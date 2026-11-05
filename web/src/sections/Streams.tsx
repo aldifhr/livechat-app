@@ -34,6 +34,10 @@ import { useToast } from '../components/Toast'
  *  enough that going offline is noticed while somebody is watching. */
 const POLL_MS = 15_000
 
+/** Most streams this console will hold. The connect form stays open until
+ *  this many rooms exist, and closes at five. */
+const MAX_STREAMS = 5
+
 /** One line per stream: who it is, and whether it is running. */
 function StreamRow({ room, status }: { room: Room; status: RoomStatus | undefined }) {
   return (
@@ -251,12 +255,10 @@ export default function Streams() {
 
       {error && <div className="notice error">{error}</div>}
 
-      {/* One stream only. This dashboard is a personal console, so the connect
-          form is shown while there is nothing connected and hidden the moment
-          there is — a second stream is not a feature here, it is a mistake the
-          form would otherwise invite. The row it already has is the way back to
-          it. */}
-      {rooms.length === 0 && (
+      {/* Up to five streams. The connect form stays open while there is room
+          for another one and closes at five; every stream already listed is
+          the way back to its own page. */}
+      {rooms.length < MAX_STREAMS && (
         <div className="panel">
           <h3>Connect a stream</h3>
           <div className="row">
