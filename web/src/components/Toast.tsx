@@ -23,6 +23,7 @@
  */
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 type Toast = { id: number; text: string }
 
@@ -76,17 +77,25 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={push}>
       {children}
       {/* aria-live rather than an alert role: a confirmation is not an emergency,
-          and a screen reader should hear it without the page being interrupted. */}
-      <div className="toasts" role="status" aria-live="polite">
-        {toasts.map((toast) => (
-          <div className="toast" key={toast.id}>
-            <span>{toast.text}</span>
-            <button className="toast-close" onClick={() => dismiss(toast.id)} aria-label="Dismiss">
-              ×
-            </button>
-          </div>
-        ))}
-      </div>
+          and a screen reader should hear it without the page being interrupted.
+          Portaled to the body: the page sits inside a filtered/transformed
+          animation wrapper (BlurFade), and a fixed element under one of those
+          anchors to the wrapper instead of the viewport — the toast would
+          land at the bottom of the content, not the bottom-right of the
+          screen. */}
+      {createPortal(
+        <div className="toasts" role="status" aria-live="polite">
+          {toasts.map((toast) => (
+            <div className="toast" key={toast.id}>
+              <span>{toast.text}</span>
+              <button className="toast-close" onClick={() => dismiss(toast.id)} aria-label="Dismiss">
+                ×
+              </button>
+            </div>
+          ))}
+        </div>,
+        document.body,
+      )}
     </ToastContext.Provider>
   )
 }
