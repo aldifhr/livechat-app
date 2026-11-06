@@ -32,10 +32,18 @@ export function displayName(user) {
 }
 
 export function userId(user) {
-  return (user?.uniqueId || user?.userId || '').toString().trim()
+  // tiktok-live-connector v2: the @handle is `displayId`, the stable numeric
+  // id is `id`. Older shapes used uniqueId/userId.
+  return (user?.displayId || user?.uniqueId || user?.userId || user?.id || '').toString().trim()
 }
 
 export function avatarUrl(user) {
+  // v2 proto: avatarMedium/avatarThumb/avatarLarge are ImageModel { urlList }.
+  for (const model of [user?.avatarMedium, user?.avatarThumb, user?.avatarLarge, user?.avatar]) {
+    const url = model?.urlList?.[0] || (Array.isArray(model) ? model[0] : null)
+    if (url) return String(url)
+  }
+  // Older connector shapes.
   const pic = user?.profilePicture || user?.profile_picture || {}
   return pic.url || pic['url'] || ''
 }
