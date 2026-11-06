@@ -185,11 +185,11 @@ export default function Streams() {
   const connect = async () => {
     const handle = newHandle.trim().replace(/^@/, '')
     if (handle === '') return
-    // One stream only. The form is hidden once a room exists, but the guard
-    // lives here too: the form is not the rule, it is a picture of the rule, and
-    // a second room must not be creatable by a stale tab or a replayed request.
-    if (rooms.length > 0) {
-      setError('This dashboard runs one stream. Disconnect the current one before adding another.')
+    // Up to five streams. The form is hidden at five, but the guard lives
+    // here too: the form is not the rule, it is a picture of the rule, and a
+    // sixth room must not be creatable by a stale tab or a replayed request.
+    if (rooms.length >= MAX_STREAMS) {
+      setError(`This dashboard runs at most ${MAX_STREAMS} streams. Disconnect one before adding another.`)
       return
     }
     setBusy(true)
