@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { requireToken, tokenArg } from "./auth";
 
 function newPublicId() {
   const bytes = new Uint8Array(12);
@@ -10,8 +11,9 @@ function newPublicId() {
 }
 
 export const saveSnapshot = mutation({
-  args: { keyword: v.optional(v.string()), data: v.any(), roomId: v.optional(v.string()) },
+  args: { ...tokenArg, keyword: v.optional(v.string()), data: v.any(), roomId: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    requireToken(args);
     const publicId = newPublicId();
     const createdAt = Date.now();
     const keyword = args.keyword || args.data?.keyword || args.data?.report?.keyword || "giveaway";
@@ -40,8 +42,9 @@ async function findByPublic(ctx: any, id: string) {
 }
 
 export const getSnapshot = query({
-  args: { id: v.string() },
+  args: { ...tokenArg, id: v.string() },
   handler: async (ctx, args) => {
+    requireToken(args);
     const snap = await findByPublic(ctx, args.id);
     if (!snap) return null;
     return {
@@ -53,8 +56,9 @@ export const getSnapshot = query({
 });
 
 export const listSnapshots = query({
-  args: {},
-  handler: async (ctx) => {
+  args: { ...tokenArg,},
+  handler: async (ctx, args) => {
+    requireToken(args);
     const rows = await ctx.db.query("giveawaySnapshots").withIndex("by_created").order("desc").take(100);
     return (rows as any[]).map((s) => {
       const report = s.data?.report || s.data || {};
@@ -74,8 +78,9 @@ export const listSnapshots = query({
 });
 
 export const deleteSnapshot = mutation({
-  args: { id: v.string() },
+  args: { ...tokenArg, id: v.string() },
   handler: async (ctx, args) => {
+    requireToken(args);
     const snap = await findByPublic(ctx, args.id);
     if (!snap) return { notFound: true };
     await ctx.db.delete(snap._id);

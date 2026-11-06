@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { requireToken, tokenArg } from "./auth";
 
 function cleanHandle(username: string) {
   return username.trim().replace(/^@/, "").toLowerCase();
@@ -32,15 +33,16 @@ function pub(r: any) {
 }
 
 export const list = query({
-  args: {},
-  handler: async (ctx) => {
+  args: { ...tokenArg,},
+  handler: async (ctx, args) => {
+    requireToken(args);
     const rooms = await ctx.db.query("rooms").collect();
     return rooms.map(pub);
   },
 });
 
 export const publicList = query({
-  args: {},
+  args: { ...tokenArg,},
   handler: async (ctx) => {
     const rooms = await ctx.db.query("rooms").collect();
     return rooms.map((r: any) => ({
@@ -54,8 +56,9 @@ export const publicList = query({
 });
 
 export const get = query({
-  args: { roomId: v.string() },
+  args: { ...tokenArg, roomId: v.string() },
   handler: async (ctx, args) => {
+    requireToken(args);
     const room = await resolveRoom(ctx, args.roomId);
     if (!room) return null;
     return { ...pub(room), connected: !!room.connected, createdAt: room.createdAt || 0 };
@@ -63,8 +66,9 @@ export const get = query({
 });
 
 export const getByExternal = query({
-  args: { externalId: v.string() },
+  args: { ...tokenArg, externalId: v.string() },
   handler: async (ctx, args) => {
+    requireToken(args);
     const room = await resolveRoom(ctx, args.externalId);
     if (!room) return null;
     return {
@@ -81,7 +85,7 @@ export const getByExternal = query({
 });
 
 export const create = mutation({
-  args: {
+  args: { ...tokenArg,
     name: v.string(),
     username: v.optional(v.string()),
     provider: v.optional(v.string()),
@@ -89,6 +93,7 @@ export const create = mutation({
     externalId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    requireToken(args);
     const externalId = args.externalId || crypto.randomUUID();
     const id = await ctx.db.insert("rooms", {
       externalId,
@@ -104,13 +109,14 @@ export const create = mutation({
 });
 
 export const update = mutation({
-  args: {
+  args: { ...tokenArg,
     roomId: v.string(),
     name: v.optional(v.string()),
     username: v.optional(v.string()),
     provider: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    requireToken(args);
     const room = await resolveRoom(ctx, args.roomId);
     if (!room) return { id: args.roomId, notFound: true };
     const patch: any = {};
@@ -128,8 +134,9 @@ export const update = mutation({
 });
 
 export const updateConfig = mutation({
-  args: { roomId: v.string(), config: v.any() },
+  args: { ...tokenArg, roomId: v.string(), config: v.any() },
   handler: async (ctx, args) => {
+    requireToken(args);
     const room = await resolveRoom(ctx, args.roomId);
     if (!room) return { id: args.roomId, notFound: true };
     await ctx.db.patch(room._id, { config: args.config });
@@ -138,8 +145,9 @@ export const updateConfig = mutation({
 });
 
 export const deleteRoom = mutation({
-  args: { roomId: v.string() },
+  args: { ...tokenArg, roomId: v.string() },
   handler: async (ctx, args) => {
+    requireToken(args);
     const room = await resolveRoom(ctx, args.roomId);
     if (!room) return { id: args.roomId, notFound: true };
     await ctx.db.delete(room._id);
@@ -148,13 +156,14 @@ export const deleteRoom = mutation({
 });
 
 export const findOrCreateByUsername = mutation({
-  args: {
+  args: { ...tokenArg,
     username: v.string(),
     name: v.optional(v.string()),
     config: v.optional(v.any()),
     provider: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    requireToken(args);
     const normalized = cleanHandle(args.username);
     const rooms = await ctx.db.query("rooms").collect();
     const existing = rooms.find(
@@ -180,7 +189,7 @@ export const findOrCreateByUsername = mutation({
 });
 
 export const setStatus = mutation({
-  args: {
+  args: { ...tokenArg,
     roomId: v.string(),
     connected: v.optional(v.boolean()),
     connecting: v.optional(v.boolean()),
@@ -190,6 +199,7 @@ export const setStatus = mutation({
     viewers: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    requireToken(args);
     const room = await resolveRoom(ctx, args.roomId);
     if (!room) return { ok: false };
     const patch: any = {};
@@ -205,8 +215,9 @@ export const setStatus = mutation({
 });
 
 export const getSession = query({
-  args: { roomId: v.string() },
+  args: { ...tokenArg, roomId: v.string() },
   handler: async (ctx, args) => {
+    requireToken(args);
     const room = await resolveRoom(ctx, args.roomId);
     if (!room) return null;
     const rid = String(room._id);
@@ -254,8 +265,9 @@ export const getSession = query({
 });
 
 export const analytics = query({
-  args: { provider: v.optional(v.string()) },
+  args: { ...tokenArg, provider: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    requireToken(args);
     let rooms = await ctx.db.query("rooms").collect();
     if (args.provider) rooms = rooms.filter((r: any) => (r.provider || "tiktok") === args.provider);
     const out: any = {

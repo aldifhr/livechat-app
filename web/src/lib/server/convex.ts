@@ -17,10 +17,15 @@ const convexUrl = () => {
 
 const adminKey = () => (process.env.CONVEX_ADMIN_KEY || '').trim()
 
+/** The write token Convex functions require. Attached here so every call
+ *  site sends it without remembering to. */
+const apiToken = () => (process.env.STREAMKIT_TOKEN || '').trim()
+
 async function callViaHttpClient(kind: 'query' | 'mutation', path: string, args: Record<string, unknown>) {
   const client = new ConvexHttpClient(convexUrl())
   if (adminKey()) (client as any).setAdminAuth(adminKey())
-  return kind === 'query' ? client.query(path as any, args) : client.mutation(path as any, args)
+  const withToken = { ...args, ...(apiToken() ? { token: apiToken() } : {}) }
+  return kind === 'query' ? client.query(path as any, withToken) : client.mutation(path as any, withToken)
 }
 
 export async function convexQuery<T>(path: string, args: Record<string, unknown> = {}): Promise<T> {

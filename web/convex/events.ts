@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { requireToken, tokenArg } from "./auth";
 import { resolveRoom } from "./rooms";
 
 const COMMENT = "comment";
@@ -13,7 +14,7 @@ function normKind(kind: string) {
 }
 
 export const appendEvent = mutation({
-  args: {
+  args: { ...tokenArg,
     roomId: v.string(),
     kind: v.string(),
     user: v.optional(v.string()),
@@ -22,6 +23,7 @@ export const appendEvent = mutation({
     createdAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    requireToken(args);
     const room = await resolveRoom(ctx, args.roomId);
     if (!room) return { id: "", notFound: true };
     const rid = String(room._id);
@@ -76,8 +78,9 @@ export const appendEvent = mutation({
 });
 
 export const recentForRoom = query({
-  args: { roomId: v.string(), limit: v.optional(v.number()), since: v.optional(v.number()) },
+  args: { ...tokenArg, roomId: v.string(), limit: v.optional(v.number()), since: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    requireToken(args);
     const room = await resolveRoom(ctx, args.roomId);
     if (!room) return [];
     const rid = String(room._id);
@@ -94,8 +97,9 @@ export const recentForRoom = query({
 });
 
 export const topChatters = query({
-  args: { roomId: v.string(), limit: v.optional(v.number()) },
+  args: { ...tokenArg, roomId: v.string(), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    requireToken(args);
     const room = await resolveRoom(ctx, args.roomId);
     if (!room) return [];
     const rid = String(room._id);
@@ -119,7 +123,7 @@ export const topChatters = query({
 });
 
 export const trigger = mutation({
-  args: {
+  args: { ...tokenArg,
     roomId: v.string(),
     kind: v.string(),
     user: v.optional(v.string()),
@@ -133,6 +137,7 @@ export const trigger = mutation({
     amount: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    requireToken(args);
     const room = await resolveRoom(ctx, args.roomId);
     if (!room) return { notFound: true };
     const kind = normKind(args.kind);
@@ -183,8 +188,9 @@ export const trigger = mutation({
 });
 
 export const metricsSummary = query({
-  args: { roomId: v.optional(v.string()) },
+  args: { ...tokenArg, roomId: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    requireToken(args);
     const sessions = await ctx.db.query("roomSessions").collect();
     const base = { totalEvents: 0, comments: 0, joins: 0, likes: 0, gifts: 0, diamonds: 0 };
     for (const s of sessions as any[]) {
@@ -204,8 +210,9 @@ export const metricsSummary = query({
 });
 
 export const health = query({
-  args: { withRooms: v.optional(v.boolean()) },
+  args: { ...tokenArg, withRooms: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
+    if (args.withRooms) requireToken(args);
     const rooms = await ctx.db.query("rooms").collect();
     const activeRooms = (rooms as any[]).filter((r) => r.connected).length;
     if (!args.withRooms) return { status: "ok", activeRooms };
@@ -235,16 +242,18 @@ export const health = query({
 });
 
 export const appendLog = mutation({
-  args: { level: v.string(), source: v.string(), message: v.string() },
+  args: { ...tokenArg, level: v.string(), source: v.string(), message: v.string() },
   handler: async (ctx, args) => {
+    requireToken(args);
     const id = await ctx.db.insert("logs", { ...args, createdAt: Date.now() });
     return { id: String(id) };
   },
 });
 
 export const listLogs = query({
-  args: { limit: v.optional(v.number()), level: v.optional(v.string()), q: v.optional(v.string()) },
+  args: { ...tokenArg, limit: v.optional(v.number()), level: v.optional(v.string()), q: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    requireToken(args);
     const rank: Record<string, number> = { debug: 0, info: 1, warning: 2, error: 3, critical: 4 };
     const min = rank[args.level || "info"] ?? 1;
     let rows = await ctx.db.query("logs").withIndex("by_created").order("desc").take(500);

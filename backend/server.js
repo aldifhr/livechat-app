@@ -22,12 +22,13 @@ const PORT = Number(process.env.BRIDGE_PORT || 8001)
 const CONVEX_URL = (process.env.CONVEX_URL || 'http://127.0.0.1:3210').replace(/\/+$/, '')
 const ADMIN_KEY = (process.env.CONVEX_ADMIN_KEY || '').trim()
 const SIGN_API_KEY = (process.env.SIGN_API_KEY || '').trim()
+const API_TOKEN = (process.env.STREAMKIT_TOKEN || '').trim()
 
 const convex = new ConvexHttpClient(CONVEX_URL)
 if (ADMIN_KEY) convex.setAdminAuth(ADMIN_KEY)
 
-async function q(path, args) { return convex.query(path, args) }
-async function m(path, args) { return convex.mutation(path, args) }
+async function q(path, args) { return convex.query(path, { ...args, ...(API_TOKEN ? { token: API_TOKEN } : {}) }) }
+async function m(path, args) { return convex.mutation(path, { ...args, ...(API_TOKEN ? { token: API_TOKEN } : {}) }) }
 
 async function log(level, source, message) {
   try { await m('events:appendLog', { level, source, message: String(message).slice(0, 500) }) } catch {}
@@ -120,17 +121,51 @@ setInterval(async () => {
 
 function wireSource(roomId, username) {
   const conn = new TikTokLiveConnection(username, SIGN_API_KEY ? { signApiKey: SIGN_API_KEY } : {})
-  const entry = { conn, username, running: true }
+  const entry = { conn, username, running: true, connecting: false, timer: null, attempts: 0 }
   sources.set(roomId, entry)
 
+  // Auto-reconnect: a dropped socket on a room that is still meant to run
+  // retries with backoff instead of sitting offline until a human presses
+  // Connect. Stopped only by an explicit disconnect or by the live ending.
+  entry.scheduleReconnect = (reason) => {
+    if (!entry.running || entry.timer) return
+    entry.attempts += 1
+    const delay = Math.min(5_000 * entry.attempts, 60_000)
+    log('warning', 'bridge.tiktok', `@${username} reconnect in ${delay / 1000}s (${reason})`).catch(() => {})
+    entry.timer = setTimeout(async () => {
+      entry.timer = null
+      if (!entry.running) return
+      await setStatus(roomId, { connected: false, connecting: true, message: `Reconnecting to @${username}…` })
+      try {
+        await entry.conn.connect()
+        entry.attempts = 0
+        await setStatus(roomId, { connected: true, message: `Connected to @${username}` })
+      } catch (e) {
+        const offline = /offline|not live|no live|isn'?t online|not online|useroffline/i.test(String(e?.message || e))
+        await log('warning', 'bridge.tiktok', `${username}: ${e?.message || e}`)
+        await setStatus(roomId, {
+          connected: false,
+          connecting: true,
+          waiting: offline,
+          message: offline ? `@${username} is not live yet` : `Could not connect to @${username}`,
+        })
+        entry.scheduleReconnect('still offline')
+      }
+    }, delay)
+  }
+
   conn.on(WebcastEvent.CONNECTED ?? 'connected', async () => {
+    entry.attempts = 0
     await log('info', 'bridge.tiktok', `connected @${username} room ${roomId}`)
     await setStatus(roomId, { connected: true, message: `Connected to @${username}` })
   })
   conn.on(WebcastEvent.DISCONNECTED ?? 'disconnected', async () => {
     await setStatus(roomId, { connected: false, connecting: entry.running, message: `Disconnected from @${username}` })
+    if (entry.running) entry.scheduleReconnect('socket dropped')
   })
   conn.on(WebcastEvent.STREAM_END ?? 'streamEnd', async () => {
+    entry.running = false
+    if (entry.timer) { clearTimeout(entry.timer); entry.timer = null }
     await setStatus(roomId, { connected: false, liveEnded: true, message: `@${username} is no longer live` })
   })
   conn.on('error', async (e) => {
@@ -163,6 +198,7 @@ async function connectRoom(roomId, username) {
   await setStatus(roomId, { connected: false, connecting: true, message: `Connecting to @${username}` })
   entry.conn.connect()
     .then(async () => {
+      entry.attempts = 0
       await setStatus(roomId, { connected: true, message: `Connected to @${username}` })
     })
     .catch(async (e) => {
@@ -170,9 +206,11 @@ async function connectRoom(roomId, username) {
       await log('warning', 'bridge.tiktok', `${username}: ${e?.message || e}`)
       await setStatus(roomId, {
         connected: false,
+        connecting: true,
         waiting: offline,
         message: offline ? `@${username} is not live yet` : `Could not connect to @${username}`,
       })
+      entry.scheduleReconnect('initial connect failed')
     })
   return { status: 'connecting', username, room_id: roomId, provider: 'tiktok' }
 }
@@ -181,6 +219,7 @@ async function disconnectRoom(roomId) {
   const existing = sources.get(roomId)
   if (existing) {
     existing.running = false
+    if (existing.timer) { clearTimeout(existing.timer); existing.timer = null }
     try { await existing.conn.disconnect() } catch {}
     sources.delete(roomId)
     await setStatus(roomId, { connected: false, message: 'Disconnected' })
