@@ -87,9 +87,8 @@ export function pageConfig(config) {
   return out
 }
 
-// Gift streaks: TikTok sends repeat_count as a cumulative total. The python
-// backend kept per-user streak state to turn that into a per-frame delta;
-// here we track the last cumulative count per (user, gift).
+// Gift streaks: TikTok sends repeat_count as a cumulative total, so the
+// per-frame delta is tracked here per (user, gift) instead of summed.
 const streaks = new Map()
 export function streakStep(key, repeatCount, diamondCount, repeatEnd) {
   const cumulative = Number(repeatCount || 0)

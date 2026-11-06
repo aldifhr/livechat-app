@@ -17,18 +17,8 @@ out/
 .env
 .env.*
 
-# Python, from the StreamKit backend that lives in this repo now.
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-.pytest_cache/
-*.egg-info/__pycache__/
-*.pyc
-
-# Runtime state — local room records and usernames, not source.
-api/config/rooms.json
-api/config/overlays.json
+# Runtime state — giveaway commitments, not source.
+web/.data/
 
 # The nginx basic-auth hash for the deployed dashboard. It lives only on the
 # server, at /etc/nginx/streamtools.htpasswd, and is never source. Committing a
@@ -56,12 +46,6 @@ htpasswd
 # TypeScript incremental build cache — rewritten by every web build, so it is
 # noise in a diff, not source.
 web/tsconfig.tsbuildinfo
-
-# Runtime state. The API writes sessions and rooms here when STREAMKIT_CONFIG_DIR
-# is not set (tests, a dev run); in production it points at /var/lib/streamkit.
-# Committed once by accident and every local test run dirtied the tree.
-api/config/sessions.json
-api/config/rooms.json
 
 # Convex: compiled function output (tsc emit next to the .ts sources).
 web/convex/*.js

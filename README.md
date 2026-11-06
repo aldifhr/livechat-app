@@ -176,15 +176,10 @@ weight, and they have to keep working while the dashboard is restarting. On that
 path `__OVERLAY_CONFIG__` is **not** substituted, so all styling arrives over the
 socket the page already opens, as a `config` frame.
 
-There used to be a second copy of each page in `api/static/`, kept by hand,
-which the backend served with the room's styling baked into the HTML. It was
-not worth having: a browser source cannot depend on a server rendering a page
-for it, the styling it baked was already arriving over the socket, and the two
-copies drifted — the chat pair was nineteen lines apart before this was removed,
-with the overlay page test reading the stale twin and failing on a feature that
-had already shipped. `api/routes/overlay.py` went with it; `page_config()`
-lives in `api/models.py` now, because the socket is the only thing left that
-needs it.
+The overlay pages are served by Next (`/overlay/[name]`), which bakes the
+public origin into the page; styling itself arrives over the socket as a
+`config` frame, translated by `pageConfig()` in `backend/frames.js` — the one
+place that knows the stored names and the page names.
 
 `shared/overlay.ts` is the single source for styling: defaults, numeric bounds,
 and key translation. There are **four different key vocabularies** here and not
@@ -204,14 +199,15 @@ One VPS behind nginx.
 
 ```bash
 scripts/deploy-web.sh    # build web, stage overlays to /var/www, restart, then assert
-scripts/backup-rooms.sh  # daily rooms.json copy, 14-day prune
+scripts/backup-rooms.sh  # daily Convex export, 14-day prune
 ```
 
 | Unit | Role |
 |---|---|
-| `streamer-api.service` | Backend, loopback only, `User=streamkit` |
+| `convex-local.service` | Convex self-hosted backend, port 3210 |
+| `tiktok-bridge.service` | Node TikTok bridge + WS fan-out, port 8003 |
 | `streamtools-web.service` | Next dashboard from `.next/standalone` |
-| `streamkit-rooms-backup.service`/`.timer` | Daily room and giveaway snapshot backup |
+| `streamkit-rooms-backup.service`/`.timer` | Daily Convex export backup |
 
 nginx holds back part of the surface: `/ws/` and `= /api/room-connect-by-username`
 are proxied to the backend **outside the gate**, because OBS cannot carry a

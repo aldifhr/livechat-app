@@ -9,10 +9,9 @@
  *   - A TypeScript type is erased at runtime, so `tsc` is the only thing that
  *     ever reads the union, and it reads it as a shape rather than as a set of
  *     strings. A kind the backend sends and the union lacks is invisible to it.
- *   - A Python constant nobody imports is dead code, and a `SERIALISERS` entry
- *     with no constant is unreachable — `to_wire` looks the serialiser up by
- *     `event.kind`, so the key is the only thing that matters and the constant
- *     is decoration.
+ *   - A kind the bridge lists but never emits is dead, and a kind it emits
+ *     but never lists is dropped by the socket guard — both are invisible
+ *     unless the three lists are compared.
  *   - The `FRAME_KINDS` array is the one with teeth: a kind missing from it is
  *     dropped at the socket, silently, on a page that looks fine.
  *
@@ -22,11 +21,9 @@
  * the array would keep passing if the array were right by accident.
  *
  * The four kinds this suite was written for — `share`, `alert`, `error` and
- * `config` — were all emitted by the backend and absent from the union. Two of
- * them (`error`, `config`) are not constants at all: they are raw string
- * literals inside `emit_error` and `emit_config`, so they are collected from
- * those call sites rather than from the constants block. That asymmetry is the
- * point of the `serialisers cover the constants` check below.
+ * `config` — were all emitted by the backend and absent from the union when
+ * the suite was written. They are pinned by name below so a regression says
+ * which one broke rather than making someone diff a list.
  *
  * Run with node, like the other suites here:
  *
