@@ -7,15 +7,16 @@
 # than one queue behind a Tauri build.
 #
 # What is NOT here, and why:
-#   - `scripts/deploy-web.sh` and `api/tests` touching a real store. The
-#     backend suites point `STREAMKIT_CONFIG_DIR` at a temp dir each, so they
-#     cannot reach `api/config/rooms.json`.
-#   - Any secret. Nothing in any suite reads one; the token gates are exercised
-#     by setting `STREAMKIT_TOKEN` in the test's own env.
-#   - A build of the installer. Releases stay a deliberate, human action.
+#   - `scripts/deploy-web.sh` touching a real deployment. The suites never
+#     reach a live Convex deployment or a TikTok socket.
+#   - Any secret. Nothing in any suite reads one; the Convex token gate is
+#     exercised by setting `STREAMKIT_TOKEN` in the test's own env.
+#   - A Convex deploy. Functions are typechecked here; pushing them is a
+#     deliberate deploy action on the VPS, not a CI step.
 #
-# The desktop app and its Rust crate were removed; the two jobs that built them
-# went with them. `shared/` stayed, because the dashboard imports it.
+# The FastAPI backend (`api/`) was removed in the Convex migration; the
+# Node TikTok bridge (`backend/`) replaced its test job. `shared/` stayed,
+# because the dashboard imports it.
 
 name: ci
 
@@ -47,25 +48,22 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      # Convex functions have their own tsconfig (the app's excludes them).
+      # Typechecked here so a broken mutation fails CI, not the deploy.
+      - run: npx tsc --noEmit -p convex/tsconfig.json
 
-  api:
-    name: backend (python)
+  bridge:
+    name: tiktok bridge (node)
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: api
+        working-directory: backend
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-node@v4
         with:
-          # Pinned, not `latest`: the backend targets 3.12, and a runner that
-          # quietly moves to 3.14 turns a passing suite into a failing one for
-          # reasons that have nothing to do with the change under test.
-          python-version: '3.12'
-          cache: pip
-          cache-dependency-path: api/requirements.txt
-      - run: pip install -r requirements.txt
-      # The runner, not pytest: there is no pytest here. It starts each suite in
-      # its own subprocess with its own `STREAMKIT_CONFIG_DIR`, and checks the
-      # count against the files on disk so a stray test cannot silently not run.
-      - run: python tests/run_all.py
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npm test

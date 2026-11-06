@@ -8,9 +8,9 @@
 # works. That failure looks like a broken UI rather than a broken deploy, so the
 # copy is done here rather than left to whoever deploys next.
 #
-# The environment is not written into the build. STREAMKIT_TOKEN is read by the
-# server when it serves a request, so rotating it is an edit of
-# /etc/streamtools-web.env and a restart — no rebuild.
+# The environment is not written into the build. STREAMKIT_TOKEN / CONVEX_URL
+# are read by the server when it serves a request, so rotating them is an edit
+# of the service env and a restart — no rebuild.
 
 set -euo pipefail
 

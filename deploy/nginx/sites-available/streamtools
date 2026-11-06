@@ -9,7 +9,7 @@
 #   /api/backend/*        proxied to Next, which attaches the backend's token
 #   /ws/                  proxied to the backend on loopback, no credential
 #
-# The backend is reached on 127.0.0.1:8000 and never by its public hostname: it
+# The backend is reached on 127.0.0.1:8003 and never by its public hostname: it
 # binds loopback, and nginx is its only front door. Everything that has to reach
 # it from outside — an OBS docks page, an overlay page — comes through this vhost
 # as well, so the backend's own public listener can be closed to everyone but
@@ -83,11 +83,11 @@ server {
         # this location alone.
         access_log /var/log/nginx/streamkit-ws.log streamkit_ws;
         # Loopback, not the backend's public hostname. The backend binds
-        # 127.0.0.1:8000 and this vhost is on the same box, so reaching it by
+        # 127.0.0.1:8003 and this vhost is on the same box, so reaching it by
         # public name sent every chat frame out to the router and back for
         # nothing — and left the impression that the backend had to be on the
         # internet for this to work. It does not: nginx is its only front door.
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:8003;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -126,7 +126,7 @@ server {
     # front door.
     location = /api/room-connect-by-username {
         limit_req zone=autoroom burst=10 nodelay;
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:8003;
         proxy_http_version 1.1;
         proxy_set_header Host kit-backend.aldifhr.my.id;
         proxy_set_header X-Real-IP $remote_addr;
