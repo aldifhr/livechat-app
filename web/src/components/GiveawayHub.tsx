@@ -60,7 +60,7 @@ function StreamPicker({
             aria-pressed={active}
             className={
               active
-                ? 'border-2 border-accent bg-accent font-extrabold text-accent-ink'
+                ? 'border border-accent bg-accent font-semibold text-accent-ink'
                 : undefined
             }
           >

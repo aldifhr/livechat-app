@@ -38,7 +38,7 @@ export default function AppSidebar({
       <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 pt-1">
         <p
           className={cn(
-            'px-3 pt-1 pb-2 text-[10px] font-extrabold tracking-[0.16em] text-muted-foreground uppercase transition-opacity',
+            'px-3 pt-1 pb-2 text-[10px] font-semibold tracking-[0.16em] text-muted-foreground uppercase transition-opacity',
             collapsed && 'opacity-0',
           )}
         >
@@ -54,7 +54,7 @@ export default function AppSidebar({
               aria-current={active ? 'page' : undefined}
               title={collapsed ? item.label : undefined}
               className={cn(
-                'group relative flex min-h-11 items-center gap-3 rounded-xl border-2 border-transparent px-2.5 text-[13px] font-bold text-muted-foreground no-underline',
+                'group relative flex min-h-11 items-center gap-3 rounded-xl border border-transparent px-2.5 text-[13px] font-bold text-muted-foreground no-underline',
                 'transition-[background,color,box-shadow,transform] duration-100',
                 'hover:bg-accent-tint hover:text-accent hover:no-underline',
                 active &&

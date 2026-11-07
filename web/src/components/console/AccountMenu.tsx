@@ -42,7 +42,7 @@ export default function AccountMenu({
             type="button"
             aria-label="Account menu"
             className={cn(
-              'flex w-full items-center gap-2.5 rounded-xl border-2 border-transparent bg-muted/60 px-2 py-2 text-left',
+              'flex w-full items-center gap-2.5 rounded-xl border border-transparent bg-muted/60 px-2 py-2 text-left',
               'transition-colors hover:border-border hover:bg-accent-tint',
               collapsed && 'justify-center px-0',
             )}

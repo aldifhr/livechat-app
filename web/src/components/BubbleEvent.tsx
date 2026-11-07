@@ -46,7 +46,7 @@ export function BubbleEvent({
   return (
     <div
       style={{ borderLeftColor: style.edge, borderLeftWidth: 6 }}
-      className="w-fit max-w-[calc(100%-2rem)] min-w-0 rounded-[4px_14px_14px_14px] border-2 border-line bg-raised px-3 py-1.5 text-xs text-text"
+      className="w-fit max-w-[calc(100%-2rem)] min-w-0 rounded-[4px_14px_14px_14px] border border-line bg-raised px-3 py-1.5 text-xs text-text"
     >
       {/* A notice and a poll have no viewer behind them — the backend sends a
           name only when the event came from a person. The name block is skipped
@@ -59,13 +59,13 @@ export function BubbleEvent({
               target="_blank"
               rel="noopener noreferrer"
               style={{ color: style.name }}
-              className="shrink-0 font-extrabold hover:underline"
+              className="shrink-0 font-semibold hover:underline"
               title={`Buka @${user} di TikTok`}
             >
               {user}
             </a>
           ) : (
-            <span style={{ color: style.name }} className="shrink-0 font-extrabold">
+            <span style={{ color: style.name }} className="shrink-0 font-semibold">
               {user}
             </span>
           )}

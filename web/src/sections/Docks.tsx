@@ -349,13 +349,13 @@ export default function Docks({ backendOrigin }: { backendOrigin: string }) {
                     url.searchParams.set('room', room.id)
                     window.history.replaceState({}, '', url.toString())
                   }}
-                  className="flex items-center gap-3 rounded-field border-2 border-line bg-raised px-4 py-2.5 text-left text-sm font-bold text-text transition-colors hover:border-accent hover:bg-accent-tint"
+                  className="flex items-center gap-3 rounded-field border border-line bg-raised px-4 py-2.5 text-left text-sm font-bold text-text transition-colors hover:border-accent hover:bg-accent-tint"
                 >
                   <span className="truncate">
                     {room.username ? `@${room.username}` : room.name || room.id.slice(0, 8)}
                   </span>
                   {room.connected && (
-                    <span className="ml-auto shrink-0 text-xs font-extrabold text-good">live</span>
+                    <span className="ml-auto shrink-0 text-xs font-semibold text-good">live</span>
                   )}
                 </button>
               ))}
@@ -410,7 +410,7 @@ export default function Docks({ backendOrigin }: { backendOrigin: string }) {
               else url.searchParams.delete('room')
               window.history.replaceState({}, '', url.toString())
             }}
-            className="max-w-32 rounded-field border-2 border-line bg-raised px-1.5 py-1 text-xs text-text"
+            className="max-w-32 rounded-field border border-line bg-raised px-1.5 py-1 text-xs text-text"
           >
             {!roomId && <option value="">Select room</option>}
             {rooms.map((room) => (
@@ -434,7 +434,7 @@ export default function Docks({ backendOrigin }: { backendOrigin: string }) {
           </span>
         </div>
         {status?.connected && activeViewers != null && (
-          <span className="ml-auto rounded-pill border-2 border-line bg-accent-tint px-2.5 py-0.5 text-xs font-extrabold text-accent">
+          <span className="ml-auto rounded-pill border border-line bg-accent-tint px-2.5 py-0.5 text-xs font-semibold text-accent">
             <RollingNumber value={activeViewers} /> watching
           </span>
         )}
@@ -443,7 +443,7 @@ export default function Docks({ backendOrigin }: { backendOrigin: string }) {
             type="button"
             onClick={toggleTts}
             title={ttsEnabled ? 'Matikan Google TTS' : 'Aktifkan Google TTS (baca chat, gift & follow)'}
-            className={`shrink-0 rounded-field border-2 p-1 text-xs transition-colors ${
+            className={`shrink-0 rounded-field border p-1 text-xs transition-colors ${
               ttsEnabled
                 ? 'border-accent bg-accent-tint text-accent'
                 : 'border-transparent text-faint hover:border-line hover:text-dim'
@@ -456,7 +456,7 @@ export default function Docks({ backendOrigin }: { backendOrigin: string }) {
             type="button"
             onClick={toggleSound}
             title={soundEnabled ? 'Mute alert sounds' : 'Enable alert sounds for chat, gifts & follows'}
-            className={`shrink-0 rounded-field border-2 p-1 text-xs transition-colors ${
+            className={`shrink-0 rounded-field border p-1 text-xs transition-colors ${
               soundEnabled
                 ? 'border-accent bg-accent-tint text-accent'
                 : 'border-transparent text-faint hover:border-line hover:text-dim'
@@ -472,14 +472,14 @@ export default function Docks({ backendOrigin }: { backendOrigin: string }) {
       {session && !(!session.connected && events === 0 && session.total_diamonds === 0) && (
         <div className="grid grid-cols-2 border-b-2 border-line bg-raised">
           <div className="border-r-2 border-line px-2 py-1.5 text-center">
-            <div className="text-[10px] font-extrabold tracking-wider text-faint uppercase">Peak</div>
-            <div className="text-xs font-extrabold text-text">
+            <div className="text-[10px] font-semibold tracking-wider text-faint">Peak</div>
+            <div className="text-xs font-semibold text-text">
               {session.peak_viewers ? <RollingNumber value={session.peak_viewers} /> : '—'}
             </div>
           </div>
           <div className="px-2 py-1.5 text-center">
-            <div className="text-[10px] font-extrabold tracking-wider text-faint uppercase">Diamonds</div>
-            <div className="text-xs font-extrabold text-text">
+            <div className="text-[10px] font-semibold tracking-wider text-faint">Diamonds</div>
+            <div className="text-xs font-semibold text-text">
               {session.total_diamonds ? <RollingNumber value={session.total_diamonds} /> : '—'}
             </div>
           </div>
@@ -503,7 +503,7 @@ export default function Docks({ backendOrigin }: { backendOrigin: string }) {
                     setFilter(f.id)
                   }
                 }}
-                className={`shrink-0 rounded-pill border-2 px-2.5 py-0.5 text-[11px] font-bold transition-colors select-none ${
+                className={`shrink-0 rounded-pill border px-2.5 py-0.5 text-[11px] font-bold transition-colors select-none ${
                   filter === f.id
                     ? 'border-accent-dim bg-accent text-accent-ink'
                     : 'border-line bg-raised text-dim hover:text-text'
@@ -519,7 +519,7 @@ export default function Docks({ backendOrigin }: { backendOrigin: string }) {
               onClick={clearChat}
               title="Clear chat feed"
               aria-label="Clear chat feed"
-              className="rounded-field border-2 border-transparent p-1 text-xs text-faint transition-colors hover:border-bad hover:text-bad"
+              className="rounded-field border border-transparent p-1 text-xs text-faint transition-colors hover:border-bad hover:text-bad"
             >
               🗑️
             </button>
@@ -535,7 +535,7 @@ export default function Docks({ backendOrigin }: { backendOrigin: string }) {
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search username or text..."
             aria-label="Search chat"
-            className="w-full rounded-field border-2 border-line bg-raised py-1 pr-6 pl-6 text-xs text-text transition-colors placeholder:text-faint focus:border-accent"
+            className="w-full rounded-field border border-line bg-raised py-1 pr-6 pl-6 text-xs text-text transition-colors placeholder:text-faint focus:border-accent"
           />
           {search && (
             <button
@@ -616,7 +616,7 @@ export default function Docks({ backendOrigin }: { backendOrigin: string }) {
           <button
             type="button"
             onClick={scrollToBottom}
-            className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-pill border-2 border-line bg-raised px-3 py-1.5 text-xs font-bold text-text shadow-[0_4px_0_0_var(--line)] transition-all hover:bg-accent-tint"
+            className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-pill border border-line bg-raised px-3 py-1.5 text-xs font-bold text-text shadow-[0_4px_0_0_var(--line)] transition-all hover:bg-accent-tint"
           >
             <span>↓</span>
             <span>New messages{newCount > 0 ? ` (${newCount})` : ''}</span>

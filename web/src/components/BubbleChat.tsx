@@ -16,20 +16,20 @@ export interface BubbleChatProps {
  */
 export function BubbleChat({ user, text, time, profileUrl }: BubbleChatProps) {
   return (
-    <div className="w-fit max-w-[calc(100%-2rem)] min-w-0 rounded-[4px_14px_14px_14px] border-2 border-line bg-raised px-3 py-1.5 text-xs text-text">
+    <div className="w-fit max-w-[calc(100%-2rem)] min-w-0 rounded-[4px_14px_14px_14px] border border-line bg-raised px-3 py-1.5 text-xs text-text">
       <div className="flex items-center gap-1.5">
         {profileUrl ? (
           <a
             href={profileUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="shrink-0 font-extrabold text-text hover:underline"
+            className="shrink-0 font-semibold text-text hover:underline"
             title={`Buka @${user} di TikTok`}
           >
             {user}
           </a>
         ) : (
-          <span className="shrink-0 font-extrabold text-text">{user}</span>
+          <span className="shrink-0 font-semibold text-text">{user}</span>
         )}
         <span className="shrink-0 text-[10px] font-normal text-faint tabular-nums">{time}</span>
       </div>

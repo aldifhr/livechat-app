@@ -1,10 +1,9 @@
 /*
  * One stylesheet for the whole app.
  *
- * A soft, minimal look after kreate.gg: a warm paper background, near-black ink,
- * one purple accent, 2px borders in a soft grey, generously rounded corners, and
- * a hard bottom shadow on raised elements that disappears when they are pressed.
- * Bold, tight type throughout.
+ * A minimal look: a neutral light background, near-black ink, hairline
+ * borders, soft blurred shadows, and quiet type. Nothing shouts — hierarchy
+ * comes from whitespace and weight, not from frames and hard edges.
  *
  * Values live in custom properties on :root and every component class is written
  * against those tokens, so a rule is defined once and means the same thing on the
@@ -43,19 +42,18 @@
 
   /* Rounded, generously. A card is a card with soft corners, and a button is a
      pill-ish rounded rectangle — the same radii kreate uses. */
-  --radius-card: 18px;
-  --radius-field: 12px;
+  --radius-card: 14px;
+  --radius-field: 10px;
   --radius-pill: 999px;
 
   --font-sans: var(--sans);
   --font-mono: var(--mono);
 
-  /* The hard bottom shadow: a solid bar under a raised element, no blur, that
-     reads as a physical edge and vanishes on press. */
-  --shadow-brutal: 0 4px 0 0 var(--accent-dim);
-  --shadow-brutal-lg: 0 6px 0 0 var(--accent-dim);
-  --shadow-brutal-sm: 0 3px 0 0 var(--accent-dim);
-  --shadow-soft: 0 6px 0 0 var(--line-deep);
+  /* Soft, diffuse shadows — elevation without a hard edge. */
+  --shadow-brutal: 0 1px 2px rgb(0 0 0 / 0.05), 0 4px 16px rgb(0 0 0 / 0.06);
+  --shadow-brutal-lg: 0 2px 4px rgb(0 0 0 / 0.06), 0 12px 32px rgb(0 0 0 / 0.10);
+  --shadow-brutal-sm: 0 1px 2px rgb(0 0 0 / 0.05), 0 2px 8px rgb(0 0 0 / 0.06);
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px rgb(0 0 0 / 0.07);
 }
 
 /* The shadcn/base-ui colour names, mapped onto the palette above. */
@@ -106,24 +104,24 @@
   /* The paper / ink / purple trio. The page is a warm off-white, a raised
      surface is pure white, and the border is a soft grey that reads as a line
      rather than a frame. */
-  --bg: #faf7f2;
+  --bg: #fafafa;
   --bg-raised: #ffffff;
-  --bg-sunken: #f1ece3;
-  --line: #d9d2c6;
-  --line-soft: #e7e1d6;
-  --line-deep: #111111;
+  --bg-sunken: #f4f4f5;
+  --line: #e4e4e7;
+  --line-soft: #eeeeef;
+  --line-deep: #d4d4d8;
 
-  --text: #13102b;
-  --text-dim: #5b4d80;
-  --text-faint: #8b83a6;
+  --text: #18181b;
+  --text-dim: #52525b;
+  --text-faint: #a1a1aa;
 
   /* The one accent is ink itself: black fills, black links, black eyebrow labels.
      `--accent-dim` is the near-black the hard shadow is cut from, and
      `--accent-tint` is the faintest wash of it for hover surfaces. */
-  --accent: #13102b;
-  --accent-dim: #000000;
+  --accent: #18181b;
+  --accent-dim: #27272a;
   --accent-ink: #ffffff;
-  --accent-tint: #efece6;
+  --accent-tint: #f4f4f5;
 
   --good: #1f9d55;
   --bad: #e5484d;
@@ -149,11 +147,11 @@
   --border: var(--line);
   --input: var(--line);
   --ring: var(--accent);
-  --chart-1: #13102b;
-  --chart-2: #5b4d80;
-  --chart-3: #8b83a6;
-  --chart-4: #c9c1dd;
-  --chart-5: #e7e1d6;
+  --chart-1: #18181b;
+  --chart-2: #52525b;
+  --chart-3: #a1a1aa;
+  --chart-4: #d4d4d8;
+  --chart-5: #eeeeef;
   --radius: 18px;
   --sidebar: var(--bg-raised);
   --sidebar-foreground: var(--text);
@@ -219,7 +217,7 @@
   h4,
   h5,
   h6 {
-    font-weight: 800;
+    font-weight: 650;
     letter-spacing: -0.02em;
   }
 
@@ -278,7 +276,7 @@
   /* ---- form controls ---- */
 
   button {
-    @apply cursor-pointer rounded-field border-2 border-line bg-raised px-[1rem] py-2 font-bold text-text transition-[transform,box-shadow,background] duration-75;
+    @apply cursor-pointer rounded-field border border-line bg-raised px-[1rem] py-2 font-bold text-text transition-[transform,box-shadow,background] duration-75;
   }
 
   button:hover:not(:disabled) {
@@ -290,7 +288,7 @@
   }
 
   button.primary {
-    @apply border-accent-dim bg-accent font-extrabold text-accent-ink;
+    @apply border-accent-dim bg-accent font-semibold text-accent-ink;
     box-shadow: var(--shadow-brutal-sm);
   }
 
@@ -309,7 +307,7 @@
   }
 
   button.danger-solid {
-    @apply border-bad bg-bad font-extrabold text-white;
+    @apply border-bad bg-bad font-semibold text-white;
     box-shadow: 0 3px 0 0 #a82126;
   }
 
@@ -321,7 +319,7 @@
   input,
   select,
   textarea {
-    @apply min-w-0 rounded-field border-2 border-line bg-raised px-[0.7rem] py-2 text-text;
+    @apply min-w-0 rounded-field border border-line bg-raised px-[0.7rem] py-2 text-text;
   }
 
   input:focus,
@@ -393,13 +391,13 @@
   }
 
   .empty {
-    @apply rounded-card border-2 border-dashed border-line bg-raised p-10 px-4 text-center font-semibold text-dim;
+    @apply rounded-card border border-dashed border-line bg-raised p-10 px-4 text-center font-semibold text-dim;
   }
 
   /* ---- the wordmark ---- */
 
   .wordmark {
-    @apply font-extrabold tracking-[-0.03em] text-text;
+    @apply font-semibold tracking-[-0.03em] text-text;
   }
 
   .wordmark span {
@@ -409,7 +407,7 @@
   /* ---- panels, lists ---- */
 
   .panel {
-    @apply mb-4 rounded-card border-2 border-line bg-raised px-[1.4rem] py-[1.25rem];
+    @apply mb-4 rounded-card border border-line bg-raised px-[1.4rem] py-[1.25rem];
     box-shadow: var(--shadow-soft);
   }
 
@@ -419,7 +417,7 @@
   }
 
   .row {
-    @apply flex flex-wrap items-center gap-3 border-b-2 border-line-soft py-[0.7rem] last:border-b-0;
+    @apply flex flex-wrap items-center gap-3 border-b border-line-soft py-[0.7rem] last:border-b-0;
   }
 
   .row .grow {
@@ -431,7 +429,7 @@
   }
 
   .badge {
-    @apply inline-flex items-center rounded-pill border-2 border-line px-[0.6rem] py-[0.1rem] text-[0.7rem] font-extrabold tracking-[0.04em] whitespace-nowrap text-dim uppercase;
+    @apply inline-flex items-center rounded-pill border border-line px-[0.6rem] py-[0.1rem] text-[0.7rem] font-semibold tracking-[0.04em] whitespace-nowrap text-dim;
     background: var(--bg-sunken);
   }
 
@@ -452,7 +450,7 @@
   }
 
   .notice {
-    @apply mb-4 rounded-field border-2 border-line bg-raised px-[1rem] py-[0.75rem] text-[0.92rem] font-semibold;
+    @apply mb-4 rounded-field border border-line bg-raised px-[1rem] py-[0.75rem] text-[0.92rem] font-semibold;
   }
 
   .notice.error {
@@ -470,16 +468,16 @@
   }
 
   .stat {
-    @apply relative flex flex-col gap-1 overflow-hidden rounded-card border-2 border-line bg-raised px-[1.35rem] py-[1.2rem];
+    @apply relative flex flex-col gap-1 overflow-hidden rounded-card border border-line bg-raised px-[1.35rem] py-[1.2rem];
     box-shadow: var(--shadow-soft);
   }
 
   .stat-label {
-    @apply text-[0.72rem] font-extrabold tracking-[0.08em] text-faint uppercase;
+    @apply text-[0.72rem] font-semibold tracking-[0.08em] text-faint;
   }
 
   .stat-value {
-    @apply mt-1 text-[2rem] leading-none font-extrabold tracking-tight text-text tabular-nums;
+    @apply mt-1 text-[2rem] leading-none font-semibold tracking-tight text-text tabular-nums;
   }
 
   .stat-of {
@@ -561,7 +559,7 @@
   }
 
   .log-level {
-    @apply text-[0.72rem] font-extrabold tracking-[0.04em] uppercase;
+    @apply text-[0.72rem] font-semibold tracking-[0.04em];
   }
 
   .log-level.level-debug {
@@ -606,7 +604,7 @@
   }
 
   .stat-table th {
-    @apply border-b-2 border-line pb-3 text-left text-[0.72rem] font-extrabold tracking-[0.06em] text-faint uppercase;
+    @apply border-b border-line pb-3 text-left text-[0.72rem] font-semibold tracking-[0.06em] text-faint;
   }
 
   .stat-table td {
@@ -641,7 +639,7 @@
   }
 
   .brand-symbol {
-    @apply grid h-10 w-10 shrink-0 place-items-center rounded-field border-2 border-accent-dim bg-accent text-lg font-extrabold text-accent-ink;
+    @apply grid h-10 w-10 shrink-0 place-items-center rounded-field border border-accent-dim bg-accent text-lg font-semibold text-accent-ink;
     box-shadow: 0 3px 0 0 var(--accent-dim);
   }
 
@@ -650,7 +648,7 @@
   }
 
   .brand-copy .wordmark {
-    @apply text-[15px] font-extrabold tracking-tight text-text;
+    @apply text-[15px] font-semibold tracking-tight text-text;
   }
 
   .brand-copy .brand-caption {
@@ -662,11 +660,11 @@
   }
 
   .sidebar .side-caption {
-    @apply mb-2 px-3 text-[10px] font-extrabold tracking-[0.16em] text-faint uppercase;
+    @apply mb-2 px-3 text-[10px] font-semibold tracking-[0.16em] text-faint;
   }
 
   .sidebar .side-item {
-    @apply flex min-h-11 items-center gap-3 rounded-field border-2 border-transparent px-3 text-[13px] font-bold text-dim no-underline;
+    @apply flex min-h-11 items-center gap-3 rounded-field border border-transparent px-3 text-[13px] font-bold text-dim no-underline;
   }
 
   .sidebar .side-item:hover {
@@ -691,7 +689,7 @@
   }
 
   .account-menu {
-    @apply relative mt-auto rounded-field border-2 border-line bg-raised;
+    @apply relative mt-auto rounded-field border border-line bg-raised;
   }
 
   .account-menu > summary {
@@ -707,7 +705,7 @@
   }
 
   .account-menu-panel {
-    @apply absolute right-0 bottom-[calc(100%+0.5rem)] left-0 z-20 flex flex-col gap-0.5 rounded-card border-2 border-line bg-raised p-1.5;
+    @apply absolute right-0 bottom-[calc(100%+0.5rem)] left-0 z-20 flex flex-col gap-0.5 rounded-card border border-line bg-raised p-1.5;
     box-shadow: 0 12px 30px rgb(19 16 43 / 14%);
   }
 
@@ -733,15 +731,15 @@
   }
 
   .content h2 {
-    @apply mb-[0.35rem] text-[1.7rem] font-extrabold tracking-[-0.03em];
+    @apply mb-[0.35rem] text-[1.7rem] font-semibold tracking-[-0.03em];
   }
 
   .content h3 {
-    @apply mt-8 mb-3 text-[1.05rem] font-extrabold tracking-[-0.01em];
+    @apply mt-8 mb-3 text-[1.05rem] font-semibold tracking-[-0.01em];
   }
 
   .page-head {
-    @apply mb-7 flex flex-wrap items-end gap-4 border-b-2 border-line-soft pb-5;
+    @apply mb-7 flex flex-wrap items-end gap-4 border-b border-line-soft pb-5;
   }
 
   .page-head .muted {
@@ -754,7 +752,7 @@
 
   /* ---- a link that navigates, dressed as a button ---- */
   .btn {
-    @apply inline-flex items-center gap-[0.4rem] rounded-field border-2 border-line bg-raised px-[1rem] py-2 font-bold text-text leading-[1.4] whitespace-nowrap no-underline transition-[transform,box-shadow,background] duration-75;
+    @apply inline-flex items-center gap-[0.4rem] rounded-field border border-line bg-raised px-[1rem] py-2 font-bold text-text leading-[1.4] whitespace-nowrap no-underline transition-[transform,box-shadow,background] duration-75;
   }
 
   .btn:hover {
@@ -762,7 +760,7 @@
   }
 
   .btn.primary {
-    @apply border-accent-dim bg-accent font-extrabold text-accent-ink;
+    @apply border-accent-dim bg-accent font-semibold text-accent-ink;
     box-shadow: var(--shadow-brutal-sm);
   }
 
@@ -800,7 +798,7 @@
   }
 
   .login-pitch h2 {
-    @apply mb-2 text-[clamp(1.6rem,3vw,2.2rem)] leading-[1.1] font-extrabold tracking-[-0.03em];
+    @apply mb-2 text-[clamp(1.6rem,3vw,2.2rem)] leading-[1.1] font-semibold tracking-[-0.03em];
   }
 
   .login-points {
@@ -808,7 +806,7 @@
   }
 
   .login-points li {
-    @apply relative rounded-field border-2 border-accent-dim bg-white/15 py-2 pr-3 pl-6 font-semibold;
+    @apply relative rounded-field border border-accent-dim bg-white/15 py-2 pr-3 pl-6 font-semibold;
   }
 
   .login-points li::before {
@@ -821,7 +819,7 @@
   }
 
   .login-card {
-    @apply w-full max-w-[400px] rounded-card border-2 border-line bg-raised px-8 py-8;
+    @apply w-full max-w-[400px] rounded-card border border-line bg-raised px-8 py-8;
     box-shadow: var(--shadow-soft);
   }
 
@@ -830,11 +828,11 @@
   }
 
   .login-card h1 {
-    @apply mb-1 text-[1.6rem] font-extrabold tracking-[-0.02em];
+    @apply mb-1 text-[1.6rem] font-semibold tracking-[-0.02em];
   }
 
   .login-card input {
-    @apply rounded-field border-2 border-line bg-raised px-[0.8rem] py-[0.7rem];
+    @apply rounded-field border border-line bg-raised px-[0.8rem] py-[0.7rem];
   }
 
   .login-card input:focus {
@@ -867,7 +865,7 @@
   }
 
   .builder-stage {
-    @apply sticky top-4 rounded-card border-2 border-line bg-raised px-[1.15rem] py-[1.1rem];
+    @apply sticky top-4 rounded-card border border-line bg-raised px-[1.15rem] py-[1.1rem];
     box-shadow: var(--shadow-soft);
   }
 
@@ -896,7 +894,7 @@
   }
 
   .seg {
-    @apply inline-flex overflow-hidden rounded-field border-2 border-line bg-raised p-1;
+    @apply inline-flex overflow-hidden rounded-field border border-line bg-raised p-1;
   }
 
   .seg button {
@@ -908,7 +906,7 @@
   }
 
   .seg button.on {
-    @apply bg-accent font-extrabold text-accent-ink;
+    @apply bg-accent font-semibold text-accent-ink;
   }
 
   .seg button:disabled {
@@ -922,11 +920,11 @@
   }
 
   .copy-label {
-    @apply text-[0.72rem] font-extrabold tracking-[0.06em] text-faint uppercase;
+    @apply text-[0.72rem] font-semibold tracking-[0.06em] text-faint;
   }
 
   .copy-value {
-    @apply min-w-0 flex-1 [overflow-wrap:anywhere] rounded-field border-2 border-line bg-sunken px-[0.7rem] py-[0.55rem] font-mono text-[0.78rem] leading-[1.45] text-dim select-none;
+    @apply min-w-0 flex-1 [overflow-wrap:anywhere] rounded-field border border-line bg-sunken px-[0.7rem] py-[0.55rem] font-mono text-[0.78rem] leading-[1.45] text-dim select-none;
   }
 
   .copy-row {
@@ -944,7 +942,7 @@
   }
 
   .preview-canvas {
-    @apply relative overflow-hidden rounded-card border-2 border-line;
+    @apply relative overflow-hidden rounded-card border border-line;
     background: repeating-conic-gradient(#141414 0% 25%, #0d0d0d 0% 50%) 50% / 18px 18px;
   }
 
@@ -957,7 +955,7 @@
   }
 
   .preview-stage {
-    @apply relative min-h-[520px] overflow-hidden rounded-card border-2 border-line bg-sunken;
+    @apply relative min-h-[520px] overflow-hidden rounded-card border border-line bg-sunken;
   }
 
   .preview-stage iframe {
@@ -971,7 +969,7 @@
   }
 
   .toast {
-    @apply pointer-events-auto flex max-w-[min(26rem,calc(100vw-2rem))] items-center gap-3 rounded-field border-2 border-line bg-raised py-[0.6rem] pr-[0.6rem] pl-[1rem] font-semibold text-text animate-[toast-in_160ms_ease-out];
+    @apply pointer-events-auto flex max-w-[min(26rem,calc(100vw-2rem))] items-center gap-3 rounded-field border border-line bg-raised py-[0.6rem] pr-[0.6rem] pl-[1rem] font-semibold text-text animate-[toast-in_160ms_ease-out];
     box-shadow: var(--shadow-soft);
   }
 
@@ -994,12 +992,12 @@
   }
 
   .dialog-panel {
-    @apply rounded-card border-2 border-line bg-raised px-[1.35rem] pt-5 pb-4;
+    @apply rounded-card border border-line bg-raised px-[1.35rem] pt-5 pb-4;
     box-shadow: 0 18px 50px rgb(19 16 43 / 22%);
   }
 
   .dialog-panel h3 {
-    @apply mb-[0.6rem] text-[1.05rem] font-extrabold;
+    @apply mb-[0.6rem] text-[1.05rem] font-semibold;
   }
 
   .dialog-body {
@@ -1020,7 +1018,7 @@
   }
 
   .modal-panel {
-    @apply w-full max-w-sm rounded-card border-2 border-line bg-raised px-6 py-6 text-center;
+    @apply w-full max-w-sm rounded-card border border-line bg-raised px-6 py-6 text-center;
     box-shadow: 0 18px 50px rgb(19 16 43 / 22%);
   }
 
@@ -1031,7 +1029,7 @@
   }
 
   .stream-row {
-    @apply flex min-w-0 items-center gap-3 rounded-card border-2 border-line bg-raised p-4 no-underline transition-[border-color,background] duration-150;
+    @apply flex min-w-0 items-center gap-3 rounded-card border border-line bg-raised p-4 no-underline transition-[border-color,background] duration-150;
   }
 
   .stream-row:hover {
@@ -1039,7 +1037,7 @@
   }
 
   .stream-row-name {
-    @apply flex min-w-0 flex-wrap items-center gap-2 text-[1.02rem] font-extrabold tracking-[-0.01em] [overflow-wrap:anywhere];
+    @apply flex min-w-0 flex-wrap items-center gap-2 text-[1.02rem] font-semibold tracking-[-0.01em] [overflow-wrap:anywhere];
   }
 
   .stream-row-label {
@@ -1059,7 +1057,7 @@
   }
 
   .stream-name {
-    @apply flex min-w-0 flex-wrap items-center gap-2 text-[1.02rem] font-extrabold tracking-[-0.01em] [overflow-wrap:anywhere];
+    @apply flex min-w-0 flex-wrap items-center gap-2 text-[1.02rem] font-semibold tracking-[-0.01em] [overflow-wrap:anywhere];
   }
 
   .stream-links {
@@ -1067,7 +1065,7 @@
   }
 
   .link-line {
-    @apply flex min-w-0 items-center gap-3 rounded-field border-2 border-line-soft bg-raised px-3 py-[0.5rem];
+    @apply flex min-w-0 items-center gap-3 rounded-field border border-line-soft bg-raised px-3 py-[0.5rem];
   }
 
   .link-line-label {
@@ -1083,7 +1081,7 @@
   }
 
   .stream-links-more dt {
-    @apply text-[0.7rem] font-extrabold tracking-[0.06em] text-faint uppercase;
+    @apply text-[0.7rem] font-semibold tracking-[0.06em] text-faint;
   }
 
   .stream-links-more dd {
@@ -1091,7 +1089,7 @@
   }
 
   .stream-links-more code {
-    @apply block rounded-field border-2 border-line-soft bg-sunken px-[0.6rem] py-[0.45rem] font-mono text-[0.72rem] leading-[1.5] text-dim [overflow-wrap:anywhere] select-none;
+    @apply block rounded-field border border-line-soft bg-sunken px-[0.6rem] py-[0.45rem] font-mono text-[0.72rem] leading-[1.5] text-dim [overflow-wrap:anywhere] select-none;
   }
 
   .row .field {
@@ -1105,7 +1103,7 @@
   }
 
   .section-heading {
-    @apply mt-6 mb-3 text-[0.72rem] font-extrabold tracking-[0.1em] text-accent uppercase;
+    @apply mt-6 mb-3 text-[0.72rem] font-semibold tracking-[0.1em] text-accent;
   }
 
   .chart-controls {
@@ -1126,7 +1124,7 @@
   }
 
   .bar-track {
-    @apply h-[0.7rem] min-w-0 overflow-hidden rounded-pill border-2 border-line-soft bg-sunken;
+    @apply h-[0.7rem] min-w-0 overflow-hidden rounded-pill border border-line-soft bg-sunken;
   }
 
   .bar-fill {
@@ -1135,7 +1133,7 @@
   }
 
   .bar-value {
-    @apply truncate text-right text-[0.85rem] font-extrabold tabular-nums;
+    @apply truncate text-right text-[0.85rem] font-semibold tabular-nums;
   }
 
   /* ---- the leaderboards ---- */
@@ -1144,11 +1142,11 @@
   }
 
   .leaderboard {
-    @apply rounded-card border-2 border-line bg-raised p-4;
+    @apply rounded-card border border-line bg-raised p-4;
   }
 
   .leaderboard-title {
-    @apply m-0 mb-2 text-[0.72rem] font-extrabold tracking-[0.1em] text-faint uppercase;
+    @apply m-0 mb-2 text-[0.72rem] font-semibold tracking-[0.1em] text-faint;
   }
 
   .leaderboard-list {
@@ -1161,7 +1159,7 @@
   }
 
   .leaderboard-rank {
-    @apply text-right text-[0.75rem] font-extrabold text-faint tabular-nums;
+    @apply text-right text-[0.75rem] font-semibold text-faint tabular-nums;
   }
 
   .leaderboard-name {
@@ -1216,7 +1214,7 @@
   }
 
   .session-grid dd {
-    @apply text-[0.78rem] font-extrabold tabular-nums;
+    @apply text-[0.78rem] font-semibold tabular-nums;
   }
 
   .session-leaders {
@@ -1232,7 +1230,7 @@
   }
 
   .style-group-title {
-    @apply mt-5 mb-3 border-t-2 border-line-soft pt-4 text-[10px] font-extrabold tracking-[0.14em] text-accent uppercase;
+    @apply mt-5 mb-3 border-t-2 border-line-soft pt-4 text-[10px] font-semibold tracking-[0.14em] text-accent;
   }
 
   .style-group-title:first-of-type {
@@ -1246,7 +1244,7 @@
   }
 
   .app-pick h1 {
-    @apply text-[clamp(1.9rem,4vw,2.6rem)] leading-[1.05] font-extrabold tracking-tight text-text;
+    @apply text-[clamp(1.9rem,4vw,2.6rem)] leading-[1.05] font-semibold tracking-tight text-text;
   }
 
   .app-pick h1 span {
@@ -1258,7 +1256,7 @@
   }
 
   .platform-btn {
-    @apply flex items-center gap-4 rounded-card border-2 border-line bg-raised px-5 py-4 text-[15px] font-extrabold text-text no-underline;
+    @apply flex items-center gap-4 rounded-card border border-line bg-raised px-5 py-4 text-[15px] font-semibold text-text no-underline;
   }
 
   .platform-btn:hover {
@@ -1266,7 +1264,7 @@
   }
 
   .platform-btn .platform-mark {
-    @apply grid h-10 w-10 shrink-0 place-items-center rounded-field border-2 border-accent-dim bg-accent text-base font-extrabold text-accent-ink;
+    @apply grid h-10 w-10 shrink-0 place-items-center rounded-field border border-accent-dim bg-accent text-base font-semibold text-accent-ink;
   }
 
   .platform-btn .platform-go {
@@ -1282,7 +1280,7 @@
   }
 
   .app-pick .field > input {
-    @apply w-full rounded-field border-2 border-line bg-raised px-4 py-3 text-[15px] text-text outline-none;
+    @apply w-full rounded-field border border-line bg-raised px-4 py-3 text-[15px] text-text outline-none;
   }
 
   .app-pick .field > input:focus {
@@ -1295,7 +1293,7 @@
   }
 
   .overlay-link {
-    @apply overflow-x-auto rounded-field border-2 border-line bg-sunken px-4 py-3;
+    @apply overflow-x-auto rounded-field border border-line bg-sunken px-4 py-3;
   }
 
   .overlay-link code {
@@ -1316,7 +1314,7 @@
   }
 
   .landing-header {
-    @apply h-[68px] border-b-2 border-line bg-bg/95;
+    @apply h-[68px] border-b border-line bg-bg/95;
     backdrop-filter: blur(8px);
   }
 
@@ -1325,12 +1323,12 @@
   }
 
   .landing-brand .brand-symbol {
-    @apply grid h-8 w-8 place-items-center rounded-[10px] border-2 border-accent-dim bg-accent text-sm font-extrabold text-accent-ink;
+    @apply grid h-8 w-8 place-items-center rounded-[10px] border border-accent-dim bg-accent text-sm font-semibold text-accent-ink;
     box-shadow: 0 3px 0 0 var(--accent-dim);
   }
 
   .landing-wordmark {
-    @apply text-[16px] font-extrabold tracking-tight text-text;
+    @apply text-[16px] font-semibold tracking-tight text-text;
   }
 
   .landing-wordmark span {
@@ -1357,7 +1355,7 @@
   }
 
   .landing-nav .landing-cta-link {
-    @apply rounded-field border-2 border-accent-dim bg-accent px-4 py-2 text-accent-ink;
+    @apply rounded-field border border-accent-dim bg-accent px-4 py-2 text-accent-ink;
     box-shadow: 0 3px 0 0 var(--accent-dim);
   }
 
@@ -1379,7 +1377,7 @@
   }
 
   .eyebrow {
-    @apply inline-flex items-center gap-2 text-[11px] font-extrabold tracking-[0.22em] text-accent uppercase;
+    @apply inline-flex items-center gap-2 text-[11px] font-semibold tracking-[0.22em] text-accent;
   }
 
   .live-dot {
@@ -1387,7 +1385,7 @@
   }
 
   .landing-copy h1 {
-    @apply mt-5 max-w-[16ch] text-[clamp(3rem,9vw,6.5rem)] leading-[0.9] font-extrabold tracking-[-0.04em] text-text;
+    @apply mt-5 max-w-[16ch] text-[clamp(3rem,9vw,6.5rem)] leading-[0.9] font-semibold tracking-[-0.04em] text-text;
     text-wrap: balance;
   }
 
@@ -1420,7 +1418,7 @@
   }
 
   .landing-proof {
-    @apply mt-10 flex flex-wrap justify-center gap-x-6 gap-y-2 text-[11px] font-bold tracking-[0.06em] text-faint uppercase;
+    @apply mt-10 flex flex-wrap justify-center gap-x-6 gap-y-2 text-[11px] font-bold tracking-[0.06em] text-faint;
   }
 
   .landing-proof b {
@@ -1436,12 +1434,12 @@
   }
 
   .overlay-mock {
-    @apply relative overflow-hidden rounded-card border-2 border-line bg-raised;
+    @apply relative overflow-hidden rounded-card border border-line bg-raised;
     box-shadow: 0 8px 0 0 var(--line);
   }
 
   .mock-topbar {
-    @apply flex h-11 items-center justify-between border-b-2 border-line bg-accent px-4 text-[9px] font-extrabold tracking-[0.12em] text-accent-ink;
+    @apply flex h-11 items-center justify-between border-b border-line bg-accent px-4 text-[9px] font-semibold tracking-[0.12em] text-accent-ink;
   }
 
   .mock-window-dots {
@@ -1465,7 +1463,7 @@
   }
 
   .mock-live {
-    @apply flex items-center gap-1.5 rounded-pill border-2 border-accent-dim bg-raised px-2 py-0.5 text-text;
+    @apply flex items-center gap-1.5 rounded-pill border border-accent-dim bg-raised px-2 py-0.5 text-text;
   }
 
   .mock-live .live-dot {
@@ -1477,7 +1475,7 @@
   }
 
   .mock-message {
-    @apply flex items-center gap-3 rounded-field border-2 border-line bg-bg p-3.5;
+    @apply flex items-center gap-3 rounded-field border border-line bg-bg p-3.5;
     animation: mock-arrive 5s ease-in-out infinite;
   }
 
@@ -1490,7 +1488,7 @@
   }
 
   .mock-message b {
-    @apply text-[12px] font-extrabold text-text;
+    @apply text-[12px] font-semibold text-text;
   }
 
   .mock-message small {
@@ -1498,7 +1496,7 @@
   }
 
   .mock-avatar {
-    @apply grid h-9 w-9 shrink-0 place-items-center rounded-full border-2 border-line text-[11px] font-extrabold text-accent-ink;
+    @apply grid h-9 w-9 shrink-0 place-items-center rounded-full border border-line text-[11px] font-semibold text-accent-ink;
   }
 
   .avatar-a {
@@ -1511,7 +1509,7 @@
   }
 
   .mock-event {
-    @apply self-start rounded-field border-2 border-accent-dim bg-accent px-3 py-2 text-[11px] font-extrabold text-accent-ink;
+    @apply self-start rounded-field border border-accent-dim bg-accent px-3 py-2 text-[11px] font-semibold text-accent-ink;
   }
 
   .mock-event span {
@@ -1546,7 +1544,7 @@
   }
 
   .marquee-item {
-    @apply flex items-center gap-8 text-[17px] font-extrabold tracking-[0.08em] whitespace-nowrap text-white uppercase;
+    @apply flex items-center gap-8 text-[17px] font-semibold tracking-[0.08em] whitespace-nowrap text-white;
   }
 
   .marquee-star {
@@ -1564,7 +1562,7 @@
   .section-intro h2,
   .landing-cta h2,
   .landing-steps h2 {
-    @apply mt-2 max-w-[24ch] text-[clamp(1.95rem,4.6vw,3.25rem)] leading-[1.1] font-extrabold tracking-[-0.03em] text-text;
+    @apply mt-2 max-w-[24ch] text-[clamp(1.95rem,4.6vw,3.25rem)] leading-[1.1] font-semibold tracking-[-0.03em] text-text;
     text-wrap: balance;
   }
 
@@ -1582,7 +1580,7 @@
   }
 
   .feature-card {
-    @apply h-full rounded-card border-2 border-line bg-raised p-6 transition-[transform,box-shadow] duration-150;
+    @apply h-full rounded-card border border-line bg-raised p-6 transition-[transform,box-shadow] duration-150;
     box-shadow: 0 6px 0 0 var(--line);
   }
 
@@ -1597,11 +1595,11 @@
   }
 
   .feature-mark {
-    @apply grid h-10 w-10 place-items-center rounded-field border-2 border-accent-dim bg-accent text-sm font-extrabold text-accent-ink;
+    @apply grid h-10 w-10 place-items-center rounded-field border border-accent-dim bg-accent text-sm font-semibold text-accent-ink;
   }
 
   .feature-card h3 {
-    @apply mt-6 text-xl font-extrabold tracking-tight text-text;
+    @apply mt-6 text-xl font-semibold tracking-tight text-text;
   }
 
   .feature-card p {
@@ -1618,16 +1616,16 @@
   }
 
   .step-card {
-    @apply relative rounded-card border-2 border-line bg-raised p-6 pt-8;
+    @apply relative rounded-card border border-line bg-raised p-6 pt-8;
     box-shadow: 0 6px 0 0 var(--line);
   }
 
   .step-num {
-    @apply absolute -top-4 left-6 grid h-8 w-8 place-items-center rounded-full border-2 border-accent-dim bg-accent font-mono text-[12px] font-extrabold text-accent-ink;
+    @apply absolute -top-4 left-6 grid h-8 w-8 place-items-center rounded-full border border-accent-dim bg-accent font-mono text-[12px] font-semibold text-accent-ink;
   }
 
   .step-card h3 {
-    @apply text-lg font-extrabold tracking-tight text-text;
+    @apply text-lg font-semibold tracking-tight text-text;
   }
 
   .step-card p {
@@ -1639,15 +1637,15 @@
   }
 
   .landing-benefits article {
-    @apply flex gap-4 rounded-card border-2 border-line-soft bg-raised p-5;
+    @apply flex gap-4 rounded-card border border-line-soft bg-raised p-5;
   }
 
   .benefit-index {
-    @apply font-mono text-[11px] font-extrabold text-accent;
+    @apply font-mono text-[11px] font-semibold text-accent;
   }
 
   .landing-benefits h3 {
-    @apply text-[13px] font-extrabold text-text;
+    @apply text-[13px] font-semibold text-text;
   }
 
   .landing-benefits p {
@@ -1660,7 +1658,7 @@
      mode it is white — and a panel that followed it would be white-on-white in
      dark mode. A fixed dark block reads as the loud end of the page either way. */
   .landing-cta {
-    @apply my-[clamp(4rem,8vw,6rem)] flex flex-col items-center gap-6 rounded-card border-2 border-line bg-[#13102b] px-6 py-16 text-center text-white;
+    @apply my-[clamp(4rem,8vw,6rem)] flex flex-col items-center gap-6 rounded-card border border-line bg-[#13102b] px-6 py-16 text-center text-white;
     box-shadow: 0 8px 0 0 var(--line);
   }
 
@@ -1724,7 +1722,7 @@
   }
 
   .sidebar {
-    @apply static h-auto! border-r-0 border-b-2 border-line px-4 py-4;
+    @apply static h-auto! border-r-0 border-b border-line px-4 py-4;
   }
 
   .sidebar nav {
