@@ -29,3 +29,11 @@ systemctl enable --now convex-local
 `/etc/convex/env` holds `INSTANCE_NAME`, `INSTANCE_SECRET` and
 `CONVEX_ADMIN_KEY` (mode 600). If it is lost, the running bridge still carries
 them in `/proc/$(systemctl show -p MainPID --value tiktok-bridge)/environ`.
+
+Functions read `STREAMKIT_TOKEN` from the **deployment's** env, not from the
+unit file. An empty deployment env makes every gated function throw
+`Invalid or missing token`; restore it with:
+
+```sh
+npx convex env set STREAMKIT_TOKEN "<value from /etc/streamkit/env>"
+```
