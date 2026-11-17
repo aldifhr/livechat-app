@@ -4,21 +4,21 @@
 <meta charset="utf-8">
 <title>Background Stream Vertikal - Excel Mobile Meme</title>
 <style>
-  html,body{margin:0;padding:0;background:transparent;overflow:hidden;width:100%;height:100%}
-  #stage{position:absolute;inset:0;width:100%;height:100%}
+  html,body{margin:0;padding:0;background:transparent;overflow:hidden;width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+  #stage{position:relative;width:1080px;height:1920px;overflow:hidden}
   svg{display:block;width:100%;height:100%}
   
 
   /* Live comments sit in the Excel mobile Comments strip and scale with the stage. */
-  #live-feed{position:absolute;left:3.7037%;top:77.2917%;width:92.5926%;height:10.9375%;overflow:hidden;display:flex;flex-direction:column;gap:0.74vh}
+  #live-feed{position:absolute;left:3.7037%;top:77.2917%;width:92.5926%;height:10.9375%;overflow:hidden;display:flex;flex-direction:column;gap:calc(8px * var(--s,1))}
   .live-card{margin:0 0 0 32px;width:960px;box-sizing:border-box;font-family:Segoe UI,Roboto,Inter,Arial,DejaVu Sans,sans-serif}
   .live-head{display:flex;align-items:center;gap:14px}
-  .live-avatar{width:5.1852vw;height:5.1852vw;flex:none;border-radius:50%;background:#8764b8;color:#fff;font-size:2.4074vw;font-weight:600;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .live-avatar{width:calc(56px * var(--s,1));height:calc(56px * var(--s,1));flex:none;border-radius:50%;background:#8764b8;color:#fff;font-size:calc(26px * var(--s,1));font-weight:600;display:flex;align-items:center;justify-content:center;overflow:hidden}
   .live-avatar img{width:100%;height:100%;object-fit:cover}
-  .live-name{font-size:2.7778vw;font-weight:600;color:#262626;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .live-time{margin-left:auto;font-size:2.4074vw;color:#707070;flex:none}
-  .live-text{margin-top:0.35vh;font-size:3.1481vw;line-height:1.2;color:#262626;overflow-wrap:anywhere;max-height:4.1vh;overflow:hidden}
-  #live-note{position:absolute;left:3.7037%;top:74.1667%;width:92.5926%;font-size:2.2222vw;color:#707070;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .live-name{font-size:calc(30px * var(--s,1));font-weight:600;color:#262626;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .live-time{margin-left:auto;font-size:calc(26px * var(--s,1));color:#707070;flex:none}
+  .live-text{margin-top:calc(4px * var(--s,1));font-size:calc(34px * var(--s,1));line-height:1.2;color:#262626;overflow-wrap:anywhere;max-height:calc(44px * var(--s,1));overflow:hidden}
+  #live-note{position:absolute;left:3.7037%;top:74.1667%;width:92.5926%;font-size:calc(24px * var(--s,1));color:#707070;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 </style>
 </head>
 <body>
@@ -233,6 +233,19 @@
     var value = custom.get(el.getAttribute('data-k'))
     if (value !== null) el.textContent = value
   })
+
+  // Keep the SVG and the HTML chat in one fixed-aspect frame. Resizing the
+  // frame (not CSS-transforming it) keeps text crisp and the two in sync even
+  // when LIVE Studio's browser source has a different aspect ratio.
+  var stage = document.getElementById('stage')
+  function fit() {
+    var s = Math.min(innerWidth / 1080, innerHeight / 1920)
+    stage.style.width = (1080 * s) + 'px'
+    stage.style.height = (1920 * s) + 'px'
+    stage.style.setProperty('--s', s)
+  }
+  addEventListener('resize', fit)
+  fit()
 
   var baked = (function () {
     try { return JSON.parse(document.getElementById('overlay-config').textContent) || {} }
