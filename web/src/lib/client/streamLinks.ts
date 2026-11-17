@@ -70,6 +70,7 @@ export function streamLinks(roomId: string) {
     topChatters: api.topChatterOverlay(roomId),
     likeTarget: api.likeTargetOverlay(roomId),
     excelBackground: api.excelBackgroundOverlay(roomId),
+    excelBackgroundVertical: api.excelBackgroundVerticalOverlay(roomId),
   }
 }
 
@@ -81,4 +82,5 @@ export const LINK_LABELS = {
   topChatters: 'Top Chatters',
   likeTarget: 'Target Likes',
   excelBackground: 'Excel Background + Live Comments',
+  excelBackgroundVertical: 'Excel Vertical + Live Comments',
 } as const
