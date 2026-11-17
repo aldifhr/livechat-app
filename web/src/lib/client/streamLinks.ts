@@ -51,6 +51,11 @@ export function giveawayPath(username: string, id: string): string {
   return `${profilePath(username, id)}/giveaway`
 }
 
+/** The Excel text editor for one stream. */
+export function excelTextPath(username: string, id: string): string {
+  return `${profilePath(username, id)}/excel-text?room=${encodeURIComponent(id)}`
+}
+
 /**
  * The overlay links for one stream, in full.
  *

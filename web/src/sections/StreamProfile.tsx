@@ -25,7 +25,7 @@ import { api, ApiError, isAuthFailure } from '@/lib/client/api'
 import { useOrigin } from '@/hooks/useBrowser'
 import { usePoll } from '@/hooks/usePoll'
 import { useConnectionWatch } from '@/hooks/useConnectionWatch'
-import { streamLinks, LINK_LABELS, customizerPath, giveawayPath } from '@/lib/client/streamLinks'
+import { streamLinks, LINK_LABELS, customizerPath, giveawayPath, excelTextPath } from '@/lib/client/streamLinks'
 import type { Room, RoomSession, RoomStatus } from '@/lib/types'
 import LinkLine from '@/components/LinkLine'
 import ConfirmDialog from '@/components/ConfirmDialog'
@@ -251,6 +251,9 @@ export default function StreamProfile({
           </Link>
           <Link className="btn" href={customizerPath(room.username, room.id, 'like-target')}>
             Style likes
+          </Link>
+          <Link className="btn" href={excelTextPath(room.username, room.id)}>
+            Edit Excel teks
           </Link>
           <Link className="btn" href={giveawayPath(room.username, room.id)}>
             Giveaway
