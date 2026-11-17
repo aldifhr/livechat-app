@@ -107,7 +107,11 @@ export function toFrame(kind, event) {
     case 'comment': {
       const n = named(user)
       if (!n.user) return null
-      const frame = { type: 'comment', ...n, text: event.comment || '' }
+      // The connector's simplified chat event carries the message in `content`.
+      // Older releases (and the Python backend this replaced) called it
+      // `comment`; both are accepted so a library upgrade cannot silently turn
+      // every chat row into a name with no message.
+      const frame = { type: 'comment', ...n, text: String(event.content ?? event.comment ?? '') }
       const mentions = [
         ...new Set(
           (event.mentionUsers || event.mention_users || [])
