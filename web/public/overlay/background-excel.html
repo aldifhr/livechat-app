@@ -5,20 +5,20 @@
 <title>Background Stream - Excel Meme</title>
 <style>
   html,body{margin:0;padding:0;background:transparent;overflow:hidden;width:100%;height:100%}
-  #stage{width:1920px;height:1080px;transform-origin:0 0;position:absolute;left:0;top:0}
-  svg{display:block}
+  #stage{position:absolute;inset:0;width:100%;height:100%}
+  svg{display:block;width:100%;height:100%}
   
 
   /* Live comments sit inside the SVG's Comments panel and scale with the stage. */
-  #live-feed{position:absolute;left:1600px;top:244px;width:320px;height:700px;overflow:hidden;display:flex;flex-direction:column;gap:10px}
+  #live-feed{position:absolute;left:83.3333%;top:22.5926%;width:16.6667%;height:64.8148%;overflow:hidden;display:flex;flex-direction:column;gap:0.93vh}
   .live-card{margin:0 12px 0 12px;width:296px;min-height:96px;box-sizing:border-box;background:#fff;border:1px solid #e1dfdd;border-radius:4px;padding:12px 14px;box-shadow:0 1px 2px rgb(0 0 0 / .05)}
   .live-head{display:flex;align-items:center;gap:8px}
-  .live-avatar{width:26px;height:26px;flex:none;border-radius:50%;background:#8764b8;color:#fff;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .live-avatar{width:1.3542vw;height:1.3542vw;flex:none;border-radius:50%;background:#8764b8;color:#fff;font-size:0.5729vw;font-weight:600;display:flex;align-items:center;justify-content:center;overflow:hidden}
   .live-avatar img{width:100%;height:100%;object-fit:cover}
-  .live-name{font-size:13px;font-weight:600;color:#262626;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .live-time{margin-left:auto;font-size:11.5px;color:#707070;flex:none}
-  .live-text{margin-top:7px;font-size:13px;line-height:1.35;color:#262626;overflow-wrap:anywhere;max-height:54px;overflow:hidden}
-  #live-note{position:absolute;left:1612px;top:230px;width:296px;font-size:11px;color:#8a8a8a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .live-name{font-size:0.6771vw;font-weight:600;color:#262626;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .live-time{margin-left:auto;font-size:0.599vw;color:#707070;flex:none}
+  .live-text{margin-top:0.65vh;font-size:0.6771vw;line-height:1.35;color:#262626;overflow-wrap:anywhere;max-height:5vh;overflow:hidden}
+  #live-note{position:absolute;left:83.9583%;top:21.2963%;width:15.4167%;font-size:0.5729vw;color:#8a8a8a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 </style>
 </head>
 <body>
@@ -436,25 +436,8 @@
 </div>
 <script id="overlay-config" type="application/json">__OVERLAY_CONFIG__</script>
 <script>
-  // Otomatis menyesuaikan ukuran (di OBS 1920x1080 skalanya 1:1)
-  function fit(){
-    var k=Math.min(innerWidth/1920,innerHeight/1080);
-    document.getElementById('stage').style.transform='scale('+k+')';
-  }
-  addEventListener('resize',fit);fit();
-</script>
-
-<script>
 (function () {
   'use strict'
-
-  // Otomatis menyesuaikan ukuran (di OBS 1920x1080 skalanya 1:1)
-  function fit() {
-    var k = Math.min(innerWidth / 1920, innerHeight / 1080)
-    document.getElementById('stage').style.transform = 'scale(' + k + ')'
-  }
-  addEventListener('resize', fit)
-  fit()
 
   var baked = (function () {
     try { return JSON.parse(document.getElementById('overlay-config').textContent) || {} }

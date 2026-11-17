@@ -5,20 +5,20 @@
 <title>Background Stream Vertikal - Excel Mobile Meme</title>
 <style>
   html,body{margin:0;padding:0;background:transparent;overflow:hidden;width:100%;height:100%}
-  #stage{width:1080px;height:1920px;transform-origin:0 0;position:absolute;left:0;top:0}
-  svg{display:block}
+  #stage{position:absolute;inset:0;width:100%;height:100%}
+  svg{display:block;width:100%;height:100%}
   
 
   /* Live comments sit in the Excel mobile Comments strip and scale with the stage. */
-  #live-feed{position:absolute;left:40px;top:1484px;width:1000px;height:210px;overflow:hidden;display:flex;flex-direction:column;gap:8px}
+  #live-feed{position:absolute;left:3.7037%;top:77.2917%;width:92.5926%;height:10.9375%;overflow:hidden;display:flex;flex-direction:column;gap:0.74vh}
   .live-card{margin:0 0 0 32px;width:960px;box-sizing:border-box;font-family:Segoe UI,Roboto,Inter,Arial,DejaVu Sans,sans-serif}
   .live-head{display:flex;align-items:center;gap:14px}
-  .live-avatar{width:56px;height:56px;flex:none;border-radius:50%;background:#8764b8;color:#fff;font-size:26px;font-weight:600;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .live-avatar{width:5.1852vw;height:5.1852vw;flex:none;border-radius:50%;background:#8764b8;color:#fff;font-size:2.4074vw;font-weight:600;display:flex;align-items:center;justify-content:center;overflow:hidden}
   .live-avatar img{width:100%;height:100%;object-fit:cover}
-  .live-name{font-size:30px;font-weight:600;color:#262626;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .live-time{margin-left:auto;font-size:26px;color:#707070;flex:none}
-  .live-text{margin-top:4px;font-size:34px;line-height:1.2;color:#262626;overflow-wrap:anywhere;max-height:44px;overflow:hidden}
-  #live-note{position:absolute;left:40px;top:1424px;width:1000px;font-size:24px;color:#707070;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .live-name{font-size:2.7778vw;font-weight:600;color:#262626;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .live-time{margin-left:auto;font-size:2.4074vw;color:#707070;flex:none}
+  .live-text{margin-top:0.35vh;font-size:3.1481vw;line-height:1.2;color:#262626;overflow-wrap:anywhere;max-height:4.1vh;overflow:hidden}
+  #live-note{position:absolute;left:3.7037%;top:74.1667%;width:92.5926%;font-size:2.2222vw;color:#707070;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 </style>
 </head>
 <body>
@@ -220,22 +220,11 @@
     set('colHi',{x:h.x,width:h.w}); set('colHiLine',{x:h.x,width:h.w});
     set('rowHi',{y:h.y,height:h.h}); set('rowHiLine',{y:h.y,height:h.h});
   })();
-  function fit(){
-    var k=Math.min(innerWidth/1080,innerHeight/1920);
-    $('stage').style.transform='scale('+k+')';
-  }
-  addEventListener('resize',fit);fit();
 </script>
 
 <script>
 (function () {
   'use strict'
-  function fit() {
-    var k = Math.min(innerWidth / 1080, innerHeight / 1920)
-    document.getElementById('stage').style.transform = 'scale(' + k + ')'
-  }
-  addEventListener('resize', fit)
-  fit()
 
   var baked = (function () {
     try { return JSON.parse(document.getElementById('overlay-config').textContent) || {} }
