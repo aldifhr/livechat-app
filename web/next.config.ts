@@ -39,9 +39,26 @@ const config: NextConfig = {
       "form-action 'self'",
     ].join('; ')
 
+    // Overlays are embedded by OBS and TikTok LIVE Studio, which load the page
+    // inside a frame. The global rules below deny framing, so every overlay
+    // address has its own rule: same protections, but no X-Frame-Options and an
+    // explicit `frame-ancestors *`. Without that, LIVE Studio refuses the link
+    // with "enter correct url" before the page has a chance to load.
+    const overlayCsp = [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis",
+      "font-src 'self' https://fonts.gstatic.com data:",
+      "img-src 'self' data: https:",
+      "connect-src 'self' https://kit-backend.aldifhr.my.id https://streamtools.aldifhr.my.id wss://kit-backend.aldifhr.my.id wss://streamtools.aldifhr.my.id",
+      "frame-ancestors *",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ].join('; ')
+
     return [
       {
-        source: '/((?!_next/static|_next/image|favicon.ico).*)',
+        source: '/((?!_next/static|_next/image|favicon.ico|overlay/).*)',
         headers: [
           {
             key: 'Content-Security-Policy',
@@ -63,6 +80,14 @@ const config: NextConfig = {
             key: 'Permissions-Policy',
             value: 'camera=(), microphone=(), geolocation=()',
           },
+        ],
+      },
+      {
+        source: '/overlay/:path*',
+        headers: [
+          { key: 'Content-Security-Policy', value: overlayCsp },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
         ],
       },
     ]
