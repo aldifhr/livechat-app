@@ -10,6 +10,7 @@ const OVERLAYS: Record<string, string> = {
   'cat-overlay': 'cat-overlay.html',
   'top-chatter': 'top-chatter.html',
   'like-target': 'like-target.html',
+  'background-excel': 'background-excel.html',
 }
 
 /** Serve the overlay from this web host while pointing its live socket at the backend. */
