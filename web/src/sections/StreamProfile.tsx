@@ -284,6 +284,7 @@ export default function StreamProfile({
           <LinkLine label={LINK_LABELS.cat} url={links.cat} />
           <LinkLine label={LINK_LABELS.topChatters} url={links.topChatters} />
           <LinkLine label={LINK_LABELS.likeTarget} url={links.likeTarget} />
+          <LinkLine label={LINK_LABELS.excelBackground} url={links.excelBackground} />
           {/* All of them, in full, for the times they do have to be read: checking
               what is already sitting in OBS, or copying one by hand. */}
           <details className="stream-links-more">
@@ -308,6 +309,10 @@ export default function StreamProfile({
               <dt>{LINK_LABELS.likeTarget}</dt>
               <dd>
                 <code>{links.likeTarget}</code>
+              </dd>
+              <dt>{LINK_LABELS.excelBackground}</dt>
+              <dd>
+                <code>{links.excelBackground}</code>
               </dd>
             </dl>
           </details>

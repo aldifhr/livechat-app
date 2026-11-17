@@ -55,12 +55,12 @@ export function giveawayPath(username: string, id: string): string {
  * The overlay links for one stream, in full.
  *
  * Named rather than inlined because a link pasted into OBS is the product's
- * terminal action, and every page that offers one has to offer the same three. The
- * studio variant is the same page with a different parameter, which is why it looks
- * like a sibling here and is a separate link to whoever copies it.
+ * terminal action, and every page that offers one has to offer the same set. The
+ * studio variant is the same page with a different parameter, which is why it
+ * looks like a sibling here and is a separate link to whoever copies it.
  *
- * The cat is another visual option alongside the chat overlays, for when the streamer
- * wants something other than the standard chat cards.
+ * The cat, board, likes and Excel background are visual options alongside the
+ * chat overlay, for when the streamer wants something other than chat cards.
  */
 export function streamLinks(roomId: string) {
   return {
@@ -69,6 +69,7 @@ export function streamLinks(roomId: string) {
     cat: api.catOverlay(roomId),
     topChatters: api.topChatterOverlay(roomId),
     likeTarget: api.likeTargetOverlay(roomId),
+    excelBackground: api.excelBackgroundOverlay(roomId),
   }
 }
 
@@ -79,4 +80,5 @@ export const LINK_LABELS = {
   cat: 'Kucing Pixel Stream',
   topChatters: 'Top Chatters',
   likeTarget: 'Target Likes',
+  excelBackground: 'Excel Background + Live Comments',
 } as const
