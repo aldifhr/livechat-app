@@ -10,11 +10,10 @@ WorkingDirectory=/root/livechat-app/web
 Environment=PATH=/root/livechat-app/web/node_modules/.bin:/usr/local/bin:/usr/bin:/bin
 Environment=NODE_ENV=production
 EnvironmentFile=/etc/streamkit/env
+# Dashboard password hash & session secret come from the env file above — never here.
 Environment=NEXT_PUBLIC_CONVEX_URL=https://kit-backend.aldifhr.my.id
 Environment=BRIDGE_URL=http://127.0.0.1:8003
 Environment=BACKEND_ORIGIN=https://kit-backend.aldifhr.my.id
-Environment=STREAMKIT_DASHBOARD_PASSWORD_HASH=$2b$10$MYTVCEmFsFpXxs.FhxUqHeEC/KUBCQbIWaghf3ct5MYnE1j3O3AHW
-Environment=STREAMKIT_SESSION_SECRET=4776fa8d3b09a398cf266fda607891fe6164aed60d627fff5450b4d3432bc0c9
 ExecStart=/root/livechat-app/web/node_modules/.bin/next start --port 5184
 Restart=always
 RestartSec=5
