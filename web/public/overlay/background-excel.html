@@ -7,8 +7,18 @@
   html,body{margin:0;padding:0;background:transparent;overflow:hidden;width:100%;height:100%}
   #stage{width:1920px;height:1080px;transform-origin:0 0;position:absolute;left:0;top:0}
   svg{display:block}
-  .b{opacity:0;animation:pop 18s infinite}
-  @keyframes pop{0%{opacity:0;transform:translateY(10px)}3%{opacity:1;transform:translateY(0)}90%{opacity:1;transform:translateY(0)}95%,100%{opacity:0;transform:translateY(0)}}
+  
+
+  /* Live comments sit inside the SVG's Comments panel and scale with the stage. */
+  #live-feed{position:absolute;left:1600px;top:244px;width:320px;height:700px;overflow:hidden;display:flex;flex-direction:column;gap:10px}
+  .live-card{margin:0 12px 0 12px;width:296px;min-height:96px;box-sizing:border-box;background:#fff;border:1px solid #e1dfdd;border-radius:4px;padding:12px 14px;box-shadow:0 1px 2px rgb(0 0 0 / .05)}
+  .live-head{display:flex;align-items:center;gap:8px}
+  .live-avatar{width:26px;height:26px;flex:none;border-radius:50%;background:#8764b8;color:#fff;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .live-avatar img{width:100%;height:100%;object-fit:cover}
+  .live-name{font-size:13px;font-weight:600;color:#262626;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .live-time{margin-left:auto;font-size:11.5px;color:#707070;flex:none}
+  .live-text{margin-top:7px;font-size:13px;line-height:1.35;color:#262626;overflow-wrap:anywhere;max-height:54px;overflow:hidden}
+  #live-note{position:absolute;left:1612px;top:230px;width:296px;font-size:11px;color:#8a8a8a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 </style>
 </head>
 <body>
@@ -404,50 +414,10 @@
 <line x1="1896" y1="171" x2="1906" y2="181" stroke="#444" stroke-width="1.4" /><line x1="1906" y1="171" x2="1896" y2="181" stroke="#444" stroke-width="1.4" />
 <rect x="1612" y="202" width="78" height="28" fill="#fff" stroke="#c8c8c8" stroke-width="1" rx="3" /><line x1="1624" y1="216" x2="1632" y2="216" stroke="#217346" stroke-width="1.8" /><line x1="1628" y1="212" x2="1628" y2="220" stroke="#217346" stroke-width="1.8" /><text x="1640" y="221" font-size="13" fill="#262626" font-weight="normal" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >New</text>
 <text x="1770" y="221" font-size="12" fill="#666" font-weight="normal" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >Show:</text><text x="1812" y="221" font-size="13" fill="#262626" font-weight="normal" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >All comments</text><polygon points="1892,214 1899,214 1895.5,217.2" fill="#444"/>
-<g class="b" style="animation-delay:0.0s">
-<rect x="1612" y="244" width="296" height="168" fill="#fff" stroke="#e1dfdd" stroke-width="1" rx="4" />
-<circle cx="1636" cy="266" r="13" fill="#8764b8"/><text x="1636" y="270.5" font-size="11" fill="#fff" font-weight="600" text-anchor="middle" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >PB</text>
-<text x="1658" y="264" font-size="13" fill="#262626" font-weight="600" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >Pak Bambang</text><text x="1658" y="280" font-size="11.5" fill="#707070" font-weight="normal" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >10.42</text>
-<text x="1658" y="302" font-size="13" fill="#262626" font-weight="normal" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >Laporannya udah, Far?</text>
-<line x1="1626" y1="314" x2="1896" y2="314" stroke="#efefef" stroke-width="1" />
-<circle cx="1646" cy="336" r="11" fill="#217346"/><text x="1646" y="340" font-size="10.5" fill="#fff" font-weight="600" text-anchor="middle" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >S</text>
-<text x="1666" y="334" font-size="13" fill="#262626" font-weight="600" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >Saya</text><text x="1666" y="349" font-size="11.5" fill="#707070" font-weight="normal" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >10.52</text>
-<text x="1666" y="370" font-size="13" fill="#262626" font-weight="normal" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >Bentar pak, lagi loading.</text>
-<rect x="1624" y="380" width="272" height="24" fill="#fff" stroke="#c8c8c8" stroke-width="1" rx="3" /><text x="1632" y="396" font-size="12.5" fill="#8a8a8a" font-weight="normal" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >Reply</text>
-</g>
-<g class="b" style="animation-delay:2.6s">
-<rect x="1612" y="422" width="296" height="168" fill="#fff" stroke="#e1dfdd" stroke-width="1" rx="4" />
-<circle cx="1636" cy="444" r="13" fill="#8764b8"/><text x="1636" y="448.5" font-size="11" fill="#fff" font-weight="600" text-anchor="middle" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >PB</text>
-<text x="1658" y="442" font-size="13" fill="#262626" font-weight="600" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >Pak Bambang</text><text x="1658" y="458" font-size="11.5" fill="#707070" font-weight="normal" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >10.51</text>
-<text x="1658" y="480" font-size="13" fill="#262626" font-weight="normal" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >Itu suara tembakan?</text>
-<line x1="1626" y1="492" x2="1896" y2="492" stroke="#efefef" stroke-width="1" />
-<circle cx="1646" cy="514" r="11" fill="#217346"/><text x="1646" y="518" font-size="10.5" fill="#fff" font-weight="600" text-anchor="middle" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >S</text>
-<text x="1666" y="512" font-size="13" fill="#262626" font-weight="600" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >Saya</text><text x="1666" y="527" font-size="11.5" fill="#707070" font-weight="normal" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >10.51</text>
-<text x="1666" y="548" font-size="13" fill="#262626" font-weight="normal" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >Excel-nya lagi ngelag pak.</text>
-<rect x="1624" y="558" width="272" height="24" fill="#fff" stroke="#c8c8c8" stroke-width="1" rx="3" /><text x="1632" y="574" font-size="12.5" fill="#8a8a8a" font-weight="normal" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >Reply</text>
-</g>
-<g class="b" style="animation-delay:5.2s">
-<rect x="1612" y="600" width="296" height="168" fill="#fff" stroke="#e1dfdd" stroke-width="1" rx="4" />
-<circle cx="1636" cy="622" r="13" fill="#8764b8"/><text x="1636" y="626.5" font-size="11" fill="#fff" font-weight="600" text-anchor="middle" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >PB</text>
-<text x="1658" y="620" font-size="13" fill="#262626" font-weight="600" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >Pak Bambang</text><text x="1658" y="636" font-size="11.5" fill="#707070" font-weight="normal" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >11.03</text>
-<text x="1658" y="658" font-size="13" fill="#262626" font-weight="normal" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >Kok ada musiknya?</text>
-<line x1="1626" y1="670" x2="1896" y2="670" stroke="#efefef" stroke-width="1" />
-<circle cx="1646" cy="692" r="11" fill="#217346"/><text x="1646" y="696" font-size="10.5" fill="#fff" font-weight="600" text-anchor="middle" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >S</text>
-<text x="1666" y="690" font-size="13" fill="#262626" font-weight="600" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >Saya</text><text x="1666" y="705" font-size="11.5" fill="#707070" font-weight="normal" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >11.13</text>
-<text x="1666" y="726" font-size="13" fill="#262626" font-weight="normal" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >Macro pak. Fitur baru.</text>
-<rect x="1624" y="736" width="272" height="24" fill="#fff" stroke="#c8c8c8" stroke-width="1" rx="3" /><text x="1632" y="752" font-size="12.5" fill="#8a8a8a" font-weight="normal" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >Reply</text>
-</g>
-<g class="b" style="animation-delay:7.800000000000001s">
-<rect x="1612" y="778" width="296" height="168" fill="#fff" stroke="#e1dfdd" stroke-width="1" rx="4" />
-<circle cx="1636" cy="800" r="13" fill="#8764b8"/><text x="1636" y="804.5" font-size="11" fill="#fff" font-weight="600" text-anchor="middle" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >PB</text>
-<text x="1658" y="798" font-size="13" fill="#262626" font-weight="600" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >Pak Bambang</text><text x="1658" y="814" font-size="11.5" fill="#707070" font-weight="normal" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >11.20</text>
-<text x="1658" y="836" font-size="13" fill="#262626" font-weight="normal" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >Besok jam 8 ya, harus kelar.</text>
-<line x1="1626" y1="848" x2="1896" y2="848" stroke="#efefef" stroke-width="1" />
-<circle cx="1646" cy="870" r="11" fill="#217346"/><text x="1646" y="874" font-size="10.5" fill="#fff" font-weight="600" text-anchor="middle" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >S</text>
-<text x="1666" y="868" font-size="13" fill="#262626" font-weight="600" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >Saya</text><text x="1666" y="883" font-size="11.5" fill="#707070" font-weight="normal" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >11.30</text>
-<text x="1666" y="904" font-size="13" fill="#262626" font-weight="normal" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >Siap pak (ga bakal).</text>
-<rect x="1624" y="914" width="272" height="24" fill="#fff" stroke="#c8c8c8" stroke-width="1" rx="3" /><text x="1632" y="930" font-size="12.5" fill="#8a8a8a" font-weight="normal" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >Reply</text>
-</g>
+
+
+
+
 <rect x="0" y="1056" width="1920" height="24" fill="#217346" stroke="none" stroke-width="1" rx="0" />
 <text x="10" y="1073" font-size="12" fill="#fff" font-weight="normal" text-anchor="start" font-style="normal" font-family="Segoe UI, Segoe UI Variable, Inter, Arial, DejaVu Sans, sans-serif" >Ready</text>
 <circle cx="84" cy="1064" r="2.2" fill="none" stroke="#fff"/><path d="M79 1068 h10 M84 1066 v5" stroke="#fff" fill="none"/>
@@ -461,7 +431,10 @@
 <rect x="295" y="223" width="1282" height="722" fill="none" stroke="#217346" stroke-width="2" rx="0" />
 <rect x="1576" y="944" width="7" height="7" fill="#217346" stroke="#fff" stroke-width="1" rx="0" />
 </svg>
+<div id="live-note"></div>
+<div id="live-feed"></div>
 </div>
+<script id="overlay-config" type="application/json">__OVERLAY_CONFIG__</script>
 <script>
   // Otomatis menyesuaikan ukuran (di OBS 1920x1080 skalanya 1:1)
   function fit(){
@@ -469,6 +442,124 @@
     document.getElementById('stage').style.transform='scale('+k+')';
   }
   addEventListener('resize',fit);fit();
+</script>
+
+<script>
+(function () {
+  'use strict'
+
+  // Otomatis menyesuaikan ukuran (di OBS 1920x1080 skalanya 1:1)
+  function fit() {
+    var k = Math.min(innerWidth / 1920, innerHeight / 1080)
+    document.getElementById('stage').style.transform = 'scale(' + k + ')'
+  }
+  addEventListener('resize', fit)
+  fit()
+
+  var baked = (function () {
+    try { return JSON.parse(document.getElementById('overlay-config').textContent) || {} }
+    catch (e) { return {} }
+  })()
+  var query = new URLSearchParams(location.search)
+  var room = query.get('room') || ''
+  var base = String(baked.baseUrl || '').replace(/\/$/, '')
+  var feed = document.getElementById('live-feed')
+  var note = document.getElementById('live-note')
+  var MAX = 4
+
+  function say(text) { note.textContent = text }
+  function clock() {
+    return new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+  }
+
+  function addCard(frame) {
+    if (note.textContent) say('')
+    var card = document.createElement('div')
+    card.className = 'live-card'
+
+    var head = document.createElement('div')
+    head.className = 'live-head'
+    var avatar = document.createElement('div')
+    avatar.className = 'live-avatar'
+    var name = String(frame.user || '?')
+    if (frame.avatar) {
+      var img = document.createElement('img')
+      img.src = frame.avatar
+      img.alt = ''
+      img.onerror = function () { img.remove(); avatar.textContent = name.charAt(0).toUpperCase() }
+      avatar.appendChild(img)
+    } else {
+      avatar.textContent = name.charAt(0).toUpperCase()
+    }
+    var label = document.createElement('span')
+    label.className = 'live-name'
+    label.textContent = name
+    var when = document.createElement('span')
+    when.className = 'live-time'
+    when.textContent = clock()
+    head.appendChild(avatar)
+    head.appendChild(label)
+    head.appendChild(when)
+
+    var text = document.createElement('div')
+    text.className = 'live-text'
+    text.textContent = String(frame.text || '')
+    card.appendChild(head)
+    card.appendChild(text)
+    feed.appendChild(card)
+    while (feed.children.length > MAX) feed.removeChild(feed.firstChild)
+  }
+
+  function looksLikeRoomId(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+  }
+
+  function open(roomId) {
+    var socket
+    try {
+      socket = new WebSocket(base.replace(/^http/, 'ws') + '/ws/overlay/' + encodeURIComponent(roomId))
+    } catch (error) {
+      say('bad backend URL: ' + error.message)
+      setTimeout(connect, 5000)
+      return
+    }
+    socket.onopen = function () { say('') }
+    socket.onmessage = function (event) {
+      var frame
+      try { frame = JSON.parse(event.data) } catch (e) { return }
+      if (frame && frame.type === 'comment') addCard(frame)
+    }
+    socket.onclose = function () {
+      say('socket closed, reconnecting…')
+      setTimeout(connect, 3000)
+    }
+    socket.onerror = function () { /* close always follows; it schedules the retry */ }
+  }
+
+  function connect() {
+    if (!room || !base) {
+      say('add ?room=<handle or id> to the link')
+      return
+    }
+    if (looksLikeRoomId(room)) { open(room); return }
+    fetch(base + '/api/room-connect-by-username', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: room })
+    })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json() })
+      .then(function (data) {
+        if (!data || !data.room_id) throw new Error('no room id in the answer')
+        open(data.room_id)
+      })
+      .catch(function (error) {
+        say('cannot resolve ' + room + ': ' + error.message)
+        setTimeout(connect, 5000)
+      })
+  }
+
+  connect()
+})()
 </script>
 </body>
 </html>
