@@ -1,0 +1,23 @@
+[Unit]
+Description=Convex self-hosted backend (streamkit)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/lib/convex
+EnvironmentFile=/etc/convex/env
+# Loopback only: nginx (kit-backend) and the bridge reach Convex on 127.0.0.1,
+# and UFW already denies 3210/3211 from outside. Binding the interface makes
+# that explicit instead of relying on the firewall alone.
+# RUST_LOG=warn silences the per-query INFO access log (keybroker + http) that
+# the bridge's 300ms poll otherwise floods journald with; warnings/errors stay.
+Environment=RUST_LOG=warn
+ExecStart=/opt/convex/convex-local-backend --instance-name streamkit --instance-secret ${INSTANCE_SECRET} --interface 127.0.0.1 --port 3210 --site-proxy-port 3211 --convex-origin https://convex.aldifhr.my.id --convex-site https://convex.aldifhr.my.id/http --disable-beacon
+Restart=on-failure
+RestartSec=3
+User=root
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

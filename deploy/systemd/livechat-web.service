@@ -14,7 +14,7 @@ EnvironmentFile=/etc/streamkit/env
 Environment=NEXT_PUBLIC_CONVEX_URL=https://kit-backend.aldifhr.my.id
 Environment=BRIDGE_URL=http://127.0.0.1:8003
 Environment=BACKEND_ORIGIN=https://kit-backend.aldifhr.my.id
-ExecStart=/root/livechat-app/web/node_modules/.bin/next start --port 5184
+ExecStart=/root/livechat-app/web/node_modules/.bin/next start --port 5184 --hostname 127.0.0.1
 Restart=always
 RestartSec=5
 LimitNOFILE=65536
