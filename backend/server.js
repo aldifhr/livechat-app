@@ -13,6 +13,7 @@
 // bridge exists. It holds no state of its own beyond live connections.
 
 import http from 'node:http'
+import { timingSafeEqual } from 'node:crypto'
 import { ConvexHttpClient } from 'convex/browser'
 import { WebSocketServer } from 'ws'
 import { TikTokLiveConnection, WebcastEvent } from 'tiktok-live-connector'
@@ -244,6 +245,26 @@ async function readBody(req) {
   try { return JSON.parse(text) } catch { return {} }
 }
 
+// The connect/disconnect paths drive a live stream, so they are privileged:
+// only a caller holding STREAMKIT_TOKEN may use them. The dashboard proxy
+// attaches it server-side; the public nginx vhost forwards these paths straight
+// here, so without this check anyone on the internet could stop or start any
+// room. `/api/room-connect-by-username` stays open by design — an overlay link
+// naming a handle resolves through it with no credential — and `/health` is a
+// read. Fail closed when no token is configured, mirroring Convex's own gate.
+const TOKEN_HEADER = 'x-streamkit-token'
+function hasApiToken(req) {
+  if (!API_TOKEN) return false
+  const given = String(req.headers[TOKEN_HEADER] || '').trim()
+  if (given.length !== API_TOKEN.length) return false
+  return timingSafeEqual(Buffer.from(given), Buffer.from(API_TOKEN))
+}
+function requireApiToken(req, res) {
+  if (hasApiToken(req)) return true
+  sendJson(res, { detail: 'Invalid or missing token' }, 401)
+  return false
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost')
   if (req.method === 'OPTIONS') return sendJson(res, {}, 204)
@@ -266,6 +287,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && url.pathname.startsWith('/api/room-connect/')) {
+      if (!requireApiToken(req, res)) return
       const roomId = decodeURIComponent(url.pathname.split('/').pop())
       const room = await q('rooms:getByExternal', { externalId: roomId })
       if (!room?.username) return sendJson(res, { detail: 'room has no username configured; set one in the editor' }, 409)
@@ -274,6 +296,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && url.pathname === '/api/connect') {
+      if (!requireApiToken(req, res)) return
       const body = await readBody(req)
       const username = String(body.username || '').trim().replace(/^@/, '')
       if (!username) return sendJson(res, { detail: 'username is required' }, 400)
@@ -283,6 +306,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && url.pathname === '/api/disconnect') {
+      if (!requireApiToken(req, res)) return
       const body = await readBody(req)
       return sendJson(res, await disconnectRoom(String(body.room_id || 'default')))
     }

@@ -96,7 +96,7 @@ async function proxy(request: NextRequest): Promise<Response> {
   // TikTok connect/disconnect needs a long-lived socket: the Node bridge.
   if (TIKTOK_BRIDGE_PATHS.some((p) => p.test(path))) {
     try {
-      const result = await backendFetch(`${path}${request.nextUrl.search}`, { method: request.method, body: bodyText === '' ? undefined : bodyText })
+      const result = await backendFetch(`${path}${request.nextUrl.search}`, { method: request.method, body: bodyText === '' ? undefined : bodyText, forwardToken: true })
       return Response.json(result ?? null)
     } catch (cause) {
       if (cause instanceof BackendError) return Response.json({ detail: cause.message }, { status: cause.status })

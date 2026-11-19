@@ -36,11 +36,19 @@ export async function backendFetch<T>(
   path: string,
   init: RequestInit & { forwardToken?: boolean } = {},
 ): Promise<T> {
-  const { forwardToken: _forwardToken, ...request } = init
+  const { forwardToken, ...request } = init
 
   const headers = new Headers(request.headers)
   if (request.body && !headers.has('content-type')) {
     headers.set('content-type', 'application/json')
+  }
+  // The bridge gates connect/disconnect on STREAMKIT_TOKEN. The dashboard proxy
+  // is the trusted caller that holds it, so it attaches the token server-side;
+  // the browser never sees it. Paths that stay open (room-connect-by-username)
+  // ignore the header, so forwarding it there is harmless.
+  if (forwardToken) {
+    const token = (process.env.STREAMKIT_TOKEN ?? '').trim()
+    if (token) headers.set('x-streamkit-token', token)
   }
 
   const response = await fetch(`${BACKEND}${path}`, {
