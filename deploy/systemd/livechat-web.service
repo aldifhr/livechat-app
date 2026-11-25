@@ -10,6 +10,11 @@ WorkingDirectory=/root/livechat-app/web
 Environment=PATH=/root/livechat-app/web/node_modules/.bin:/usr/local/bin:/usr/bin:/bin
 Environment=NODE_ENV=production
 EnvironmentFile=/etc/streamkit/env
+# change-password writes the new bcrypt hash here (systemd EnvironmentFile,
+# not a Next .env). ProtectSystem=full makes /etc read-only, so allow writes
+# to this one directory for the atomic temp-file + rename in envFile.ts.
+Environment=STREAMKIT_ENV_FILE=/etc/streamkit/env
+ReadWritePaths=/etc/streamkit
 # Dashboard password hash & session secret come from the env file above — never here.
 Environment=NEXT_PUBLIC_CONVEX_URL=https://kit-backend.aldifhr.my.id
 Environment=BRIDGE_URL=http://127.0.0.1:8003
