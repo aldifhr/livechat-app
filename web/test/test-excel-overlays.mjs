@@ -141,4 +141,13 @@ for (const page of PAGES) {
   check(`${page.file} trims old cards beyond the cap`, squash(source).includes('while(feed.children.length>MAX)feed.removeChild(feed.firstChild)'))
 }
 
+// The undo/redo pair in each artwork must be one shape mirrored, never two
+// hand-drawn twins: the old redo had a translate(-10) fudge and sat visibly
+// lower once LIVE Studio scaled the source.
+for (const page of PAGES) {
+  const source = sources.get(page.file)
+  check(`${page.file} mirrors its forward arrow from one shape`, /<use href="#[^"]+" transform="translate\(\d+ 0\) scale\(-1 1\)"\/>/.test(source))
+  check(`${page.file} has no hand-drawn arrow twin`, !/translate\(-10 0\)/.test(source))
+}
+
 console.log(`\nall checks passed (${passed})`)
