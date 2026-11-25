@@ -1818,3 +1818,91 @@
     animation: none;
   }
 }
+
+/* ---- Excel text editor --------------------------------------------------- */
+.excel-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(260px, 0.9fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.excel-preview-scroll {
+  margin-top: 12px;
+  max-height: 70vh;
+  overflow: auto;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-sunken);
+  border-radius: var(--radius-field);
+  padding: 12px;
+}
+
+.excel-preview svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.excel-preview [data-k] {
+  cursor: pointer;
+  transition: outline-color 120ms ease;
+  outline: 2px solid transparent;
+  outline-offset: 1px;
+}
+
+.excel-preview [data-k]:hover {
+  outline-color: var(--accent);
+}
+
+.excel-preview [data-active] {
+  outline: 3px solid var(--accent);
+}
+
+.excel-key-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 52vh;
+  overflow-y: auto;
+}
+
+.excel-key {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-field);
+  background: var(--bg-raised);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.excel-key:hover,
+.excel-key.active {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+}
+
+.excel-key span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85rem;
+}
+
+.excel-key code {
+  flex: none;
+  font-size: 0.7rem;
+  color: var(--text-faint);
+}
+
+@media (max-width: 900px) {
+  .excel-editor-grid {
+    grid-template-columns: 1fr;
+  }
+}
