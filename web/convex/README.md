@@ -1,7 +1,7 @@
 # StreamKit Convex backend
 
 Convex (self-hosted) is the backend for StreamKit. All state — rooms, events,
-sessions, giveaways, logs — lives in Convex. The only other process is the
+sessions, logs — lives in Convex. The only other process is the
 Node TikTok bridge in `backend/`: it holds the long-lived TikTok socket and
 fans Convex events out to overlay WebSockets. Convex Functions cannot hold a
 socket open for hours, which is why the bridge exists.

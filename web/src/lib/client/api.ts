@@ -14,7 +14,7 @@
 
 'use client'
 
-import type { AnalyticsSummary, GiveawaySnapshot, LogPage, Room, RoomSession, RoomStatus, StreamProvider } from '../types'
+import type { AnalyticsSummary, LogPage, Room, RoomSession, RoomStatus, StreamProvider } from '../types'
 
 export class ApiError extends Error {
   constructor(
@@ -195,11 +195,6 @@ export const api = {
   likeTargetOverlay: (id: string) => overlayUrl('/overlay/like-target', id),
   excelBackgroundOverlay: (id: string) => overlayUrl('/overlay/background-excel', id),
   excelBackgroundVerticalOverlay: (id: string) => overlayUrl('/overlay/background-excel-vertical', id),
-  giveawaySnapshots: () => request<{ snapshots: GiveawaySnapshot[] }>('GET', '/giveaways/snapshots'),
-  /** Unpublish a snapshot, so its public link stops resolving. Irreversible. */
-  deleteGiveawaySnapshot: (id: string) =>
-    request<{ status: string }>('DELETE', `/giveaways/snapshots/${id}`),
-
 
   /**
    * The backend's recent log records.

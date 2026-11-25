@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+- **Fitur giveaway dihapus total.** Route, UI, fungsii Convex, tabel snapshot, dan allowlist proxy dibuang.
+
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versi mengikuti [semver](https://semver.org/).
 
 ## [Unreleased]

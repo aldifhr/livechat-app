@@ -1,5 +1,5 @@
 #!/bin/sh
-# Back up all StreamKit state from Convex (rooms, events, sessions, giveaways).
+# Back up all StreamKit state from Convex (rooms, events, sessions).
 #
 # State no longer lives in JSON files: it is in the self-hosted Convex SQLite
 # database at /var/lib/convex. Exporting via the Convex CLI gives a restorable

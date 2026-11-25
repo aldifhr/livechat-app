@@ -8,7 +8,7 @@ manifest** — `npm install` at the root does nothing, and that is deliberate.
 | Part | What it is | Stack |
 |---|---|---|
 | `web/convex/` + `backend/` | Backend: Convex state + TikTok bridge | Convex (self-hosted) + Node |
-| `web/` | Dashboard: stream list, per-stream pages, overlay builder, giveaway runner | Next.js 16 + React 19 |
+| `web/` | Dashboard: stream list, per-stream pages, overlay builder | Next.js 16 + React 19 |
 
 ## Layout
 
@@ -30,7 +30,7 @@ Convex (self-hosted) + a small Node TikTok bridge. The old FastAPI backend
 
 | Part | What it is | Stack |
 |---|---|---|
-| `web/convex/` | Rooms, events, sessions, giveaways, logs | Convex functions (self-hosted) |
+| `web/convex/` | Rooms, events, sessions, logs | Convex functions (self-hosted) |
 | `backend/` | TikTok LIVE socket + overlay WebSocket fan-out | Node + tiktok-live-connector + ws |
 
 Convex Functions cannot hold a long-lived socket, so the bridge exists only to
@@ -40,10 +40,9 @@ Convex for new events and fans them out. All state lives in Convex.
 
 ```
 web/convex/
-├── schema.ts       rooms, events, roomSessions, giveawaySnapshots, logs, metrics
+├── schema.ts       rooms, events, roomSessions, logs, metrics
 ├── rooms.ts        CRUD, status, session, analytics
 ├── events.ts       appendEvent, trigger, topChatters, health, logs
-└── giveaways.ts    snapshot save/get/list/delete (16-char public ids)
 backend/
 ├── server.js       HTTP connect/disconnect + /ws fan-out + TikTok wiring
 └── frames.js       TikTok event -> overlay wire frame (the format in shared/events.ts)
@@ -76,9 +75,6 @@ backend token any more.
 | `PATCH`/`DELETE` | `/api/rooms/{id}` | Update / delete room |
 | `POST` | `/api/rooms/{id}/config` | Save overlay config |
 | `GET` | `/api/rooms/{id}/status`, `/session` | Connection status, session stats |
-| `GET` | `/api/giveaways/snapshots`, `/{id}` | Snapshot list / one report (public by id) |
-| `POST` | `/api/giveaways/snapshots` | Publish a report (validated by the dashboard route) |
-| `DELETE` | `/api/giveaways/snapshots/{id}` | Unpublish |
 | `POST` | `/api/room-connect-by-username`, `/room-connect/{id}`, `/connect`, `/disconnect` | TikTok bridge |
 | `POST` | `/api/rooms/{id}/trigger`, `/api/hooks/{id}` | Manual trigger / webhook |
 | `GET` | `/api/health`, `/api/metrics`, `/api/analytics`, `/api/logs` | Ops |
@@ -157,7 +153,7 @@ you.
 | `STREAMKIT_SESSION_SECRET` | Session signing key. **Empty = no session can be issued or accepted.** |
 | `STREAMKIT_SESSION_DAYS` | Session lifetime. Default 7. A non-positive value falls back to 7, not to forever. |
 | `STREAMKIT_ENV_FILE` | Where the change-password route writes the new hash. Default `.env` beside the server. |
-| `STREAMKIT_DATA_DIR` | Where runtime state (giveaway commitments) lives. Default `.data` beside the server. |
+| `STREAMKIT_DATA_DIR` | Where runtime state lives. Default `.data` beside the server. |
 | `PRODUCT_NAME` | Wordmark. Default `StreamKit`. |
 | `TAGLINE` | Default `Live chat overlays for streaming.` |
 
@@ -211,7 +207,6 @@ scripts/backup-rooms.sh  # daily Convex export, 14-day prune
 
 nginx holds back part of the surface: `/ws/` and `= /api/room-connect-by-username`
 are proxied to the backend **outside the gate**, because OBS cannot carry a
-credential and the overlay pages do not need one. Public giveaway snapshot pages
 and their validated upload endpoint are also open so viewers can read shared
 reports and the dashboard can publish them. Other `/api/` routes and dashboard
 pages are gated by `auth_request` to `/api/auth/verify`; `/login` is open and

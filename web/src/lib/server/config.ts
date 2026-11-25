@@ -36,8 +36,8 @@ export const tokenConfigured = true
 export const dashboardUser = process.env.STREAMKIT_DASHBOARD_USER ?? 'admin'
 
 /**
- * Where runtime state that is not source lives — giveaway commitments, and
- * anything else a running deployment has to keep.
+ * Where runtime state that is not source lives — anything a running
+ * deployment has to keep between restarts.
  *
  * Not an environment variable. A deployment should not have to spell out a
  * filesystem path just to start, and the only place this ever differed was

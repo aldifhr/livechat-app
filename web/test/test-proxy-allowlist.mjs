@@ -97,23 +97,13 @@ check(
 const calls = [
   ...clientSource.matchAll(/request<[\s\S]*?>\(\s*'(\w+)'\s*,\s*(?:'([^']+)'|`([^`]+)`)/g),
 ].map((m) => ({ method: m[1], path: m[2] ?? m[3] ?? '' }))
-check('the client calls were found', calls.length >= 12, `got ${calls.length}`)
+check('the client calls were found', calls.length >= 10, `got ${calls.length}`)
 
-// A representative room id, substituted for every `${...}` in a template path. The
-// patterns are written against `[0-9a-f-]{36}` because that is what `store` mints,
-// so a real id has to match or the pattern is wrong. Giveaway snapshots carry a
-// different id — `secrets.token_urlsafe(12)` in the backend's giveaway store, i.e.
-// 16 url-safe characters — so substituting a UUID there made the snapshot GET fail
-// its pattern no matter how correctly the pattern was written. The substitute is
-// therefore chosen per position: a snapshot id where the hole sits in a snapshot
-// path, a UUID everywhere else.
+// A representative room id, substituted for every `${...}` in a template path.
+// The patterns are written against `[0-9a-f-]{36}` because that is what Convex
+// mints, so a real id has to match or the pattern is wrong.
 const UUID = '61ea70c9-6d36-4a6a-bf94-b648532447bb'
-const SNAPSHOT_ID = 'a1B2c3D4e5F6g7H8'
-const fullPath = (path) =>
-  `/api${path.replace(
-    /(?<=\/giveaways\/snapshots\/)\$\{[^}]*\}/g,
-    SNAPSHOT_ID,
-  ).replace(/\$\{[^}]*\}/g, UUID)}`
+const fullPath = (path) => `/api${path.replace(/\$\{[^}]*\}/g, UUID)}`
 
 const missing = calls.filter(({ path }) => !patterns.some((p) => p.test(fullPath(path))))
 
@@ -140,22 +130,5 @@ check('a real room id matches its session pattern', patterns.some((p) => p.test(
 // forward, so a pattern written too loosely is a hole rather than a nuisance.
 check('the token gate itself is not forwarded', !patterns.some((p) => p.test('/api/rooms?token=x')))
 check('a made-up path is not forwarded', !patterns.some((p) => p.test('/api/secrets')))
-
-// Which reads carry the token. The two giveaway reads are the whole point of
-// this block: the collection answers with every snapshot's id, and an id is the
-// entire credential for the report behind it — which names every entrant's
-// TikTok id and nickname. It used to be forwarded with no credential on both
-// sides, so one unauthenticated GET handed out the ids. Reading one snapshot by
-// id is the opposite case and must stay open: that is the shared link, and a
-// viewer holding it has nothing else.
-const SENSITIVE_READ = /^\/api\/(rooms(\/|$)|logs$|analytics$|giveaways\/snapshots$)/
-const PUBLIC_READ = /^\/api\/giveaways\/snapshots\/[A-Za-z0-9_-]{16}$/
-
-const SNAPSHOT_LIST = '/api/giveaways/snapshots'
-const SNAPSHOT_ONE = `/api/giveaways/snapshots/${SNAPSHOT_ID}`
-check('the snapshot collection is a sensitive read', SENSITIVE_READ.test(SNAPSHOT_LIST))
-check('and it is not a public read', !PUBLIC_READ.test(SNAPSHOT_LIST))
-check('a snapshot by id is not a sensitive read', !SENSITIVE_READ.test(SNAPSHOT_ONE))
-check('and it is the public read', PUBLIC_READ.test(SNAPSHOT_ONE))
 
 console.log(`\nall checks passed (${passed})`)

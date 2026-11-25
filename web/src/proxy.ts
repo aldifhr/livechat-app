@@ -49,15 +49,6 @@ function isOpen(pathname: string): boolean {
     // login form — which is what happened, and looked exactly like the overlays
     // being broken.
     pathname.startsWith('/overlay/') ||
-    // Giveaway reports are public, unguessable snapshot links. Creation is
-    // bounded and validated by its route handler; private dashboard APIs remain gated.
-    /^\/giveaway\/[A-Za-z0-9_-]{16}$/.test(pathname) ||
-    pathname === '/api/giveaways/snapshots' ||
-    // Giveaway commitments. Open at the proxy so the giveaway page can reach
-    // them without a session, and gated inside the route by origin: the
-    // dashboard same-origin only.
-    pathname === '/api/giveaways/commit' ||
-    pathname.startsWith('/api/giveaways/commit/') ||
     pathname === '/api/tts' ||
     // OBS docks: public browser source for OBS, mirrors the stream home page.
     // No session — OBS cannot type a password, same reason as overlays.

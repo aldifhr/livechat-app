@@ -47,15 +47,11 @@ const CONVEX_ROUTES: Record<string, ConvexCall> = {
   'GET /api/metrics': { module: 'events', functionName: 'metricsSummary', type: 'query' },
   'GET /api/analytics': { module: 'rooms', functionName: 'analytics', type: 'query', args: (_b, _s, search) => ({ provider: search.get('provider') || undefined }) },
   'GET /api/logs': { module: 'events', functionName: 'listLogs', type: 'query', args: (_b, _s, search) => ({ limit: Number(search.get('limit') || 200), level: search.get('level') || undefined, q: search.get('q') || undefined }) },
-  'GET /api/giveaways/snapshots': { module: 'giveaways', functionName: 'listSnapshots', type: 'query', map: (v) => ({ snapshots: v }) },
-  'GET /api/giveaways/snapshots/{id}': { module: 'giveaways', functionName: 'getSnapshot', type: 'query', args: (_b, s) => ({ id: s[2] }) },
-  'POST /api/giveaways/snapshots': { module: 'giveaways', functionName: 'saveSnapshot', type: 'mutation', args: (body) => ({ keyword: body?.report?.keyword || body?.keyword || 'giveaway', data: body?.report || body, roomId: body?.roomId }) },
-  'DELETE /api/giveaways/snapshots/{id}': { module: 'giveaways', functionName: 'deleteSnapshot', type: 'mutation', args: (_b, s) => ({ id: s[2] }) },
   'POST /api/rooms/{id}/trigger': { module: 'events', functionName: 'trigger', type: 'mutation', args: (body, s) => ({ roomId: s[1], kind: body?.kind || 'alert', user: body?.user, userId: body?.user_id || body?.userId, text: body?.text, title: body?.title, icon: body?.icon, count: body?.count, diamonds: body?.diamonds, months: body?.months }) },
   'POST /api/hooks/{id}': { module: 'events', functionName: 'trigger', type: 'mutation', args: (body, s) => ({ roomId: s[1], kind: body?.kind || 'alert', user: body?.user, userId: body?.user_id || body?.userId, text: body?.text || (body?.amount != null ? String(body.amount) : undefined), title: body?.title, icon: body?.icon, amount: body?.amount }) },
 }
 
-function matchKey(method: string, normalizedPath: string, hasRoomId: boolean, hasSnapshotId: boolean): string | null {
+function matchKey(method: string, normalizedPath: string, hasRoomId: boolean): string | null {
   if (method === 'GET' && normalizedPath === '/api/rooms') return 'GET /api/rooms'
   if (method === 'GET' && normalizedPath === '/api/rooms/public') return 'GET /api/rooms/public'
   if (method === 'GET' && hasRoomId && normalizedPath.endsWith('/session')) return 'GET /api/rooms/{id}/session'
@@ -71,10 +67,6 @@ function matchKey(method: string, normalizedPath: string, hasRoomId: boolean, ha
   if (method === 'GET' && normalizedPath === '/api/metrics') return 'GET /api/metrics'
   if (method === 'GET' && normalizedPath === '/api/analytics') return 'GET /api/analytics'
   if (method === 'GET' && normalizedPath === '/api/logs') return 'GET /api/logs'
-  if (method === 'GET' && normalizedPath === '/api/giveaways/snapshots') return 'GET /api/giveaways/snapshots'
-  if (method === 'GET' && hasSnapshotId) return 'GET /api/giveaways/snapshots/{id}'
-  if (method === 'POST' && normalizedPath === '/api/giveaways/snapshots') return 'POST /api/giveaways/snapshots'
-  if (method === 'DELETE' && hasSnapshotId) return 'DELETE /api/giveaways/snapshots/{id}'
   return null
 }
 
@@ -90,8 +82,7 @@ async function proxy(request: NextRequest): Promise<Response> {
   const bodyText = ['POST', 'PATCH', 'DELETE'].includes(request.method) ? await request.text() : undefined
   const body = parseBody(bodyText)
   const hasRoomId = Boolean(path.match(/^\/api\/rooms\/[^/]+/))
-  const hasSnapshotId = Boolean(path.match(/^\/api\/giveaways\/snapshots\/[^/]+/))
-  const key = matchKey(request.method, normalizedPath, hasRoomId, hasSnapshotId)
+  const key = matchKey(request.method, normalizedPath, hasRoomId)
 
   // TikTok connect/disconnect needs a long-lived socket: the Node bridge.
   if (TIKTOK_BRIDGE_PATHS.some((p) => p.test(path))) {
@@ -125,9 +116,6 @@ async function proxy(request: NextRequest): Promise<Response> {
     }
     if (key === 'POST /api/rooms/{id}/config' || key === 'DELETE /api/rooms/{id}') {
       return Response.json({ status: 'ok' })
-    }
-    if (key === 'GET /api/giveaways/snapshots/{id}' && !value) {
-      return Response.json({ detail: 'Giveaway report not found' }, { status: 404 })
     }
     return Response.json(call.map ? call.map(value, body) : value ?? null)
   } catch (cause) {

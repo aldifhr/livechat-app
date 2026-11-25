@@ -1,7 +1,7 @@
 /**
  * The TikTok bridge, from the server's own environment.
  *
- * State no longer lives here: rooms, events, sessions, giveaways and logs are
+ * State no longer lives here: rooms, events, sessions and logs are
  * all in Convex. This process is the small Node bridge in `backend/` — it holds
  * the long-lived TikTok socket and the overlay WebSocket fan-out, and pushes
  * every event into Convex mutations. Convex Functions cannot hold a socket

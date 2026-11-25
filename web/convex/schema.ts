@@ -45,16 +45,6 @@ export default defineSchema({
     lastUpdatedAt: v.number(),
   }).index("by_room", ["roomId"]),
 
-  giveawaySnapshots: defineTable({
-    publicId: v.string(),
-    roomId: v.optional(v.string()),
-    keyword: v.string(),
-    createdAt: v.number(),
-    data: v.any(),
-  })
-    .index("by_public", ["publicId"])
-    .index("by_created", ["createdAt"]),
-
   logs: defineTable({
     level: v.string(),
     source: v.string(),

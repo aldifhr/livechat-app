@@ -46,11 +46,6 @@ export function customizerPath(username: string, id: string, kind: OverlayKind):
   return `${profilePath(username, id)}/overlay/${kind}`
 }
 
-/** A stream's giveaway picker, under the stream's own address. */
-export function giveawayPath(username: string, id: string): string {
-  return `${profilePath(username, id)}/giveaway`
-}
-
 /** The Excel text editor for one stream. */
 export function excelTextPath(username: string, id: string): string {
   return `${profilePath(username, id)}/excel-text?room=${encodeURIComponent(id)}`

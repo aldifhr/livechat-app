@@ -17,7 +17,7 @@ out/
 .env
 .env.*
 
-# Runtime state — giveaway commitments, not source.
+# Runtime state, not source.
 web/.data/
 
 # The nginx basic-auth hash for the deployed dashboard. It lives only on the

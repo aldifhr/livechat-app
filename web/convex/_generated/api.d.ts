@@ -12,7 +12,6 @@ import type * as auth from "../auth.js";
 import type * as cleanup from "../cleanup.js";
 import type * as crons from "../crons.js";
 import type * as events from "../events.js";
-import type * as giveaways from "../giveaways.js";
 import type * as rooms from "../rooms.js";
 
 import type {
@@ -26,7 +25,6 @@ declare const fullApi: ApiFromModules<{
   cleanup: typeof cleanup;
   crons: typeof crons;
   events: typeof events;
-  giveaways: typeof giveaways;
   rooms: typeof rooms;
 }>;
 

@@ -15,7 +15,7 @@
  *   npx convex import --table rooms scripts/rooms.convex.jsonl
  *
  * Event and metrics tables should be treated as ephemeral live state: only
- * the room catalogue and giveaway snapshots need a durable migration.
+ * the room catalogue needs a durable migration.
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 const input = process.argv[2] || 'rooms.jsonl'

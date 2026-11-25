@@ -18,12 +18,6 @@ const FEATURES = [
     body: 'Give your loudest viewers a place on screen with a live leaderboard that follows the conversation.',
     mark: '↗',
   },
-  {
-    index: '03',
-    title: 'Giveaways',
-    body: 'Run a keyword giveaway, review the entries, then draw a winner you can prove was fair.',
-    mark: '★',
-  },
 ]
 
 const STEPS = [
@@ -32,7 +26,7 @@ const STEPS = [
   { n: '03', title: 'Copy into OBS', body: 'One browser-source link per overlay. It keeps working when this tab is closed.' },
 ]
 
-const MARQUEE = ['CHAT OVERLAY', 'TOP CHATTERS', 'GIVEAWAYS', 'OBS READY', 'NO INSTALL']
+const MARQUEE = ['CHAT OVERLAY', 'TOP CHATTERS', 'EXCEL BACKGROUNDS', 'OBS READY', 'NO INSTALL']
 
 export default function Landing() {
   const [head, tail] = splitWordmark(productName)
@@ -66,7 +60,7 @@ export default function Landing() {
             <Reveal delay={0.13}>
               <div className="landing-description">
                 {tagline && <p className="landing-tagline">{tagline}</p>}
-                <p>Bring comments, top chatters and giveaways into your stream with overlays you can style and preview before you go live.</p>
+                <p>Bring comments, top chatters and themed backgrounds into your stream with overlays you can style and preview before you go live.</p>
               </div>
               <div className="landing-actions">
                 <Link href="/dashboard" className="btn primary landing-primary">
@@ -120,7 +114,7 @@ export default function Landing() {
               <p className="eyebrow">Everything in one place</p>
               <h2>From setup to stream, <span>keep it simple.</span></h2>
             </div>
-            <p>One dashboard for the links, the styling, the giveaways and the numbers behind them.</p>
+            <p>One dashboard for the links, the styling and the numbers behind them.</p>
           </Reveal>
           <div className="feature-grid">
             {FEATURES.map((feature, i) => (

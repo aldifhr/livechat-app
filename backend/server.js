@@ -1,7 +1,7 @@
 // StreamKit TikTok bridge.
 //
 // The only process that holds a long-lived socket. Everything else — rooms,
-// events, sessions, giveaways, logs — lives in Convex (self-hosted at
+// events, sessions, logs — lives in Convex (self-hosted at
 // CONVEX_URL). This bridge:
 //   1. connects to TikTok LIVE (tiktok-live-connector),
 //   2. normalises each event to the overlay wire frame (frames.js),
@@ -158,10 +158,13 @@ function wireSource(roomId, username) {
   conn.on(WebcastEvent.CONNECTED ?? 'connected', async () => {
     entry.attempts = 0
     await log('info', 'bridge.tiktok', `connected @${username} room ${roomId}`)
-    await setStatus(roomId, { connected: true, message: `Connected to @${username}` })
+    await setStatus(roomId, { connected: true, connecting: false, waiting: false, liveEnded: false, message: `Connected to @${username}` })
   })
   conn.on(WebcastEvent.DISCONNECTED ?? 'disconnected', async () => {
-    await setStatus(roomId, { connected: false, connecting: entry.running, message: `Disconnected from @${username}` })
+    // A dropped socket is not a stream end: clear a stale liveEnded only when we
+    // still intend to run (reconnecting). If the stream genuinely ended
+    // (running=false), preserve liveEnded so the room reads as ended, not offline.
+    await setStatus(roomId, { connected: false, connecting: entry.running, waiting: false, ...(entry.running ? { liveEnded: false } : {}), message: `Disconnected from @${username}` })
     if (entry.running) entry.scheduleReconnect('socket dropped')
   })
   conn.on(WebcastEvent.STREAM_END ?? 'streamEnd', async () => {
@@ -196,11 +199,11 @@ async function connectRoom(roomId, username) {
     sources.delete(roomId)
   }
   const entry = wireSource(roomId, username)
-  await setStatus(roomId, { connected: false, connecting: true, message: `Connecting to @${username}` })
+  await setStatus(roomId, { connected: false, connecting: true, waiting: false, liveEnded: false, message: `Connecting to @${username}` })
   entry.conn.connect()
     .then(async () => {
       entry.attempts = 0
-      await setStatus(roomId, { connected: true, message: `Connected to @${username}` })
+      await setStatus(roomId, { connected: true, connecting: false, waiting: false, liveEnded: false, message: `Connected to @${username}` })
     })
     .catch(async (e) => {
       const offline = /offline|not live|no live|isn'?t online|not online|useroffline/i.test(String(e?.message || e))
@@ -209,6 +212,7 @@ async function connectRoom(roomId, username) {
         connected: false,
         connecting: true,
         waiting: offline,
+        liveEnded: false,
         message: offline ? `@${username} is not live yet` : `Could not connect to @${username}`,
       })
       entry.scheduleReconnect('initial connect failed')
