@@ -19,14 +19,19 @@ export const pruneOldEvents = internalMutation({
   handler: async (ctx, args) => {
     const cutoff = Date.now() - (args.olderThanHours ?? 48) * 3600_000;
     let deleted = 0;
-    // Bounded batches: each pass takes the oldest 500 and deletes them.
+    // Bounded batches scoped by the by_created index: every row the range
+    // returns is already older than the cutoff. The previous version took the
+    // first 500 rows of the whole table and stopped at a short batch, so a
+    // burst could leave old rows behind until the next daily run and stretch
+    // the 48-hour retention.
     for (let pass = 0; pass < 20; pass++) {
-      const rows = await ctx.db.query("events").take(500);
-      const old = (rows as any[]).filter((e) => e.createdAt < cutoff);
-      if (!old.length) break;
-      for (const e of old) await ctx.db.delete(e._id);
-      deleted += old.length;
-      if (old.length < 500) break;
+      const rows = await ctx.db
+        .query("events")
+        .withIndex("by_created", (q: any) => q.lt("createdAt", cutoff))
+        .take(500);
+      if (!rows.length) break;
+      for (const row of rows) await ctx.db.delete(row._id);
+      deleted += rows.length;
     }
     return { deleted, cutoff };
   },

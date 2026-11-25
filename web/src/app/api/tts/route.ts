@@ -9,7 +9,13 @@ export async function GET(request: NextRequest) {
   }
 
   const clean = q.slice(0, TTS_MAX_CHARS)
-  const googleUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(clean)}&tl=id&client=tw-ob`
+  // Language is configurable so a non-Indonesian stream is not read in the
+  // wrong voice. A query override lets a browser source pick its own; the env
+  // value is the deployment default. Both are validated before they reach the
+  // upstream URL, so this cannot become an open proxy for arbitrary params.
+  const requested = searchParams.get('lang')?.trim() || process.env.STREAMKIT_TTS_LANG?.trim() || 'id'
+  const lang = /^[a-z]{2,3}(-[A-Za-z]{2,4})?$/.test(requested) ? requested : 'id'
+  const googleUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(clean)}&tl=${encodeURIComponent(lang)}&client=tw-ob`
 
   try {
     const res = await fetch(googleUrl, {

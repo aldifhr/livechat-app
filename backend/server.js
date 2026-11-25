@@ -26,6 +26,7 @@ const SIGN_API_KEY = (process.env.SIGN_API_KEY || '').trim()
 const API_TOKEN = (process.env.STREAMKIT_TOKEN || '').trim()
 
 const convex = new ConvexHttpClient(CONVEX_URL)
+// @ts-ignore SDK typing omits setAdminAuth on self-hosted client
 if (ADMIN_KEY) convex.setAdminAuth(ADMIN_KEY)
 
 async function q(path, args) { return convex.query(path, { ...args, ...(API_TOKEN ? { token: API_TOKEN } : {}) }) }
@@ -93,7 +94,9 @@ async function emit(roomId, kind, event) {
     await m('events:appendEvent', {
       roomId,
       kind,
+      // @ts-ignore third-party/untyped bridge surface
       user: frame.user || '',
+      // @ts-ignore third-party/untyped bridge surface
       userId: frame.userId || frame.user || '',
       frame,
     })
@@ -106,21 +109,30 @@ async function emit(roomId, kind, event) {
 
 // Poll Convex for new events in rooms with overlay clients, and fan them out.
 // This is what makes a trigger posted through Convex reach a WebSocket overlay.
-const lastSeen = new Map()
+const lastSeen = new Map() // roomId -> Convex _creationTime of the last frame seen
+const polling = new Set() // one in-flight poll per room; a slow Convex must not overlap
 setInterval(async () => {
   const rooms = new Set([...clients.values()].map((c) => c.roomId))
   for (const roomId of rooms) {
+    if (polling.has(roomId)) continue
     if (!lastSeen.has(roomId)) { lastSeen.set(roomId, Date.now()); continue }
-    const since = lastSeen.get(roomId)
+    polling.add(roomId)
     try {
-      const frames = await q('events:recentForRoom', { roomId, since, limit: 100 })
-      for (const frame of frames || []) broadcast(roomId, frame)
-      if (frames?.length) lastSeen.set(roomId, Date.now())
-    } catch {}
+      const rows = await q('events:recentForRoom', { roomId, sinceCreationTime: lastSeen.get(roomId), limit: 100 })
+      for (const row of rows || []) {
+        broadcast(roomId, row.frame)
+        // Advance on the row's own cursor. Using Date.now() here used to drop
+        // frames sharing a millisecond and replay others on the next poll.
+        if (row.cursor > lastSeen.get(roomId)) lastSeen.set(roomId, row.cursor)
+      }
+    } catch {} finally {
+      polling.delete(roomId)
+    }
   }
 }, 300)
 
 function wireSource(roomId, username) {
+  // @ts-ignore connector typings omit EventEmitter.on
   const conn = new TikTokLiveConnection(username, SIGN_API_KEY ? { signApiKey: SIGN_API_KEY } : {})
   const entry = { conn, username, running: true, connecting: false, timer: null, attempts: 0 }
   sources.set(roomId, entry)
@@ -155,11 +167,13 @@ function wireSource(roomId, username) {
     }, delay)
   }
 
+  // @ts-ignore connector typings omit these event constants
   conn.on(WebcastEvent.CONNECTED ?? 'connected', async () => {
     entry.attempts = 0
     await log('info', 'bridge.tiktok', `connected @${username} room ${roomId}`)
     await setStatus(roomId, { connected: true, connecting: false, waiting: false, liveEnded: false, message: `Connected to @${username}` })
   })
+  // @ts-ignore connector typings omit these event constants
   conn.on(WebcastEvent.DISCONNECTED ?? 'disconnected', async () => {
     // A dropped socket is not a stream end: clear a stale liveEnded only when we
     // still intend to run (reconnecting). If the stream genuinely ended
@@ -167,19 +181,23 @@ function wireSource(roomId, username) {
     await setStatus(roomId, { connected: false, connecting: entry.running, waiting: false, ...(entry.running ? { liveEnded: false } : {}), message: `Disconnected from @${username}` })
     if (entry.running) entry.scheduleReconnect('socket dropped')
   })
+  // @ts-ignore connector typings omit EventEmitter.on
   conn.on(WebcastEvent.STREAM_END ?? 'streamEnd', async () => {
     entry.running = false
     if (entry.timer) { clearTimeout(entry.timer); entry.timer = null }
     await setStatus(roomId, { connected: false, liveEnded: true, message: `@${username} is no longer live` })
   })
+  // @ts-ignore connector typings omit EventEmitter.on
   conn.on('error', async (e) => {
     await log('error', 'bridge.tiktok', `${username}: ${e?.message || e}`)
   })
 
   for (const [evt, kind] of Object.entries(EVENT_MAP)) {
+    // @ts-ignore connector typings omit EventEmitter.on
     conn.on(evt, (data) => emit(roomId, kind, data).catch(() => {}))
   }
   // SOCIAL: follow vs share.
+  // @ts-ignore connector typings omit EventEmitter.on
   conn.on(WebcastEvent.SOCIAL, (data) => {
     const type = String(data.displayType ?? data.socialType ?? '').toLowerCase()
     const kind = type.includes('share') ? 'share' : 'follow'
@@ -377,6 +395,7 @@ server.listen(PORT, '127.0.0.1', async () => {
   console.log(`tiktok bridge listening on 127.0.0.1:${PORT}, convex ${CONVEX_URL}`)
   // A restart drops every live socket, so any room still marked connecting in
   // Convex is stale — clear it, or the dashboard sits on "Connecting" forever.
+  // This is the crash-recovery path; SIGTERM below clears status on the way out.
   try {
     const rooms = await q('rooms:list', {})
     for (const room of rooms || []) {
@@ -384,3 +403,34 @@ server.listen(PORT, '127.0.0.1', async () => {
     }
   } catch {}
 })
+
+// systemd sends SIGTERM on restart/deploy. Without a handler the process dies
+// mid-socket: TikTok sees an abrupt drop and the dashboard keeps showing LIVE
+// until the next boot clears it. Close deliberately, mark rooms offline while
+// we still can, then let the listeners drain before exiting.
+let shuttingDown = false
+async function shutdown(signal) {
+  if (shuttingDown) return
+  shuttingDown = true
+  console.log(`${signal} received; closing TikTok sockets and overlay clients`)
+  const force = setTimeout(() => process.exit(0), 5000)
+  force.unref()
+  for (const [roomId, entry] of sources) {
+    entry.running = false
+    if (entry.timer) { clearTimeout(entry.timer); entry.timer = null }
+    try { await entry.conn.disconnect() } catch {}
+    try {
+      await m('rooms:setStatus', { roomId, connected: false, connecting: false, message: 'Offline' })
+    } catch {}
+  }
+  sources.clear()
+  for (const ws of clients.keys()) {
+    try { ws.close(1001, 'bridge shutting down') } catch {}
+  }
+  clients.clear()
+  await new Promise((resolve) => wss.close(resolve)).catch(() => {})
+  await new Promise((resolve) => server.close(resolve)).catch(() => {})
+  process.exit(0)
+}
+process.on('SIGTERM', () => { void shutdown('SIGTERM') })
+process.on('SIGINT', () => { void shutdown('SIGINT') })

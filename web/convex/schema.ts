@@ -29,7 +29,8 @@ export default defineSchema({
     userId: v.optional(v.string()),
     frame: v.any(),
     createdAt: v.number(),
-  }).index("by_room_created", ["roomId", "createdAt"]),
+  }).index("by_room_created", ["roomId", "createdAt"])
+    .index("by_created", ["createdAt"]),
 
   roomSessions: defineTable({
     roomId: v.string(),

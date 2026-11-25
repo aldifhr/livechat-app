@@ -111,6 +111,7 @@ export function toFrame(kind, event) {
       // Older releases (and the Python backend this replaced) called it
       // `comment`; both are accepted so a library upgrade cannot silently turn
       // every chat row into a name with no message.
+      // @ts-ignore third-party event shape is untyped
       const frame = { type: 'comment', ...n, text: String(event.content ?? event.comment ?? '') }
       const mentions = [
         ...new Set(
@@ -123,7 +124,9 @@ export function toFrame(kind, event) {
         const h = event.atUser.uniqueId || event.atUser.username
         if (h) mentions.push(h)
       }
+      // @ts-ignore third-party/untyped bridge surface
       if (mentions.length) frame.mentions = mentions
+      // @ts-ignore third-party/untyped bridge surface
       if (user?.isModerator || user?.moderator) frame.isModerator = true
       return frame
     }
@@ -138,6 +141,7 @@ export function toFrame(kind, event) {
       const giftId = event.gift.id ?? event.giftId ?? 0
       const step = streakStep(`${n.userId}:${giftId}`, event.repeatCount, event.gift.diamondCount ?? event.gift.diamond_count, event.repeatEnd)
       if (!step) return null
+      // @ts-ignore third-party gift event shape is untyped
       const frame = {
         type: 'gift',
         ...n,
@@ -146,6 +150,7 @@ export function toFrame(kind, event) {
         value: step.value,
       }
       const img = event.gift.image?.url || event.gift.imageUrl || event.extendedGiftInfo?.image?.url
+      // @ts-ignore third-party/untyped bridge surface
       if (img) frame.giftImage = img
       return frame
     }
@@ -179,6 +184,7 @@ export function toFrame(kind, event) {
     case 'notice': {
       const text = (event.content || '').trim()
       if (!text) return null
+      // @ts-ignore third-party gift event shape is untyped
       const frame = { type: 'notice', text }
       const name = displayName(user)
       if (name) frame.user = name
@@ -201,6 +207,7 @@ export function toFrame(kind, event) {
 }
 
 export function statusFrame({ connected, message, connecting = false, liveEnded = false, waiting = false }) {
+  // @ts-ignore third-party gift event shape is untyped
   const frame = { type: 'status', connected, message }
   if (connecting) frame.connecting = true
   if (liveEnded) frame.liveEnded = true

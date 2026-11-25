@@ -6,7 +6,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --check server.js && node --check frames.js && node -e \"import('./frames.js').then(m=>{const u={nickname:'a',uniqueId:'a'};const a=m.toFrame('comment',{content:'new field',user:u});const b=m.toFrame('comment',{comment:'old field',user:u});if(a.type!=='comment'||a.text!=='new field'||b.text!=='old field')throw new Error('comment text fields broken');console.log('frames ok',JSON.stringify(a),JSON.stringify(b))})\""
+    "test": "node --check server.js && node --check frames.js && node -e \"import('./frames.js').then(m=>{const u={nickname:'a',uniqueId:'a'};const a=m.toFrame('comment',{content:'new field',user:u});const b=m.toFrame('comment',{comment:'old field',user:u});if(a.type!=='comment'||a.text!=='new field'||b.text!=='old field')throw new Error('comment text fields broken');console.log('frames ok',JSON.stringify(a),JSON.stringify(b))})\"",
+    "typecheck": "../web/node_modules/.bin/tsc -p jsconfig.json"
   },
   "dependencies": {
     "convex": "^1.49.0",

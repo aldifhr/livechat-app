@@ -140,13 +140,15 @@ the web side — it does not become an open proxy.
 
 ### Env (web)
 
-All server-side. There are no `NEXT_PUBLIC_*` variables. Copy `.env.example` to
-`.env`, or run `npm run secrets` to generate the two secrets and write them for
-you.
+All server-side, except the public Convex URL the browser socket needs. Copy the
+root `.env.example` to `.env` (or set the same names in your process manager), or
+run `npm run secrets` to generate the two secrets and write them for you. The
+VPS runs the web service from systemd with `/etc/streamkit/env` as its
+`EnvironmentFile`; that file is the authoritative one in production.
 
 | Name | Meaning |
 |---|---|
-| `BACKEND_URL` | Backend origin the server proxies to. |
+| `BACKEND_ORIGIN` | Browser-facing Convex origin, baked into overlay pages. |
 | `STREAMKIT_TOKEN` | Backend token, attached server-side. Empty shows a "no API token" banner. |
 | `STREAMKIT_DASHBOARD_PASSWORD_HASH` | The dashboard password as a bcrypt hash. **Empty = nobody can sign in.** The change-password page rewrites this line in place. |
 | `STREAMKIT_DASHBOARD_USER` | Account name, used to label the session. Default `admin`. |
@@ -154,6 +156,8 @@ you.
 | `STREAMKIT_SESSION_DAYS` | Session lifetime. Default 7. A non-positive value falls back to 7, not to forever. |
 | `STREAMKIT_ENV_FILE` | Where the change-password route writes the new hash. Default `.env` beside the server. |
 | `STREAMKIT_DATA_DIR` | Where runtime state lives. Default `.data` beside the server. |
+| `STREAMKIT_TTS_LANG` | Google TTS language for docks. Default `id`. |
+| `BRIDGE_URL` / `CONVEX_URL` | Loopback origins for the Node bridge and self-hosted Convex. |
 | `PRODUCT_NAME` | Wordmark. Default `StreamKit`. |
 | `TAGLINE` | Default `Live chat overlays for streaming.` |
 
