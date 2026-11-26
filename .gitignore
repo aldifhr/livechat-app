@@ -51,3 +51,8 @@ web/tsconfig.tsbuildinfo
 web/convex/*.js
 # TikTok bridge dependencies
 backend/node_modules/
+
+# Python backend
+api_py/.venv/
+__pycache__/
+*.pyc

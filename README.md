@@ -7,15 +7,15 @@ manifest** — `npm install` at the root does nothing, and that is deliberate.
 
 | Part | What it is | Stack |
 |---|---|---|
-| `web/convex/` + `backend/` | Backend: Convex state + TikTok bridge | Convex (self-hosted) + Node |
+| `api_py/` | Backend: Postgres state, TikTok watcher, overlay sockets | Python + FastAPI + PostgreSQL |
 | `web/` | Dashboard: stream list, per-stream pages, overlay builder | Next.js 16 + React 19 |
 
 ## Layout
 
 ```
 .
-├── web/convex/       Convex backend. See "Backend" below.
-├── backend/          Node TikTok bridge.
+├── api_py/           Python backend. See "Backend" below.
+├── backend/          Retired Node bridge (kept for rollback).
 ├── web/              Next.js dashboard.
 ├── shared/           Cross-app TypeScript contracts: overlay, events,
 │                    platforms. Imported via the `@shared` alias.
@@ -25,48 +25,49 @@ manifest** — `npm install` at the root does nothing, and that is deliberate.
 
 ## Backend (StreamKit)
 
-Convex (self-hosted) + a small Node TikTok bridge. The old FastAPI backend
-(`api/`) is gone.
+One Python process owns everything: rooms, events, sessions and logs live in
+PostgreSQL; the same process holds the TikTok socket and the overlay WebSocket
+fan-out. Convex and the Node bridge are retired (their data and code remain as
+a rollback path).
 
 | Part | What it is | Stack |
 |---|---|---|
-| `web/convex/` | Rooms, events, sessions, logs | Convex functions (self-hosted) |
-| `backend/` | TikTok LIVE socket + overlay WebSocket fan-out | Node + tiktok-live-connector + ws |
+| `api_py/app.py` | RPC, control endpoints, WS fan-out, TikTok watcher | FastAPI + TikTokLive + psycopg |
+| `api_py/migrate_from_convex.py` | One-off import of rooms/events/sessions | Convex client + psycopg |
 
-Convex Functions cannot hold a long-lived socket, so the bridge exists only to
-open the TikTok connection and push every event into Convex mutations
-(`events:appendEvent`). Overlay WebSockets are served by the bridge, which polls
-Convex for new events and fans them out. All state lives in Convex.
+The Next.js gateway still speaks the old function names (`rooms:list`,
+`events:recentForRoom`, ...) through `POST /rpc`, so no client helper had to be
+rewritten. Room IDs were kept during migration, so existing OBS links still
+work.
 
 ```
-web/convex/
-├── schema.ts       rooms, events, roomSessions, logs, metrics
-├── rooms.ts        CRUD, status, session, analytics
-├── events.ts       appendEvent, trigger, topChatters, health, logs
-backend/
-├── server.js       HTTP connect/disconnect + /ws fan-out + TikTok wiring
-└── frames.js       TikTok event -> overlay wire frame (the format in shared/events.ts)
+api_py/
+├── app.py                  everything: SQL schema, RPC dispatch, watcher, sockets
+├── migrate_from_convex.py  one-off import from the old deployment
+└── test_app.py             offline wire-shape tests
 ```
 
 ### Running it
 
-Convex self-hosted runs as `convex-local.service`
-(`/opt/convex/convex-local-backend`, data `/var/lib/convex`, env
-`/etc/convex/env`, port 3210). The bridge runs as `tiktok-bridge.service`
-(port 8003). nginx on `kit-backend.aldifhr.my.id` routes `/` to Convex and
-`/ws/` + `/api/room-connect*` to the bridge.
+`streamkit-python.service` runs uvicorn on `127.0.0.1:8004` with
+`/etc/streamkit/python.env` (database URL + API token). nginx on
+`kit-backend.aldifhr.my.id` routes `/`, `/ws/` and `/api/room-connect*` to it.
+The dashboard sets `STREAMKIT_API_URL` (defaults to `http://127.0.0.1:8004`).
 
 ```bash
-cd web && npx convex deploy   # needs CONVEX_SELF_HOSTED_URL + CONVEX_SELF_HOSTED_ADMIN_KEY
-cd backend && npm install && npm start
+cd api_py
+python -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python -m unittest -v test_app
+.venv/bin/python migrate_from_convex.py   # only when importing the old deployment
 ```
 
 ### API
 
 The dashboard calls `/api/backend/...` on the Next server, which forwards
-everything to Convex except the TikTok connect/disconnect paths, which go to
-the bridge. The session gate in `web/src/proxy.ts` is the auth; there is no
-backend token any more.
+everything to the Python backend through `POST /rpc`, including the TikTok
+connect/disconnect paths. The session gate in `web/src/proxy.ts` is the browser
+auth; the Python service additionally requires `STREAMKIT_TOKEN` on all
+privileged calls.
 
 | Method | Endpoint | Notes |
 |---|---|---|
@@ -75,10 +76,10 @@ backend token any more.
 | `PATCH`/`DELETE` | `/api/rooms/{id}` | Update / delete room |
 | `POST` | `/api/rooms/{id}/config` | Save overlay config |
 | `GET` | `/api/rooms/{id}/status`, `/session` | Connection status, session stats |
-| `POST` | `/api/room-connect-by-username`, `/room-connect/{id}`, `/connect`, `/disconnect` | TikTok bridge |
+| `POST` | `/api/room-connect-by-username`, `/room-connect/{id}`, `/connect`, `/disconnect` | TikTok watcher |
 | `POST` | `/api/rooms/{id}/trigger`, `/api/hooks/{id}` | Manual trigger / webhook |
 | `GET` | `/api/health`, `/api/metrics`, `/api/analytics`, `/api/logs` | Ops |
-| `WS` | `/ws/{overlay\|room\|customizer}/{id}` | Event stream (bridge, events from Convex) |
+| `WS` | `/ws/{overlay\|room\|customizer}/{id}` | Event stream (Python backend) |
 
 ### Env
 

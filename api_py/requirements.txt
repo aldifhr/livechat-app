@@ -1,0 +1,6 @@
+fastapi==0.165.0
+uvicorn[standard]==0.54.0
+psycopg[binary,pool]==3.3.9
+psycopg-pool==3.3.3
+TikTokLive==7.0.1
+convex==0.8.1

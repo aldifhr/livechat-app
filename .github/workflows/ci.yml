@@ -14,9 +14,10 @@
 #   - A Convex deploy. Functions are typechecked here; pushing them is a
 #     deliberate deploy action on the VPS, not a CI step.
 #
-# The FastAPI backend (`api/`) was removed in the Convex migration; the
-# Node TikTok bridge (`backend/`) replaced its test job. `shared/` stayed,
-# because the dashboard imports it.
+# The FastAPI backend was removed in the Convex migration, then replaced by a
+# single Python backend (`api_py/`) on PostgreSQL. The Node bridge tests stay
+# until that service is retired from the deploy. `shared/` stayed because the
+# dashboard imports it.
 
 name: ci
 
@@ -67,3 +68,21 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
       - run: npm test
+
+  python:
+    name: python backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api_py
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: pip
+          cache-dependency-path: api_py/requirements.txt
+      - run: python -m venv .venv
+      - run: .venv/bin/pip install -r requirements.txt
+      - run: .venv/bin/python -m py_compile app.py migrate_from_convex.py
+      - run: .venv/bin/python -m unittest -v test_app

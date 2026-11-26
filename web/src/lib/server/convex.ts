@@ -1,43 +1,62 @@
 import 'server-only'
 
-import { ConvexHttpClient } from 'convex/browser'
-
 /**
- * The public Convex origin. A deployment that sets CONVEX_URL (the VPS
- * service sets it to loopback) uses that; everyone else — Vercel included —
- * reaches the same deployment through its public host, which nginx routes to
- * Convex. No admin key is required: the functions themselves are the API.
+ * RPC client for the Python backend.
+ *
+ * The Next.js gateway still speaks the old function names (`rooms:list`,
+ * `events:recentForRoom`, ...). Keeping that vocabulary here means the gateway,
+ * its tests and every client helper stay unchanged while storage moves from
+ * Convex to PostgreSQL. The Python service dispatches these names in one place.
  */
-const PUBLIC_CONVEX_URL = 'https://kit-backend.aldifhr.my.id'
 
-const convexUrl = () => {
-  const url = (process.env.CONVEX_URL || process.env.NEXT_PUBLIC_CONVEX_URL || PUBLIC_CONVEX_URL).replace(/\/+$/, '')
-  return url
-}
+const DEFAULT_URL = 'http://127.0.0.1:8004'
 
-const adminKey = () => (process.env.CONVEX_ADMIN_KEY || '').trim()
+const apiUrl = () =>
+  (process.env.STREAMKIT_API_URL || process.env.PYTHON_API_URL || DEFAULT_URL).replace(/\/+$/, '')
 
-/** The write token Convex functions require. Attached here so every call
- *  site sends it without remembering to. */
 const apiToken = () => (process.env.STREAMKIT_TOKEN || '').trim()
 
-async function callViaHttpClient(kind: 'query' | 'mutation', path: string, args: Record<string, unknown>) {
-  const client = new ConvexHttpClient(convexUrl())
-  if (adminKey()) (client as any).setAdminAuth(adminKey())
-  const withToken = { ...args, ...(apiToken() ? { token: apiToken() } : {}) }
-  return kind === 'query' ? client.query(path as any, withToken) : client.mutation(path as any, withToken)
+async function call(path: string, args: Record<string, unknown>): Promise<unknown> {
+  const headers: Record<string, string> = { 'content-type': 'application/json' }
+  const token = apiToken()
+  if (token) headers['x-streamkit-token'] = token
+
+  let response: Response
+  try {
+    response = await fetch(`${apiUrl()}/rpc`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ path, args: { ...args, ...(token ? { token } : {}) } }),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(30_000),
+    })
+  } catch (cause) {
+    throw new Error(`Python backend unreachable: ${cause instanceof Error ? cause.message : cause}`)
+  }
+
+  const text = await response.text()
+  let value: unknown = null
+  try {
+    value = text ? JSON.parse(text) : null
+  } catch {
+    if (!response.ok) throw new Error(`Python backend returned HTTP ${response.status}`)
+  }
+  if (!response.ok) {
+    const detail = (value as { detail?: string } | null)?.detail || `HTTP ${response.status}`
+    throw new Error(detail)
+  }
+  return value
 }
 
+/** Function paths here always include their module prefix, e.g. `rooms:get`. */
 export async function convexQuery<T>(path: string, args: Record<string, unknown> = {}): Promise<T> {
-  return (await callViaHttpClient('query', path.includes(':') ? path : `${path.replace(/^\/api\//, '').replace(/^\//, '')}:default`, args)) as T
+  return (await call(path.includes(':') ? path : `${path.replace(/^\/api\//, '').replace(/^\//, '')}:default`, args)) as T
 }
 
 export async function convexMutation<T>(path: string, args: Record<string, unknown> = {}): Promise<T> {
-  return (await callViaHttpClient('mutation', path.includes(':') ? path : `${path.replace(/^\/api\//, '').replace(/^\//, '')}:default`, args)) as T
+  return convexQuery<T>(path, args)
 }
 
 export async function convexAction<T>(path: string, args: Record<string, unknown> = {}): Promise<T> {
-  const client = new ConvexHttpClient(convexUrl())
-  if (adminKey()) (client as any).setAdminAuth(adminKey())
-  return (await client.action((path.includes(':') ? path : `${path.replace(/^\/api\//, '').replace(/^\//, '')}:default`) as any, args)) as T
+  return convexQuery<T>(path, args)
 }
