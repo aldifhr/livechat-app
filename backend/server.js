@@ -194,6 +194,7 @@ function wireSource(roomId, username) {
   conn.on(WebcastEvent.STREAM_END ?? 'streamEnd', async () => {
     entry.running = false
     if (entry.timer) { clearTimeout(entry.timer); entry.timer = null }
+    console.log(`@${username} stream ended; clearing desired state`)
     await m('rooms:setDesired', { roomId, desired: false }).catch(() => {})
     await setStatus(roomId, { connected: false, liveEnded: true, message: `@${username} is no longer live` })
   })
@@ -217,6 +218,7 @@ function wireSource(roomId, username) {
 }
 
 async function connectRoom(roomId, username) {
+  console.log(`connect requested @${username} (${roomId})`)
   // Remember the intent so a bridge restart can restore it. Without this the
   // boot-time status reset left every previously live room offline forever.
   await m('rooms:setDesired', { roomId, desired: true }).catch(() => {})
@@ -252,6 +254,7 @@ async function connectRoom(roomId, username) {
 }
 
 async function disconnectRoom(roomId) {
+  console.log(`disconnect requested for ${roomId}`)
   await m('rooms:setDesired', { roomId, desired: false }).catch(() => {})
   const existing = sources.get(roomId)
   if (existing) {

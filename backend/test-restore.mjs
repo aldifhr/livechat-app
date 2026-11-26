@@ -7,6 +7,8 @@ const checks = [
   ['stream end clears the intent', "m('rooms:setDesired', { roomId, desired: false }).catch(() => {})"],
   ['boot restores rooms marked desired', 'if (!room.desired || !room.username) continue'],
   ['boot calls the normal connect path', 'await connectRoom(room.id, room.username)'],
+  ['disconnect is journaled', 'disconnect requested for'],
+  ['stream end is journaled', 'stream ended; clearing desired state'],
 ]
 for (const [label, needle] of checks) {
   if (!source.includes(needle)) throw new Error(`missing: ${label}`)
