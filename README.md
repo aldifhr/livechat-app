@@ -107,7 +107,16 @@ npm run build && npm start
 ### Testing
 
 ```bash
-cd web && npm test   # 5 suites: credentials, session, style-store, room-live, proxy-allowlist
+cd web && npm test   # credentials, session, style-store, room-live, proxy-allowlist, event/overlay contracts
+```
+
+The cursor pagination check needs a live Convex deployment, so it is a
+separate script rather than part of `npm test`:
+
+```bash
+cd web
+CONVEX_SELF_HOSTED_URL=http://127.0.0.1:3210 STREAMKIT_TOKEN=... \
+  node scripts/test-cursor-pagination.mjs
 ```
 
 ### Pages

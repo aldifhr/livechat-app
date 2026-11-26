@@ -115,15 +115,24 @@ setInterval(async () => {
   const rooms = new Set([...clients.values()].map((c) => c.roomId))
   for (const roomId of rooms) {
     if (polling.has(roomId)) continue
-    if (!lastSeen.has(roomId)) { lastSeen.set(roomId, Date.now()); continue }
     polling.add(roomId)
     try {
-      const rows = await q('events:recentForRoom', { roomId, sinceCreationTime: lastSeen.get(roomId), limit: 100 })
-      for (const row of rows || []) {
-        broadcast(roomId, row.frame)
-        // Advance on the row's own cursor. Using Date.now() here used to drop
-        // frames sharing a millisecond and replay others on the next poll.
-        if (row.cursor > lastSeen.get(roomId)) lastSeen.set(roomId, row.cursor)
+      // Never seed the cursor from the bridge clock: an event written between
+      // the socket connect and the first poll would sit below it and be lost.
+      // Ask Convex for its own last cursor instead.
+      if (!lastSeen.has(roomId)) {
+        lastSeen.set(roomId, await q('events:latestCursor', { roomId }))
+        continue
+      }
+      // Drain a few full batches in one tick so a burst does not need 300ms
+      // per 100 events to catch up. Ascending pagination cannot skip rows.
+      for (let batch = 0; batch < 5; batch++) {
+        const rows = await q('events:recentForRoom', { roomId, sinceCreationTime: lastSeen.get(roomId), limit: 100 })
+        for (const row of rows || []) {
+          broadcast(roomId, row.frame)
+          if (row.cursor > lastSeen.get(roomId)) lastSeen.set(roomId, row.cursor)
+        }
+        if (!rows || rows.length < 100) break
       }
     } catch {} finally {
       polling.delete(roomId)
@@ -259,9 +268,15 @@ function sendJson(res, obj, status = 200) {
   res.end(body)
 }
 
+const MAX_BODY_BYTES = 64 * 1024
 async function readBody(req) {
   const chunks = []
-  for await (const c of req) chunks.push(c)
+  let bytes = 0
+  for await (const c of req) {
+    bytes += c.length
+    if (bytes > MAX_BODY_BYTES) throw new Error('request body too large')
+    chunks.push(c)
+  }
   const text = Buffer.concat(chunks).toString('utf8')
   if (!text) return {}
   try { return JSON.parse(text) } catch { return {} }
@@ -302,7 +317,11 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, { detail: 'username must be 2-24 characters of letters, digits, dot or underscore' }, 400)
       }
       const overlay = body.overlay && typeof body.overlay === 'object' ? body.overlay : {}
-      const found = await m('rooms:findOrCreateByUsername', { username, config: overlay, provider: body.provider || 'tiktok' })
+      const provider = String(body.provider || 'tiktok')
+      if (provider !== 'tiktok') {
+        return sendJson(res, { detail: 'unsupported provider' }, 400)
+      }
+      const found = await m('rooms:findOrCreateByUsername', { username, config: overlay, provider })
       const roomId = found.id
       const result = await connectRoom(roomId, username)
       return sendJson(res, { room_id: roomId, ...result })
@@ -358,7 +377,8 @@ wss.on('connection', async (ws, req) => {
     return
   }
   clients.set(ws, { roomId, clientType })
-  if (!lastSeen.has(roomId)) lastSeen.set(roomId, Date.now())
+  // Seed from Convex, not the local clock, so nothing written during connect is missed.
+  if (!lastSeen.has(roomId)) lastSeen.set(roomId, await q('events:latestCursor', { roomId }).catch(() => Date.now()))
 
   // Opening frames: config first, then status — same order the old backend sent.
   try {

@@ -77,6 +77,21 @@ export const appendEvent = mutation({
   },
 });
 
+export const latestCursor = query({
+  args: { ...tokenArg, roomId: v.string() },
+  handler: async (ctx, args) => {
+    requireToken(args);
+    const room = await resolveRoom(ctx, args.roomId);
+    if (!room) return 0;
+    const last = await ctx.db
+      .query("events")
+      .withIndex("by_room", (q: any) => q.eq("roomId", String(room._id)))
+      .order("desc")
+      .first();
+    return last ? (last as any)._creationTime : 0;
+  },
+});
+
 export const recentForRoom = query({
   args: { ...tokenArg, roomId: v.string(), limit: v.optional(v.number()), sinceCreationTime: v.optional(v.number()) },
   handler: async (ctx, args) => {
@@ -84,22 +99,21 @@ export const recentForRoom = query({
     const room = await resolveRoom(ctx, args.roomId);
     if (!room) return [];
     const rid = String(room._id);
-    // Cursor is Convex's own _creationTime, not the client's Date.now(). Two
-    // frames written in the same millisecond still have distinct cursors, so a
-    // poll can neither skip one nor replay it.
-    // Convex appends _creationTime to every index automatically, so the cursor
-    // cannot be an index field. Take the newest rows by createdAt, filter on the
-    // real _creationTime cursor, then put them back in emission order.
     const cap = Math.min(args.limit ?? 100, 500);
+    // Ascending from the cursor, never "newest N then filter": taking the
+    // newest cap first drops the oldest events of a burst, and the bridge
+    // would advance past them so they could never be recovered.
     const rows = await ctx.db
       .query("events")
-      .withIndex("by_room_created", (q: any) => q.eq("roomId", rid))
-      .order("desc")
+      .withIndex("by_room", (q: any) => {
+        const range = q.eq("roomId", rid);
+        return args.sinceCreationTime === undefined
+          ? range
+          : range.gt("_creationTime", args.sinceCreationTime);
+      })
+      .order("asc")
       .take(cap);
-    return (rows as any[])
-      .filter((e) => args.sinceCreationTime === undefined || e._creationTime > args.sinceCreationTime)
-      .sort((a, b) => a._creationTime - b._creationTime)
-      .map((e) => ({ frame: e.frame, cursor: e._creationTime }));
+    return (rows as any[]).map((e) => ({ frame: e.frame, cursor: e._creationTime }));
   },
 });
 
