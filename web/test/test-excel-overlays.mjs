@@ -176,6 +176,9 @@ check('the socket opener no longer shadows window.open', script.includes('functi
 const vertical = sources.get('background-excel-vertical.html')
 check('status clock is live and localised', vertical.includes('data-k="time" data-live') && vertical.includes("toLocaleTimeString('id-ID'"))
 check('a pinned ?time= freezes the live clock', vertical.includes("if (k === 'time') el.removeAttribute('data-live')"))
+check('cellular uses a filled wedge, not four stubby bars', vertical.includes('M868 46 V39 L895 12') && !vertical.includes('x=\"880\" y=\"34\"'))
+check('wifi arcs are bold with rounded caps', vertical.includes('stroke-width=\"5\" stroke-linecap=\"round\"'))
+
 check('wifi dot shares the signal/battery baseline', vertical.includes('cy="42.5" r="3.5"') && !vertical.includes('cy="52"'))
 
 console.log(`\nall checks passed (${passed})`)
