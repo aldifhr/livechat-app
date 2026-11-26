@@ -66,7 +66,10 @@ export default function ExcelTextEditor({ roomId }: { roomId: string }) {
   function apply(d: Document) {
     d.querySelectorAll('[data-k]').forEach((el) => {
       const key = el.getAttribute('data-k') || ''
-      if (Object.prototype.hasOwnProperty.call(values, key)) el.textContent = values[key]
+      if (Object.prototype.hasOwnProperty.call(values, key)) {
+        el.textContent = values[key]
+        if (key === 'time') el.removeAttribute('data-live')
+      }
       ;(el as HTMLElement).style.outline = key === active ? '3px solid #ff3e00' : ''
     })
   }

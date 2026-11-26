@@ -172,4 +172,10 @@ check('the resolved room id is cached', flatScript.includes('varresolved=null') 
 check('frames go through the paced queue', flatScript.includes('functionpush(fr)') && flatScript.includes('},1800)') && flatScript.includes("if(fr&&fr.type==='comment')push(fr)"))
 check('the socket opener no longer shadows window.open', script.includes('function openSocket(') && !script.includes('function open('))
 
+// Status bar: the clock follows the device, and every icon shares the y=46 baseline.
+const vertical = sources.get('background-excel-vertical.html')
+check('status clock is live and localised', vertical.includes('data-k="time" data-live') && vertical.includes("toLocaleTimeString('id-ID'"))
+check('a pinned ?time= freezes the live clock', vertical.includes("if (k === 'time') el.removeAttribute('data-live')"))
+check('wifi dot shares the signal/battery baseline', vertical.includes('cy="42.5" r="3.5"') && !vertical.includes('cy="52"'))
+
 console.log(`\nall checks passed (${passed})`)

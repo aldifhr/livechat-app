@@ -39,9 +39,9 @@
   <rect width="1080" height="1920" fill="#fff"/>
   <!-- status bar -->
   <rect width="1080" height="66" fill="#1a5c38"/>
-  <text x="36" y="46" font-size="30" fill="#fff" data-k="time">10.42</text>
+  <text x="36" y="46" font-size="30" fill="#fff" data-k="time" data-live>10.42</text>
   <rect x="868" y="40" width="8" height="6" fill="#fff"/><rect x="880" y="34" width="8" height="12" fill="#fff"/><rect x="892" y="28" width="8" height="18" fill="#fff"/><rect x="904" y="22" width="8" height="24" fill="#fff"/>
-  <path d="M930 36 a22 22 0 0 1 36 0" fill="none" stroke="#fff" stroke-width="4"/><path d="M938 44 a12 12 0 0 1 20 0" fill="none" stroke="#fff" stroke-width="4"/><circle cx="948" cy="52" r="3.5" fill="#fff"/>
+  <path d="M930 38 a18 18 0 0 1 36 0" fill="none" stroke="#fff" stroke-width="4"/><path d="M938 42 a10 10 0 0 1 20 0" fill="none" stroke="#fff" stroke-width="4"/><circle cx="948" cy="42.5" r="3.5" fill="#fff"/>
   <rect x="990" y="24" width="44" height="22" fill="none" stroke="#fff" stroke-width="3" rx="4"/><rect x="994" y="28" width="32" height="14" fill="#fff"/><rect x="1034" y="30" width="4" height="10" fill="#fff"/>
   <!-- title bar -->
   <rect y="66" width="1080" height="114" fill="#217346"/>
@@ -188,8 +188,21 @@
   var q = new URLSearchParams(location.search), overridden = {}
   document.querySelectorAll('[data-k]').forEach(function (el) {
     var k = el.getAttribute('data-k'), v = q.get(k)
-    if (v !== null) { el.textContent = v; overridden[k] = true }
+    if (v !== null) {
+      el.textContent = v
+      overridden[k] = true
+      if (k === 'time') el.removeAttribute('data-live')
+    }
   })
+
+  // ---- jam status bar mengikuti waktu perangkat ----
+  var clockText = document.querySelector('[data-k="time"]')
+  function tickClock() {
+    if (!clockText || !clockText.hasAttribute('data-live')) return
+    clockText.textContent = new Date().toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit', hour12: false })
+  }
+  tickClock()
+  setInterval(tickClock, 15000)
 
   // ---- kursor formula bar ----
   var f = $('formula'), cur = $('cursor')
