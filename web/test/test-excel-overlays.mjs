@@ -148,6 +148,14 @@ for (const page of PAGES) {
   const source = sources.get(page.file)
   check(`${page.file} mirrors its forward arrow from one shape`, /<use href="#[^"]+" transform="translate\(\d+ 0\) scale\(-1 1\)"\/>/.test(source))
   check(`${page.file} has no hand-drawn arrow twin`, !/translate\(-10 0\)/.test(source))
+  // The pair must sit on the same optical row as the X icon beside it, not
+  // a few pixels low. Measured centres: vertical X=123, horizontal X=15.
+  const expected = page.file === 'background-excel-vertical.html'
+    ? ['M770 116', 'points="778,100 778,132 756,116"']
+    : ['M222 21', 'points="224,9 224,17 219,13"']
+  for (const fragment of expected) {
+    check(`${page.file} keeps the arrows on the header row (${fragment.slice(0, 16)})`, source.includes(fragment))
+  }
 }
 
 console.log(`\nall checks passed (${passed})`)
