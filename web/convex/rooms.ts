@@ -29,6 +29,7 @@ function pub(r: any) {
     config: r.config || {},
     createdAt: r.createdAt || 0,
     provider: r.provider || "tiktok",
+    desired: !!r.desired,
   };
 }
 
@@ -185,6 +186,17 @@ export const findOrCreateByUsername = mutation({
       autoCreated: true,
     });
     return { id: externalId, created: true };
+  },
+});
+
+export const setDesired = mutation({
+  args: { ...tokenArg, roomId: v.string(), desired: v.boolean() },
+  handler: async (ctx, args) => {
+    requireToken(args);
+    const room = await resolveRoom(ctx, args.roomId);
+    if (!room) return { ok: false };
+    await ctx.db.patch(room._id, { desired: args.desired });
+    return { ok: true };
   },
 });
 

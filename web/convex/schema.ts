@@ -17,6 +17,8 @@ export default defineSchema({
     viewers: v.optional(v.number()),
     providerStatus: v.optional(v.any()),
     autoCreated: v.optional(v.boolean()),
+    // The user pressed Connect: restore this room after a bridge restart.
+    desired: v.optional(v.boolean()),
   })
     .index("by_external", ["externalId"])
     .index("by_username", ["username"])

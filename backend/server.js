@@ -194,6 +194,7 @@ function wireSource(roomId, username) {
   conn.on(WebcastEvent.STREAM_END ?? 'streamEnd', async () => {
     entry.running = false
     if (entry.timer) { clearTimeout(entry.timer); entry.timer = null }
+    await m('rooms:setDesired', { roomId, desired: false }).catch(() => {})
     await setStatus(roomId, { connected: false, liveEnded: true, message: `@${username} is no longer live` })
   })
   // @ts-ignore connector typings omit EventEmitter.on
@@ -216,6 +217,9 @@ function wireSource(roomId, username) {
 }
 
 async function connectRoom(roomId, username) {
+  // Remember the intent so a bridge restart can restore it. Without this the
+  // boot-time status reset left every previously live room offline forever.
+  await m('rooms:setDesired', { roomId, desired: true }).catch(() => {})
   const existing = sources.get(roomId)
   if (existing && existing.running && existing.username === username) {
     return { status: 'already-connected', username, room_id: roomId, connected: true }
@@ -248,6 +252,7 @@ async function connectRoom(roomId, username) {
 }
 
 async function disconnectRoom(roomId) {
+  await m('rooms:setDesired', { roomId, desired: false }).catch(() => {})
   const existing = sources.get(roomId)
   if (existing) {
     existing.running = false
@@ -420,6 +425,13 @@ server.listen(PORT, '127.0.0.1', async () => {
     const rooms = await q('rooms:list', {})
     for (const room of rooms || []) {
       await m('rooms:setStatus', { roomId: room.id, connected: false, connecting: false, message: 'Offline' }).catch(() => {})
+    }
+    for (const room of rooms || []) {
+      if (!room.desired || !room.username) continue
+      console.log(`restoring @${room.username} (${room.id}) after restart`)
+      await connectRoom(room.id, room.username).catch((e) =>
+        log('error', 'bridge.restore', `${room.username}: ${e?.message || e}`).catch(() => {}),
+      )
     }
   } catch {}
 })
