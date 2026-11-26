@@ -155,4 +155,21 @@ for (const page of PAGES) {
   }
 }
 
+// Chat behaviour: a busy live must not replace a card before it is read,
+// emoji initials must not split a surrogate pair, and a handle must be
+// resolved only once across reconnects.
+const script = sources.get('background-excel-vertical.html')
+const flatScript = squash(script)
+check('hole stops before the TOTAL row', script.includes('w: 960, h: 540'))
+check('hole comment states the Comments-panel limit', script.includes('y+h <= 1404'))
+check('the status note sits below the Comments header', script.includes('top:77.2917%') && !script.includes('top:74.1667%'))
+check('long comments use ellipsis on one line', /\.live-text\{[^}]*white-space:nowrap[^}]*text-overflow:ellipsis[^}]*max-height:none/.test(script))
+check('avatar initials survive emoji usernames', script.split('Array.from(name)[0].toUpperCase()').length - 1 >= 2)
+check('avatars do not leak a referrer to the CDN', flatScript.includes("img.referrerPolicy='no-referrer'"))
+check('an @handle is normalised', flatScript.includes("room=(query.get('room')||'').trim().replace(/^@/,'')"))
+check('missing room and missing base have different messages', script.includes('tambahkan ?room=<username atau id> di link') && script.includes('baseUrl kosong: __OVERLAY_CONFIG__ belum diganti'))
+check('the resolved room id is cached', flatScript.includes('varresolved=looksLikeRoomId(room)?room:null') && flatScript.includes('if(resolved){openSocket(resolved);return}'))
+check('frames go through the paced queue', flatScript.includes('functionpush(frame)') && flatScript.includes('MIN_MS=1800') && flatScript.includes("if(frame&&frame.type==='comment')push(frame)"))
+check('the socket opener no longer shadows window.open', script.includes('function openSocket(') && !script.includes('function open('))
+
 console.log(`\nall checks passed (${passed})`)

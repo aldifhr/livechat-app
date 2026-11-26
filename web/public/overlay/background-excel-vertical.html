@@ -17,8 +17,8 @@
   .live-avatar img{width:100%;height:100%;object-fit:cover}
   .live-name{font-size:calc(30px * var(--s,1));font-weight:600;color:#262626;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .live-time{margin-left:auto;font-size:calc(26px * var(--s,1));color:#707070;flex:none}
-  .live-text{margin-top:calc(4px * var(--s,1));font-size:calc(34px * var(--s,1));line-height:1.2;color:#262626;overflow-wrap:anywhere;max-height:calc(44px * var(--s,1));overflow:hidden}
-  #live-note{position:absolute;left:3.7037%;top:74.1667%;width:92.5926%;font-size:calc(24px * var(--s,1));color:#707070;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .live-text{margin-top:calc(4px * var(--s,1));font-size:calc(34px * var(--s,1));line-height:1.2;color:#262626;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-height:none}
+  #live-note{position:absolute;left:3.7037%;top:77.2917%;width:92.5926%;font-size:calc(24px * var(--s,1));color:#707070;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 </style>
 </head>
 <body>
@@ -211,7 +211,9 @@
 <script id="overlay-config" type="application/json">__OVERLAY_CONFIG__</script>
 <script>
   // ===== Area layar game (ubah di sini kalau mau ukuran/posisi lain) =====
-  var HOLE = { x: 80, y: 744, w: 976, h: 549 };   // 16:9 landscape. Contoh portrait: {x:230,y:560,w:620,h:1100}
+  var HOLE = { x: 80, y: 744, w: 960, h: 540 };   // 16:9 landscape, stops at y+h=1284.
+  // Jangan pakai contoh portrait {x:230,y:560,w:620,h:1100}: y+h=1660 menimpa
+  // panel Comments yang mulai di y=1404. Batas aman: y+h <= 1404.
   // =======================================================================
   function $(id){return document.getElementById(id)}
   function set(id,o){var el=$(id);for(var k in o)el.setAttribute(k,o[k])}
@@ -256,11 +258,26 @@
     catch (e) { return {} }
   })()
   var query = new URLSearchParams(location.search)
-  var room = query.get('room') || ''
+  var room = (query.get('room') || '').trim().replace(/^@/, '')
   var base = String(baked.baseUrl || '').replace(/\/$/, '')
   var feed = document.getElementById('live-feed')
   var note = document.getElementById('live-note')
   var MAX = 2
+  var queue = []
+  var busy = false
+  var MIN_MS = 1800
+
+  function push(frame) {
+    queue.push(frame)
+    if (queue.length > 20) queue.shift()
+    drain()
+  }
+  function drain() {
+    if (busy || !queue.length) return
+    busy = true
+    addCard(queue.shift())
+    setTimeout(function () { busy = false; drain() }, MIN_MS)
+  }
 
   function say(text) { note.textContent = text }
   function clock() { return new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) }
@@ -276,11 +293,12 @@
     var name = String(frame.user || '?')
     if (frame.avatar) {
       var img = document.createElement('img')
+      img.referrerPolicy = 'no-referrer'
       img.src = frame.avatar
       img.alt = ''
-      img.onerror = function () { img.remove(); avatar.textContent = name.charAt(0).toUpperCase() }
+      img.onerror = function () { img.remove(); avatar.textContent = Array.from(name)[0].toUpperCase() }
       avatar.appendChild(img)
-    } else avatar.textContent = name.charAt(0).toUpperCase()
+    } else avatar.textContent = Array.from(name)[0].toUpperCase()
     var label = document.createElement('span')
     label.className = 'live-name'
     label.textContent = name
@@ -300,7 +318,7 @@
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
   }
 
-  function open(roomId) {
+  function openSocket(roomId) {
     var socket
     try { socket = new WebSocket(base.replace(/^http/, 'ws') + '/ws/overlay/' + encodeURIComponent(roomId)) }
     catch (error) { say('bad backend URL: ' + error.message); setTimeout(connect, 5000); return }
@@ -308,21 +326,32 @@
     socket.onmessage = function (event) {
       var frame
       try { frame = JSON.parse(event.data) } catch (e) { return }
-      if (frame && frame.type === 'comment') addCard(frame)
+      if (frame && frame.type === 'comment') push(frame)
     }
     socket.onclose = function () { say('socket closed, reconnecting…'); setTimeout(connect, 3000) }
     socket.onerror = function () {}
   }
 
+  // Resolve a handle once. A dropped socket must not keep POSTing the same
+  // handle on every retry — that just hammers the connect endpoint.
+  var resolved = looksLikeRoomId(room) ? room : null
+
   function connect() {
-    if (!room || !base) { say('add ?room=<handle or id> to the link'); return }
-    if (looksLikeRoomId(room)) { open(room); return }
+    if (!room) { say('tambahkan ?room=<username atau id> di link'); return }
+    if (!base) { say('baseUrl kosong: __OVERLAY_CONFIG__ belum diganti'); return }
+    if (resolved) { openSocket(resolved); return }
+    // The bridge answers OPTIONS itself and sends CORS headers, so this POST
+    // survives a preflight even when the page is opened from another origin.
     fetch(base + '/api/room-connect-by-username', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ username: room })
     })
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json() })
-      .then(function (d) { if (!d || !d.room_id) throw new Error('no room id in the answer'); open(d.room_id) })
+      .then(function (d) {
+        if (!d || !d.room_id) throw new Error('no room id in the answer')
+        resolved = d.room_id
+        openSocket(resolved)
+      })
       .catch(function (e) { say('cannot resolve ' + room + ': ' + e.message); setTimeout(connect, 5000) })
   }
   connect()
