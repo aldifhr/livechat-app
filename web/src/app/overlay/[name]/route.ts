@@ -10,7 +10,6 @@ const OVERLAYS: Record<string, string> = {
   'cat-overlay': 'cat-overlay.html',
   'top-chatter': 'top-chatter.html',
   'like-target': 'like-target.html',
-  'background-excel': 'background-excel.html',
   'background-excel-vertical': 'background-excel-vertical.html',
 }
 

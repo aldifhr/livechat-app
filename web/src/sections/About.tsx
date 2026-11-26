@@ -28,7 +28,6 @@ export default function About({ backend }: { backend?: string }) {
   const addresses: { label: string; value: string; href?: string }[] = [
     { label: 'This dashboard', value: origin },
     { label: 'Chat overlay (paste into OBS)', value: `${origin}/overlay/chat-overlay` },
-    { label: 'Excel background + live comments (append ?room=<handle or id>)', value: `${origin}/overlay/background-excel` },
     { label: 'Excel vertical + live comments (append ?room=<handle or id>)', value: `${origin}/overlay/background-excel-vertical` },
   ]
   if (backend) {

@@ -193,7 +193,6 @@ export const api = {
   },
   topChatterOverlay: (id: string) => overlayUrl('/overlay/top-chatter', id),
   likeTargetOverlay: (id: string) => overlayUrl('/overlay/like-target', id),
-  excelBackgroundOverlay: (id: string) => overlayUrl('/overlay/background-excel', id),
   excelBackgroundVerticalOverlay: (id: string) => overlayUrl('/overlay/background-excel-vertical', id),
 
   /**

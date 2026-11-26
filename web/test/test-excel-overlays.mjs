@@ -47,14 +47,13 @@ function check(label, cond, detail = '') {
 const squash = (text) => text.replace(/\s+/g, '')
 
 const PAGES = [
-  { file: 'background-excel.html', name: 'background-excel', w: 1920, h: 1080, max: 4 },
   { file: 'background-excel-vertical.html', name: 'background-excel-vertical', w: 1080, h: 1920, max: 2 },
 ]
 
 const sources = new Map()
 for (const page of PAGES) sources.set(page.file, readFileSync(join(OVERLAY, page.file), 'utf8'))
 const route = readFileSync(ROUTE, 'utf8')
-check('both Excel overlay pages were read', sources.size === PAGES.length)
+check('the Excel overlay page was read', sources.size === PAGES.length)
 
 // ---------------------------------------------------------------------------
 // Registered so the route handler actually serves them
@@ -150,9 +149,7 @@ for (const page of PAGES) {
   check(`${page.file} has no hand-drawn arrow twin`, !/translate\(-10 0\)/.test(source))
   // The pair must sit on the same optical row as the X icon beside it, not
   // a few pixels low. Measured centres: vertical X=123, horizontal X=15.
-  const expected = page.file === 'background-excel-vertical.html'
-    ? ['M770 116', 'points="778,100 778,132 756,116"']
-    : ['M222 21', 'points="224,9 224,17 219,13"']
+  const expected = ['M770 116', 'points="778,100 778,132 756,116"']
   for (const fragment of expected) {
     check(`${page.file} keeps the arrows on the header row (${fragment.slice(0, 16)})`, source.includes(fragment))
   }

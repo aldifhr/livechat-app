@@ -16,7 +16,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 const OVERLAYS = {
   vertical: '/overlay/background-excel-vertical',
-  horizontal: '/overlay/background-excel',
 } as const
 type Kind = keyof typeof OVERLAYS
 
@@ -36,7 +35,7 @@ const LABELS = Object.fromEntries(
 ) as Record<string, string>
 
 export default function ExcelTextEditor({ roomId }: { roomId: string }) {
-  const [kind, setKind] = useState<Kind>('vertical')
+  const kind: Kind = 'vertical'
   const [svgs, setSvgs] = useState<Partial<Record<Kind, string>>>({})
   const [defaults, setDefaults] = useState<Record<string, string>>({})
   const [values, setValues] = useState<Record<string, string>>({})
@@ -116,13 +115,6 @@ export default function ExcelTextEditor({ roomId }: { roomId: string }) {
 
       <div className="excel-editor-grid">
         <div className="panel">
-          <div className="actions">
-            {(Object.keys(OVERLAYS) as Kind[]).map((k) => (
-              <button key={k} className={k === kind ? 'primary' : undefined} onClick={() => { setKind(k); setActive('') }}>
-                {k === 'vertical' ? 'Vertikal' : 'Horizontal'}
-              </button>
-            ))}
-          </div>
           <div className="excel-preview-scroll">
             <div
               ref={previewRef}
