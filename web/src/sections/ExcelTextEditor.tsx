@@ -1,27 +1,24 @@
 'use client'
 
 /**
- * Visual editor for the Excel backgrounds.
+ * Visual editor for the vertical Excel background.
  *
- * The old form was a wall of `h7`, `r3`, `note2` fields: every value was
- * editable but nobody could tell which one was which without opening the
- * overlay and guessing. This page renders the real SVG as a preview, labels
- * each editable node, and lets a click select the text to change. The URL it
- * builds is still just query parameters — this is an editor for them, not a
- * second copy of the overlay's state.
+ * The overlay builds part of its grid in JavaScript, so parsing the HTML with
+ * DOMParser misses half the editable text. The preview is therefore a real
+ * iframe: the page runs exactly as OBS will load it, and on load we attach a
+ * click handler to every [data-k] node inside its document. The overlay's own
+ * socket connect is disabled in the preview (empty baseUrl) so the editor does
+ * not open a second live connection.
  */
 
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-const OVERLAYS = {
-  vertical: '/overlay/background-excel-vertical',
-} as const
-type Kind = keyof typeof OVERLAYS
+const OVERLAY_PATH = '/overlay/background-excel-vertical'
 
 const GROUPS: { title: string; keys: string[] }[] = [
   { title: 'Judul dan rumus', keys: ['title', 'subtitle', 'cell', 'formula', 'time'] },
-  { title: 'Header tabel', keys: Array.from({ length: 18 }, (_, i) => `h${i + 1}`) },
+  { title: 'Header tabel', keys: ['h1', 'h2', 'h3', 'h4'] },
   { title: 'Kegiatan', keys: Array.from({ length: 6 }, (_, i) => `r${i + 1}`) },
   { title: 'Jam', keys: Array.from({ length: 6 }, (_, i) => `t${i + 1}`) },
   { title: 'Status', keys: Array.from({ length: 6 }, (_, i) => `s${i + 1}`) },
@@ -35,52 +32,62 @@ const LABELS = Object.fromEntries(
 ) as Record<string, string>
 
 export default function ExcelTextEditor({ roomId }: { roomId: string }) {
-  const kind: Kind = 'vertical'
-  const [svgs, setSvgs] = useState<Partial<Record<Kind, string>>>({})
+  const [doc, setDoc] = useState('')
   const [defaults, setDefaults] = useState<Record<string, string>>({})
   const [values, setValues] = useState<Record<string, string>>({})
   const [active, setActive] = useState('')
   const [search, setSearch] = useState('')
   const [origin, setOrigin] = useState('')
-  const previewRef = useRef<HTMLDivElement>(null)
+  const frameRef = useRef<HTMLIFrameElement>(null)
+  const pickRef = useRef<(key: string) => void>(() => {})
+
+  pickRef.current = (key: string) => setActive(key)
 
   useEffect(() => setOrigin(window.location.origin), [])
 
-  // Fetch the served pages, not a hand-maintained copy of their markup: the
-  // preview is therefore exactly what OBS will load, including any new data-k
-  // added to the SVG later. DOMParser does not execute the page's scripts.
+  // Fetch the served page, not a hand-maintained copy. Disable the two things
+  // that would fight the editor: the live socket and the status-flip timer.
   useEffect(() => {
     let cancelled = false
-    for (const [k, path] of Object.entries(OVERLAYS)) {
-      fetch(`${path}?room=${encodeURIComponent(roomId)}`)
-        .then((r) => r.text())
-        .then((html) => {
-          if (cancelled) return
-          const doc = new DOMParser().parseFromString(html, 'text/html')
-          const svg = doc.querySelector('svg')
-          const found: Record<string, string> = {}
-          doc.querySelectorAll('[data-k]').forEach((el) => {
-            found[el.getAttribute('data-k') || ''] = el.textContent || ''
-          })
-          setSvgs((prev) => ({ ...prev, [k]: svg?.outerHTML || '' }))
-          setDefaults((prev) => ({ ...prev, ...found }))
-        })
-        .catch(() => {})
-    }
+    fetch(`${OVERLAY_PATH}?room=${encodeURIComponent(roomId)}`)
+      .then((r) => r.text())
+      .then((html) => {
+        if (cancelled) return
+        const preview = html
+          .replace(/<script id="overlay-config"[^>]*>[\s\S]*?<\/script>/, '<script id="overlay-config" type="application/json">{"baseUrl":""}</script>')
+          .replace('  setInterval(function () {', '  if (false) setInterval(function () {')
+          .replace('</head>', '<style>#live-note{display:none!important}</style></head>')
+        setDoc(preview)
+      })
+      .catch(() => {})
     return () => { cancelled = true }
   }, [roomId])
 
-  // Reflect the current values and the selection on the preview itself.
-  useEffect(() => {
-    const root = previewRef.current
-    if (!root) return
-    root.querySelectorAll('[data-k]').forEach((el) => {
+  function apply(d: Document) {
+    d.querySelectorAll('[data-k]').forEach((el) => {
       const key = el.getAttribute('data-k') || ''
       if (Object.prototype.hasOwnProperty.call(values, key)) el.textContent = values[key]
-      if (key === active) el.setAttribute('data-active', 'yes')
-      else el.removeAttribute('data-active')
+      ;(el as HTMLElement).style.outline = key === active ? '3px solid #ff3e00' : ''
     })
-  }, [values, active, svgs, kind])
+  }
+
+  useEffect(() => {
+    if (frameRef.current?.contentDocument) apply(frameRef.current.contentDocument)
+  }, [values, active, doc])
+
+  function wire() {
+    const d = frameRef.current?.contentDocument
+    if (!d || !d.querySelector('svg')) return
+    const found: Record<string, string> = {}
+    d.querySelectorAll('[data-k]').forEach((el) => {
+      const key = el.getAttribute('data-k') || ''
+      found[key] = el.textContent || ''
+      ;(el as HTMLElement).style.cursor = 'pointer'
+      el.addEventListener('click', () => pickRef.current(key))
+    })
+    setDefaults(found)
+    apply(d)
+  }
 
   const query = useMemo(() => {
     const params = new URLSearchParams()
@@ -116,14 +123,13 @@ export default function ExcelTextEditor({ roomId }: { roomId: string }) {
       <div className="excel-editor-grid">
         <div className="panel">
           <div className="excel-preview-scroll">
-            <div
-              ref={previewRef}
-              className={`excel-preview ${kind}`}
-              onClick={(event) => {
-                const el = (event.target as Element).closest('[data-k]')
-                if (el) setActive(el.getAttribute('data-k') || '')
-              }}
-              dangerouslySetInnerHTML={{ __html: svgs[kind] || '' }}
+            <iframe
+              ref={frameRef}
+              className="excel-frame"
+              title="Excel overlay preview"
+              srcDoc={doc}
+              onLoad={wire}
+              sandbox="allow-scripts allow-same-origin"
             />
           </div>
         </div>
@@ -169,14 +175,12 @@ export default function ExcelTextEditor({ roomId }: { roomId: string }) {
 
       <div className="panel">
         <h3>Link overlay</h3>
-        {(Object.entries(OVERLAYS) as [Kind, string][]).map(([k, path]) => (
-          <div className="stream-links" key={k}>
-            <div className="link-line">
-              <span className="link-line-label">Excel {k}</span>
-              <code>{origin ? `${origin}${path}?${query}` : `${path}?${query}`}</code>
-            </div>
+        <div className="stream-links">
+          <div className="link-line">
+            <span className="link-line-label">Excel vertikal</span>
+            <code>{origin ? `${origin}${OVERLAY_PATH}?${query}` : `${OVERLAY_PATH}?${query}`}</code>
           </div>
-        ))}
+        </div>
       </div>
     </div>
   )

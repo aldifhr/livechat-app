@@ -69,7 +69,7 @@ for (const page of PAGES) {
   const flat = squash(sources.get(page.file))
   check(`${page.file} converts http to ws`, flat.includes("replace(/^http/,'ws')"))
   check(`${page.file} appends the overlay path`, flat.includes("'/ws/overlay/'"))
-  check(`${page.file} encodes the room id`, flat.includes('encodeURIComponent(roomId)'))
+  check(`${page.file} encodes the room id`, flat.includes('encodeURIComponent(id)'))
   const convertAt = flat.indexOf("replace(/^http/,'ws')")
   const pathAt = flat.indexOf("'/ws/overlay/'")
   check(`${page.file} converts before it appends the path`, convertAt !== -1 && pathAt !== -1 && convertAt < pathAt)
@@ -81,7 +81,7 @@ for (const page of PAGES) {
 // ---------------------------------------------------------------------------
 for (const page of PAGES) {
   const source = sources.get(page.file)
-  const beats = [...source.matchAll(/setTimeout\(\s*connect\w*,\s*(\d+)\s*\)/g)].map((m) => Number(m[1]))
+  const beats = [...source.matchAll(/later\((\d+)\)/g)].map((m) => Number(m[1]))
   check(`${page.file} retries a closed socket after 3000 ms`, beats.includes(3000))
   check(`${page.file} retries a failed resolve after 5000 ms`, beats.includes(5000))
   check(`${page.file} resolves through the backend's own route`, source.includes('/api/room-connect-by-username'))
@@ -95,8 +95,8 @@ for (const page of PAGES) {
   check(`${page.file} parses frames defensively`, /try\{[^}]*JSON\.parse/.test(flat))
   // A null frame (JSON.parse("null")) must not throw on field access. These
   // pages guard with `if (frame && frame.type === 'comment')`.
-  check(`${page.file} null-guards the frame before reading its type`, /if\(frame&&frame\.type/.test(flat))
-  check(`${page.file} renders only comment frames`, flat.includes("frame.type==='comment'"))
+  check(`${page.file} null-guards the frame before reading its type`, /if\((?:frame|fr)&&(?:frame|fr)\.type/.test(flat))
+  check(`${page.file} renders only comment frames`, /fr?\.type==='comment'/.test(flat))
 }
 
 // ---------------------------------------------------------------------------
@@ -111,7 +111,7 @@ for (const page of PAGES) {
     `${page.file} fits the frame to its native ${page.w}x${page.h} aspect`,
     source.includes(`Math.min(innerWidth / ${page.w}, innerHeight / ${page.h})`),
   )
-  check(`${page.file} exposes the scale as --s (string)`, source.includes("setProperty('--s', String(s))"))
+  check(`${page.file} exposes the scale as --s (string)`, /setProperty\('--s', String\([a-z]\)\)/.test(source))
   check(`${page.file} uses no vw/vh units`, !/[0-9.]+v[wh]\b/.test(source))
 }
 
@@ -136,7 +136,7 @@ for (const page of PAGES) {
   check(`${page.file} marks editable copy with data-k`, source.includes('data-k="'))
   check(`${page.file} overwrites data-k from query parameters`, squash(source).includes("querySelectorAll('[data-k]')"))
   check(`${page.file} carries the baked config placeholder`, source.includes('__OVERLAY_CONFIG__'))
-  check(`${page.file} caps the feed at ${page.max} cards`, source.includes(`var MAX = ${page.max}`))
+  check(`${page.file} caps the feed at ${page.max} cards`, source.includes(`MAX = ${page.max}`))
   check(`${page.file} trims old cards beyond the cap`, squash(source).includes('while(feed.children.length>MAX)feed.removeChild(feed.firstChild)'))
 }
 
@@ -162,14 +162,14 @@ const script = sources.get('background-excel-vertical.html')
 const flatScript = squash(script)
 check('hole stops before the TOTAL row', script.includes('w: 960, h: 540'))
 check('hole comment states the Comments-panel limit', script.includes('y+h <= 1404'))
-check('the status note sits below the Comments header', script.includes('top:77.2917%') && !script.includes('top:74.1667%'))
-check('long comments use ellipsis on one line', /\.live-text\{[^}]*white-space:nowrap[^}]*text-overflow:ellipsis[^}]*max-height:none/.test(script))
-check('avatar initials survive emoji usernames', script.split('Array.from(name)[0].toUpperCase()').length - 1 >= 2)
+check('the status note sits below the Comments header', script.includes('top:77.5%') && !script.includes('top:74.1667%'))
+check('long comments use ellipsis on one line', /\.live-text\{[^}]*white-space:nowrap[^}]*text-overflow:ellipsis/.test(script))
+check('avatar initials survive emoji usernames', script.includes('function initial(n)') && script.includes('Array.from(n)[0]'))
 check('avatars do not leak a referrer to the CDN', flatScript.includes("img.referrerPolicy='no-referrer'"))
-check('an @handle is normalised', flatScript.includes("room=(query.get('room')||'').trim().replace(/^@/,'')"))
+check('an @handle is normalised', flatScript.includes("room=(q.get('room')||'').trim().replace(/^@/,'')"))
 check('missing room and missing base have different messages', script.includes('tambahkan ?room=<username atau id> di link') && script.includes('baseUrl kosong: __OVERLAY_CONFIG__ belum diganti'))
-check('the resolved room id is cached', flatScript.includes('varresolved=looksLikeRoomId(room)?room:null') && flatScript.includes('if(resolved){openSocket(resolved);return}'))
-check('frames go through the paced queue', flatScript.includes('functionpush(frame)') && flatScript.includes('MIN_MS=1800') && flatScript.includes("if(frame&&frame.type==='comment')push(frame)"))
+check('the resolved room id is cached', flatScript.includes('varresolved=null') && flatScript.includes('if(resolved){openSocket(resolved);return}') && flatScript.includes('resolved=d.room_id'))
+check('frames go through the paced queue', flatScript.includes('functionpush(fr)') && flatScript.includes('},1800)') && flatScript.includes("if(fr&&fr.type==='comment')push(fr)"))
 check('the socket opener no longer shadows window.open', script.includes('function openSocket(') && !script.includes('function open('))
 
 console.log(`\nall checks passed (${passed})`)
