@@ -27,12 +27,10 @@ async fn fetch_watching(room_id: &str) -> Option<i64> {
     );
     let text = reqwest::get(&url).await.ok()?.text().await.ok()?;
     let value: Value = serde_json::from_str(&text).ok()?;
-    // TikTok counts everyone who entered (total_user), including people who
-    // arrived via replay. The "watching" number on the live page is the
-    // difference — in this stream 4 total - 3 replay = 1 watching.
-    let total = value.pointer("/data/stats/total_user")?.as_i64().unwrap_or(0);
-    let replay = value.pointer("/data/stats/replay_viewers").and_then(Value::as_i64).unwrap_or(0);
-    Some((total - replay).max(0))
+    // `watch_user_count` is TikTok's own live "watching" number. total_user
+    // and replay_viewers count everyone who entered and are not interchangeable
+    // (8 total - 6 replay showed 2 while TikTok displayed 0).
+    value.pointer("/data/stats/watch_user_count")?.as_i64().map(|n| n.max(0))
 }
 
 type Clients = Arc<Mutex<HashMap<String, Vec<mpsc::UnboundedSender<String>>>>>;
