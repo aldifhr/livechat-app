@@ -414,6 +414,7 @@ fn user_frame(user: &Option<piratetok_live_rs::structs::proto::UserIdentity>) ->
 }
 
 async fn watch(state: AppState, room_id: String, username: String) {
+    let mut attempts: u32 = 0;
     loop {
         state.set_status(&room_id, json!({"connected":false,"connecting":true,"waiting":false,
             "liveEnded":false,"message":format!("Connecting to @{username}")})).await;
@@ -423,11 +424,13 @@ async fn watch(state: AppState, room_id: String, username: String) {
                 eprintln!("@{username} connect failed: {e}");
                 state.set_status(&room_id, json!({"connected":false,"connecting":true,"waiting":true,
                     "message":format!("@{username} is not live yet")})).await;
-                tokio::time::sleep(Duration::from_secs(5)).await;
+                attempts = attempts.saturating_add(1);
+                tokio::time::sleep(Duration::from_secs(5_u64.saturating_mul(attempts.into()).min(60))).await;
                 if !state_room_desired(&state, &room_id).await { break }
                 continue;
             }
         };
+        attempts = 0;
         state.set_status(&room_id, json!({"connected":true,"connecting":false,"waiting":false,
             "liveEnded":false,"session_start":now_ms(),"message":format!("Connected to @{username}")})).await;
         while let Ok(event) = stream.next_event().await {
@@ -463,7 +466,8 @@ async fn watch(state: AppState, room_id: String, username: String) {
         state.set_status(&room_id, json!({"connected":false,"connecting":false,
             "message":format!("Disconnected from @{username}")})).await;
         if !state_room_desired(&state, &room_id).await { break }
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        attempts = attempts.saturating_add(1);
+        tokio::time::sleep(Duration::from_secs(5_u64.saturating_mul(attempts.into()).min(60))).await;
     }
 }
 
@@ -474,7 +478,7 @@ async fn state_room_desired(state: &AppState, room_id: &str) -> bool {
 async fn connect_room(state: &AppState, room_id: &str, username: &str) {
     if let Some(handle) = state.watchers.lock().await.remove(room_id) { handle.abort(); }
     if let Ok(conn) = state.conn().await {
-        let _ = conn.execute("UPDATE rooms SET username=$2, desired=TRUE WHERE id=$1", &[&room_id, &username]).await;
+        if let Err(e) = conn.execute("UPDATE rooms SET username=$2, desired=TRUE WHERE id=$1", &[&room_id, &username]).await { eprintln!("connect_room update failed: {e:?}"); }
     }
     let st = state.clone();
     let (rid, user) = (room_id.to_string(), username.to_string());
@@ -496,12 +500,17 @@ async fn connect_by_username(State(state): State<AppState>, body: Json<Value>) -
     let conn = state.conn().await?;
     let rows = conn.query("SELECT id FROM rooms WHERE lower(username)=lower($1) ORDER BY created_at LIMIT 1", &[&username])
         .await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let id = rows.first().map(|r| r.get::<_,String>("id")).unwrap_or_else(|| {
+    let id = if let Some(row) = rows.first() {
+        row.get::<_, String>("id")
+    } else {
         let id = uuid::Uuid::new_v4().to_string();
-        let _ = conn.execute("INSERT INTO rooms(id,name,username,provider,config,created_at) VALUES($1,$2,$3,$4,$5::jsonb,$6)",
-            &[&id, &username, &username, &"tiktok", &json!({}), &now_ms()]);
+        if let Err(e) = conn.execute("INSERT INTO rooms(id,name,username,provider,config,created_at) VALUES($1,$2,$3,$4,$5::jsonb,$6)",
+            &[&id, &username, &username, &"tiktok", &json!({}), &now_ms()]).await {
+            eprintln!("connect_by_username insert failed: {e:?}");
+            return Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
         id
-    });
+    };
     connect_room(&state, &id, &username).await;
     Ok(Json(json!({"room_id":id,"status":"connecting","username":username,"provider":"tiktok"})))
 }
