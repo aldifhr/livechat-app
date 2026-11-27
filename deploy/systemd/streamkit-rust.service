@@ -1,0 +1,20 @@
+[Unit]
+Description=StreamKit Rust backend (Postgres + TikTok watcher + overlay sockets)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/livechat-app/api_rs
+EnvironmentFile=/etc/streamkit/python.env
+Environment=STREAMKIT_RS_PORT=8004
+ExecStart=/root/livechat-app/api_rs/target/release/streamkit-api
+Restart=always
+RestartSec=3
+NoNewPrivileges=yes
+ProtectSystem=full
+ReadWritePaths=/root/livechat-app/api_rs
+
+[Install]
+WantedBy=multi-user.target

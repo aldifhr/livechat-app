@@ -1,0 +1,42 @@
+{
+  "label": "rust",
+  "base": "http://127.0.0.1:8005",
+  "at": "2026-11-27T02:28:46.134Z",
+  "workloads": {
+    "readC1": {
+      "ops": 1000,
+      "errors": 0,
+      "wallMs": 2451,
+      "rps": 408,
+      "p50": 1.91,
+      "p95": 4.6,
+      "p99": 7.12
+    },
+    "readC32": {
+      "ops": 1000,
+      "errors": 0,
+      "wallMs": 1251,
+      "rps": 799,
+      "p50": 35.91,
+      "p95": 78.05,
+      "p99": 98.13
+    },
+    "writeC16": {
+      "ops": 500,
+      "errors": 0,
+      "wallMs": 717,
+      "rps": 697,
+      "p50": 20.06,
+      "p95": 49.87,
+      "p99": 70.26
+    },
+    "fanout": {
+      "clients": 20,
+      "events": 100,
+      "delivered": 2000,
+      "wallMs": 447,
+      "deliveriesPerSec": 4475,
+      "complete": true
+    }
+  }
+}

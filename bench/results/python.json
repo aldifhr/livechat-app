@@ -1,0 +1,42 @@
+{
+  "label": "python",
+  "base": "http://127.0.0.1:8004",
+  "at": "2026-11-27T02:15:52.183Z",
+  "workloads": {
+    "readC1": {
+      "ops": 1000,
+      "errors": 0,
+      "wallMs": 3273,
+      "rps": 306,
+      "p50": 2.7,
+      "p95": 6.79,
+      "p99": 9.58
+    },
+    "readC32": {
+      "ops": 1000,
+      "errors": 0,
+      "wallMs": 2553,
+      "rps": 392,
+      "p50": 68.31,
+      "p95": 146.05,
+      "p99": 195.54
+    },
+    "writeC16": {
+      "ops": 500,
+      "errors": 0,
+      "wallMs": 1528,
+      "rps": 327,
+      "p50": 47.33,
+      "p95": 73.36,
+      "p99": 84.18
+    },
+    "fanout": {
+      "clients": 20,
+      "events": 100,
+      "delivered": 2000,
+      "wallMs": 651,
+      "deliveriesPerSec": 3070,
+      "complete": true
+    }
+  }
+}

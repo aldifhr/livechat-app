@@ -1,12 +1,12 @@
 import 'server-only'
 
 /**
- * RPC client for the Python backend.
+ * RPC client for the Rust backend.
  *
  * The Next.js gateway still speaks the old function names (`rooms:list`,
  * `events:recentForRoom`, ...). Keeping that vocabulary here means the gateway,
  * its tests and every client helper stay unchanged while storage moves from
- * Convex to PostgreSQL. The Python service dispatches these names in one place.
+ * Convex to PostgreSQL. The backend service dispatches these names in one place.
  */
 
 const DEFAULT_URL = 'http://127.0.0.1:8004'
@@ -31,7 +31,7 @@ async function call(path: string, args: Record<string, unknown>): Promise<unknow
       signal: AbortSignal.timeout(30_000),
     })
   } catch (cause) {
-    throw new Error(`Python backend unreachable: ${cause instanceof Error ? cause.message : cause}`)
+    throw new Error(`backend unreachable: ${cause instanceof Error ? cause.message : cause}`)
   }
 
   const text = await response.text()
@@ -39,7 +39,7 @@ async function call(path: string, args: Record<string, unknown>): Promise<unknow
   try {
     value = text ? JSON.parse(text) : null
   } catch {
-    if (!response.ok) throw new Error(`Python backend returned HTTP ${response.status}`)
+    if (!response.ok) throw new Error(`backend returned HTTP ${response.status}`)
   }
   if (!response.ok) {
     const detail = (value as { detail?: string } | null)?.detail || `HTTP ${response.status}`

@@ -7,14 +7,15 @@ manifest** — `npm install` at the root does nothing, and that is deliberate.
 
 | Part | What it is | Stack |
 |---|---|---|
-| `api_py/` | Backend: Postgres state, TikTok watcher, overlay sockets | Python + FastAPI + PostgreSQL |
+| `api_rs/` | Backend: Postgres state, TikTok watcher, overlay sockets | Rust + Axum + PostgreSQL |
 | `web/` | Dashboard: stream list, per-stream pages, overlay builder | Next.js 16 + React 19 |
 
 ## Layout
 
 ```
 .
-├── api_py/           Python backend. See "Backend" below.
+├── api_rs/           Rust backend. See "Backend" below.
+├── api_py/           Previous Python backend, kept as rollback.
 ├── backend/          Retired Node bridge (kept for rollback).
 ├── web/              Next.js dashboard.
 ├── shared/           Cross-app TypeScript contracts: overlay, events,
@@ -27,13 +28,14 @@ manifest** — `npm install` at the root does nothing, and that is deliberate.
 
 One Python process owns everything: rooms, events, sessions and logs live in
 PostgreSQL; the same process holds the TikTok socket and the overlay WebSocket
-fan-out. Convex and the Node bridge are retired (their data and code remain as
-a rollback path).
+fan-out. Convex, the Node bridge and the earlier Python service are stopped; their
+data and code remain as rollback paths.
 
 | Part | What it is | Stack |
 |---|---|---|
-| `api_py/app.py` | RPC, control endpoints, WS fan-out, TikTok watcher | FastAPI + TikTokLive + psycopg |
+| `api_rs/src/main.rs` | RPC, control endpoints, WS fan-out, TikTok watcher | Axum + tokio-postgres + piratetok-live-rs |
 | `api_py/migrate_from_convex.py` | One-off import of rooms/events/sessions | Convex client + psycopg |
+| `bench/` | Identical workload for both backends + comparison | Node |
 
 The Next.js gateway still speaks the old function names (`rooms:list`,
 `events:recentForRoom`, ...) through `POST /rpc`, so no client helper had to be
@@ -41,24 +43,29 @@ rewritten. Room IDs were kept during migration, so existing OBS links still
 work.
 
 ```
-api_py/
-├── app.py                  everything: SQL schema, RPC dispatch, watcher, sockets
-├── migrate_from_convex.py  one-off import from the old deployment
-└── test_app.py             offline wire-shape tests
+api_rs/
+├── src/main.rs    everything: RPC dispatch, watcher, sockets, SQL
+└── Cargo.toml
+bench/
+├── bench.mjs      same workload against either backend
+└── compare.mjs    turns two results into a comparison table
 ```
 
 ### Running it
 
-`streamkit-python.service` runs uvicorn on `127.0.0.1:8004` with
+`streamkit-rust.service` runs the release binary on `127.0.0.1:8004` with
 `/etc/streamkit/python.env` (database URL + API token). nginx on
 `kit-backend.aldifhr.my.id` routes `/`, `/ws/` and `/api/room-connect*` to it.
 The dashboard sets `STREAMKIT_API_URL` (defaults to `http://127.0.0.1:8004`).
 
 ```bash
-cd api_py
-python -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m unittest -v test_app
-.venv/bin/python migrate_from_convex.py   # only when importing the old deployment
+cd api_rs
+cargo test --release
+cargo build --release
+
+cd ../bench
+STREAMKIT_TOKEN=... node bench.mjs http://127.0.0.1:8004 rust results/rust.json
+node compare.mjs   # needs results/python.json and results/rust.json
 ```
 
 ### API

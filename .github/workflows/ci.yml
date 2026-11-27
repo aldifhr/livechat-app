@@ -86,3 +86,17 @@ jobs:
       - run: .venv/bin/pip install -r requirements.txt
       - run: .venv/bin/python -m py_compile app.py migrate_from_convex.py
       - run: .venv/bin/python -m unittest -v test_app
+
+  rust:
+    name: rust backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api_rs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: api_rs
+      - run: cargo test --release

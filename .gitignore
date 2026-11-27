@@ -56,3 +56,4 @@ backend/node_modules/
 api_py/.venv/
 __pycache__/
 *.pyc
+api_rs/target/
