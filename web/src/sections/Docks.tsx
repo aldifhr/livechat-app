@@ -68,6 +68,7 @@ export default function Docks({ backendOrigin }: { backendOrigin: string }) {
   }, [])
   const wsRef = useRef<WebSocket | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const autoScrollRef = useRef(false)
   const feedContainerRef = useRef<HTMLDivElement>(null)
   const filterScroll = useDragScroll<HTMLDivElement>()
   const soundRef = useRef(false)
@@ -312,14 +313,21 @@ export default function Docks({ backendOrigin }: { backendOrigin: string }) {
     }
   }, [roomId, backendOrigin])
 
-  // Auto-scroll chat only when not paused
+  // Auto-scroll chat only when not paused. The scroll is instant and flagged:
+  // a smooth scroll emits intermediate scroll events that look like the reader
+  // scrolled up, which paused the feed and made incoming chat look frozen.
   useEffect(() => {
-    if (!isPaused) {
-      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }
+    if (isPaused) return
+    autoScrollRef.current = true
+    const el = feedContainerRef.current
+    if (el) el.scrollTop = el.scrollHeight
+    else chatEndRef.current?.scrollIntoView({ behavior: 'auto' })
+    const timer = window.setTimeout(() => { autoScrollRef.current = false }, 80)
+    return () => window.clearTimeout(timer)
   }, [chat, isPaused])
 
   const handleScroll = () => {
+    if (autoScrollRef.current) return
     const el = feedContainerRef.current
     if (!el) return
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48
@@ -332,7 +340,11 @@ export default function Docks({ backendOrigin }: { backendOrigin: string }) {
   }
 
   const scrollToBottom = () => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    autoScrollRef.current = true
+    const el = feedContainerRef.current
+    if (el) el.scrollTop = el.scrollHeight
+    else chatEndRef.current?.scrollIntoView({ behavior: 'auto' })
+    window.setTimeout(() => { autoScrollRef.current = false }, 80)
     setIsPaused(false)
     setNewCount(0)
   }

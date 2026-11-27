@@ -18,6 +18,18 @@ use serde_json::{json, Value};
 use tokio::sync::{mpsc, Mutex};
 use tokio_postgres::NoTls;
 
+/// TikTok's own "watching" number. The crate's room/info helper depends on a
+/// ttwid cookie that this host cannot obtain, but the plain webcast endpoint
+/// answers anonymously — the same one the public web player calls.
+async fn fetch_watching(room_id: &str) -> Option<i64> {
+    let url = format!(
+        "https://webcast.tiktok.com/webcast/room/info/?aid=1988&app_name=tiktok_web&device_platform=web_pc&app_language=en&browser_language=en-GB&browser_name=Mozilla&browser_online=true&browser_platform=Win32&browser_version=5.0%20(Windows%20NT%2010.0%3B%20Win64%3B%20x64)&cookie_enabled=true&focus_state=true&from_page=user&screen_height=1080&screen_width=1920&tz_name=Asia%2FJakarta&webcast_language=en&room_id={room_id}"
+    );
+    let text = reqwest::get(&url).await.ok()?.text().await.ok()?;
+    let value: Value = serde_json::from_str(&text).ok()?;
+    value.pointer("/data/stats/total_user")?.as_i64().map(|n| n.max(0))
+}
+
 type Clients = Arc<Mutex<HashMap<String, Vec<mpsc::UnboundedSender<String>>>>>;
 type Watchers = Arc<Mutex<HashMap<String, tokio::task::JoinHandle<()>>>>;
 
@@ -482,6 +494,12 @@ async fn watch(state: AppState, room_id: String, username: String) {
     loop {
         state.set_status(&room_id, json!({"connected":false,"connecting":true,"waiting":false,
             "liveEnded":false,"message":format!("Connecting to @{username}")})).await;
+        // Resolve the numeric room id up front. The Connected event is not
+        // emitted on every reconnect path, and without an id the viewer poll
+        // silently does nothing.
+        let mut live_room: Option<String> = None;
+        let mut last_viewers: i64 = -1;
+        let mut info_ticker = tokio::time::interval(Duration::from_secs(15));
         let mut stream = match TikTokLive::builder(&username).connect().await {
             Ok(s) => s,
             Err(e) => {
@@ -499,7 +517,24 @@ async fn watch(state: AppState, room_id: String, username: String) {
         state.log("info", "bridge.tiktok", &format!("connected @{username}")).await;
         state.set_status(&room_id, json!({"connected":true,"connecting":false,"waiting":false,
             "liveEnded":false,"session_start":now_ms(),"message":format!("Connected to @{username}")})).await;
-        while let Ok(event) = stream.next_event().await {
+        // RoomUserSeq is not emitted by every stream. Poll room info as well so
+        // the viewer counter cannot stay frozen on the last value it happened
+        // to receive. Only a changed count is written and broadcast.
+        loop {
+            let event = tokio::select! {
+                next = stream.next_event() => match next { Ok(e) => e, Err(_) => break },
+                _ = info_ticker.tick() => {
+                    if let Some(rid) = &live_room {
+                        if let Some(count) = fetch_watching(rid).await {
+                            if count != last_viewers {
+                                last_viewers = count;
+                                state.persist(&room_id, "viewers", json!({"type":"viewers","count":count}), None).await;
+                            }
+                        }
+                    }
+                    continue;
+                }
+            };
             match event {
                 TikTokLiveEvent::Chat(msg) => {
                     let user = user_frame(&msg.user);
@@ -525,9 +560,18 @@ async fn watch(state: AppState, room_id: String, username: String) {
                     state.persist(&room_id, "like", json!({"type":"like","user":user.get("user"),
                         "userId":user.get("userId"),"avatar":user.get("avatar"),"count":1}), Some(&user)).await;
                 }
+                TikTokLiveEvent::Connected { room_id: rid } => live_room = Some(rid),
                 TikTokLiveEvent::RoomUserSeq(seq) => {
-                    let count = seq.viewer_count.max(0);
-                    state.persist(&room_id, "viewers", json!({"type":"viewers","count":count}), None).await;
+                    if live_room.is_none() {
+                        live_room = seq.common.as_ref().map(|c| c.room_id.to_string());
+                    }
+                    // total_user is the number TikTok shows as watching;
+                    // viewer_count can be a smaller named-viewer subset.
+                    let count = if seq.total_user > 0 { seq.total_user } else { seq.viewer_count }.max(0);
+                    if count != last_viewers {
+                        last_viewers = count;
+                        state.persist(&room_id, "viewers", json!({"type":"viewers","count":count}), None).await;
+                    }
                 }
                 TikTokLiveEvent::Disconnected | TikTokLiveEvent::LiveEnded(_) => break,
                 _ => {}
