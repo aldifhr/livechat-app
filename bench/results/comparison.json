@@ -3,44 +3,44 @@
     {
       "metric": "read c=1 (RPS)",
       "python": 306,
-      "rust": 408,
-      "changePct": 33.3
+      "rust": 533,
+      "changePct": 74.2
     },
     {
       "metric": "read c=1 p50 (ms)",
       "python": 2.7,
-      "rust": 1.91,
-      "changePct": 29.3
+      "rust": 1.41,
+      "changePct": 47.8
     },
     {
       "metric": "read c=32 (RPS)",
       "python": 392,
-      "rust": 799,
-      "changePct": 103.8
+      "rust": 820,
+      "changePct": 109.2
     },
     {
       "metric": "read c=32 p95 (ms)",
       "python": 146.05,
-      "rust": 78.05,
-      "changePct": 46.6
+      "rust": 71.91,
+      "changePct": 50.8
     },
     {
       "metric": "write c=16 (RPS)",
       "python": 327,
-      "rust": 697,
-      "changePct": 113.1
+      "rust": 655,
+      "changePct": 100.3
     },
     {
       "metric": "write c=16 p50 (ms)",
       "python": 47.33,
-      "rust": 20.06,
-      "changePct": 57.6
+      "rust": 21.96,
+      "changePct": 53.6
     },
     {
       "metric": "fan-out deliveries/s",
       "python": 3070,
-      "rust": 4475,
-      "changePct": 45.8
+      "rust": 7826,
+      "changePct": 154.9
     }
   ]
 }

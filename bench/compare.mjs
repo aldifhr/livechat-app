@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 
 const load = (name) => JSON.parse(readFileSync(new URL(`./results/${name}.json`, import.meta.url), 'utf8'))
 const py = load('python').workloads
-const rs = load('rust').workloads
+const rs = load(process.argv[2] || 'rust').workloads
 
 const rows = [
   ['read c=1 (RPS)', 'readC1', 'rps'],
