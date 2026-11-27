@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 User=root
 WorkingDirectory=/root/livechat-app/api_rs
-EnvironmentFile=/etc/streamkit/python.env
+EnvironmentFile=/etc/streamkit/backend.env
 Environment=STREAMKIT_RS_PORT=8004
 ExecStart=/root/livechat-app/api_rs/target/release/streamkit-api
 Restart=always

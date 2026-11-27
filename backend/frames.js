@@ -108,7 +108,7 @@ export function toFrame(kind, event) {
       const n = named(user)
       if (!n.user) return null
       // The connector's simplified chat event carries the message in `content`.
-      // Older releases (and the Python backend this replaced) called it
+      // Older releases called it `comment`; both spellings are accepted.
       // `comment`; both are accepted so a library upgrade cannot silently turn
       // every chat row into a name with no message.
       // @ts-ignore third-party event shape is untyped

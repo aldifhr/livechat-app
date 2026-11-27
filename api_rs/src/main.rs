@@ -1,4 +1,4 @@
-//! StreamKit Rust backend — the same RPC/WS/control contract as api_py/app.py,
+//! StreamKit Rust backend — the only backend, owning RPC/WS/control and state,
 //! using PostgreSQL for state and piratetok-live-rs for the TikTok watcher.
 
 use std::{collections::HashMap, sync::Arc, time::{Duration, SystemTime, UNIX_EPOCH}};
@@ -659,7 +659,7 @@ mod tests {
 
     #[test]
     fn status_frame_keeps_only_true_flags() {
-        // Mirrors the Python check: a false liveEnded must not reach the overlay.
+        // A false liveEnded must not reach the overlay.
         let room = json!({"connected": false, "connecting": true, "waiting": true,
                           "liveEnded": false, "statusMessage": ""});
         let frame = json!({"type":"status","connected":false,"message":"Offline"});

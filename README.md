@@ -14,9 +14,8 @@ manifest** — `npm install` at the root does nothing, and that is deliberate.
 
 ```
 .
-├── api_rs/           Rust backend. See "Backend" below.
-├── api_py/           Previous Python backend, kept as rollback.
-├── backend/          Retired Node bridge (kept for rollback).
+├── api_rs/           The only backend. See "Backend" below.
+├── backend/          Retired Node bridge (reference only).
 ├── web/              Next.js dashboard.
 ├── shared/           Cross-app TypeScript contracts: overlay, events,
 │                    platforms. Imported via the `@shared` alias.
@@ -26,16 +25,16 @@ manifest** — `npm install` at the root does nothing, and that is deliberate.
 
 ## Backend (StreamKit)
 
-One Python process owns everything: rooms, events, sessions and logs live in
+One Rust process owns everything: rooms, events, sessions and logs live in
 PostgreSQL; the same process holds the TikTok socket and the overlay WebSocket
-fan-out. Convex, the Node bridge and the earlier Python service are stopped; their
-data and code remain as rollback paths.
+fan-out. Convex and the Node bridge are gone; the historical benchmark result
+from the earlier Python implementation is kept in `bench/results/` only as
+evidence of the migration decision.
 
 | Part | What it is | Stack |
 |---|---|---|
 | `api_rs/src/main.rs` | RPC, control endpoints, WS fan-out, TikTok watcher | Axum + tokio-postgres + piratetok-live-rs |
-| `api_py/migrate_from_convex.py` | One-off import of rooms/events/sessions | Convex client + psycopg |
-| `bench/` | Identical workload for both backends + comparison | Node |
+| `bench/` | Workload + comparison + smoke check | Node |
 
 The Next.js gateway still speaks the old function names (`rooms:list`,
 `events:recentForRoom`, ...) through `POST /rpc`, so no client helper had to be
@@ -47,14 +46,15 @@ api_rs/
 ├── src/main.rs    everything: RPC dispatch, watcher, sockets, SQL
 └── Cargo.toml
 bench/
-├── bench.mjs      same workload against either backend
-└── compare.mjs    turns two results into a comparison table
+├── bench.mjs      workload against the running backend
+├── compare.mjs    turns two results into a comparison table
+└── smoke-connect.mjs  verifies a handle connect really stores a room
 ```
 
 ### Running it
 
 `streamkit-rust.service` runs the release binary on `127.0.0.1:8004` with
-`/etc/streamkit/python.env` (database URL + API token). nginx on
+`/etc/streamkit/backend.env` (database URL + API token). nginx on
 `kit-backend.aldifhr.my.id` routes `/`, `/ws/` and `/api/room-connect*` to it.
 The dashboard sets `STREAMKIT_API_URL` (defaults to `http://127.0.0.1:8004`).
 
@@ -71,9 +71,9 @@ node compare.mjs   # needs results/python.json and results/rust.json
 ### API
 
 The dashboard calls `/api/backend/...` on the Next server, which forwards
-everything to the Python backend through `POST /rpc`, including the TikTok
+everything to the Rust backend through `POST /rpc`, including the TikTok
 connect/disconnect paths. The session gate in `web/src/proxy.ts` is the browser
-auth; the Python service additionally requires `STREAMKIT_TOKEN` on all
+auth; the Rust service additionally requires `STREAMKIT_TOKEN` on all
 privileged calls.
 
 | Method | Endpoint | Notes |
@@ -86,7 +86,7 @@ privileged calls.
 | `POST` | `/api/room-connect-by-username`, `/room-connect/{id}`, `/connect`, `/disconnect` | TikTok watcher |
 | `POST` | `/api/rooms/{id}/trigger`, `/api/hooks/{id}` | Manual trigger / webhook |
 | `GET` | `/api/health`, `/api/metrics`, `/api/analytics`, `/api/logs` | Ops |
-| `WS` | `/ws/{overlay\|room\|customizer}/{id}` | Event stream (Python backend) |
+| `WS` | `/ws/{overlay\|room\|customizer}/{id}` | Event stream (Rust backend) |
 
 ### Env
 
@@ -95,9 +95,9 @@ privileged calls.
 | `CONVEX_URL` | Convex deployment URL (server-side, e.g. `http://127.0.0.1:3210`) |
 | `CONVEX_ADMIN_KEY` | Convex admin key (server-side, bridge + web) |
 | `NEXT_PUBLIC_CONVEX_URL` | Public Convex URL for browsers (`https://kit-backend.aldifhr.my.id`) |
-| `BRIDGE_URL` | TikTok bridge URL (default `http://127.0.0.1:8003`) |
+| `BRIDGE_URL` | Backend URL used by the Next gateway (default `http://127.0.0.1:8004`) |
 | `SIGN_API_KEY` | Euler Stream sign-server key for TikTok connections |
-| `BACKEND_ORIGIN` | Public host browsers reach the bridge at |
+| `BACKEND_ORIGIN` | Public host browsers reach the backend at |
 
 ## Dashboard (web/)
 
