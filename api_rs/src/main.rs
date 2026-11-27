@@ -11,6 +11,7 @@ use axum::{
     Json, Router,
 };
 use axum::extract::ws::{Message, WebSocket};
+use chrono::{DateTime, Utc};
 use deadpool_postgres::{Manager, ManagerConfig, Pool};
 use piratetok_live_rs::{structs::TikTokLiveEvent, TikTokLive};
 use serde_json::{json, Value};
@@ -26,6 +27,7 @@ struct AppState {
     token: String,
     clients: Clients,
     watchers: Watchers,
+    last_logs: Arc<Mutex<HashMap<String, String>>>,
 }
 
 fn now_ms() -> i64 {
@@ -151,6 +153,14 @@ impl AppState {
     }
 
     async fn log(&self, level: &str, source: &str, message: &str) {
+        // A watcher retrying every minute must not flood the log with the same
+        // line. Only a change of message is worth another row.
+        let key = format!("{source}:{message}");
+        {
+            let mut seen = self.last_logs.lock().await;
+            if seen.get(source) == Some(&message.to_string()) { return }
+            seen.insert(source.to_string(), message.to_string());
+        }
         if let Ok(conn) = self.conn().await {
             let _ = conn.execute(
                 "INSERT INTO logs(level,source,message,created_at) VALUES($1,$2,$3,$4)",
@@ -322,13 +332,33 @@ async fn rpc(state: &AppState, path: &str, args: &Value) -> Result<Value, Status
         "rooms:analytics" => {
             let rooms = conn.query("SELECT * FROM rooms ORDER BY created_at", &[]).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
             let mut out = Vec::new();
+            let (mut total_viewers, mut total_peak, mut total_diamonds) = (0i64, 0i64, 0i64);
             for row in rooms {
                 let room = room_json(&row);
                 let id = room.get("id").and_then(Value::as_str).unwrap_or("");
-                out.push(json!({"id": id, "name": room.get("name"), "connected": room.get("connected"),
-                                "viewers": room.get("viewers"), "session": session(&state, id).await?}));
+                let s = session(&state, id).await?;
+                let viewers = s.get("viewers").and_then(Value::as_i64).unwrap_or(0);
+                let peak = s.get("peak_viewers").and_then(Value::as_i64).unwrap_or(0);
+                let diamonds = s.get("total_diamonds").and_then(Value::as_i64).unwrap_or(0);
+                total_viewers += viewers;
+                total_peak += peak;
+                total_diamonds += diamonds;
+                let events = conn.query_one("SELECT count(*)::bigint AS n FROM events WHERE room_id=$1", &[&id])
+                    .await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?.get::<_, i64>("n");
+                out.push(json!({
+                    "id": id, "username": room.get("username"), "connected": room.get("connected"),
+                    "viewers": viewers, "peak_viewers": peak, "total_diamonds": diamonds,
+                    "events": events, "live_seconds": s.get("live_seconds"),
+                }));
             }
-            Ok(json!({"rooms": out}))
+            let total_rooms = out.len() as i64;
+            let total_events = conn.query_one("SELECT count(*)::bigint AS n FROM events", &[])
+                .await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?.get::<_, i64>("n");
+            Ok(json!({
+                "total_rooms": total_rooms, "total_viewers": total_viewers,
+                "total_peak_viewers": total_peak, "total_diamonds": total_diamonds,
+                "total_events": total_events, "rooms": out, "topGifters": [],
+            }))
         }
         "events:health" => Ok(json!({"status":"ok", "activeRooms": state.watchers.lock().await.len(),
                                      "websocketConnections": state.clients.lock().await.values().map(Vec::len).sum::<usize>()})),
@@ -342,10 +372,16 @@ async fn rpc(state: &AppState, path: &str, args: &Value) -> Result<Value, Status
             let limit = args.get("limit").and_then(Value::as_i64).unwrap_or(200).clamp(1, 500) as i64;
             let rows = conn.query("SELECT * FROM logs ORDER BY created_at DESC LIMIT $1", &[&limit])
                 .await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            let entries: Vec<Value> = rows.iter().map(|r| json!({
-                "level": r.get::<_,String>("level"), "source": r.get::<_,String>("source"),
-                "message": r.get::<_,String>("message"), "createdAt": r.get::<_,i64>("created_at"),
-            })).collect();
+            let entries: Vec<Value> = rows.iter().map(|r| {
+                let ms = r.get::<_, i64>("created_at");
+                let at = DateTime::<Utc>::from_timestamp_millis(ms)
+                    .map(|d| d.to_rfc3339()).unwrap_or_default();
+                json!({
+                    "at": at, "createdAt": ms,
+                    "level": r.get::<_,String>("level"), "source": r.get::<_,String>("source"),
+                    "message": r.get::<_,String>("message"),
+                })
+            }).collect();
             Ok(json!({"capacity":500,"total":entries.len(),"entries":entries}))
         }
         "events:appendLog" => {
@@ -573,7 +609,9 @@ async fn socket_handler(State(state): State<AppState>, ws: WebSocketUpgrade, Pat
 async fn socket_loop(state: AppState, mut socket: WebSocket, room: Value, room_id: String) {
     let (tx, mut rx) = mpsc::unbounded_channel::<String>();
     state.clients.lock().await.entry(room_id.clone()).or_default().push(tx.clone());
-    let _ = socket.send(Message::Text(page_config(room.get("config").unwrap_or(&json!({}))).to_string().into())).await;
+    // The overlay contract is a typed envelope, not a bare config object.
+    let config_frame = json!({"type":"config","config":page_config(room.get("config").unwrap_or(&json!({})))});
+    let _ = socket.send(Message::Text(config_frame.to_string().into())).await;
     let status = state.status(&room).await.to_string();
     let _ = socket.send(Message::Text(status.into())).await;
     loop {
@@ -614,7 +652,12 @@ async fn main() {
 
     let config: tokio_postgres::Config = db_url.parse().expect("invalid STREAMKIT_DB_URL");
     let pool = deadpool_postgres::Pool::builder(Manager::from_config(config, NoTls, ManagerConfig::default())).max_size(10).build().unwrap();
-    let state = AppState { pool, token, clients: Arc::new(Mutex::new(HashMap::new())), watchers: Arc::new(Mutex::new(HashMap::new())) };
+    let state = AppState {
+        pool, token,
+        clients: Arc::new(Mutex::new(HashMap::new())),
+        watchers: Arc::new(Mutex::new(HashMap::new())),
+        last_logs: Arc::new(Mutex::new(HashMap::new())),
+    };
 
     if let Ok(conn) = state.conn().await {
         if let Ok(rows) = conn.query("SELECT id, username FROM rooms WHERE desired=TRUE AND username<>''", &[]).await {

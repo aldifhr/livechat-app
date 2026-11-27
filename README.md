@@ -48,7 +48,8 @@ api_rs/
 bench/
 ├── bench.mjs      workload against the running backend
 ├── compare.mjs    turns two results into a comparison table
-└── smoke-connect.mjs  verifies a handle connect really stores a room
+├── smoke-connect.mjs  verifies a handle connect really stores a room
+└── contract-check.mjs  checks every gateway route + WS frame shape
 ```
 
 ### Running it
@@ -66,6 +67,7 @@ cargo build --release
 cd ../bench
 STREAMKIT_TOKEN=... node bench.mjs http://127.0.0.1:8004 rust results/rust.json
 node compare.mjs   # needs results/python.json and results/rust.json
+STREAMKIT_SESSION=... node contract-check.mjs http://127.0.0.1:5184
 ```
 
 ### API
