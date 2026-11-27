@@ -19,9 +19,9 @@ export const productName = process.env.PRODUCT_NAME ?? 'StreamKit'
 
 export const tagline = process.env.TAGLINE ?? 'Live chat overlays for streaming.'
 
-/** Convex is always reachable: CONVEX_URL when set, otherwise the public
- *  deployment host (see lib/server/convex.ts). The banner this used to drive
- *  is kept as a constant so the shell stays simple. */
+/** The Rust backend is reached through the Next gateway, which is up whenever
+ *  the dashboard itself is up. The banner this used to drive is kept as a
+ *  constant so the shell stays simple. */
 export const tokenConfigured = true
 
 /**

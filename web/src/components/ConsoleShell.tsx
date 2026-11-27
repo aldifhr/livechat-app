@@ -15,6 +15,7 @@ import type { ReactNode } from 'react'
 import { cookies } from 'next/headers'
 import { tokenConfigured, productName, splitWordmark, dashboardUser } from '@/lib/server/config'
 import { ToastProvider } from '@/components/Toast'
+import ConsoleHeading from '@/components/ConsoleHeading'
 import ConsoleChrome from '@/components/console/ConsoleChrome'
 
 const SIDEBAR_COOKIE = 'streamkit_sidebar'
@@ -41,7 +42,10 @@ export default async function ConsoleShell({ children }: { children: ReactNode }
       >
         {/* Wrapped here rather than around the whole shell: the toasts belong to
             the console's own actions, and the sidebar does not raise any. */}
-        <ToastProvider>{children}</ToastProvider>
+        <ToastProvider>
+          <ConsoleHeading />
+          {children}
+        </ToastProvider>
       </ConsoleChrome>
     </div>
   )
