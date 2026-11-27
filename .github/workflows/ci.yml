@@ -49,6 +49,9 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      # A stale BRIDGE_URL here is invisible in unit tests but breaks every
+      # Connect button in production with a 502 from the Next gateway.
+      - run: grep -q 'BRIDGE_URL=http://127.0.0.1:8004' ../deploy/systemd/livechat-web.service
       # Convex functions have their own tsconfig (the app's excludes them).
       # Typechecked here so a broken mutation fails CI, not the deploy.
       - run: npx tsc --noEmit -p convex/tsconfig.json
