@@ -27,7 +27,12 @@ async fn fetch_watching(room_id: &str) -> Option<i64> {
     );
     let text = reqwest::get(&url).await.ok()?.text().await.ok()?;
     let value: Value = serde_json::from_str(&text).ok()?;
-    value.pointer("/data/stats/total_user")?.as_i64().map(|n| n.max(0))
+    // TikTok counts everyone who entered (total_user), including people who
+    // arrived via replay. The "watching" number on the live page is the
+    // difference — in this stream 4 total - 3 replay = 1 watching.
+    let total = value.pointer("/data/stats/total_user")?.as_i64().unwrap_or(0);
+    let replay = value.pointer("/data/stats/replay_viewers").and_then(Value::as_i64).unwrap_or(0);
+    Some((total - replay).max(0))
 }
 
 type Clients = Arc<Mutex<HashMap<String, Vec<mpsc::UnboundedSender<String>>>>>;
@@ -562,15 +567,11 @@ async fn watch(state: AppState, room_id: String, username: String) {
                 }
                 TikTokLiveEvent::Connected { room_id: rid } => live_room = Some(rid),
                 TikTokLiveEvent::RoomUserSeq(seq) => {
+                    // Only used to learn the numeric room id. Its counters are
+                    // cumulative and disagree with the live "watching" number,
+                    // so the HTTP poll is the single source of truth.
                     if live_room.is_none() {
                         live_room = seq.common.as_ref().map(|c| c.room_id.to_string());
-                    }
-                    // total_user is the number TikTok shows as watching;
-                    // viewer_count can be a smaller named-viewer subset.
-                    let count = if seq.total_user > 0 { seq.total_user } else { seq.viewer_count }.max(0);
-                    if count != last_viewers {
-                        last_viewers = count;
-                        state.persist(&room_id, "viewers", json!({"type":"viewers","count":count}), None).await;
                     }
                 }
                 TikTokLiveEvent::Disconnected | TikTokLiveEvent::LiveEnded(_) => break,
