@@ -120,10 +120,33 @@ impl AppState {
         let user = user.cloned().unwrap_or_else(|| json!({}));
         let name = user.get("user").and_then(Value::as_str).unwrap_or("");
         let uid = user.get("userId").and_then(Value::as_str).unwrap_or("");
+        let created = now_ms();
         let _ = conn.execute(
             "INSERT INTO events(room_id,kind,user_name,user_id,frame,created_at) VALUES($1,$2,$3,$4,$5::jsonb,$6)",
-            &[&room_id, &kind, &name, &uid, &frame, &now_ms()],
+            &[&room_id, &kind, &name, &uid, &frame, &created],
         ).await;
+        let _ = conn.execute(
+            "INSERT INTO room_sessions(room_id,peak_viewers,total_diamonds,last_viewers,updated_at) VALUES($1,0,0,0,$2) ON CONFLICT (room_id) DO NOTHING",
+            &[&room_id, &created],
+        ).await;
+        if kind == "viewers" {
+            if let Some(count) = frame.get("count").and_then(Value::as_i64) {
+                let count = count as i32;
+                let _ = conn.execute(
+                    "UPDATE room_sessions SET last_viewers=$2, peak_viewers=GREATEST(peak_viewers,$2), updated_at=$3 WHERE room_id=$1",
+                    &[&room_id, &count, &created],
+                ).await;
+                let _ = conn.execute("UPDATE rooms SET viewers=$2 WHERE id=$1", &[&room_id, &count]).await;
+            }
+        }
+        if kind == "gift" {
+            if let Some(diamonds) = frame.get("diamonds").and_then(Value::as_i64) {
+                let _ = conn.execute(
+                    "UPDATE room_sessions SET total_diamonds=total_diamonds+$2, updated_at=$3 WHERE room_id=$1",
+                    &[&room_id, &diamonds, &created],
+                ).await;
+            }
+        }
         self.broadcast(room_id, frame).await;
     }
 
@@ -422,6 +445,7 @@ async fn watch(state: AppState, room_id: String, username: String) {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("@{username} connect failed: {e}");
+                state.log("warning", "bridge.tiktok", &format!("@{username}: {e}")).await;
                 state.set_status(&room_id, json!({"connected":false,"connecting":true,"waiting":true,
                     "message":format!("@{username} is not live yet")})).await;
                 attempts = attempts.saturating_add(1);
@@ -431,6 +455,7 @@ async fn watch(state: AppState, room_id: String, username: String) {
             }
         };
         attempts = 0;
+        state.log("info", "bridge.tiktok", &format!("connected @{username}")).await;
         state.set_status(&room_id, json!({"connected":true,"connecting":false,"waiting":false,
             "liveEnded":false,"session_start":now_ms(),"message":format!("Connected to @{username}")})).await;
         while let Ok(event) = stream.next_event().await {
@@ -459,10 +484,15 @@ async fn watch(state: AppState, room_id: String, username: String) {
                     state.persist(&room_id, "like", json!({"type":"like","user":user.get("user"),
                         "userId":user.get("userId"),"avatar":user.get("avatar"),"count":1}), Some(&user)).await;
                 }
+                TikTokLiveEvent::RoomUserSeq(seq) => {
+                    let count = seq.viewer_count.max(0);
+                    state.persist(&room_id, "viewers", json!({"type":"viewers","count":count}), None).await;
+                }
                 TikTokLiveEvent::Disconnected | TikTokLiveEvent::LiveEnded(_) => break,
                 _ => {}
             }
         }
+        state.log("warning", "bridge.tiktok", &format!("@{username} disconnected")).await;
         state.set_status(&room_id, json!({"connected":false,"connecting":false,
             "message":format!("Disconnected from @{username}")})).await;
         if !state_room_desired(&state, &room_id).await { break }
@@ -476,6 +506,7 @@ async fn state_room_desired(state: &AppState, room_id: &str) -> bool {
 }
 
 async fn connect_room(state: &AppState, room_id: &str, username: &str) {
+    state.log("info", "bridge.control", &format!("connect @{username} ({room_id})")).await;
     if let Some(handle) = state.watchers.lock().await.remove(room_id) { handle.abort(); }
     if let Ok(conn) = state.conn().await {
         if let Err(e) = conn.execute("UPDATE rooms SET username=$2, desired=TRUE WHERE id=$1", &[&room_id, &username]).await { eprintln!("connect_room update failed: {e:?}"); }
@@ -487,6 +518,7 @@ async fn connect_room(state: &AppState, room_id: &str, username: &str) {
 }
 
 async fn disconnect_room(state: &AppState, room_id: &str) {
+    state.log("info", "bridge.control", &format!("disconnect {room_id}")).await;
     if let Some(handle) = state.watchers.lock().await.remove(room_id) { handle.abort(); }
     if let Ok(conn) = state.conn().await {
         let _ = conn.execute("UPDATE rooms SET desired=FALSE WHERE id=$1", &[&room_id]).await;
