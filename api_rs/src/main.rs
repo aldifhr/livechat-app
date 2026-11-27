@@ -81,6 +81,11 @@ impl AppState {
                 frame[flag] = json!(true);
             }
         }
+        // Overlays and docks subscribe over WS; without this the viewer count
+        // only refreshed on the 15s poll and could show a previous room's value.
+        if let Some(count) = room.get("viewers").and_then(Value::as_i64) {
+            frame["viewers"] = json!(count);
+        }
         frame
     }
 

@@ -75,6 +75,20 @@ export default function Docks({ backendOrigin }: { backendOrigin: string }) {
   const isPausedRef = useRef(false)
   const roomIdRef = useRef(roomId)
 
+  // Everything on screen belongs to one room. Without this reset, switching
+  // rooms kept the previous room's viewer count and status until the next poll
+  // (or until a frame happened to arrive), so the header could read "2 watching"
+  // while the newly selected room had one.
+  useEffect(() => {
+    setStatus(null)
+    setViewers(null)
+    setSession(null)
+    setChat([])
+    setNewCount(0)
+    setError('')
+    setLoaded(false)
+  }, [roomId])
+
   // Sync refs so callbacks have fresh values
   soundRef.current = soundEnabled
   ttsRef.current = ttsEnabled
@@ -392,7 +406,7 @@ export default function Docks({ backendOrigin }: { backendOrigin: string }) {
     clearTtsQueue()
   }
 
-  const activeViewers = viewers ?? status?.viewers ?? null
+  const activeViewers = viewers ?? status?.viewers ?? session?.viewers ?? null
 
   return (
     <div className="flex h-full flex-col bg-transparent text-text">
